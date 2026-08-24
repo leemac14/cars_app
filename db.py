@@ -432,6 +432,12 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None):
         else:
             conn.execute("INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)", (auto_id, data_str, przebieg))
 
+def aktualizuj_odczyt_przebiegu(odczyt_id, przebieg, data_str):
+    """Edycja konkretnego, istniejącego odczytu (z poziomu listy historii) —
+    aktualizuje po ID, bez logiki upsert po dacie użytej w dodaj_odczyt_przebiegu."""
+    with polacz_baze() as conn:
+        conn.execute("UPDATE odczyty_przebiegu SET przebieg=?, data=? WHERE id=?", (przebieg, data_str, odczyt_id))
+
 def aktualizuj_najnowszy_wpis(zadanie_id):
     with polacz_baze() as conn:
         c = conn.cursor()

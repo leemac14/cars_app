@@ -311,6 +311,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.przejdz(self._page, "/")
                 utils.pokaz_komunikat(self._page, "Zaktualizowano stan licznika!")
 
+            def zobacz_historie(e2):
+                utils.zamknij_dialog(self._page, dlg)
+                utils.przejdz(self._page, "/przebieg")
+
             dlg = ft.AlertDialog(
                 modal=True,
                 title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY), ft.Text("Aktualizacja przebiegu", weight="bold")], spacing=8),
@@ -322,10 +326,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     pole_przebiegu
                 ], tight=True, spacing=10),
                 actions=[
+                    ft.TextButton("📈 Historia odczytów", on_click=zobacz_historie),
                     ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
                     ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
                 ],
-                actions_alignment=ft.MainAxisAlignment.END
+                actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN
             )
             utils.otworz_dialog(self._page, dlg)
         # ------------------------------------------------------
@@ -376,7 +381,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                                 ft.Icon(ft.Icons.EDIT, size=12, color=ft.Colors.PRIMARY)
                             ], spacing=5),
                             on_click=pokaz_szybka_aktualizacja_przebiegu,
-                            tooltip="Szybka aktualizacja przebiegu",
+                            on_long_press=lambda e: utils.przejdz(self._page, "/przebieg"),
+                            tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia odczytów",
                             padding=ft.Padding(0, 2, 0, 0)
                         ),
                         ft.Container(height=5),

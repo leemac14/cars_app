@@ -22,6 +22,7 @@ from views.todo_view import DoZrobieniaView, FormularzDoZrobieniaView
 from views.garage_view import MagazynView, FormularzOponyView, FormularzCzesciView
 from views.body_view import KaroseriaView, FormularzZdjecieKaroseriiView
 from views.porownanie_view import PorownanieView
+from views.przebieg_view import OdczytyPrzebieguView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -356,6 +357,8 @@ def main(page: ft.Page):
             page.views.append(UstawieniaView(page, app_state))
         elif segmenty[0] == "porownanie":
             page.views.append(PorownanieView(page, app_state))
+        elif segmenty[0] == "przebieg":
+            page.views.append(OdczytyPrzebieguView(page, app_state))
         elif segmenty[0] == "do-zrobienia":
             page.views.append(DoZrobieniaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":
