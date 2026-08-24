@@ -500,6 +500,82 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
     wyniki.sort(key=lambda w: kolejnosc.get(w["status"], 2))
     return wyniki
 
+def pobierz_dane_do_porownania(auto_id):
+    """Zbiorcze dane pojazdu (specyfikacja, koszty, przebieg, spalanie, serwis)
+    wykorzystywane przez ekran porównania pojazdów. Zwraca None, jeśli auto nie istnieje."""
+    if not auto_id:
+        return None
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            "SELECT nazwa, nr_rej, rok_produkcji, pojemnosc_silnika, moc_silnika, "
+            "typ_paliwa, skrzynia_biegow, oc_data, przeglad_data, ac_data, assistance_data, "
+            "zdjecie_glowne FROM samochody WHERE id=?",
+            (auto_id,)
+        )
+        w = c.fetchone()
+        if not w:
+            return None
+        dane = dict(w)
+
+        c.execute("SELECT COALESCE(SUM(kwota),0) FROM tankowania WHERE auto_id=?", (auto_id,))
+        dane["koszt_paliwo"] = float(c.fetchone()[0] or 0.0)
+
+        c.execute(
+            "SELECT COALESCE(SUM(h.cena),0) FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        koszt_historia = float(c.fetchone()[0] or 0.0)
+        c.execute("SELECT COALESCE(SUM(koszt_calkowity),0) FROM wizyty WHERE auto_id=?", (auto_id,))
+        koszt_wizyty = float(c.fetchone()[0] or 0.0)
+        dane["koszt_serwis"] = koszt_historia + koszt_wizyty
+
+        c.execute("SELECT COALESCE(SUM(kwota),0) FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        dane["koszt_inne"] = float(c.fetchone()[0] or 0.0)
+
+        dane["koszt_razem"] = dane["koszt_paliwo"] + dane["koszt_serwis"] + dane["koszt_inne"]
+
+        c.execute("SELECT przebieg, litry, do_pelna FROM tankowania WHERE auto_id=? ORDER BY przebieg", (auto_id,))
+        tankowania = c.fetchall()
+
+        c.execute("SELECT COUNT(*) FROM historia h JOIN zadania z ON h.zadanie_id=z.id WHERE z.auto_id=?", (auto_id,))
+        dane["liczba_wpisow_historii"] = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM wizyty WHERE auto_id=?", (auto_id,))
+        dane["liczba_wizyt"] = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM do_zrobienia WHERE auto_id=? AND wykonane=0", (auto_id,))
+        dane["do_zrobienia_aktywne"] = c.fetchone()[0]
+        c.execute(
+            "SELECT COUNT(*) FROM magazyn_czesci WHERE auto_id=? AND ilosc <= COALESCE(prog_ostrzezenia, 1)",
+            (auto_id,)
+        )
+        dane["magazyn_niski_stan"] = c.fetchone()[0]
+
+    dane["aktualny_przebieg"] = pobierz_aktualny_przebieg(auto_id)
+    dane["sredni_dzienny"] = oblicz_sredni_dzienny_przebieg(auto_id)
+
+    dystans = 0
+    if len(tankowania) >= 2:
+        dystans = max(0, int(tankowania[-1]["przebieg"] or 0) - int(tankowania[0]["przebieg"] or 0))
+    dane["koszt_km"] = (dane["koszt_razem"] / dystans) if dystans > 0 else None
+
+    spalanie = None
+    peln_idx = [i for i, t in enumerate(tankowania) if t["do_pelna"]]
+    if len(peln_idx) >= 2:
+        p, o = peln_idx[0], peln_idx[-1]
+        d_p = int(tankowania[o]["przebieg"] or 0) - int(tankowania[p]["przebieg"] or 0)
+        l_p = sum(float(tankowania[k]["litry"] or 0) for k in range(p + 1, o + 1))
+        if d_p > 0:
+            spalanie = (l_p / d_p) * 100
+    dane["spalanie"] = spalanie
+
+    powiadomienia = pobierz_powiadomienia(auto_id)
+    dane["przeterminowane"] = sum(1 for p in powiadomienia if p["status"] == "przeterminowane")
+    dane["pilne"] = sum(1 for p in powiadomienia if p["status"] == "pilne")
+
+    return dane
+
 def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
     """Montuje zestaw opon na wskazanej osi. Zestaw montowany na całym aucie
     ('Wszystkie') wyklucza wszystkie pozostałe. Zestaw montowany na pojedynczej

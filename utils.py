@@ -470,7 +470,9 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.ADD, color=ft.Colors.GREEN, size=20), ft.Text("Dodaj nowy pojazd")]), on_click=lambda e: przejdz(page, "/auto/nowy")))
     if state.auto_id:
         pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=20), ft.Text("Usuń pojazd")]), on_click=lambda e: usun_auto(page, state)))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.COMPARE_ARROWS, color=ft.Colors.TEAL, size=20), ft.Text("Porównaj pojazdy")]), on_click=lambda e: przejdz(page, "/porownanie")))
 
+    pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.UPLOAD_FILE, color=ft.Colors.BLUE, size=20), ft.Text("Eksportuj bazę")]), on_click=cb_export))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DOWNLOAD, color=ft.Colors.ORANGE, size=20), ft.Text("Importuj bazę")]), on_click=cb_import))
