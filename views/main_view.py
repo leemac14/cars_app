@@ -668,8 +668,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_tag_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "tankowania_tag", baza_lista, "tagi", "Tagi")
             
             self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_tag_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
-            
-            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
 
             def filtruj_tankowania(e):
                 zapytanie = e.control.value.lower().strip()

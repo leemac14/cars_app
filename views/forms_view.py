@@ -42,6 +42,7 @@ class FormularzAutoView(ft.View):
         ot_val, op_val, akum_val, zm_val, zd_val = "", "", "", "", ""
         ac_val, asy_val, gas_val, apt_val = "", "", "", ""
         self.zg_val = None
+        self.kolor_auta_val = None
         
         if auto_id:
             with db.polacz_baze() as c:
@@ -53,7 +54,7 @@ class FormularzAutoView(ft.View):
                     "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                     "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                     "ac_data, assistance_data, gasnica_data, apteczka_data, zdjecie_glowne, "
-                    "marka, model, generacja "
+                    "marka, model, generacja, kolor_motywu "
                     "FROM samochody WHERE id=?", 
                     (auto_id,)
                 )
@@ -70,6 +71,8 @@ class FormularzAutoView(ft.View):
                     ac_val, asy_val = str(w["ac_data"] or ""), str(w["assistance_data"] or "")
                     gas_val, apt_val = str(w["gasnica_data"] or ""), str(w["apteczka_data"] or "")
                     self.zg_val = str(w["zdjecie_glowne"]) if w["zdjecie_glowne"] else None
+                    self.zg_val = str(w["zdjecie_glowne"]) if w["zdjecie_glowne"] else None
+                    self.kolor_auta_val = str(w["kolor_motywu"]) if w["kolor_motywu"] else None
                     
                     # Wczytywanie nowych kolumn
                     m_val = str(w["marka"] or "")
@@ -82,7 +85,8 @@ class FormularzAutoView(ft.View):
                         m_val = n_val
 
         self.k_zdjecie, self.get_zdjecie = utils.komponent_zalacznika(page, self.zg_val)
-        
+        self.k_kolor, self.get_kolor = utils.komponent_wyboru_koloru(page, self.kolor_auta_val)
+
         # Nowe 3 pola zamiast jednego pola nazwy
         self.e_marka = ft.TextField(label="Marka pojazdu*", value=m_val, **utils.styl_pola())
         self.e_model = ft.TextField(label="Model pojazdu*", value=mod_val, **utils.styl_pola())
@@ -134,13 +138,17 @@ class FormularzAutoView(ft.View):
         k0 = utils.karta_formularza([self.k_zdjecie], "Zdjęcie profilowe", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
         # Zastąpiono pojedyncze pole e_nazwa rzędem i polem generacji
         k1 = utils.karta_formularza([wiersz_auto, self.e_generacja, self.e_rej, self.e_vin, self.e_rok], "Dane identyfikacyjne", ft.Icons.DIRECTIONS_CAR, domyslnie_otwarte=True)
+        kk = utils.karta_formularza(
+            [ft.Text("Ten kolor będzie używany w całym interfejsie, gdy ten pojazd jest aktywny.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT), self.k_kolor],
+            "Kolor interfejsu dla tego pojazdu", ft.Icons.PALETTE
+        )
         k2 = utils.karta_formularza([self.e_pal, self.e_skrz, self.e_poj, self.e_moc], "Specyfikacja techniczna", ft.Icons.SETTINGS)
         k3 = utils.karta_formularza([self.e_oc, self.e_pt], "Ważne daty", ft.Icons.CALENDAR_MONTH)
         k5 = utils.karta_formularza([wiersz_wycieraczki, wiersz_cisnienie, wiersz_olej, self.e_akum, wiersz_zarowki], "Ściągawka do sklepu", ft.Icons.SHOPPING_CART)
         k6 = utils.karta_formularza([self.e_ac, self.e_asy, self.e_gas, self.e_apt], "Dodatkowe polisy i BHP", ft.Icons.SHIELD)
         k4 = utils.karta_formularza([self.e_not], "Uwagi", ft.Icons.NOTES)
         
-        elementy = [k0, k1, k2, k3, k5, k6, k4, utils.przyciski_akcji(page, "✅ Zapisz pojazd", self.zapisz, "/")]
+        elementy = [k0, k1, kk, k2, k3, k5, k6, k4, utils.przyciski_akcji(page, "✅ Zapisz pojazd", self.zapisz, "/")]
         super().__init__(route=f"/auto/edytuj/{auto_id}" if auto_id else "/auto/nowy", padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO)
 
     async def rozkoduj_vin(self, e):
@@ -268,8 +276,10 @@ class FormularzAutoView(ft.View):
                 self._page.update()
                 return utils.pokaz_komunikat(self._page, "Pojazd o takiej nazwie już istnieje w bazie.", ft.Colors.RED_700)
 
+        # PO:
         przygotowany_zdj = db.przygotuj_nowy_zalacznik(self.get_zdjecie())
         nowe_zdj = przygotowany_zdj if przygotowany_zdj is not None else self.zg_val
+        nowy_kolor = self.get_kolor()
 
         try:
             with db.polacz_baze() as conn:
@@ -280,13 +290,13 @@ class FormularzAutoView(ft.View):
                         "wycieraczki_przod=?, wycieraczki_tyl=?, cisnienie_przod=?, cisnienie_tyl=?, "
                         "olej_typ=?, olej_pojemnosc=?, akumulator=?, zarowki_mijania=?, zarowki_drogowe=?, "
                         "ac_data=?, assistance_data=?, gasnica_data=?, apteczka_data=?, zdjecie_glowne=?, "
-                        "marka=?, model=?, generacja=? WHERE id=?", 
+                        "marka=?, model=?, generacja=?, kolor_motywu=? WHERE id=?", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value, 
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, nowe_zdj, 
-                         marka, model, generacja, self.auto_id)
+                         marka, model, generacja, nowy_kolor, self.auto_id)
                     )
                     if self.state.auto_id == self.auto_id:
                         self.state.auto_nazwa = n
@@ -298,14 +308,14 @@ class FormularzAutoView(ft.View):
                         "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                         "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                         "ac_data, assistance_data, gasnica_data, apteczka_data, zdjecie_glowne, "
-                        "marka, model, generacja) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                        "marka, model, generacja, kolor_motywu) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value,
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, nowe_zdj,
-                         marka, model, generacja)
+                         marka, model, generacja, nowy_kolor)
                     )
                     n_id = cur.lastrowid
                     for dz in db.DOMYSLNE_ZADANIA:

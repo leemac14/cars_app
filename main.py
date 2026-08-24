@@ -39,9 +39,9 @@ def main(page: ft.Page):
     page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
     page.theme_mode = ft.ThemeMode.DARK if db.pobierz_ustawienie("tryb_ciemny", "0") == "1" else ft.ThemeMode.LIGHT
 
-    # Zapamiętujemy ostatnio zastosowany kolor motywu, żeby NIE przebudowywać
-    # page.theme przy każdej, nawet najdrobniejszej nawigacji (np. zmianie zakładki).
-    kolor_motywu_zastosowany = {"nazwa": kolor_ustawiony}
+    # Zapamiętujemy ostatnio zastosowany kolor motywu i auto, dla którego go
+    # policzyliśmy — każdy pojazd może mieć teraz własny kolor interfejsu.
+    kolor_motywu_zastosowany = {"nazwa": kolor_ustawiony, "auto_id": None}
 
     app_state = AppState()
 
@@ -155,13 +155,14 @@ def main(page: ft.Page):
             app_state.wybrane_zadanie_nazwa = ""
             db.zainicjuj_domyslne_auto(app_state)
             
-            kolor_ustawiony = db.pobierz_kolor_motywu()
-            kolor_seed = utils.MAPA_KOLOROW.get(kolor_ustawiony, ft.Colors.INDIGO)
+            kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
+            kolor_seed = utils.MAPA_KOLOROW.get(kolor_biezacy, ft.Colors.INDIGO)
             page.theme = ft.Theme(color_scheme_seed=kolor_seed)
             page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
             page.theme_mode = ft.ThemeMode.DARK if db.pobierz_ustawienie("tryb_ciemny", "0") == "1" else ft.ThemeMode.LIGHT
             page.update()
-            kolor_motywu_zastosowany["nazwa"] = kolor_ustawiony
+            kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
+            kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
             
             utils.przejdz(page, "/")
             utils.pokaz_komunikat(page, "Pomyślnie wczytano bazę! Stara zapisana jako .bak")
@@ -271,15 +272,17 @@ def main(page: ft.Page):
     def trasa_zmieniona(e):
         db.zainicjuj_domyslne_auto(app_state)
 
-        # Motyw przebudowujemy TYLKO gdy kolor faktycznie się zmienił (np. po
-        # zapisaniu ustawień albo imporcie bazy), a nie przy każdej nawigacji —
-        # wcześniej to zmuszało silnik do ciągłego, kosztownego rebuildu drzewa UI.
-        kolor_ustawiony = db.pobierz_kolor_motywu()
-        if kolor_ustawiony != kolor_motywu_zastosowany["nazwa"]:
-            kolor_seed = utils.MAPA_KOLOROW.get(kolor_ustawiony, ft.Colors.INDIGO)
+        # Motyw przebudowujemy TYLKO gdy kolor faktycznie się zmienił (zapis
+        # ustawień, zmiana koloru pojazdu, przełączenie aktywnego auta, import
+        # bazy) — nie przy każdej nawigacji. Każdy pojazd może mieć własny
+        # kolor (db.pobierz_kolor_auta), z fallbackiem na globalny domyślny.
+        kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
+        if kolor_biezacy != kolor_motywu_zastosowany["nazwa"] or app_state.auto_id != kolor_motywu_zastosowany["auto_id"]:
+            kolor_seed = utils.MAPA_KOLOROW.get(kolor_biezacy, ft.Colors.INDIGO)
             page.theme = ft.Theme(color_scheme_seed=kolor_seed)
             page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
-            kolor_motywu_zastosowany["nazwa"] = kolor_ustawiony
+            kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
+            kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
 
         trasa = page.route
         segmenty = [s for s in trasa.split("/") if s != ""]
@@ -344,12 +347,11 @@ def main(page: ft.Page):
             elif len(segmenty) >= 4 and segmenty[1] == "czesci" and segmenty[2] == "edytuj":
                 page.views.append(FormularzCzesciView(page, app_state, utils.parsuj_int(segmenty[3], None)))
         elif segmenty[0] == "karoseria":
+            page.views.append(KaroseriaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":
                 page.views.append(FormularzZdjecieKaroseriiView(page, app_state, None))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 page.views.append(FormularzZdjecieKaroseriiView(page, app_state, utils.parsuj_int(segmenty[2], None)))
-            else:
-                page.views.append(KaroseriaView(page, app_state))
         elif segmenty[0] == "ustawienia":
             page.views.append(UstawieniaView(page, app_state))
         elif segmenty[0] == "porownanie":

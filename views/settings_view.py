@@ -83,7 +83,8 @@ class UstawieniaView(ft.View):
         odswiez_palete(aktualizuj=False)
 
         paleta_sekcja = ft.Column([
-            ft.Text("Główny kolor aplikacji", size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("Domyślny kolor aplikacji", size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("Używany, gdy brak wybranego pojazdu oraz dla pojazdów bez własnego koloru (ustawisz go w edycji pojazdu).", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
             self.wiersz_kolorow
         ], spacing=8)
         # -----------------------

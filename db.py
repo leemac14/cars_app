@@ -189,6 +189,13 @@ def init_db():
             """
             ALTER TABLE magazyn_czesci ADD COLUMN prog_ostrzezenia REAL DEFAULT 1;
             """
+
+            # Wersja 12: Indywidualny kolor motywu interfejsu per pojazd — zamiast
+            # jednego, globalnego koloru dla całej aplikacji. NULL = "użyj
+            # domyślnego koloru z Ustawień".
+            """
+            ALTER TABLE samochody ADD COLUMN kolor_motywu TEXT;
+            """
         ]
 
         for i in range(wersja, len(migracje)):
@@ -245,6 +252,19 @@ def pobierz_jednostke_spalania():
 def pobierz_kolor_motywu():
     w = pobierz_ustawienie("kolor_motywu", "Indygo")
     return w if w in KOLORY_MOTYWU else "Indygo"
+
+def pobierz_kolor_auta(auto_id):
+    """Zwraca kolor motywu przypisany do KONKRETNEGO pojazdu. Jeśli auto nie ma
+    ustawionego własnego koloru (albo żadne auto nie jest aktualnie wybrane),
+    zwraca globalny kolor domyślny z Ustawień."""
+    if auto_id:
+        with polacz_baze() as conn:
+            c = conn.cursor()
+            c.execute("SELECT kolor_motywu FROM samochody WHERE id=?", (auto_id,))
+            w = c.fetchone()
+            if w and w[0] in KOLORY_MOTYWU:
+                return w[0]
+    return pobierz_kolor_motywu()
 
 def pobierz_prog_km():
     return int(pobierz_ustawienie("prog_km_powiadomien", str(PROG_KM_POWIADOMIEN)) or PROG_KM_POWIADOMIEN)

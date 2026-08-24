@@ -921,6 +921,56 @@ def kolor_i_tekst_terminu(termin_str):
     else:
         return ft.Colors.GREEN_700, str(termin_str)
 
+# Wstawić przed def komponent_tagow(...):
+def komponent_wyboru_koloru(page: ft.Page, aktualny_kolor=None, etykieta_brak="Domyślny (jak w Ustawieniach)"):
+    """Wiersz kółek do wyboru koloru motywu interfejsu, z dodatkową pozycją
+    'Brak' (użyje wtedy globalnego koloru domyślnego). Zwraca (kontener,
+    pobierz_wynik), gdzie pobierz_wynik() zwraca nazwę koloru z db.KOLORY_MOTYWU
+    albo None."""
+    stan = {"wybrany": aktualny_kolor if aktualny_kolor in db.KOLORY_MOTYWU else None}
+    wiersz = ft.Row(wrap=True, spacing=10)
+
+    def wybierz(nazwa):
+        stan["wybrany"] = nazwa
+        odswiez()
+
+    def odswiez():
+        wiersz.controls.clear()
+
+        zaznaczony_brak = stan["wybrany"] is None
+        wiersz.controls.append(
+            ft.Container(
+                width=45, height=45, shape=ft.BoxShape.CIRCLE,
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                border=ft.Border.all(3, ft.Colors.ON_SURFACE if zaznaczony_brak else ft.Colors.TRANSPARENT),
+                alignment=ft.Alignment.CENTER,
+                content=ft.Icon(ft.Icons.BLOCK, size=20, color=ft.Colors.ON_SURFACE_VARIANT),
+                tooltip=etykieta_brak,
+                on_click=lambda e: wybierz(None)
+            )
+        )
+
+        for nazwa in db.KOLORY_MOTYWU:
+            kolor_hex = MAPA_KOLOROW.get(nazwa, ft.Colors.INDIGO)
+            zaznaczony = (stan["wybrany"] == nazwa)
+            wiersz.controls.append(
+                ft.Container(
+                    width=45, height=45, bgcolor=kolor_hex, shape=ft.BoxShape.CIRCLE,
+                    border=ft.Border.all(3, ft.Colors.ON_SURFACE if zaznaczony else ft.Colors.TRANSPARENT),
+                    content=ft.Icon(ft.Icons.CHECK, color=ft.Colors.WHITE, size=24) if zaznaczony else None,
+                    tooltip=nazwa,
+                    on_click=lambda e, n=nazwa: wybierz(n)
+                )
+            )
+
+        try:
+            wiersz.update()
+        except Exception:
+            pass
+
+    odswiez()
+    return wiersz, lambda: stan["wybrany"]
+
 def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
     wybrane = set([t.strip() for t in (aktualne_tagi_str or "").split(",") if t.strip()])
     kontener_tagow = ft.Row(wrap=True, spacing=8)
@@ -1259,17 +1309,25 @@ def wskaznik_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik"):
     )
 
 async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, stara_sciezka, po_zapisie_callback):
+    obsluzone = {"wartosc": False}
+
+    def zapisz_wybrany_plik(plik):
+        if obsluzone["wartosc"]:
+            return
+        obsluzone["wartosc"] = True
+        nowy = db.zapisz_zalacznik(plik.path)
+        db.usun_plik_zalacznika(stara_sciezka)
+        with db.polacz_baze() as conn:
+            conn.execute(f"UPDATE {tabela} SET zalacznik=? WHERE id=?", (nowy, rekord_id))
+        pokaz_komunikat(page, "Zapisano zdjęcie!")
+        po_zapisie_callback()
+
     def po_wyborze(e):
         pliki = getattr(e, "files", None)
         if pliki and len(pliki) > 0:
             plik = pliki[0]
             if getattr(plik, "path", None):
-                nowy = db.zapisz_zalacznik(plik.path)
-                db.usun_plik_zalacznika(stara_sciezka)
-                with db.polacz_baze() as conn:
-                    conn.execute(f"UPDATE {tabela} SET zalacznik=? WHERE id=?", (nowy, rekord_id))
-                pokaz_komunikat(page, "Zapisano zdjęcie!")
-                po_zapisie_callback()
+                zapisz_wybrany_plik(plik)
             else:
                 pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", ft.Colors.RED_700)
 
@@ -1288,12 +1346,7 @@ async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, st
             if isinstance(pliki, list) and len(pliki) > 0:
                 plik = pliki[0]
                 if getattr(plik, "path", None):
-                    nowy = db.zapisz_zalacznik(plik.path)
-                    db.usun_plik_zalacznika(stara_sciezka)
-                    with db.polacz_baze() as conn:
-                        conn.execute(f"UPDATE {tabela} SET zalacznik=? WHERE id=?", (nowy, rekord_id))
-                    pokaz_komunikat(page, "Zapisano zdjęcie!")
-                    po_zapisie_callback()
+                    zapisz_wybrany_plik(plik)
                 else:
                     pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", ft.Colors.RED_700)
     except Exception as ex:
