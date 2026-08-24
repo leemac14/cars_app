@@ -1,0 +1,1251 @@
+import flet as ft
+from datetime import datetime, timedelta
+import sqlite3
+import db
+import utils
+
+class MainView(ft.View, utils.ZaznaczanieGrupowe):
+    def __init__(self, page: ft.Page, state, cb_export, cb_import, cb_theme):
+        self._page = page
+        self.state = state
+        self.elementy = []
+        self.fab = None
+
+        appbar = utils.zbuduj_pasek_glowny(page, state, cb_export, cb_import, cb_theme)
+        # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
+        self.tryb_zaznaczania = False
+        self.zaznaczone_id = set()
+        self.tabela_cel = ""  # zapamięta z jakiej zakładki usuwamy (tankowania, inne_koszty, zadania)
+        self.oryginalny_appbar = appbar
+        self.karty_ref = {}   # Przechowuje referencje do kontenerów kart, by je podświetlać
+        self.uzyj_wirtualizacji = False  # True gdy w tej zakładce renderujemy przewijaną listę kart
+        # --------------------------------------
+        navbar = ft.SafeArea(
+            content=ft.NavigationBar(
+                destinations=[
+                    ft.NavigationBarDestination(icon=ft.Icons.BUILD_CIRCLE_OUTLINED, selected_icon=ft.Icons.BUILD_CIRCLE, label="Serwis"),
+                    ft.NavigationBarDestination(icon=ft.Icons.LOCAL_GAS_STATION_OUTLINED, selected_icon=ft.Icons.LOCAL_GAS_STATION, label="Paliwo"),
+                    ft.NavigationBarDestination(icon=ft.Icons.RECEIPT_LONG_OUTLINED, selected_icon=ft.Icons.RECEIPT_LONG, label="Inne"),
+                    ft.NavigationBarDestination(icon=ft.Icons.PIE_CHART_OUTLINE, selected_icon=ft.Icons.PIE_CHART, label="Statystyki"),
+                ],
+                on_change=self.zmien_zakladke,
+                selected_index=self.state.zakladka,
+            ),
+            avoid_intrusions_top=False,
+        )
+
+        if not self.state.auto_id:
+            self.elementy.append(
+                utils.ekran_braku_danych(
+                    ikona=ft.Icons.DIRECTIONS_CAR,
+                    tytul="Witaj w menedżerze!",
+                    opis="Nie masz jeszcze dodanego żadnego pojazdu. Dodaj swój pierwszy pojazd, aby rozpocząć zarządzanie.",
+                    tekst_przycisku="Dodaj pojazd",
+                    on_click=lambda e: utils.przejdz(self._page, "/auto/nowy")
+                )
+            )
+        else:
+            self.buduj_naglowek_auta()
+            if self.state.zakladka == 0: self.buduj_serwis()
+            elif self.state.zakladka == 1: self.buduj_tankowania()
+            elif self.state.zakladka == 2: self.buduj_inne()
+            elif self.state.zakladka == 3: self.buduj_statystyki()
+
+        self.elementy.append(utils.dol_bezpieczny(10))
+
+        super().__init__(
+            route="/",
+            padding=15,
+            spacing=15,
+            scroll=ft.ScrollMode.AUTO,
+            appbar=appbar,
+            navigation_bar=navbar,
+            controls=self.elementy,
+            floating_action_button=self.fab
+        )
+        
+    def zmien_zakladke(self, e):
+        self.state.zakladka = int(e.control.selected_index)
+        utils.przejdz(self._page, "/")
+
+    def potwierdz_grupowe_usuwanie(self, e):
+        ile = len(self.zaznaczone_id)
+        def wykonaj():
+            if self.tabela_cel == "zadania":
+                wynik = db.usun_wiele_zadan_z_cofnieciem(list(self.zaznaczone_id))
+            else:
+                wynik = db.usun_wiele_z_cofnieciem(self.tabela_cel, list(self.zaznaczone_id))
+
+            self.zakoncz_zaznaczanie()
+            utils.przejdz(self._page, "/")
+            utils.pokaz_komunikat_cofnij(self._page, f"Pomyślnie usunięto {ile} elementów.", wynik)
+        utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno usunąć {ile} elementów?", wykonaj)
+
+    def buduj_naglowek_auta(self):
+        with db.polacz_baze() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT id, nazwa FROM samochody ORDER BY nazwa")
+            auta = c.fetchall()
+            c.execute("SELECT oc_data, przeglad_data, nr_rej, vin, zdjecie_glowne FROM samochody WHERE id=?", (self.state.auto_id,))
+            w = c.fetchone()
+            
+        if not w: return
+
+        idx = 0
+        for i, a in enumerate(auta):
+            if a[0] == self.state.auto_id:
+                idx = i
+                break
+        
+        poprzedni_id, poprzedni_nazwa = auta[(idx - 1) % len(auta)]
+        nastepny_id, nastepny_nazwa = auta[(idx + 1) % len(auta)]
+
+        def on_prev(e):
+            self.state.auto_id = poprzedni_id
+            self.state.auto_nazwa = str(poprzedni_nazwa)
+            utils.przejdz(self._page, "/")
+
+        def on_next(e):
+            self.state.auto_id = nastepny_id
+            self.state.auto_nazwa = str(nastepny_nazwa)
+            utils.przejdz(self._page, "/")
+
+        def pokaz_wybor_aut(e):
+            bs = ft.BottomSheet(ft.Container())
+            kafelki_aut = []
+
+            def wybierz(aid, an):
+                for kafel, k_aid in kafelki_aut:
+                    if k_aid == aid:
+                        kafel.leading.icon = ft.Icons.CHECK_CIRCLE
+                        kafel.leading.color = ft.Colors.PRIMARY
+                        kafel.title.weight = "bold"
+                    else:
+                        kafel.leading.icon = ft.Icons.DIRECTIONS_CAR
+                        kafel.leading.color = ft.Colors.ON_SURFACE_VARIANT
+                        kafel.title.weight = "normal"
+                
+                try:
+                    self._page.update()
+                except Exception:
+                    pass
+
+                self.state.auto_id = aid
+                self.state.auto_nazwa = str(an)
+                utils.zamknij_dno(self._page, bs)
+                utils.przejdz(self._page, "/")
+
+            def dodaj():
+                utils.zamknij_dno(self._page, bs)
+                utils.przejdz(self._page, "/auto/nowy")
+
+            pozycje_aut = [
+                ft.Text("Wybierz pojazd", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                ft.Divider(height=1)
+            ]
+            
+            for a_id, a_nazwa in auta:
+                zaznaczone = (a_id == self.state.auto_id)
+                kafel = ft.ListTile(
+                    leading=ft.Icon(
+                        ft.Icons.CHECK_CIRCLE if zaznaczone else ft.Icons.DIRECTIONS_CAR,
+                        color=ft.Colors.PRIMARY if zaznaczone else ft.Colors.ON_SURFACE_VARIANT
+                    ),
+                    title=ft.Text(str(a_nazwa), weight="bold" if zaznaczone else "normal"),
+                    on_click=lambda ev, aid=a_id, an=a_nazwa: wybierz(aid, an)
+                )
+                kafelki_aut.append((kafel, a_id))
+                pozycje_aut.append(kafel)
+
+            pozycje_aut.append(ft.Divider(height=1))
+            pozycje_aut.append(
+                ft.ListTile(
+                    leading=ft.Icon(ft.Icons.ADD, color=ft.Colors.GREEN),
+                    title=ft.Text("Dodaj nowy pojazd", color=ft.Colors.GREEN),
+                    on_click=lambda ev: dodaj()
+                )
+            )
+
+            bs.content = ft.Container(
+                padding=20,
+                bgcolor=ft.Colors.SURFACE,
+                content=ft.Column(pozycje_aut, tight=True, scroll=ft.ScrollMode.AUTO)
+            )
+            utils.otworz_dno(self._page, bs)
+
+        def kolor_daty(d_str):
+            if not d_str: return ft.Colors.ON_SURFACE_VARIANT, "Brak"
+            try:
+                d_obj = datetime.strptime(str(d_str), "%d.%m.%Y").date()
+                roz = (d_obj - datetime.now().date()).days
+                if roz < 0: return ft.Colors.RED_700, f"⚠️ {d_str}"
+                elif roz <= 30: return ft.Colors.ORANGE_700, f"⏳ {d_str}"
+                return ft.Colors.GREEN_700, f"✅ {d_str}"
+            except Exception:
+                return ft.Colors.ON_SURFACE_VARIANT, str(d_str)
+
+        k_oc, t_oc = kolor_daty(w["oc_data"])
+        k_pt, t_pt = kolor_daty(w["przeglad_data"])
+
+        wiele_aut = len(auta) > 1
+
+        # --- FUNKCJA WYŚWIETLAJĄCA WYSKAKUJĄCE INFO O AUCIE ---
+        def pokaz_info_auta(e):
+            with db.polacz_baze() as conn:
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                c.execute(
+                    "SELECT nazwa, nr_rej, vin, rok_produkcji, pojemnosc_silnika, moc_silnika, "
+                    "typ_paliwa, skrzynia_biegow, notatki, wycieraczki_przod, wycieraczki_tyl, "
+                    "cisnienie_przod, cisnienie_tyl, olej_typ, olej_pojemnosc, akumulator, "
+                    "zarowki_mijania, zarowki_drogowe, ac_data, assistance_data, gasnica_data, apteczka_data, "
+                    "marka, model, generacja "
+                    "FROM samochody WHERE id=?", 
+                    (self.state.auto_id,)
+                )
+                w_info = c.fetchone()
+            
+            if not w_info: return
+            
+            def wiersz_info(ikona, etykieta, wartosc):
+                return ft.Row([
+                    ft.Icon(ikona, color=ft.Colors.ON_SURFACE_VARIANT, size=20),
+                    ft.Text(f"{etykieta}:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT, width=110),
+                    ft.Text(str(wartosc) if wartosc else "-", size=14, expand=True, color=ft.Colors.ON_SURFACE)
+                ])
+
+            def wiersz_termin(ikona, etykieta, data_str):
+                kolor, tekst = kolor_daty(data_str)
+                return ft.Row([
+                    ft.Icon(ikona, color=kolor, size=20),
+                    ft.Text(f"{etykieta}:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT, width=110),
+                    ft.Text(tekst, size=14, weight="bold", color=kolor, expand=True)
+                ])
+
+            def polacz_wartosci(*wartosci):
+                czesci = [str(x) for x in wartosci if x]
+                return " / ".join(czesci) if czesci else None
+
+            pojemnosc_tekst = f"{w_info['pojemnosc_silnika']} cm³" if w_info["pojemnosc_silnika"] else ""
+            moc_tekst = f"{w_info['moc_silnika']} KM" if w_info["moc_silnika"] else ""
+            wycieraczki_tekst = polacz_wartosci(w_info["wycieraczki_przod"], w_info["wycieraczki_tyl"])
+            cisnienie_tekst = polacz_wartosci(w_info["cisnienie_przod"], w_info["cisnienie_tyl"])
+            olej_tekst = ", ".join(x for x in (w_info["olej_typ"], w_info["olej_pojemnosc"]) if x) or None
+            zarowki_tekst = polacz_wartosci(w_info["zarowki_mijania"], w_info["zarowki_drogowe"])
+
+            bs_info = ft.BottomSheet(
+                ft.Container(
+                    padding=25,
+                    bgcolor=ft.Colors.SURFACE,
+                    border_radius=20,
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.INFO, size=28, color=ft.Colors.PRIMARY),
+                            ft.Text("Specyfikacja pojazdu", weight="bold", size=20, color=ft.Colors.PRIMARY)
+                        ], spacing=10),
+                        ft.Divider(height=15),
+                        wiersz_info(ft.Icons.DIRECTIONS_CAR, "Marka", w_info["marka"]),
+                        wiersz_info(ft.Icons.DIRECTIONS_CAR_FILLED, "Model", w_info["model"]),
+                        wiersz_info(ft.Icons.STARS, "Generacja", w_info["generacja"]),
+                        wiersz_info(ft.Icons.BADGE, "Rejestracja", w_info["nr_rej"]),
+                        wiersz_info(ft.Icons.NUMBERS, "VIN", w_info["vin"]),
+                        wiersz_info(ft.Icons.CALENDAR_TODAY, "Rocznik", w_info["rok_produkcji"]),
+                        
+                        ft.Container(height=5),
+                        wiersz_info(ft.Icons.LOCAL_GAS_STATION, "Paliwo", w_info["typ_paliwa"]),
+                        wiersz_info(ft.Icons.SETTINGS_INPUT_COMPONENT, "Skrzynia", w_info["skrzynia_biegow"]),
+                        wiersz_info(ft.Icons.SPEED, "Silnik", pojemnosc_tekst),
+                        wiersz_info(ft.Icons.BOLT, "Moc silnika", moc_tekst),
+
+                        ft.Divider(height=15),
+                        ft.Text("🛒 Ściągawka do sklepu", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        wiersz_info(ft.Icons.WATER_DROP, "Wycieraczki", wycieraczki_tekst),
+                        wiersz_info(ft.Icons.AIR, "Ciśnienie opon", cisnienie_tekst),
+                        wiersz_info(ft.Icons.OPACITY, "Olej silnikowy", olej_tekst),
+                        wiersz_info(ft.Icons.BATTERY_FULL, "Akumulator", w_info["akumulator"]),
+                        wiersz_info(ft.Icons.LIGHTBULB, "Żarówki", zarowki_tekst),
+
+                        ft.Divider(height=15),
+                        ft.Text("🛡️ Dodatkowe terminy", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        wiersz_termin(ft.Icons.SHIELD, "Polisa AC", w_info["ac_data"]),
+                        wiersz_termin(ft.Icons.SUPPORT_AGENT, "Assistance", w_info["assistance_data"]),
+                        wiersz_termin(ft.Icons.LOCAL_FIRE_DEPARTMENT, "Gaśnica", w_info["gasnica_data"]),
+                        wiersz_termin(ft.Icons.MEDICAL_SERVICES, "Apteczka", w_info["apteczka_data"]),
+
+                        ft.Divider(height=15),
+                        ft.Text("Notatki:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(str(w_info["notatki"]) if w_info["notatki"] else "Brak dodatkowych notatek.", size=14, italic=not bool(w_info["notatki"]))
+                    ], tight=True, spacing=8)
+                )
+            )
+            utils.otworz_dno(self._page, bs_info)
+        # ------------------------------------------------------
+        tytulowy_wiersz = ft.Row([
+            ft.Container(
+                content=ft.Row([
+                    ft.Text(
+                        str(self.state.auto_nazwa), 
+                        size=18, 
+                        weight="bold", 
+                        color=ft.Colors.PRIMARY,
+                        text_align=ft.TextAlign.CENTER
+                    ),
+                    ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=20)
+                ], alignment=ft.MainAxisAlignment.CENTER, spacing=2),
+                on_click=pokaz_wybor_aut,
+                tooltip="Dotknij, aby wybrać z listy",
+                expand=True,
+                padding=4
+            ),
+            # Z górnego paska usunęliśmy przycisk INFO_OUTLINE, został tylko przycisk edycji
+            ft.IconButton(
+                icon=ft.Icons.EDIT, 
+                icon_size=18, 
+                icon_color=ft.Colors.ON_SURFACE_VARIANT, 
+                tooltip="Edytuj pojazd", 
+                on_click=lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}")
+            )
+        ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        # 1. Budowa zawartości tekstowej karty pojazdu
+        zawartosc_tekstowa = ft.Container(
+            padding=15,
+            content=ft.Column([
+                tytulowy_wiersz,
+                ft.Divider(height=1, color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE)),
+                ft.Container(height=5),
+                ft.Row([
+                    # LEWA STRONA (Dane pojazdu)
+                    ft.Column([
+                        ft.Row([ft.Icon(ft.Icons.BADGE, color=ft.Colors.PRIMARY, size=20), ft.Text(str(w["nr_rej"]) if w["nr_rej"] else "Brak rej.", weight="bold", size=16)]),
+                        ft.Text(f"VIN: {str(w['vin']) if w['vin'] else '-'}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Container(height=5),
+                        ft.Row([ft.Text("OC:", weight="bold", size=13), ft.Text(t_oc, color=k_oc, size=13, weight="bold")], spacing=5),
+                        ft.Row([ft.Text("PT:", weight="bold", size=13), ft.Text(t_pt, color=k_pt, size=13, weight="bold")], spacing=5)
+                    ], spacing=2, expand=True),
+                    
+                    # PRAWA STRONA (Przycisk szczegółów pojazdu)
+                    ft.IconButton(
+                        icon=ft.Icons.INFO_OUTLINE, 
+                        icon_size=28, 
+                        icon_color=ft.Colors.PRIMARY, 
+                        tooltip="Szczegóły pojazdu", 
+                        on_click=pokaz_info_auta
+                    )
+                ], vertical_alignment=ft.CrossAxisAlignment.END)
+            ], spacing=2)
+        )
+
+        # 2. Składanie karty: dodanie banera zdjęcia na górę, jeśli istnieje
+        elementy_karty = [zawartosc_tekstowa]
+        zdjecie_glowne = w["zdjecie_glowne"]
+        
+        if zdjecie_glowne:
+            baner = ft.Image(
+                src=utils.abs_zalacznik(zdjecie_glowne),
+                height=150,
+                width=float("inf"),
+                fit="cover",
+                border_radius=10
+            )
+            elementy_karty.insert(0, baner)
+
+        karta_auta = ft.Card(
+            elevation=1,
+            content=ft.Container(
+                border_radius=10,
+                content=ft.Column(elementy_karty, spacing=0)
+            )
+        )
+
+        wiersz_karty_z_nawigacja = ft.Row([
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_LEFT,
+                icon_size=34,
+                icon_color=ft.Colors.PRIMARY,
+                tooltip="Poprzedni pojazd",
+                on_click=on_prev,
+                visible=wiele_aut,
+                style=ft.ButtonStyle(padding=0),
+            ),
+            ft.Container(karta_auta, expand=True),
+            ft.IconButton(
+                icon=ft.Icons.CHEVRON_RIGHT,
+                icon_size=34,
+                icon_color=ft.Colors.PRIMARY,
+                tooltip="Następny pojazd",
+                on_click=on_next,
+                visible=wiele_aut,
+                style=ft.ButtonStyle(padding=0),
+            ),
+        ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        self.elementy.append(wiersz_karty_z_nawigacja)
+
+    def buduj_serwis(self):
+        magazyn_cnt = 0
+        do_zrobienia_cnt = 0
+        try:
+            with db.polacz_baze() as conn:
+                c = conn.cursor()
+                # Licznik na kafelku "Magazyn" ma sygnalizować NISKI STAN, a nie
+                # samą liczbę pozycji (ta jest niemal zawsze > 0 i nic nie znaczy jako alert)
+                c.execute("SELECT COUNT(*) FROM magazyn_czesci WHERE auto_id=? AND ilosc <= COALESCE(prog_ostrzezenia, 1)", (self.state.auto_id,))
+                magazyn_cnt = (c.fetchone() or [0])[0]
+
+                # Pobieramy ilość niewykonanych zadań do powiadomień
+                c.execute("SELECT COUNT(*) FROM do_zrobienia WHERE auto_id=? AND wykonane=0", (self.state.auto_id,))
+                do_zrobienia_cnt = (c.fetchone() or [0])[0]
+        except Exception:
+            pass
+
+        # --- NOWOCZESNE KAFELKI NAWIGACYJNE ---
+        def kafelek_menu(ikona, etykieta, trasa, licznik=0):
+            ikona_glowna = ft.Icon(ikona, size=24, color=ft.Colors.PRIMARY)
+            
+            if licznik > 0:
+                ikona_glowna = ft.Stack([
+                    ft.Container(ikona_glowna, padding=ft.Padding.only(right=6, top=6)),
+                    ft.Container(
+                        content=ft.Text(str(licznik) if licznik < 100 else "99+", size=9, weight="bold", color=ft.Colors.WHITE),
+                        bgcolor=ft.Colors.RED_700,
+                        border_radius=8,
+                        padding=ft.Padding.symmetric(horizontal=4, vertical=1),
+                        alignment=ft.Alignment.CENTER,
+                        right=0,
+                        top=0
+                    )
+                ], width=36, height=36)
+            else:
+                ikona_glowna = ft.Container(ikona_glowna, height=36, alignment=ft.Alignment.CENTER)
+
+            return ft.Container(
+                expand=True, 
+                on_click=lambda e: utils.przejdz(self._page, trasa),
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
+                border_radius=14,
+                padding=ft.Padding.symmetric(horizontal=2, vertical=12),
+                content=ft.Column([
+                    ikona_glowna,
+                    ft.Text(etykieta, size=10, weight="bold", color=ft.Colors.PRIMARY, text_align=ft.TextAlign.CENTER)
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6)
+            )
+
+        self.elementy.append(
+            ft.Column([
+                ft.Text("🛠️ Serwis", size=20, weight="bold", color=ft.Colors.PRIMARY),
+                ft.Row([
+                    kafelek_menu(ft.Icons.CHECKLIST_RTL, "Zadania", "/do-zrobienia", do_zrobienia_cnt),
+                    kafelek_menu(ft.Icons.INVENTORY_2, "Magazyn", "/magazyn", magazyn_cnt),
+                    kafelek_menu(ft.Icons.HISTORY_EDU, "Wizyty", "/wizyty"),
+                    kafelek_menu(ft.Icons.PHOTO_CAMERA, "Karoseria", "/karoseria")
+                ], spacing=8, alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ], spacing=15)
+        )
+        self.elementy.append(ft.Divider(height=15, color="transparent"))
+        # --------------------------------------
+
+        akt_prz = int(db.pobierz_aktualny_przebieg(self.state.auto_id))
+        prog_km = db.pobierz_prog_km()
+        prog_dni = db.pobierz_prog_dni()
+
+        sredni_dzienny = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
+        with db.polacz_baze() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT * FROM zadania WHERE auto_id=?", (self.state.auto_id,))
+            # BEZPIECZNA KONWERSJA DO SŁOWNIKA
+            baza_lista = [dict(row) for row in c.fetchall()]
+
+        # --- Wyraźne oddzielenie skrótów od właściwej listy podzespołów ---
+        self.elementy.append(ft.Divider(height=20))
+
+        if not baza_lista:
+            self.elementy.append(utils.ekran_braku_danych(
+                ikona=ft.Icons.HANDYMAN,
+                tytul="Brak podzespołów",
+                opis="Dodaj części (np. olej, filtry, rozrząd), aby śledzić wymiany i interwały.",
+                tekst_przycisku="Dodaj część",
+                on_click=lambda e: utils.przejdz(self._page, "/zadanie/nowy")
+            ))
+        else:
+            self.tekst_licznik_zadan = ft.Text("", size=16, weight="bold", color=ft.Colors.PRIMARY)
+
+            self.elementy.append(
+                ft.Row([
+                    ft.Icon(ft.Icons.HANDYMAN, color=ft.Colors.PRIMARY, size=20),
+                    self.tekst_licznik_zadan,
+                ], spacing=8)
+            )
+
+            opcje_sort = [
+                ("Nazwa", "nazwa", lambda r: str(r.get('nazwa', '')).lower()),
+                ("Ostatnia data", "data", lambda r: utils.parsuj_date(r.get('data'))),
+                ("Przebieg", "przebieg", lambda r: int(r.get('przebieg') or 0)),
+            ]
+
+            sort_ui = utils.przycisk_sortowania(self._page, self.state, "zadania", opcje_sort)
+            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "serwis_rok", baza_lista, "data")
+            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "serwis_mc", baza_lista, "data")
+
+            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+
+            def filtruj_zadania(e):
+                zapytanie = e.control.value.lower().strip()
+                self.lista_kart_serwis.controls.clear()
+                for k in self.wszystkie_karty_serwis:
+                    if zapytanie in k["szukaj"]:
+                        self.lista_kart_serwis.controls.append(k["karta"])
+                
+                # Dynamiczna aktualizacja licznika po wpisaniu tekstu
+                self.tekst_licznik_zadan.value = f"Śledzone podzespoły ({len(self.lista_kart_serwis.controls)})"
+                self.update()
+
+            self.elementy.append(
+                ft.TextField(
+                    hint_text="Szukaj podzespołu (np. olej, klocki, filtr)...",
+                    prefix_icon=ft.Icons.SEARCH,
+                    on_change=filtruj_zadania,
+                    **utils.styl_pola()
+                )
+            )
+            self.lista_kart_serwis = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+            self.uzyj_wirtualizacji = True
+            self.wszystkie_karty_serwis = []
+
+            po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "serwis_rok", "data")
+            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "serwis_mc", "data")
+            utils.posortuj_liste(po_filtrach, self.state, "zadania", opcje_sort)
+            
+            # Ustawienie poprawnego licznika uwzględniającego filtry z menu rozwijanego
+            self.tekst_licznik_zadan.value = f"Śledzone podzespoły ({len(po_filtrach)})"
+
+            def pokaz_menu(zid, zn):
+                self.state.wybrane_zadanie_id = zid
+                self.state.wybrane_zadanie_nazwa = str(zn)
+
+                def usun_zadanie(e):
+                    utils.zamknij_dno(self._page, bs)
+                    def wykonaj():
+                        wynik = db.usun_zadanie_z_cofnieciem(zid)
+                        utils.przejdz(self._page, "/")
+                        utils.pokaz_komunikat_cofnij(self._page, "Usunięto podzespół.", wynik)
+                    utils.potwierdz(self._page, "Usunąć?", "Na pewno usunąć ten podzespół?", wykonaj)
+
+                bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE, content=ft.Column([
+                    ft.Text(str(zn), weight="bold", size=20, color=ft.Colors.PRIMARY), ft.Divider(),
+                    ft.ListTile(leading=ft.Icon(ft.Icons.ADD_CIRCLE, color=ft.Colors.GREEN), title=ft.Text("Dodaj Wymianę", weight="bold"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/wpis/nowy/{zid}"))),
+                    ft.ListTile(leading=ft.Icon(ft.Icons.HISTORY), title=ft.Text("Historia wymian"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/historia/{zid}"))),
+                    ft.ListTile(leading=ft.Icon(ft.Icons.TIMER), title=ft.Text("Ustaw interwał przypomnień"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/interwal/{zid}"))),
+                    ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Zmień nazwę"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/zadanie/edytuj/{zid}"))),
+                    ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED), title=ft.Text("Usuń podzespół", color=ft.Colors.RED), on_click=usun_zadanie),
+                ], tight=True)))
+                utils.otworz_dno(self._page, bs)
+
+            if not po_filtrach:
+                self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+            else:
+                for z in po_filtrach:
+                    kol, ico = ft.Colors.GREEN_700, ft.Icons.CHECK_CIRCLE  # domyślny status
+                    stxt = []
+                    if z.get('interwal_km') and z.get('przebieg'):
+                        zost_km = (int(z.get('przebieg')) + int(z.get('interwal_km'))) - akt_prz
+                        if zost_km < 0:
+                            stxt.append(f"{utils.formatuj_liczba(abs(zost_km), 0)} km po!")
+                            kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
+                        elif zost_km <= prog_km:
+                            prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny)
+                            stxt.append(prognoza or f"{utils.formatuj_liczba(zost_km, 0)} km")
+                            kol, ico = ft.Colors.ORANGE_700, ft.Icons.HOURGLASS_BOTTOM
+                        else:
+                            prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny)
+                            stxt.append(prognoza or f"{utils.formatuj_liczba(zost_km, 0)} km")
+
+                    if z.get('interwal_miesiace') and z.get('data'):
+                        d_w = utils.parsuj_date(z.get('data'))
+                        if d_w != datetime.min.date():
+                            zost_dni = (d_w + timedelta(days=int(float(z.get('interwal_miesiace'))*30.5)) - datetime.now().date()).days
+                            if zost_dni < 0:
+                                stxt.append(f"{abs(zost_dni)} dni po!")
+                                kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
+                            elif zost_dni <= prog_dni:
+                                stxt.append(f"{zost_dni} dni")
+                                if kol != ft.Colors.RED_700: kol, ico = ft.Colors.ORANGE_700, ft.Icons.HOURGLASS_BOTTOM
+                            else: stxt.append(f"~{zost_dni//30} m-cy")
+
+                    if stxt: final_status = " | ".join(stxt)
+                    else:
+                        final_status = "Brak interwału" if not z.get('interwal_km') and not z.get('interwal_miesiace') else "Brak wpisów"
+                        kol, ico = ft.Colors.ON_SURFACE_VARIANT, ft.Icons.INFO_OUTLINE
+
+                    data_w = str(z.get('data')) if z.get('data') else '-'
+                    prz_w = f"{utils.formatuj_liczba(int(z.get('przebieg')), 0)} km" if z.get('przebieg') else '-'
+
+                    zid = z.get('id')
+                    zn = z.get('nazwa')
+
+                    kontener = ft.Container(
+                        padding=15,
+                        border_radius=10,
+                        content=ft.Column([
+                            ft.Row([ft.Text(str(zn), weight="bold", size=16, expand=True), ft.Icon(ico, color=kol)]),
+                            ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(final_status, size=14, weight="bold", color=kol)
+                        ])
+                    )
+
+                    self.karty_ref[zid] = kontener
+                    self.podepnij_zdarzenia_grupowe(kontener, zid, lambda zid=zid, zn=zn: pokaz_menu(zid, zn), "zadania")
+
+                    karta_z = ft.Card(elevation=1, content=kontener)
+                    tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status}".lower()
+                    self.wszystkie_karty_serwis.append({"karta": karta_z, "szukaj": tekst_szukaj})
+                    self.lista_kart_serwis.controls.append(karta_z)
+
+                self.elementy.append(self.lista_kart_serwis)
+
+        self.fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/zadanie/nowy"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+
+    def buduj_tankowania(self):
+        self.elementy.append(ft.Text("⛽ Historia Tankowań", size=20, weight="bold", color=ft.Colors.PRIMARY))
+
+        with db.polacz_baze() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT * FROM tankowania WHERE auto_id=?", (self.state.auto_id,))
+            baza_lista = [dict(row) for row in c.fetchall()]
+
+        if not baza_lista:
+            self.elementy.append(utils.ekran_braku_danych(
+                ikona=ft.Icons.LOCAL_GAS_STATION,
+                tytul="Brak tankowań",
+                opis="Nie masz jeszcze historii paliwowej dla tego pojazdu.",
+                tekst_przycisku="Dodaj pierwsze tankowanie",
+                on_click=lambda e: utils.przejdz(self._page, "/tankowanie/nowe")
+            ))
+        else:
+            # --- OBLICZANIE SPALANIA I DYSTANSU ---
+            # Sortujemy chronologicznie po przebiegu, aby policzyć różnice
+            baza_lista.sort(key=lambda x: int(x.get('przebieg') or 0))
+            
+            ostatni_pelny_idx = -1
+            for i, t in enumerate(baza_lista):
+                # Obliczanie dystansu od ostatniego tankowania
+                if i > 0:
+                    prz_akt = int(t.get('przebieg') or 0)
+                    prz_poprz = int(baza_lista[i-1].get('przebieg') or 0)
+                    t['dystans'] = max(0, prz_akt - prz_poprz)
+                else:
+                    t['dystans'] = 0
+                
+                # Obliczanie spalania (tylko między tankowaniami do pełna)
+                t['spalanie'] = None
+                if t.get('do_pelna'):
+                    if ostatni_pelny_idx != -1:
+                        prz_akt = int(t.get('przebieg') or 0)
+                        prz_ostatni_pelny = int(baza_lista[ostatni_pelny_idx].get('przebieg') or 0)
+                        dystans_od_pelnego = prz_akt - prz_ostatni_pelny
+                        
+                        # Sumujemy litry od poprzedniego pełnego tankowania do teraz
+                        litry_od_pelnego = sum(float(baza_lista[k].get('litry') or 0) for k in range(ostatni_pelny_idx + 1, i + 1))
+                        
+                        if dystans_od_pelnego > 0:
+                            t['spalanie'] = (litry_od_pelnego / dystans_od_pelnego) * 100
+                    ostatni_pelny_idx = i
+            # --- KONIEC OBLICZANIA ---
+
+            opcje_sort = [
+                ("Data", "data", lambda x: (utils.parsuj_date(x.get('data')), x.get('id', 0))),
+                ("Przebieg", "przebieg", lambda x: int(x.get('przebieg') or 0)),
+                ("Kwota", "kwota", lambda x: float(x.get('kwota') or 0)),
+                ("Litry", "litry", lambda x: float(x.get('litry') or 0)),
+            ]
+
+            sort_ui = utils.przycisk_sortowania(self._page, self.state, "tankowania", opcje_sort)
+            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "tankowania_rok", baza_lista, "data")
+            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "tankowania_mc", baza_lista, "data")
+            filtr_tag_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "tankowania_tag", baza_lista, "tagi", "Tagi")
+            
+            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_tag_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            
+            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+
+            def filtruj_tankowania(e):
+                zapytanie = e.control.value.lower().strip()
+                self.lista_kart_tankowania.controls.clear()
+                for k in self.wszystkie_karty_tankowania:
+                    if zapytanie in k["szukaj"]:
+                        self.lista_kart_tankowania.controls.append(k["karta"])
+                self.update()
+
+            self.elementy.append(
+                ft.TextField(
+                    hint_text="Szukaj tankowania (stacja, data, kwota, dystans)...",
+                    prefix_icon=ft.Icons.SEARCH,
+                    on_change=filtruj_tankowania,
+                    **utils.styl_pola()
+                )
+            )
+            self.lista_kart_tankowania = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+            self.uzyj_wirtualizacji = True
+            self.wszystkie_karty_tankowania = []
+
+            # Filtrowanie i przywracanie sortowania wybranego przez użytkownika
+            po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "tankowania_rok", "data")
+            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "tankowania_mc", "data")
+            po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "tankowania_tag", "tagi")
+            utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
+
+            def otworz_menu_t(tid, zalacznik=None):
+                # PO:
+                def usun_tankowanie():
+                    def wykonaj():
+                        wynik = db.usun_z_cofnieciem("tankowania", tid)
+                        utils.przejdz(self._page, "/")
+                        utils.pokaz_komunikat_cofnij(self._page, "Usunięto tankowanie.", wynik)
+                    utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć to tankowanie?", wykonaj)
+
+                async def dodaj_zmien_zdj():
+                    await utils.szybkie_dodanie_zdjecia(self._page, "tankowania", tid, zalacznik, lambda: utils.przejdz(self._page, "/"))
+
+                pozycje = []
+                if zalacznik:
+                    pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Tankowanie")})
+                    pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
+                else:
+                    pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon)", "akcja": dodaj_zmien_zdj})
+                    
+                pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/tankowanie/edytuj/{tid}")})
+                pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": ft.Colors.RED})
+
+                utils.pokaz_menu_kontekstowe(self._page, "Opcje tankowania", pozycje)
+
+            if not po_filtrach:
+                self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+            else:
+                for w in po_filtrach:
+                    spalanie = w.get('spalanie')
+                    sp_str = utils.formatuj_spalanie(spalanie)
+                    cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
+                    dystans_val = w.get('dystans') or 0
+                    
+                    tid = w.get('id')
+                    # Odpinamy on_click od Container i przekazujemy go naszej funkcji pomocniczej
+                    tresc_karty = [
+                        ft.Row([
+                            ft.Text(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Row([
+                                utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Tankowanie"),
+                                ft.Icon(ft.Icons.LOCAL_GAS_STATION, size=14, color=ft.Colors.PRIMARY, tooltip="Do pełna") if w.get('do_pelna') else ft.Container(),
+                                ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
+                            ], spacing=4)
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Row([
+                            ft.Column([ft.Text("Dystans", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(f"{dystans_val} km", weight="bold")]),
+                            ft.Column([ft.Text("Spalanie", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")])
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                    ]
+                    if w.get('tagi'):
+                        tresc_karty.append(utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id))
+
+                    kontener = ft.Container(padding=15, border_radius=10, content=ft.Column(tresc_karty))
+                    
+                    self.karty_ref[tid] = kontener
+                    self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, zal=w.get('zalacznik'): otworz_menu_t(id_el, zal), "tankowania")
+
+                    karta_t = ft.Card(elevation=1, content=kontener)
+                    tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')}".lower()
+                    self.wszystkie_karty_tankowania.append({"karta": karta_t, "szukaj": tekst_szukaj})
+                    self.lista_kart_tankowania.controls.append(karta_t)
+
+                self.elementy.append(self.lista_kart_tankowania)
+
+        self.fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/tankowanie/nowe"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+
+    def buduj_inne(self):
+        self.elementy.append(ft.Text("🎫 Inne Koszty", size=20, weight="bold", color=ft.Colors.PRIMARY))
+        
+        with db.polacz_baze() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT * FROM inne_koszty WHERE auto_id=?", (self.state.auto_id,))
+            # BEZPIECZNA KONWERSJA DO SŁOWNIKA
+            baza_lista = [dict(row) for row in c.fetchall()]
+
+        if not baza_lista:
+            self.elementy.append(utils.ekran_braku_danych(
+                ikona=ft.Icons.RECEIPT_LONG,
+                tytul="Brak kosztów",
+                opis="Dodaj opłaty takie jak ubezpieczenie, myjnia, autostrady czy raty leasingu.",
+                tekst_przycisku="Dodaj wydatek",
+                on_click=lambda e: utils.przejdz(self._page, "/inne/nowy")
+            ))
+        else:
+            opcje_sort = [
+                ("Data", "data", lambda x: (utils.parsuj_date(x.get('data')), x.get('id', 0))),
+                ("Kategoria", "kategoria", lambda x: str(x.get('kategoria') or "").lower()),
+                ("Kwota", "kwota", lambda x: float(x.get('kwota') or 0)),
+            ]
+
+            sort_ui = utils.przycisk_sortowania(self._page, self.state, "inne", opcje_sort)
+            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "inne_rok", baza_lista, "data")
+            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "inne_mc", baza_lista, "data")
+            filtr_kat_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "inne_kat", baza_lista, "kategoria", "Kategoria")
+            
+            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_kat_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+
+            # --- DODAJ WYSZUKIWARKĘ KOSZTÓW ---
+            def filtruj_inne(e):
+                zapytanie = e.control.value.lower().strip()
+                self.lista_kart_inne.controls.clear()
+                for k in self.wszystkie_karty_inne:
+                    if zapytanie in k["szukaj"]:
+                        self.lista_kart_inne.controls.append(k["karta"])
+                self.update()
+
+            self.elementy.append(
+                ft.TextField(
+                    hint_text="Szukaj kosztu (opis, kategoria, kwota, data)...",
+                    prefix_icon=ft.Icons.SEARCH,
+                    on_change=filtruj_inne,
+                    **utils.styl_pola()
+                )
+            )
+            self.lista_kart_inne = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+            self.uzyj_wirtualizacji = True
+            self.wszystkie_karty_inne = []
+
+            po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "inne_rok", "data")
+            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "inne_mc", "data")
+            po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "inne_kat", "kategoria")
+            utils.posortuj_liste(po_filtrach, self.state, "inne", opcje_sort)
+
+            def otworz_menu_i(iid, zalacznik=None):
+                def usun_koszt(e):
+                    utils.zamknij_dno(self._page, bs)
+                    def wykonaj():
+                        wynik = db.usun_z_cofnieciem("inne_koszty", iid)
+                        utils.przejdz(self._page, "/")
+                        utils.pokaz_komunikat_cofnij(self._page, "Usunięto koszt.", wynik)
+                    utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten koszt?", wykonaj)
+
+                async def dodaj_zmien_zdj(ev):
+                    utils.zamknij_dno(self._page, bs)
+                    await utils.szybkie_dodanie_zdjecia(self._page, "inne_koszty", iid, zalacznik, lambda: utils.przejdz(self._page, "/"))
+
+                pozycje = [ft.Text("Opcje kosztu", weight="bold", size=18)]
+                if zalacznik:
+                    pozycje.append(ft.ListTile(
+                        leading=ft.Icon(ft.Icons.IMAGE),
+                        title=ft.Text("Pokaż zdjęcie"),
+                        on_click=lambda ev: (utils.zamknij_dno(self._page, bs), utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Koszt"))
+                    ))
+                    pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT_DOCUMENT), title=ft.Text("Zmień zdjęcie"), on_click=dodaj_zmien_zdj))
+                else:
+                    pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.ADD_A_PHOTO), title=ft.Text("Dodaj zdjęcie (faktura/paragon)"), on_click=dodaj_zmien_zdj))
+                    
+                pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Edytuj koszt"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/inne/edytuj/{iid}"))))
+                pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED), title=ft.Text("Usuń koszt", color=ft.Colors.RED), on_click=usun_koszt))
+                
+                bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE, content=ft.Column(pozycje, tight=True)))
+                utils.otworz_dno(self._page, bs)
+
+            if not po_filtrach:
+                self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+            else:
+                for w in po_filtrach:
+                    cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
+                    tagi_str = str(w.get('tagi') or w.get('kategoria') or "Brak tagów")
+                    iid = w.get('id')
+                    kontener = ft.Container(padding=15, border_radius=10, content=ft.Column([
+                        ft.Row([
+                            ft.Text(str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Row([
+                                utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Koszt"),  # <-- NOWE
+                                ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
+                            ], spacing=6)
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Text(str(w.get('nazwa')) if w.get('nazwa') else "Brak opisu", size=16, weight="bold"),
+                        utils.wizualizacja_tagow(w.get('tagi') or w.get('kategoria'), self.state.auto_id)
+                    ]))
+                    
+                    self.karty_ref[iid] = kontener
+                    self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, zal=w.get('zalacznik'): otworz_menu_i(id_el, zal), "inne_koszty")
+
+                    karta_i = ft.Card(elevation=1, content=kontener)
+                    tekst_szukaj = f"{w.get('data')} {w.get('nazwa')} {w.get('kategoria')} {cena_str}".lower()
+                    self.wszystkie_karty_inne.append({"karta": karta_i, "szukaj": tekst_szukaj})
+                    self.lista_kart_inne.controls.append(karta_i)
+
+                self.elementy.append(self.lista_kart_inne)
+
+        self.fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/inne/nowy"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+
+    def buduj_statystyki(self):
+        with db.polacz_baze() as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT * FROM tankowania WHERE auto_id=?", (self.state.auto_id,))
+            tankowania = [dict(row) for row in c.fetchall()]
+            c.execute(
+                "SELECT h.data, h.cena FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+                "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (self.state.auto_id,)
+            )
+            wh = [dict(row) for row in c.fetchall()]
+            c.execute("SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?", (self.state.auto_id,))
+            ww = [dict(row) for row in c.fetchall()]
+            c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (self.state.auto_id,))
+            wi = [dict(row) for row in c.fetchall()]
+
+        serw = sum(float(r['cena'] or 0.0) for r in wh) + sum(float(r['koszt_calkowity'] or 0.0) for r in ww)
+        inn = sum(float(r['kwota'] or 0.0) for r in wi)
+
+        tankowania.sort(key=lambda x: (utils.parsuj_date(x.get('data')), x.get('przebieg') or 0))
+
+        pal = sum(float(t.get('kwota') or 0) for t in tankowania) if tankowania else 0.0
+        litry = sum(float(t.get('litry') or 0) for t in tankowania) if tankowania else 0.0
+        dystans = (int(tankowania[-1].get('przebieg') or 0) - int(tankowania[0].get('przebieg') or 0)) if len(tankowania) > 1 else 0
+
+        spalanie = 0.0
+        peln_idx = [i for i, t in enumerate(tankowania) if t.get('do_pelna')]
+        if len(peln_idx) >= 2:
+            p, o = peln_idx[0], peln_idx[-1]
+            d_p = int(tankowania[o].get('przebieg') or 0) - int(tankowania[p].get('przebieg') or 0)
+            l_p = sum(float(t.get('litry') or 0) for t in tankowania[p+1: o+1])
+            if d_p > 0: spalanie = (l_p / d_p) * 100
+
+        razem = pal + serw + inn
+        koszt_km = (razem / dystans) if dystans > 0 else 0.0
+
+        sredni_dzienny = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
+        sredni_dz_str = f"{utils.formatuj_liczba(sredni_dzienny, 1)} km/dzień" if sredni_dzienny else "Brak danych"
+
+        def kafel(ikona, tytul, wartosc, kolor=ft.Colors.PRIMARY, expand=None):
+            return ft.Card(
+                elevation=1,
+                expand=expand,
+                content=ft.Container(
+                    padding=15,
+                    content=ft.Row([
+                        ft.Container(
+                            content=ft.Icon(ikona, color=kolor, size=22),
+                            bgcolor=ft.Colors.with_opacity(0.13, kolor),
+                            border_radius=10,
+                            padding=8
+                        ),
+                        ft.Column([
+                            ft.Text(tytul, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(wartosc, weight="bold", size=17)
+                        ], spacing=2, expand=True)
+                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+                )
+            )
+
+        def zmien_podzakladke(idx):
+            self.state.stat_podzakladka = idx
+            utils.przejdz(self._page, "/")
+
+        def btn_zakladki(etykieta, idx):
+            zaznaczony = self.state.stat_podzakladka == idx
+            return ft.Button(
+                etykieta,
+                style=ft.ButtonStyle(padding=5, shape=ft.RoundedRectangleBorder(radius=10)),
+                bgcolor=ft.Colors.PRIMARY if zaznaczony else ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                color=ft.Colors.ON_PRIMARY if zaznaczony else ft.Colors.ON_SURFACE_VARIANT,
+                on_click=lambda e, i=idx: zmien_podzakladke(i), expand=True
+            )
+
+        self.elementy.append(ft.Row([btn_zakladki("Liczby", 0), btn_zakladki("Wykresy", 1), btn_zakladki("Tabele", 2)], spacing=5))
+
+        if self.state.stat_podzakladka == 0:
+            self.elementy.extend([
+                ft.Text("📊 Podsumowanie Kosztów", size=20, weight="bold", color=ft.Colors.PRIMARY),
+                kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)}  {utils.symbol_waluty()}", ft.Colors.RED_700),
+                ft.Row([
+                    kafel(ft.Icons.LOCAL_GAS_STATION, "Na paliwo", f"{utils.formatuj_liczba(pal)}  {utils.symbol_waluty()}", ft.Colors.BLUE_700, expand=1),
+                    kafel(ft.Icons.BUILD, "Na serwis", f"{utils.formatuj_liczba(serw)}  {utils.symbol_waluty()}", ft.Colors.ORANGE_700, expand=1),
+                ], spacing=10),
+                ft.Row([
+                    kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),
+                    kafel(ft.Icons.ADD_ROAD, "Koszt 1 km", f"{utils.formatuj_liczba(koszt_km)}  {utils.symbol_waluty()}/km", ft.Colors.PURPLE_700, expand=1),
+                ], spacing=10),
+                ft.Text("📈 Wskaźniki i Paliwo", size=20, weight="bold", color=ft.Colors.PRIMARY),
+                ft.Row([
+                    kafel(ft.Icons.SPEED, "Średnie spalanie", utils.formatuj_spalanie(spalanie) if spalanie > 0 else "Wymaga 2x do pełna", ft.Colors.TEAL_700, expand=1),
+                    kafel(ft.Icons.ROUTE, "Zanotowany dystans", f"{utils.formatuj_liczba(dystans, 0)} km", ft.Colors.INDIGO_700, expand=1),
+                ], spacing=10),
+                ft.Row([
+                    kafel(ft.Icons.TIMELAPSE, "Średnio dziennie", sredni_dz_str, ft.Colors.BLUE_GREY_700, expand=1),
+                    kafel(ft.Icons.WATER_DROP, "Zatankowano", f"{utils.formatuj_liczba(litry)} L", ft.Colors.CYAN_700, expand=1),
+                ], spacing=10),
+            ])
+
+        elif self.state.stat_podzakladka == 1:
+            proc_pal = (pal / razem * 100) if razem > 0 else 0
+            proc_ser = (serw / razem * 100) if razem > 0 else 0
+            proc_inn = (inn / razem * 100) if razem > 0 else 0
+
+            # 1. Struktura kosztów (karty z paskami postępu)
+            def segment_procentowy(ikona, tytul, kwota, procent, kolor):
+                return ft.Column([
+                    ft.Row([
+                        ft.Row([
+                            ft.Text(ikona, size=14),
+                            ft.Text(tytul, weight="bold", size=13, color=ft.Colors.ON_SURFACE)
+                        ], spacing=6),
+                        ft.Text(
+                            f"{utils.formatuj_liczba(kwota)} {utils.symbol_waluty()} ({utils.formatuj_liczba(procent, 0)}%)",
+                            weight="bold", size=13, color=kolor
+                        )
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.ProgressBar(
+                        value=(procent / 100) if procent > 0 else 0,
+                        color=kolor,
+                        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                        height=8,
+                        border_radius=4
+                    )
+                ], spacing=4)
+
+            karta_struktury = ft.Card(
+                elevation=1,
+                content=ft.Container(
+                    padding=15,
+                    border_radius=10,
+                    content=ft.Column([
+                        segment_procentowy("⛽", "Paliwo", pal, proc_pal, ft.Colors.BLUE_700),
+                        segment_procentowy("🛠️", "Serwis i Naprawy", serw, proc_ser, ft.Colors.RED_700),
+                        segment_procentowy("🎫", "Inne Koszty", inn, proc_inn, ft.Colors.GREEN_700),
+                    ], spacing=12)
+                )
+            )
+
+            # 2. Słupkowe zestawienie wydatków z ostatnich 6 miesięcy
+            dzisiaj = datetime.now()
+            miesiace_klucze, miesiace_etykiety = [], []
+            for i in range(5, -1, -1):
+                m = dzisiaj.month - i
+                y = dzisiaj.year
+                while m <= 0:
+                    m += 12
+                    y -= 1
+                miesiace_klucze.append(f"{y}-{m:02d}")
+                miesiace_etykiety.append(f"{m:02d}/{str(y)[2:]}")
+
+            wartosci_mc = {k: 0.0 for k in miesiace_klucze}
+            for lista_d in [
+                [(t.get('data'), t.get('kwota')) for t in tankowania],
+                [(r['data'], r['kwota']) for r in wi],
+                [(r['data'], r['koszt_calkowity']) for r in ww],
+                [(r['data'], r['cena']) for r in wh],
+            ]:
+                for d_str, kw in lista_d:
+                    d = utils.parsuj_date(d_str)
+                    if d != datetime.min.date():
+                        mk = f"{d.year}-{d.month:02d}"
+                        if mk in wartosci_mc:
+                            wartosci_mc[mk] += float(kw or 0.0)
+
+            max_val = max(wartosci_mc.values()) if wartosci_mc else 0
+            suma_okresu = sum(wartosci_mc.values())
+            wysokosc_max_slupka = 120
+            biezacy_klucz = miesiace_klucze[-1]
+
+            kolumny_wykresu = []
+            for mk, etyk in zip(miesiace_klucze, miesiace_etykiety):
+                val = wartosci_mc[mk]
+                wysokosc = int((val / max_val) * wysokosc_max_slupka) if max_val > 0 and val > 0 else 4
+                tekst_kwota = f"{int(round(val))}" if val > 0 else "-"
+                czy_biezacy = (mk == biezacy_klucz)
+
+                kolor_slupka = (
+                    ft.Colors.PRIMARY if czy_biezacy else ft.Colors.with_opacity(0.5, ft.Colors.PRIMARY)
+                ) if val > 0 else ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE)
+
+                kolumna_slupka = ft.Column([
+                    ft.Text(
+                        tekst_kwota, size=10, weight="bold",
+                        color=ft.Colors.PRIMARY if val > 0 else ft.Colors.ON_SURFACE_VARIANT
+                    ),
+                    ft.Container(
+                        width=32,
+                        height=max(6, wysokosc),
+                        bgcolor=kolor_slupka,
+                        border_radius=6,
+                        tooltip=f"{etyk}: {utils.formatuj_liczba(val)} {utils.symbol_waluty()}" if val > 0 else None,
+                        animate=ft.Animation(300, ft.AnimationCurve.EASE_OUT),
+                    ),
+                    ft.Text(
+                        etyk, size=11,
+                        weight="bold" if czy_biezacy else "normal",
+                        color=ft.Colors.PRIMARY if czy_biezacy else ft.Colors.ON_SURFACE_VARIANT
+                    )
+                ], alignment=ft.MainAxisAlignment.END, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4)
+
+                kolumny_wykresu.append(kolumna_slupka)
+
+            karta_wykresu = ft.Card(
+                elevation=1,
+                content=ft.Container(
+                    padding=15,
+                    content=ft.Column([
+                        ft.Row(
+                            controls=kolumny_wykresu,
+                            alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                            vertical_alignment=ft.CrossAxisAlignment.END
+                        ),
+                        ft.Row(
+                            controls=[
+                                ft.Text(f"* wartości w {utils.symbol_waluty()}", size=10, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+                            ],
+                            alignment=ft.MainAxisAlignment.END
+                        )
+                    ])
+                )
+            )
+
+            # 3. Złożenie widoku
+            self.elementy.extend([
+                ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                karta_struktury,
+                ft.Divider(height=20),
+                ft.Row([
+                    ft.Text("Wydatki miesięczne (ostatnie 6 mies.)", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
+                    ft.Text(f"Razem: {utils.formatuj_liczba(suma_okresu)}  {utils.symbol_waluty()}", weight="bold", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ]),
+                karta_wykresu
+            ])
+
+        elif self.state.stat_podzakladka == 2:
+            zdarzenia = []
+            for t in tankowania:
+                zdarzenia.append((t.get('data'), float(t.get('kwota') or 0.0), 0.0, 0.0, float(t.get('litry') or 0.0)))
+            for r in wh:
+                zdarzenia.append((r['data'], 0.0, float(r['cena'] or 0.0), 0.0, 0.0))
+            for r in ww:
+                zdarzenia.append((r['data'], 0.0, float(r['koszt_calkowity'] or 0.0), 0.0, 0.0))
+            for r in wi:
+                zdarzenia.append((r['data'], 0.0, 0.0, float(r['kwota'] or 0.0), 0.0))
+
+            mc_agr, rok_agr = {}, {}
+            for data_str, pal_w, serw_w, inn_w, litry_w in zdarzenia:
+                d = utils.parsuj_date(data_str)
+                if d == datetime.min.date():
+                    continue
+                mk, rk = f"{d.year}-{d.month:02d}", str(d.year)
+                for magazyn, klucz in ((mc_agr, mk), (rok_agr, rk)):
+                    wpis = magazyn.setdefault(klucz, {"pal": 0.0, "serw": 0.0, "inn": 0.0, "litry": 0.0})
+                    wpis["pal"] += pal_w
+                    wpis["serw"] += serw_w
+                    wpis["inn"] += inn_w
+                    wpis["litry"] += litry_w
+
+            def zbuduj_wiersze(agregat, czy_miesiac):
+                wiersze = []
+                for klucz, dane in agregat.items():
+                    if czy_miesiac:
+                        rok_i, mies_i = klucz.split("-")
+                        etykieta = f"{utils.MIESIACE_NAZWY[int(mies_i) - 1]} {rok_i}"
+                        rok_str = rok_i
+                        pseudo_data = f"{rok_i}-{mies_i}-01"
+                    else:
+                        etykieta = klucz
+                        rok_str = klucz
+                        pseudo_data = f"{rok_str}-01-01"
+                    razem_w = dane["pal"] + dane["serw"] + dane["inn"]
+                    sr_cena_w = (dane["pal"] / dane["litry"]) if dane["litry"] > 0 else 0.0
+                    wiersze.append((klucz, etykieta, rok_str, dane["pal"], dane["serw"], dane["inn"], razem_w, dane["litry"], sr_cena_w, pseudo_data))
+                return wiersze
+
+            wiersze_mc_wszystkie = zbuduj_wiersze(mc_agr, True)
+            wiersze_rok_wszystkie = zbuduj_wiersze(rok_agr, False)
+
+            def karta_okresu(w):
+                _, etykieta, _, pal_w, serw_w, inn_w, razem_w, litry_w, sr_cena_w, _ = w
+                bits = []
+                if pal_w > 0: bits.append(f"⛽ {utils.formatuj_liczba(pal_w, 0)}")
+                if serw_w > 0: bits.append(f"🛠️ {utils.formatuj_liczba(serw_w, 0)}")
+                if inn_w > 0: bits.append(f"🎫 {utils.formatuj_liczba(inn_w, 0)}")
+                opis = "  •  ".join(bits) if bits else "Brak wydatków"
+
+                tresc = [
+                    ft.Row([
+                        ft.Text(etykieta, weight="bold", size=16, expand=True),
+                        ft.Text(f"{utils.formatuj_liczba(razem_w)}  {utils.symbol_waluty()}", weight="bold", size=16, color=ft.Colors.RED_700)
+                    ]),
+                    ft.Text(opis, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ]
+                if litry_w > 0:
+                    tresc.append(ft.Text(
+                        f"Zatankowano {utils.formatuj_liczba(litry_w, 1)} L  •  śr. {utils.formatuj_liczba(sr_cena_w)} {utils.symbol_waluty()}/l",
+                        size=12, color=ft.Colors.PRIMARY
+                    ))
+
+                return ft.Card(elevation=1, content=ft.Container(padding=15, border_radius=10, content=ft.Column(tresc, spacing=4)))
+
+            self.elementy.append(ft.Text("Zestawienie miesięczne", weight="bold", size=18, color=ft.Colors.PRIMARY))
+
+            if not wiersze_mc_wszystkie:
+                self.elementy.append(ft.Text("Brak danych do zestawienia. Dodaj tankowania, wpisy serwisowe lub inne koszty.", color=ft.Colors.ON_SURFACE_VARIANT))
+            else:
+                opcje_sort = [
+                    ("Okres", "okres", lambda x: x[0]),
+                    ("Koszt", "koszt", lambda x: x[6]),
+                ]
+                sort_ui = utils.przycisk_sortowania(self._page, self.state, "stat_miesiace", opcje_sort)
+                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "stat_miesiace_rok", wiersze_mc_wszystkie, 9)
+                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "stat_miesiace_mc", wiersze_mc_wszystkie, 9)
+
+                self.elementy.append(
+                    ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN)
+                )
+
+                def filtruj_okresy(e):
+                    zapytanie = e.control.value.lower().strip()
+                    self.lista_kart_stat.controls.clear()
+                    for k in self.wszystkie_karty_stat:
+                        if zapytanie in k["szukaj"]:
+                            self.lista_kart_stat.controls.append(k["karta"])
+                    self.update()
+
+                self.elementy.append(
+                    ft.TextField(
+                        hint_text="Szukaj okresu (np. 2026, Sierpień)...",
+                        prefix_icon=ft.Icons.SEARCH,
+                        on_change=filtruj_okresy,
+                        **utils.styl_pola()
+                    )
+                )
+
+                self.lista_kart_stat = ft.Column(spacing=15)
+                self.wszystkie_karty_stat = []
+
+                wiersze_mc_f = utils.filtruj_po_roku(wiersze_mc_wszystkie, self.state, "stat_miesiace_rok", 9)
+                wiersze_mc_f = utils.filtruj_po_miesiacu(wiersze_mc_f, self.state, "stat_miesiace_mc", 9)
+                utils.posortuj_liste(wiersze_mc_f, self.state, "stat_miesiace", opcje_sort)
+
+                if not wiersze_mc_f:
+                    self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+                else:
+                    for w in wiersze_mc_f:
+                        karta = karta_okresu(w)
+                        self.wszystkie_karty_stat.append({"karta": karta, "szukaj": w[1].lower()})
+                        self.lista_kart_stat.controls.append(karta)
+                    self.elementy.append(self.lista_kart_stat)
+
+            self.elementy.append(ft.Divider(height=20))
+            self.elementy.append(ft.Text("Zestawienie roczne", weight="bold", size=18, color=ft.Colors.PRIMARY))
+
+            if not wiersze_rok_wszystkie:
+                self.elementy.append(ft.Text("Brak danych rocznych.", color=ft.Colors.ON_SURFACE_VARIANT))
+            else:
+                opcje_sort_rok = [
+                    ("Rok", "rok", lambda x: x[0]),
+                    ("Koszt", "koszt", lambda x: x[6]),
+                ]
+                sort_ui_rok = utils.przycisk_sortowania(self._page, self.state, "stat_lata", opcje_sort_rok)
+                self.elementy.append(ft.Row([sort_ui_rok], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+
+                utils.posortuj_liste(wiersze_rok_wszystkie, self.state, "stat_lata", opcje_sort_rok)
+                self.elementy.append(ft.Column([karta_okresu(w) for w in wiersze_rok_wszystkie], spacing=15))
