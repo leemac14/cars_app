@@ -6,6 +6,7 @@ import utils
 PALETA_KOLOROW = [ft.Colors.INDIGO, ft.Colors.TEAL_700, ft.Colors.ORANGE_700, ft.Colors.PURPLE_400]
 MAKS_AUT = 4
 SZEROKOSC_ETYKIETY = 90
+SZEROKOSC_KOLUMNY = 100
 
 
 class PorownanieView(ft.View):
@@ -125,7 +126,7 @@ class PorownanieView(ft.View):
 
     # ================= KARTY PROFILOWE =================
     def _buduj_karty_profili(self, dane_aut):
-        karty = []
+        karty = []  # <-- ZMIANA: usunięto ft.Container(width=SZEROKOSC_ETYKIETY)
         for d in dane_aut:
             zdjecie = d.get("zdjecie_glowne")
             if zdjecie:
@@ -146,7 +147,7 @@ class PorownanieView(ft.View):
 
             karty.append(
                 ft.Container(
-                    width=150, padding=10, border_radius=14,
+                    width=SZEROKOSC_KOLUMNY, padding=10, border_radius=14,
                     bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
                     border=ft.Border.all(2, d["kolor"]),
                     content=ft.Column([
@@ -164,7 +165,12 @@ class PorownanieView(ft.View):
                     ], spacing=8)
                 )
             )
-        return ft.Row(karty, spacing=10, scroll=ft.ScrollMode.HIDDEN)
+            
+        # ZMIANA: Opakowanie w kontener z dolnym paddingiem na scrollbar
+        return ft.Container(
+            content=ft.Row(karty, spacing=10, scroll=ft.ScrollMode.ALWAYS),
+            padding=ft.Padding(0, 0, 0, 15)
+        )
 
     # ================= WERDYKT =================
     def _buduj_werdykt(self, dane_aut):
@@ -218,7 +224,7 @@ class PorownanieView(ft.View):
         for d in dane_aut:
             kolumny.append(
                 ft.Container(
-                    expand=True, alignment=ft.Alignment.CENTER,
+                    width=SZEROKOSC_KOLUMNY, alignment=ft.Alignment.CENTER,
                     content=ft.Column([
                         ft.Container(width=10, height=10, border_radius=5, bgcolor=d["kolor"]),
                         ft.Text(d["nazwa_wyswietlana"], size=9, weight="bold", color=d["kolor"], text_align=ft.TextAlign.CENTER, no_wrap=True)
@@ -234,7 +240,7 @@ class PorownanieView(ft.View):
             kolor = pobierz_kolor(d) if pobierz_kolor else ft.Colors.ON_SURFACE
             kolumny.append(
                 ft.Container(
-                    expand=True, alignment=ft.Alignment.CENTER,
+                    width=SZEROKOSC_KOLUMNY, alignment=ft.Alignment.CENTER,
                     content=ft.Text(
                         str(wartosc) if wartosc not in (None, "") else "-",
                         size=12, weight="bold", color=kolor, text_align=ft.TextAlign.CENTER
@@ -289,7 +295,7 @@ class PorownanieView(ft.View):
 
     # ================= SEKCJE =================
     def _sekcja_specyfikacja(self, dane_aut):
-        wiersze = [
+        tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),
             ft.Divider(height=1),
             self._wiersz_tekstowy("Rocznik", dane_aut, lambda d: d.get("rok_produkcji")),
@@ -297,8 +303,8 @@ class PorownanieView(ft.View):
             self._wiersz_tekstowy("Moc", dane_aut, lambda d: f"{d['moc_silnika']} KM" if d.get("moc_silnika") else None),
             self._wiersz_tekstowy("Paliwo", dane_aut, lambda d: d.get("typ_paliwa")),
             self._wiersz_tekstowy("Skrzynia", dane_aut, lambda d: d.get("skrzynia_biegow")),
-        ]
-        return utils.karta_formularza(wiersze, "Specyfikacja techniczna", ft.Icons.SETTINGS, domyslnie_otwarte=True)
+        ], spacing=10)
+        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Specyfikacja techniczna", ft.Icons.SETTINGS, domyslnie_otwarte=True)
 
     def _wiek_tekst(self, rok):
         try:
@@ -315,14 +321,13 @@ class PorownanieView(ft.View):
             [(d["nazwa_wyswietlana"], d["aktualny_przebieg"], d["kolor"]) for d in dane_aut],
             "km", odwrocone=True, decimale=0
         )
-        wiersze = [
-            pasek,
-            ft.Divider(height=15),
+        tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),
             self._wiersz_tekstowy("Śr. dziennie", dane_aut, lambda d: f"{utils.formatuj_liczba(d['sredni_dzienny'], 1)} km" if d.get("sredni_dzienny") else "Brak danych"),
             self._wiersz_tekstowy("Wiek pojazdu", dane_aut, lambda d: self._wiek_tekst(d.get("rok_produkcji"))),
-        ]
-        return utils.karta_formularza(wiersze, "Przebieg i wiek", ft.Icons.SPEED, domyslnie_otwarte=True)
+        ], spacing=10)
+        
+        return utils.karta_formularza([pasek, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Przebieg i wiek", ft.Icons.SPEED, domyslnie_otwarte=True)
 
     def _sekcja_koszty(self, dane_aut):
         pasek_calkowity = self._pasek_porownania(
@@ -335,18 +340,15 @@ class PorownanieView(ft.View):
             [(d["nazwa_wyswietlana"], d["koszt_km"], d["kolor"]) for d in dane_aut],
             f"{utils.symbol_waluty()}/km", odwrocone=True, decimale=2
         )
-        wiersze = [
-            pasek_calkowity,
-            ft.Divider(height=15),
-            pasek_km,
-            ft.Divider(height=15),
+        tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),
             self._wiersz_tekstowy("⛽ Paliwo", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_paliwo'], 0)} {utils.symbol_waluty()}"),
             self._wiersz_tekstowy("🛠️ Serwis", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_serwis'], 0)} {utils.symbol_waluty()}"),
             self._wiersz_tekstowy("🎫 Inne", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_inne'], 0)} {utils.symbol_waluty()}"),
-        ]
-        return utils.karta_formularza(wiersze, "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
-
+        ], spacing=10)
+        
+        return utils.karta_formularza([pasek_calkowity, ft.Divider(height=15), pasek_km, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
+    
     def _sekcja_spalanie(self, dane_aut):
         wartosci = [d["spalanie"] for d in dane_aut if d.get("spalanie")]
         maks = max(wartosci) if wartosci else 0
@@ -387,7 +389,7 @@ class PorownanieView(ft.View):
         return utils.karta_formularza([ft.Column(wiersze, spacing=10), opis], "Średnie spalanie", ft.Icons.LOCAL_GAS_STATION)
 
     def _sekcja_serwis(self, dane_aut):
-        wiersze = [
+        tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),
             ft.Divider(height=1),
             self._wiersz_tekstowy("Wpisy historii", dane_aut, lambda d: str(d["liczba_wpisow_historii"])),
@@ -403,8 +405,8 @@ class PorownanieView(ft.View):
                 lambda d: (f"{d['magazyn_niski_stan']} poz." if d["magazyn_niski_stan"] else "OK"),
                 pobierz_kolor=lambda d: ft.Colors.ORANGE_700 if d["magazyn_niski_stan"] else ft.Colors.GREEN_700
             ),
-        ]
-        return utils.karta_formularza(wiersze, "Serwis i przypomnienia", ft.Icons.BUILD_CIRCLE)
+        ], spacing=10)
+        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Serwis i przypomnienia", ft.Icons.BUILD_CIRCLE)
 
     def _kolor_i_tekst_dokumentu(self, data_str):
         try:
@@ -422,26 +424,22 @@ class PorownanieView(ft.View):
         def wiersz_terminu(etykieta, pole):
             def wartosc(d):
                 data_str = d.get(pole)
-                if not data_str:
-                    return "Brak"
+                if not data_str: return "Brak"
                 _, tekst = self._kolor_i_tekst_dokumentu(data_str)
                 return tekst
-
             def kolor(d):
                 data_str = d.get(pole)
-                if not data_str:
-                    return ft.Colors.ON_SURFACE_VARIANT
+                if not data_str: return ft.Colors.ON_SURFACE_VARIANT
                 k, _ = self._kolor_i_tekst_dokumentu(data_str)
                 return k
-
             return self._wiersz_tekstowy(etykieta, dane_aut, wartosc, pobierz_kolor=kolor)
 
-        wiersze = [
+        tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),
             ft.Divider(height=1),
             wiersz_terminu("Polisa OC", "oc_data"),
             wiersz_terminu("Przegląd", "przeglad_data"),
             wiersz_terminu("Polisa AC", "ac_data"),
             wiersz_terminu("Assistance", "assistance_data"),
-        ]
-        return utils.karta_formularza(wiersze, "Ważne terminy", ft.Icons.SHIELD)
+        ], spacing=10)
+        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Ważne terminy", ft.Icons.SHIELD)
