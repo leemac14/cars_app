@@ -195,6 +195,15 @@ def init_db():
             # domyślnego koloru z Ustawień".
             """
             ALTER TABLE samochody ADD COLUMN kolor_motywu TEXT;
+            """,
+
+            # Wersja 13: Szybkie odczyty przebiegu — lekki dziennik ręcznych
+            # wpisów stanu licznika (np. z deski rozdzielczej), niezależny od
+            # tankowań/wizyt/historii. Pozwala odświeżyć aktualny przebieg
+            # bez dodawania "sztucznego" wpisu w innej tabeli.
+            """
+            CREATE TABLE IF NOT EXISTS odczyty_przebiegu (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, przebieg INTEGER NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_odczyty_przebiegu_auto ON odczyty_przebiegu(auto_id);
             """
         ]
 
@@ -299,7 +308,9 @@ def pobierz_aktualny_przebieg(auto_id):
         mw = int(c.fetchone()[0] or 0)
         c.execute("SELECT MAX(h.przebieg) FROM historia h JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id = ?", (auto_id,))
         mh = int(c.fetchone()[0] or 0)
-        return max(mt, mw, mh)
+        c.execute("SELECT MAX(przebieg) FROM odczyty_przebiegu WHERE auto_id = ?", (auto_id,))
+        mo = int(c.fetchone()[0] or 0)
+        return max(mt, mw, mh, mo)
 
 def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
     """Zwraca ostrzeżenie (str), jeśli nowy_przebieg jest wyraźnie niższy niż
@@ -331,6 +342,11 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
             f"SELECT h.przebieg, h.data FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
             f"WHERE z.auto_id=? AND h.wizyta_id IS NULL{wyklucz_sql}", params
         )
+        wpisy += c.fetchall()
+
+        wyklucz_sql = " AND id != ?" if (tabela == "odczyty_przebiegu" and wyklucz_id) else ""
+        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
+        c.execute(f"SELECT przebieg, data FROM odczyty_przebiegu WHERE auto_id=?{wyklucz_sql}", params)
         wpisy += c.fetchall()
 
     najwyzszy_dotychczas = None
@@ -377,6 +393,8 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
         c = conn.cursor()
         c.execute("SELECT data, przebieg FROM tankowania WHERE auto_id=?", (auto_id,))
         wiersze = c.fetchall()
+        c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
+        wiersze += c.fetchall()
 
     punkty = [(parsuj_date(d), int(p)) for d, p in wiersze]
     punkty = [p for p in punkty if p[0] != datetime.min.date()]
@@ -394,6 +412,25 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
         return None
 
     return km_roznica / dni_roznica
+
+def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None):
+    """Zapisuje szybki, ręczny odczyt licznika (np. z deski rozdzielczej) w osobnym
+    dzienniku — bez tworzenia sztucznego tankowania czy wpisu serwisowego tylko po
+    to, by odświeżyć aktualny przebieg. Jeśli w danym dniu istnieje już odczyt,
+    aktualizuje go zamiast duplikować."""
+    if not auto_id or not przebieg or przebieg <= 0:
+        return
+    if not data_str:
+        data_str = datetime.now().strftime("%d.%m.%Y")
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM odczyty_przebiegu WHERE auto_id=? AND data=?", (auto_id, data_str))
+        w = c.fetchone()
+        if w:
+            conn.execute("UPDATE odczyty_przebiegu SET przebieg=? WHERE id=?", (przebieg, w[0]))
+        else:
+            conn.execute("INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)", (auto_id, data_str, przebieg))
 
 def aktualizuj_najnowszy_wpis(zadanie_id):
     with polacz_baze() as conn:
@@ -1227,7 +1264,7 @@ def usun_auto_z_cofnieciem(auto_id):
     tabele_poziom_1 = [
         "zadania", "wizyty", "magazyn_czesci", 
         "tagi", "tankowania", "inne_koszty", 
-        "zestawy_opon", "zdjecia_karoserii"
+        "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu"
     ]
     tabele_poziom_2 = ["do_zrobienia"] # Zależy od zadania
     tabele_poziom_3 = ["historia", "wizyta_czesci_magazynu"] # Zależą od zadań i wizyt

@@ -304,7 +304,7 @@ class PorownanieView(ft.View):
             self._wiersz_tekstowy("Paliwo", dane_aut, lambda d: d.get("typ_paliwa")),
             self._wiersz_tekstowy("Skrzynia", dane_aut, lambda d: d.get("skrzynia_biegow")),
         ], spacing=10)
-        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Specyfikacja techniczna", ft.Icons.SETTINGS, domyslnie_otwarte=True)
+        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Specyfikacja techniczna", ft.Icons.SETTINGS, domyslnie_otwarte=True)
 
     def _wiek_tekst(self, rok):
         try:
@@ -327,7 +327,7 @@ class PorownanieView(ft.View):
             self._wiersz_tekstowy("Wiek pojazdu", dane_aut, lambda d: self._wiek_tekst(d.get("rok_produkcji"))),
         ], spacing=10)
         
-        return utils.karta_formularza([pasek, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Przebieg i wiek", ft.Icons.SPEED, domyslnie_otwarte=True)
+        return utils.karta_formularza([pasek, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Przebieg i wiek", ft.Icons.SPEED, domyslnie_otwarte=True)
 
     def _sekcja_koszty(self, dane_aut):
         pasek_calkowity = self._pasek_porownania(
@@ -347,7 +347,7 @@ class PorownanieView(ft.View):
             self._wiersz_tekstowy("🎫 Inne", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_inne'], 0)} {utils.symbol_waluty()}"),
         ], spacing=10)
         
-        return utils.karta_formularza([pasek_calkowity, ft.Divider(height=15), pasek_km, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
+        return utils.karta_formularza([pasek_calkowity, ft.Divider(height=15), pasek_km, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
     
     def _sekcja_spalanie(self, dane_aut):
         wartosci = [d["spalanie"] for d in dane_aut if d.get("spalanie")]
@@ -406,7 +406,7 @@ class PorownanieView(ft.View):
                 pobierz_kolor=lambda d: ft.Colors.ORANGE_700 if d["magazyn_niski_stan"] else ft.Colors.GREEN_700
             ),
         ], spacing=10)
-        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Serwis i przypomnienia", ft.Icons.BUILD_CIRCLE)
+        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Serwis i przypomnienia", ft.Icons.BUILD_CIRCLE)
 
     def _kolor_i_tekst_dokumentu(self, data_str):
         try:
@@ -442,4 +442,4 @@ class PorownanieView(ft.View):
             wiersz_terminu("Polisa AC", "ac_data"),
             wiersz_terminu("Assistance", "assistance_data"),
         ], spacing=10)
-        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=15))], scroll=ft.ScrollMode.ALWAYS)], "Ważne terminy", ft.Icons.SHIELD)
+        return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Ważne terminy", ft.Icons.SHIELD)

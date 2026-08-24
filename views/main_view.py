@@ -92,6 +92,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             
         if not w: return
 
+        aktualny_przebieg = db.pobierz_aktualny_przebieg(self.state.auto_id)
+
         idx = 0
         for i, a in enumerate(auta):
             if a[0] == self.state.auto_id:
@@ -281,6 +283,53 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             )
             utils.otworz_dno(self._page, bs_info)
         # ------------------------------------------------------
+
+        # --- SZYBKA AKTUALIZACJA PRZEBIEGU (bez sztucznego tankowania/wpisu) ---
+        def pokaz_szybka_aktualizacja_przebiegu(e):
+            pole_przebiegu = ft.TextField(
+                label="Aktualny przebieg (km)",
+                value=str(aktualny_przebieg) if aktualny_przebieg else "",
+                hint_text="np. 152300",
+                keyboard_type=ft.KeyboardType.NUMBER,
+                autofocus=True,
+                **utils.styl_pola()
+            )
+
+            def zapisz(e2):
+                pole_przebiegu.error_text = None
+                nowy = utils.parsuj_int(pole_przebiegu.value, None)
+                if nowy is None or nowy <= 0:
+                    pole_przebiegu.error_text = "Podaj poprawny przebieg"
+                    self._page.update()
+                    return
+
+                if utils.sprawdz_podejrzany_przebieg(self._page, pole_przebiegu, self.state.auto_id, nowy, tabela="odczyty_przebiegu"):
+                    return
+
+                db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy)
+                utils.zamknij_dialog(self._page, dlg)
+                utils.przejdz(self._page, "/")
+                utils.pokaz_komunikat(self._page, "Zaktualizowano stan licznika!")
+
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY), ft.Text("Aktualizacja przebiegu", weight="bold")], spacing=8),
+                content=ft.Column([
+                    ft.Text(
+                        "Wpisz aktualny stan licznika z deski rozdzielczej. To tylko odświeży stan km — nie tworzy tankowania ani wpisu serwisowego.",
+                        size=12, color=ft.Colors.ON_SURFACE_VARIANT
+                    ),
+                    pole_przebiegu
+                ], tight=True, spacing=10),
+                actions=[
+                    ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
+                    ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                ],
+                actions_alignment=ft.MainAxisAlignment.END
+            )
+            utils.otworz_dialog(self._page, dlg)
+        # ------------------------------------------------------
+
         tytulowy_wiersz = ft.Row([
             ft.Container(
                 content=ft.Row([
@@ -320,6 +369,16 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ft.Column([
                         ft.Row([ft.Icon(ft.Icons.BADGE, color=ft.Colors.PRIMARY, size=20), ft.Text(str(w["nr_rej"]) if w["nr_rej"] else "Brak rej.", weight="bold", size=16)]),
                         ft.Text(f"VIN: {str(w['vin']) if w['vin'] else '-'}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold"),
+                                ft.Icon(ft.Icons.EDIT, size=12, color=ft.Colors.PRIMARY)
+                            ], spacing=5),
+                            on_click=pokaz_szybka_aktualizacja_przebiegu,
+                            tooltip="Szybka aktualizacja przebiegu",
+                            padding=ft.Padding(0, 2, 0, 0)
+                        ),
                         ft.Container(height=5),
                         ft.Row([ft.Text("OC:", weight="bold", size=13), ft.Text(t_oc, color=k_oc, size=13, weight="bold")], spacing=5),
                         ft.Row([ft.Text("PT:", weight="bold", size=13), ft.Text(t_pt, color=k_pt, size=13, weight="bold")], spacing=5)
