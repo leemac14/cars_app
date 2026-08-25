@@ -7,6 +7,7 @@ import urllib.request
 import urllib.parse
 import asyncio
 import sqlite3
+import sync
 
 def pobierz_dane_vin(vin: str) -> dict:
     """
@@ -379,6 +380,16 @@ class FormularzAutoView(ft.View):
                     )
 
             db.zatwierdz_zalacznik(self.zg_val, przygotowany_zdj)
+
+            wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+            if wspolny_id:
+                async def _wypchnij():
+                    try:
+                        await asyncio.to_thread(sync.synchronizuj_tankowania, self.state.auto_id)
+                    except Exception:
+                        pass  # brak sieci nie może zepsuć lokalnego zapisu — spróbuje się przy kolejnej synchronizacji
+                self._page.run_task(_wypchnij)
+
             utils.przejdz(self._page, "/")
             utils.pokaz_komunikat(self._page, "Zapisano pojazd!")
         except Exception as ex:

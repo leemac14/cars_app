@@ -212,6 +212,14 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS odczyty_przebiegu (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, przebieg INTEGER NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_odczyty_przebiegu_auto ON odczyty_przebiegu(auto_id);
+            """,
+
+            # Wersja 14: Współdzielenie pojazdu (Supabase) — patrz sync.py. Pola
+            # NULL = pojazd/tankowanie czysto lokalne, zero zmian w zachowaniu.
+            """
+            ALTER TABLE samochody ADD COLUMN wspolny_pojazd_id TEXT;
+            ALTER TABLE samochody ADD COLUMN kod_zaproszenia TEXT;
+            ALTER TABLE tankowania ADD COLUMN zdalne_id TEXT;
             """
         ]
 

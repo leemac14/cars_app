@@ -25,6 +25,7 @@ from views.porownanie_view import PorownanieView
 from views.przebieg_view import OdczytyPrzebieguView
 from views.eksport_view import EksportView
 from views.kalkulator_view import KalkulatorTrasyView
+from views.wspoldzielenie_view import WspoldzielenieView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -426,6 +427,8 @@ def main(page: ft.Page):
             page.views.append(UstawieniaView(page, app_state))
         elif segmenty[0] == "porownanie":
             page.views.append(PorownanieView(page, app_state))
+        elif segmenty[0] == "wspoldzielenie":
+            page.views.append(WspoldzielenieView(page, app_state))
         elif segmenty[0] == "przebieg":
             page.views.append(OdczytyPrzebieguView(page, app_state))
         elif segmenty[0] == "eksport":

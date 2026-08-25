@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 import sqlite3
 import db
 import utils
+import asyncio
+import sync
 
 class MainView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state, cb_export, cb_import, cb_theme):
@@ -678,7 +680,20 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/zadanie/nowy"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
 
     def buduj_tankowania(self):
-        self.elementy.append(ft.Text("⛽ Historia Tankowań", size=20, weight="bold", color=ft.Colors.PRIMARY))
+        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+        naglowek_bits = [ft.Text("⛽ Historia Tankowań", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        if wspolny_id:
+            def _sync_click(e):
+                async def _zrob():
+                    try:
+                        wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_tankowania, self.state.auto_id)
+                        utils.przejdz(self._page, "/")
+                        utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych tankowań.")
+                    except Exception as ex:
+                        utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
+                self._page.run_task(_zrob)
+            naglowek_bits.append(ft.IconButton(ft.Icons.SYNC, tooltip="Synchronizuj z partnerem", on_click=_sync_click, icon_color=ft.Colors.PRIMARY))
+        self.elementy.append(ft.Row(naglowek_bits, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
         with db.polacz_baze() as conn:
             conn.row_factory = sqlite3.Row
