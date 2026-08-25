@@ -106,6 +106,14 @@ class FormularzAutoView(ft.View):
         self.e_oc = utils.pole_daty(page, "Polisa OC", oc_val)
         self.e_pt = utils.pole_daty(page, "Przegląd techniczny", pt_val)
 
+        akt_przebieg = db.pobierz_aktualny_przebieg(auto_id) if auto_id else 0
+        self.e_przebieg = ft.TextField(
+            label="Aktualny przebieg (km)", 
+            value=str(akt_przebieg) if akt_przebieg else "", 
+            keyboard_type=ft.KeyboardType.NUMBER, 
+            **utils.styl_pola()
+        )
+
         self.e_poj = ft.TextField(label="Pojemność silnika (cm³)", value=poj_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_moc = ft.TextField(label="Moc silnika (KM)", value=moc_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_pal = ft.Dropdown(label="Typ paliwa", options=[ft.DropdownOption(key=x, text=x) for x in ["Benzyna", "Diesel", "LPG", "Hybryda", "Elektryczny"]], value=pal_val, **utils.styl_dropdown())
@@ -137,7 +145,7 @@ class FormularzAutoView(ft.View):
         
         k0 = utils.karta_formularza([self.k_zdjecie], "Zdjęcie profilowe", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
         # Zastąpiono pojedyncze pole e_nazwa rzędem i polem generacji
-        k1 = utils.karta_formularza([wiersz_auto, self.e_generacja, self.e_rej, self.e_vin, self.e_rok], "Dane identyfikacyjne", ft.Icons.DIRECTIONS_CAR, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([wiersz_auto, self.e_generacja, self.e_rej, self.e_vin, self.e_rok, self.e_przebieg], "Dane identyfikacyjne", ft.Icons.DIRECTIONS_CAR, domyslnie_otwarte=True)
         kk = utils.karta_formularza(
             [ft.Text("Ten kolor będzie używany w całym interfejsie, gdy ten pojazd jest aktywny.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT), self.k_kolor],
             "Kolor interfejsu dla tego pojazdu", ft.Icons.PALETTE
@@ -242,6 +250,11 @@ class FormularzAutoView(ft.View):
     def zapisz(self, e):
         for pole in (self.e_marka, self.e_model, self.e_rok, self.e_vin):
             pole.error_text = None
+
+        self.e_przebieg.error_text = None
+        prz = utils.parsuj_int(self.e_przebieg.value, 0)
+        if prz < 0:
+            bledy.append((self.e_przebieg, "Błędny przebieg"))
         
         marka = (self.e_marka.value or "").strip()
         model = (self.e_model.value or "").strip()
@@ -326,6 +339,16 @@ class FormularzAutoView(ft.View):
                         )
                     self.state.auto_id = n_id
                     self.state.auto_nazwa = n
+                # --- ZAPIS KOREKTY PRZEBIEGU ---
+                zapisane_id = self.auto_id if self.auto_id else n_id
+                aktualny_prz = db.pobierz_aktualny_przebieg(zapisane_id)
+                
+                # Jeśli przebieg z formularza auta różni się od obecnego, zapisujemy to jako najnowszy odczyt
+                if prz > 0 and prz != aktualny_prz:
+                    conn.execute(
+                        "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?, ?, ?)", 
+                        (zapisane_id, datetime.now().strftime("%d.%m.%Y"), prz)
+                    )
 
             db.zatwierdz_zalacznik(self.zg_val, przygotowany_zdj)
             utils.przejdz(self._page, "/")

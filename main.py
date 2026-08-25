@@ -23,6 +23,7 @@ from views.garage_view import MagazynView, FormularzOponyView, FormularzCzesciVi
 from views.body_view import KaroseriaView, FormularzZdjecieKaroseriiView
 from views.porownanie_view import PorownanieView
 from views.przebieg_view import OdczytyPrzebieguView
+from views.eksport_view import EksportView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -179,6 +180,7 @@ def main(page: ft.Page):
             utils.pokaz_komunikat(page, f"Błąd importu: {ex}. Przywrócono poprzednią bazę.", ft.Colors.RED_700)
 
     file_picker = ft.FilePicker()
+    _pending_export = {"bajty": None}  # bufor na dane, gdy plik zapisu pochodzi z eksportu innego niż kopia bazy
 
     def on_file_result(e):
         async def _obsluz():
@@ -186,9 +188,13 @@ def main(page: ft.Page):
                 await asyncio.to_thread(wykonaj_import, e.files[0].path)
             elif getattr(e, "path", None):
                 try:
-                    dane_zip = await asyncio.to_thread(_przygotuj_zip_eksportu)
+                    if _pending_export["bajty"] is not None:
+                        dane_zapisu = _pending_export["bajty"]
+                        _pending_export["bajty"] = None
+                    else:
+                        dane_zapisu = await asyncio.to_thread(_przygotuj_zip_eksportu)
                     with open(e.path, "wb") as f:
-                        f.write(dane_zip)
+                        f.write(dane_zapisu)
                     utils.pokaz_komunikat(page, "Zapisano pomyślnie!", ft.Colors.GREEN_700)
                 except Exception as ex:
                     utils.pokaz_komunikat(page, f"Błąd zapisu: {ex}", ft.Colors.RED_700)
@@ -247,6 +253,68 @@ def main(page: ft.Page):
                 file_picker.save_file(file_name="kopia_baza.zip")
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
+
+    async def _zapisz_bajty_pliku(nazwa_pliku, dane_bytes):
+        """Uniwersalny zapis/udostępnienie gotowych bajtów pliku — współdzielony mechanizm
+        używany zarówno przy eksporcie kopii bazy, jak i nowym eksporcie danych CSV/PDF."""
+        if page.platform in ["android", "ios"] and share_service is not None:
+            try:
+                sciezka_tmp = os.path.join(tempfile.gettempdir(), nazwa_pliku)
+                with open(sciezka_tmp, "wb") as f:
+                    f.write(dane_bytes)
+                if hasattr(share_service, "share_files_async"):
+                    await share_service.share_files_async([sciezka_tmp])
+                else:
+                    res = share_service.share_files([sciezka_tmp])
+                    if inspect.iscoroutine(res):
+                        await res
+                return
+            except Exception:
+                pass
+
+        try:
+            if hasattr(page, "services") and not hasattr(file_picker, "on_result"):
+                if hasattr(file_picker, "save_file_async"):
+                    res = await file_picker.save_file_async(file_name=nazwa_pliku, src_bytes=dane_bytes)
+                else:
+                    res = await file_picker.save_file(file_name=nazwa_pliku, src_bytes=dane_bytes)
+                if res:
+                    utils.pokaz_komunikat(page, "Wyeksportowano pomyślnie!", ft.Colors.GREEN_700)
+            else:
+                _pending_export["bajty"] = dane_bytes
+                file_picker.save_file(file_name=nazwa_pliku)
+        except Exception as ex:
+            utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
+
+    def _bezpieczna_nazwa_pliku(tekst):
+        oczyszczone = "".join(c if c.isalnum() else "_" for c in str(tekst))
+        return oczyszczone.strip("_") or "pojazd"
+
+    async def eksportuj_dane_zaawansowane(auto_id, auto_nazwa, kategorie, od_d, do_d, opis_okresu, format_pliku, dolacz_podsumowanie, po_zakonczeniu=None):
+        try:
+            dane = await asyncio.to_thread(db.pobierz_dane_eksportu, auto_id, kategorie, od_d, do_d)
+            nazwa_bazowa = _bezpieczna_nazwa_pliku(auto_nazwa)
+
+            if format_pliku == "pdf":
+                podsumowanie = None
+                if dolacz_podsumowanie:
+                    podsumowanie = await asyncio.to_thread(db.oblicz_podsumowanie_okresu, auto_id, od_d, do_d)
+                try:
+                    dane_pliku = await asyncio.to_thread(db.generuj_pdf_raportu, auto_nazwa, dane, opis_okresu, podsumowanie)
+                except RuntimeError as ex:
+                    utils.pokaz_komunikat(page, str(ex), ft.Colors.RED_700)
+                    return
+                nazwa_pliku = f"raport_{nazwa_bazowa}.pdf"
+            else:
+                dane_pliku, rozszerzenie = await asyncio.to_thread(db.generuj_eksport_csv, dane)
+                nazwa_pliku = f"eksport_{nazwa_bazowa}.{rozszerzenie}"
+
+            await _zapisz_bajty_pliku(nazwa_pliku, dane_pliku)
+        except Exception as ex:
+            utils.pokaz_komunikat(page, f"Błąd eksportu: {ex}", ft.Colors.RED_700)
+        finally:
+            if po_zakonczeniu:
+                po_zakonczeniu()
 
     async def importuj_baze(e=None):
         try:
@@ -359,6 +427,8 @@ def main(page: ft.Page):
             page.views.append(PorownanieView(page, app_state))
         elif segmenty[0] == "przebieg":
             page.views.append(OdczytyPrzebieguView(page, app_state))
+        elif segmenty[0] == "eksport":
+            page.views.append(EksportView(page, app_state, eksportuj_dane_zaawansowane))
         elif segmenty[0] == "do-zrobienia":
             page.views.append(DoZrobieniaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":

@@ -3,6 +3,9 @@ import os
 import shutil
 import uuid
 import time
+import csv
+import io
+import zipfile
 from contextlib import contextmanager
 from date import parsuj_date
 from datetime import datetime, timedelta
@@ -12,6 +15,11 @@ try:
 except ImportError:
     Image = None
     ImageOps = None
+
+try:
+    from fpdf import FPDF
+except ImportError:
+    FPDF = None
 
 STORAGE_PATH = os.environ.get("FLET_APP_STORAGE_DATA", "")
 BAZA_DANYCH = os.path.join(STORAGE_PATH, 'flota_zadania.db')
@@ -302,15 +310,35 @@ def pobierz_aktualny_przebieg(auto_id):
     if not auto_id: return 0
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT MAX(przebieg) FROM tankowania WHERE auto_id = ?", (auto_id,))
-        mt = int(c.fetchone()[0] or 0)
-        c.execute("SELECT MAX(przebieg) FROM wizyty WHERE auto_id = ?", (auto_id,))
-        mw = int(c.fetchone()[0] or 0)
-        c.execute("SELECT MAX(h.przebieg) FROM historia h JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id = ?", (auto_id,))
-        mh = int(c.fetchone()[0] or 0)
-        c.execute("SELECT MAX(przebieg) FROM odczyty_przebiegu WHERE auto_id = ?", (auto_id,))
-        mo = int(c.fetchone()[0] or 0)
-        return max(mt, mw, mh, mo)
+        wpisy = []
+
+        # Zbieramy wszystkie przebiegi, nadając nowym ręcznym odczytom wyższy priorytet (2)
+        c.execute("SELECT przebieg, data, 1 FROM tankowania WHERE auto_id = ?", (auto_id,))
+        wpisy.extend(c.fetchall())
+        
+        c.execute("SELECT przebieg, data, 1 FROM wizyty WHERE auto_id = ?", (auto_id,))
+        wpisy.extend(c.fetchall())
+        
+        c.execute("SELECT h.przebieg, h.data, 1 FROM historia h JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id = ? AND h.wizyta_id IS NULL", (auto_id,))
+        wpisy.extend(c.fetchall())
+        
+        c.execute("SELECT przebieg, data, 2 FROM odczyty_przebiegu WHERE auto_id = ?", (auto_id,))
+        wpisy.extend(c.fetchall())
+
+    parsed = []
+    for prz, d_str, priorytet in wpisy:
+        try:
+            prz_val = int(prz)
+            if prz_val > 0:
+                parsed.append((parsuj_date(d_str), priorytet, prz_val))
+        except (TypeError, ValueError):
+            pass
+
+    if not parsed: return 0
+    
+    # Sortujemy chronologicznie po dacie, potem po priorytecie, a na końcu po wartości
+    parsed.sort(key=lambda x: (x[0], x[1], x[2]))
+    return parsed[-1][2]
 
 def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
     """Zwraca ostrzeżenie (str), jeśli nowy_przebieg jest wyraźnie niższy niż
@@ -1490,3 +1518,370 @@ def usun_wiele_zadan_z_cofnieciem(ids_list):
             w["finalizuj"]()
 
     return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
+
+# ==================== EKSPORT DANYCH (CSV / PDF) ====================
+
+KATEGORIE_EKSPORTU = {
+    "tankowania": "⛽ Tankowania",
+    "historia": "🔧 Historia serwisowa",
+    "wizyty": "🛠️ Wizyty zbiorcze (warsztat)",
+    "inne_koszty": "🎫 Inne koszty",
+    "magazyn_czesci": "📦 Magazyn części i płynów",
+    "zestawy_opon": "🛞 Zestawy opon",
+    "do_zrobienia": "✅ Lista Do zrobienia",
+}
+
+FOLDER_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+CZCIONKA_PDF_REGULAR = os.path.join(FOLDER_ASSETS, "DejaVuSans.ttf")
+CZCIONKA_PDF_BOLD = os.path.join(FOLDER_ASSETS, "DejaVuSans-Bold.ttf")
+
+# Fallback dla PDF, gdy brak czcionki Unicode w assets/ — usuwa polskie znaki
+# diakrytyczne zamiast wywalać wyjątek przy renderowaniu podstawowymi fontami PDF.
+_MAPA_TRANSLITERACJI_PL = str.maketrans({
+    "ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n", "ó": "o", "ś": "s", "ź": "z", "ż": "z",
+    "Ą": "A", "Ć": "C", "Ę": "E", "Ł": "L", "Ń": "N", "Ó": "O", "Ś": "S", "Ź": "Z", "Ż": "Z",
+})
+
+
+def formatuj_liczba_eksport(wartosc, decimale=2):
+    """Prosty format liczbowy do plików eksportu (przecinek jako separator dziesiętny,
+    zgodnie z polskim Excelem, bez separatora tysięcy)."""
+    if wartosc is None or wartosc == "":
+        return ""
+    try:
+        wartosc = float(wartosc)
+    except (TypeError, ValueError):
+        return str(wartosc)
+    if decimale > 0:
+        return f"{wartosc:.{decimale}f}".replace(".", ",")
+    return str(int(round(wartosc)))
+
+
+def _data_w_zakresie(data_str, od_data, do_data):
+    if not od_data and not do_data:
+        return True
+    d = parsuj_date(data_str)
+    if d == datetime.min.date():
+        return False
+    if od_data and d < od_data:
+        return False
+    if do_data and d > do_data:
+        return False
+    return True
+
+
+def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
+    """
+    Zbiera dane pojazdu do eksportu wg wybranych kategorii (klucze z KATEGORIE_EKSPORTU),
+    opcjonalnie przycięte do zakresu [od_data, do_data] (obiekty date, oba mogą być None).
+    Magazyn, zestawy opon i lista Do zrobienia to "stany aktualne" — eksportują się zawsze
+    w całości, niezależnie od zakresu dat.
+    Zwraca {klucz_kategorii: (naglowki: list[str], wiersze: list[list])}.
+    """
+    wynik = {}
+    if not auto_id or not kategorie:
+        return wynik
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+
+        if "tankowania" in kategorie:
+            c.execute(
+                "SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi "
+                "FROM tankowania WHERE auto_id=? ORDER BY data", (auto_id,)
+            )
+            wiersze = []
+            for data, prz, dys, lit, kwo, pelna, stacja, tagi in c.fetchall():
+                if _data_w_zakresie(data, od_data, do_data):
+                    wiersze.append([
+                        data, int(prz or 0), formatuj_liczba_eksport(dys), formatuj_liczba_eksport(lit),
+                        formatuj_liczba_eksport(kwo), "Tak" if pelna else "Nie", stacja or "", tagi or ""
+                    ])
+            wynik["tankowania"] = (
+                ["Data", "Przebieg (km)", "Dystans (km)", "Litry", "Kwota", "Do pełna", "Stacja", "Tagi"], wiersze
+            )
+
+        if "historia" in kategorie:
+            c.execute(
+                "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.wykonawca, h.kategoria "
+                "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+                "WHERE z.auto_id=? AND h.wizyta_id IS NULL ORDER BY h.data", (auto_id,)
+            )
+            wiersze = []
+            for data, nazwa, prz, cena, wyk, kat in c.fetchall():
+                if _data_w_zakresie(data, od_data, do_data):
+                    wiersze.append([data, nazwa, int(prz or 0), formatuj_liczba_eksport(cena), wyk or "", kat or ""])
+            wynik["historia"] = (["Data", "Podzespół", "Przebieg (km)", "Koszt", "Wykonawca", "Kategoria"], wiersze)
+
+        if "wizyty" in kategorie:
+            c.execute(
+                "SELECT w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.notatki, w.tagi, "
+                "GROUP_CONCAT(z.nazwa, ', ') FROM wizyty w "
+                "LEFT JOIN historia h ON h.wizyta_id = w.id "
+                "LEFT JOIN zadania z ON h.zadanie_id = z.id "
+                "WHERE w.auto_id=? GROUP BY w.id ORDER BY w.data", (auto_id,)
+            )
+            wiersze = []
+            for data, prz, wyk, kosz, notatki, tagi, czesci in c.fetchall():
+                if _data_w_zakresie(data, od_data, do_data):
+                    wiersze.append([
+                        data, int(prz or 0), wyk or "", formatuj_liczba_eksport(kosz),
+                        czesci or "", tagi or "", notatki or ""
+                    ])
+            wynik["wizyty"] = (
+                ["Data", "Przebieg (km)", "Warsztat", "Koszt", "Podzespoły", "Tagi", "Notatki"], wiersze
+            )
+
+        if "inne_koszty" in kategorie:
+            c.execute("SELECT data, nazwa, kategoria, kwota, tagi FROM inne_koszty WHERE auto_id=? ORDER BY data", (auto_id,))
+            wiersze = []
+            for data, nazwa, kat, kwota, tagi in c.fetchall():
+                if _data_w_zakresie(data, od_data, do_data):
+                    wiersze.append([data, nazwa or "", kat or "", formatuj_liczba_eksport(kwota), tagi or ""])
+            wynik["inne_koszty"] = (["Data", "Opis", "Kategoria", "Kwota", "Tagi"], wiersze)
+
+        if "magazyn_czesci" in kategorie:
+            c.execute(
+                "SELECT nazwa, kategoria, ilosc, jednostka, cena, data_zakupu "
+                "FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa", (auto_id,)
+            )
+            wiersze = [
+                [nazwa, kat or "", formatuj_liczba_eksport(ilosc, 2), jedn or "szt", formatuj_liczba_eksport(cena), dz or ""]
+                for nazwa, kat, ilosc, jedn, cena, dz in c.fetchall()
+            ]
+            wynik["magazyn_czesci"] = (["Nazwa", "Kategoria", "Ilość", "Jednostka", "Cena", "Data zakupu"], wiersze)
+
+        if "zestawy_opon" in kategorie:
+            c.execute(
+                "SELECT sezon, rozmiar, marka_model, glebokosc_bieznika, ilosc, zamontowane, os_montazu, cena "
+                "FROM zestawy_opon WHERE auto_id=? ORDER BY sezon", (auto_id,)
+            )
+            wiersze = []
+            for sezon, rozmiar, marka, gl, il, zam, os_m, cena in c.fetchall():
+                stan = f"Na aucie ({os_m})" if zam else "W magazynie"
+                wiersze.append([sezon or "", rozmiar or "", marka or "", formatuj_liczba_eksport(gl, 1), il or 4, stan, formatuj_liczba_eksport(cena)])
+            wynik["zestawy_opon"] = (["Sezon", "Rozmiar", "Marka/model", "Bieżnik (mm)", "Ilość", "Stan", "Cena"], wiersze)
+
+        if "do_zrobienia" in kategorie:
+            c.execute(
+                "SELECT tytul, priorytet, szacowany_koszt, termin, wykonane FROM do_zrobienia "
+                "WHERE auto_id=? ORDER BY priorytet", (auto_id,)
+            )
+            wiersze = [
+                [tyt, pr or "", formatuj_liczba_eksport(koszt), term or "", "Tak" if wyk else "Nie"]
+                for tyt, pr, koszt, term, wyk in c.fetchall()
+            ]
+            wynik["do_zrobienia"] = (["Tytuł", "Priorytet", "Szac. koszt", "Termin", "Wykonane"], wiersze)
+
+    return wynik
+
+
+def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
+    """Zbiorcze koszty i wskaźniki (jak w porównaniu pojazdów), przycięte do okresu —
+    używane w nagłówku raportu PDF."""
+    if not auto_id:
+        return None
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT data, kwota, litry, przebieg, do_pelna FROM tankowania WHERE auto_id=?", (auto_id,))
+        tankowania = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+
+        c.execute(
+            "SELECT h.data, h.cena FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        historia = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+
+        c.execute("SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?", (auto_id,))
+        wizyty = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+
+        c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        inne = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+
+    koszt_paliwo = sum(float(t[1] or 0) for t in tankowania)
+    koszt_serwis = sum(float(h[1] or 0) for h in historia) + sum(float(w[1] or 0) for w in wizyty)
+    koszt_inne = sum(float(i[1] or 0) for i in inne)
+    razem = koszt_paliwo + koszt_serwis + koszt_inne
+
+    tank_sort = sorted(tankowania, key=lambda t: int(t[3] or 0))
+    dystans = 0
+    if len(tank_sort) >= 2:
+        dystans = max(0, int(tank_sort[-1][3] or 0) - int(tank_sort[0][3] or 0))
+    koszt_km = (razem / dystans) if dystans > 0 else None
+
+    spalanie = None
+    peln_idx = [i for i, t in enumerate(tank_sort) if t[4]]
+    if len(peln_idx) >= 2:
+        p, o = peln_idx[0], peln_idx[-1]
+        d_p = int(tank_sort[o][3] or 0) - int(tank_sort[p][3] or 0)
+        l_p = sum(float(tank_sort[k][2] or 0) for k in range(p + 1, o + 1))
+        if d_p > 0:
+            spalanie = (l_p / d_p) * 100
+
+    return {
+        "koszt_paliwo": koszt_paliwo, "koszt_serwis": koszt_serwis, "koszt_inne": koszt_inne,
+        "razem": razem, "dystans": dystans, "koszt_km": koszt_km, "spalanie": spalanie,
+        "waluta": pobierz_walute(),
+    }
+
+
+def generuj_csv(naglowki, wiersze):
+    """Bajty pliku CSV (BOM UTF-8, separator ';') — ';' i przecinek dziesiętny
+    (patrz formatuj_liczba_eksport) pasują do polskiego Excela."""
+    bufor = io.StringIO()
+    writer = csv.writer(bufor, delimiter=';', lineterminator='\r\n')
+    writer.writerow(naglowki)
+    for w in wiersze:
+        writer.writerow(w)
+    return ('\ufeff' + bufor.getvalue()).encode('utf-8')
+
+
+def generuj_eksport_csv(dane_eksportu):
+    """
+    dane_eksportu: {klucz: (naglowki, wiersze)} z pobierz_dane_eksportu().
+    1 kategoria -> (bajty, 'csv'). Więcej -> każda kategoria jako osobny .csv
+    w archiwum ZIP -> (bajty, 'zip').
+    """
+    klucze = list(dane_eksportu.keys())
+    if len(klucze) == 1:
+        naglowki, wiersze = dane_eksportu[klucze[0]]
+        return generuj_csv(naglowki, wiersze), "csv"
+
+    bufor = io.BytesIO()
+    with zipfile.ZipFile(bufor, "w", zipfile.ZIP_DEFLATED) as zf:
+        for klucz, (naglowki, wiersze) in dane_eksportu.items():
+            zf.writestr(f"{klucz}.csv", generuj_csv(naglowki, wiersze))
+    bufor.seek(0)
+    return bufor.read(), "zip"
+
+
+class _RaportPDF(FPDF if FPDF is not None else object):
+    """Wrapper na FPDF z automatycznym doborem czcionki: jeśli w assets/ jest
+    DejaVuSans(.ttf/-Bold.ttf), używa jej (pełne wsparcie polskich znaków).
+    W przeciwnym razie używa wbudowanej Helvetiki i transliteruje diakrytyki (metoda t())."""
+    def __init__(self):
+        super().__init__(orientation="L", unit="mm", format="A4")
+        self.set_auto_page_break(auto=True, margin=15)
+        self.uzywa_utf8 = False
+        self.czcionka = "Helvetica"
+        if os.path.exists(CZCIONKA_PDF_REGULAR):
+            try:
+                self.add_font("DejaVu", "", CZCIONKA_PDF_REGULAR)
+                self.add_font("DejaVu", "B", CZCIONKA_PDF_BOLD if os.path.exists(CZCIONKA_PDF_BOLD) else CZCIONKA_PDF_REGULAR)
+                self.czcionka = "DejaVu"
+                self.uzywa_utf8 = True
+            except Exception:
+                self.czcionka = "Helvetica"
+
+    def t(self, tekst):
+        import re
+        tekst = "" if tekst is None else str(tekst)
+        
+        # 1. Zamieniamy typograficzne ozdobniki z aplikacji na zwykłe odpowiedniki ASCII
+        zamienniki = {
+            '•': '-', '▲': '^', '—': '-', '–': '-', '„': '"', '”': '"', '…': '...'
+        }
+        for znak, zamiennik in zamienniki.items():
+            tekst = tekst.replace(znak, zamiennik)
+            
+        # 2. TWARDE CZYSZCZENIE: Zostawiamy TYLKO znaki podstawowe i rozszerzone łacińskie (w tym polskie ogonki).
+        # To wycina absolutnie wszystkie emoji, chińskie znaczki czy niewidzialne błędy formatowania.
+        tekst = re.sub(r'[^\u0000-\u017F]', '', tekst)
+        
+        # 3. Jeśli nie załadowało czcionki DejaVu, "spłaszczamy" polskie znaki do zwykłych
+        if not self.uzywa_utf8:
+            tekst = tekst.translate(_MAPA_TRANSLITERACJI_PL)
+            tekst = tekst.encode('latin-1', 'replace').decode('latin-1')
+            
+        return tekst
+
+
+def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=None):
+    """
+    kategorie_dane: {klucz: (naglowki, wiersze)} — jak z pobierz_dane_eksportu().
+    podsumowanie: opcjonalny słownik z oblicz_podsumowanie_okresu() do nagłówka raportu.
+    Zwraca bajty pliku PDF. Rzuca RuntimeError, jeśli fpdf2 nie jest zainstalowane.
+    """
+    if FPDF is None:
+        raise RuntimeError("Biblioteka 'fpdf2' nie jest zainstalowana — eksport do PDF jest niedostępny. Zainstaluj: pip install fpdf2")
+
+    pdf = _RaportPDF()
+    pdf.add_page()
+
+    pdf.set_font(pdf.czcionka, "B", 18)
+    pdf.cell(0, 12, pdf.t(f"Raport pojazdu: {auto_nazwa}"), ln=1)
+
+    pdf.set_font(pdf.czcionka, "", 11)
+    pdf.set_text_color(110, 110, 110)
+    pdf.cell(0, 7, pdf.t(f"Okres: {okres_opis}"), ln=1)
+    pdf.cell(0, 7, pdf.t(f"Wygenerowano: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), ln=1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(4)
+
+    if podsumowanie:
+        waluta = podsumowanie.get("waluta", "PLN")
+        pdf.set_font(pdf.czcionka, "B", 13)
+        pdf.cell(0, 9, pdf.t("Podsumowanie kosztów"), ln=1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+        pdf.ln(3)
+
+        for etyk, wart in (("Paliwo", podsumowanie["koszt_paliwo"]), ("Serwis", podsumowanie["koszt_serwis"]),
+                           ("Inne koszty", podsumowanie["koszt_inne"]), ("RAZEM", podsumowanie["razem"])):
+            pdf.set_font(pdf.czcionka, "B" if etyk == "RAZEM" else "", 11)
+            pdf.cell(60, 7, pdf.t(etyk))
+            pdf.cell(0, 7, pdf.t(f"{formatuj_liczba_eksport(wart)} {waluta}"), ln=1)
+
+        if podsumowanie.get("dystans"):
+            pdf.set_font(pdf.czcionka, "", 11)
+            pdf.cell(0, 7, pdf.t(f"Przejechany dystans: {formatuj_liczba_eksport(podsumowanie['dystans'], 0)} km"), ln=1)
+        if podsumowanie.get("koszt_km"):
+            pdf.cell(0, 7, pdf.t(f"Koszt eksploatacji: {formatuj_liczba_eksport(podsumowanie['koszt_km'], 2)} {waluta}/km"), ln=1)
+        if podsumowanie.get("spalanie"):
+            pdf.cell(0, 7, pdf.t(f"Średnie spalanie: {formatuj_liczba_eksport(podsumowanie['spalanie'], 1)} l/100km"), ln=1)
+        pdf.ln(6)
+
+    for klucz, (naglowki, wiersze) in kategorie_dane.items():
+        tytul = KATEGORIE_EKSPORTU.get(klucz, klucz)
+        pdf.set_font(pdf.czcionka, "B", 13)
+        pdf.cell(0, 9, pdf.t(f"{tytul} ({len(wiersze)})"), ln=1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+        pdf.ln(2)
+
+        if not wiersze:
+            pdf.set_font(pdf.czcionka, "", 10)
+            pdf.set_text_color(140, 140, 140)
+            pdf.cell(0, 7, pdf.t("Brak danych w wybranym zakresie."), ln=1)
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(4)
+            continue
+
+        szer_strony = pdf.w - pdf.l_margin - pdf.r_margin
+        szer_kol = szer_strony / len(naglowki)
+        maks_znakow = max(4, int(szer_kol / 1.8))
+
+        def naglowek_tabeli():
+            pdf.set_font(pdf.czcionka, "B", 8.5)
+            pdf.set_fill_color(230, 230, 230)
+            for h in naglowki:
+                pdf.cell(szer_kol, 7, pdf.t(h), border=1, fill=True)
+            pdf.ln()
+            pdf.set_font(pdf.czcionka, "", 8)
+
+        naglowek_tabeli()
+        for w in wiersze:
+            if pdf.get_y() > pdf.h - 20:
+                pdf.add_page()
+                naglowek_tabeli()
+            for wartosc in w:
+                tekst = pdf.t(wartosc)
+                if len(tekst) > maks_znakow:
+                    # Zmiana: używamy trzech zwykłych kropek ASCII zamiast znaku Unicode
+                    tekst = tekst[:maks_znakow - 3] + "..."
+                pdf.cell(szer_kol, 6, tekst, border=1)
+            pdf.ln()
+        pdf.ln(5)
+
+    return bytes(pdf.output())

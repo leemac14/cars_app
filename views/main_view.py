@@ -317,20 +317,24 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
             dlg = ft.AlertDialog(
                 modal=True,
-                title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY), ft.Text("Aktualizacja przebiegu", weight="bold")], spacing=8),
+                # ZMIANA: size=16 i expand=True sprawią, że tytuł idealnie zmieści się w oknie i nie wyjdzie za ekran
+                title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY), ft.Text("Aktualizacja przebiegu", weight="bold", size=16, expand=True)], spacing=8),
                 content=ft.Column([
                     ft.Text(
                         "Wpisz aktualny stan licznika z deski rozdzielczej. To tylko odświeży stan km — nie tworzy tankowania ani wpisu serwisowego.",
                         size=12, color=ft.Colors.ON_SURFACE_VARIANT
                     ),
-                    pole_przebiegu
+                    pole_przebiegu,
+                    # ZMIANA: Przycisk historii przeniesiony tutaj, żeby nie walczył o miejsce z Anuluj/Zapisz
+                    ft.Container(height=5),
+                    ft.TextButton("📈 Przejdź do historii odczytów", on_click=zobacz_historie)
                 ], tight=True, spacing=10),
                 actions=[
-                    ft.TextButton("📈 Historia odczytów", on_click=zobacz_historie),
+                    # ZMIANA: Zostały 2 przyciski, więc mają mnóstwo miejsca i nie będą na siebie nachodzić
                     ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
                     ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
                 ],
-                actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                actions_alignment=ft.MainAxisAlignment.END
             )
             utils.otworz_dialog(self._page, dlg)
         # ------------------------------------------------------

@@ -475,6 +475,7 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.UPLOAD_FILE, color=ft.Colors.BLUE, size=20), ft.Text("Eksportuj bazę")]), on_click=cb_export))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.SUMMARIZE, color=ft.Colors.TEAL, size=20), ft.Text("Eksport danych (CSV/PDF)")]), on_click=lambda e: przejdz(page, "/eksport")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DOWNLOAD, color=ft.Colors.ORANGE, size=20), ft.Text("Importuj bazę")]), on_click=cb_import))
 
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
