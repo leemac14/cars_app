@@ -24,6 +24,7 @@ from views.body_view import KaroseriaView, FormularzZdjecieKaroseriiView
 from views.porownanie_view import PorownanieView
 from views.przebieg_view import OdczytyPrzebieguView
 from views.eksport_view import EksportView
+from views.kalkulator_view import KalkulatorTrasyView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -429,6 +430,8 @@ def main(page: ft.Page):
             page.views.append(OdczytyPrzebieguView(page, app_state))
         elif segmenty[0] == "eksport":
             page.views.append(EksportView(page, app_state, eksportuj_dane_zaawansowane))
+        elif segmenty[0] == "kalkulator":
+            page.views.append(KalkulatorTrasyView(page, app_state))
         elif segmenty[0] == "do-zrobienia":
             page.views.append(DoZrobieniaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":

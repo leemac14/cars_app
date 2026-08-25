@@ -1,4 +1,5 @@
 import flet as ft
+import flet_charts as fc
 from datetime import datetime, timedelta
 import sqlite3
 import db
@@ -1172,7 +1173,119 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 )
             )
 
-            # 3. Złożenie widoku
+            # 3. Trend spalania w czasie — na podstawie kolejnych tankowań "do pełna",
+            # zagregowany do średniej miesięcznej (jedno tankowanie do pełna nie mówi
+            # nic same w sobie — dopiero odstęp między dwoma takimi tankowaniami daje
+            # policzalny wynik spalania).
+            segmenty_spalania = []
+            pelne_idx_all = [i for i, t in enumerate(tankowania) if t.get('do_pelna')]
+            for a, b in zip(pelne_idx_all, pelne_idx_all[1:]):
+                prz_a = int(tankowania[a].get('przebieg') or 0)
+                prz_b = int(tankowania[b].get('przebieg') or 0)
+                dystans_seg = prz_b - prz_a
+                litry_seg = sum(float(tankowania[k].get('litry') or 0) for k in range(a + 1, b + 1))
+                if dystans_seg > 0:
+                    segmenty_spalania.append((tankowania[b].get('data'), (litry_seg / dystans_seg) * 100))
+
+            spalanie_wg_mc = {}
+            for data_str, wartosc in segmenty_spalania:
+                d = utils.parsuj_date(data_str)
+                if d == datetime.min.date():
+                    continue
+                klucz = f"{d.year}-{d.month:02d}"
+                spalanie_wg_mc.setdefault(klucz, []).append(wartosc)
+
+            punkty_spalania = sorted(
+                ((k, sum(v) / len(v)) for k, v in spalanie_wg_mc.items()),
+                key=lambda p: p[0]
+            )[-12:]  # ostatnie maks. 12 miesięcy z policzalnym spalaniem
+
+            if len(punkty_spalania) < 2:
+                karta_trendu = ft.Card(
+                    elevation=1,
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Text(
+                            "Za mało danych do wykresu trendu — potrzeba spalania policzonego z co najmniej "
+                            "2 różnych miesięcy (min. 3 tankowania „do pełna”).",
+                            size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                        )
+                    )
+                )
+            else:
+                wartosci_spalania = [w for _, w in punkty_spalania]
+                min_val = min(wartosci_spalania)
+                max_val_sp = max(wartosci_spalania)
+                zapas = max((max_val_sp - min_val) * 0.15, 0.5)
+
+                pierwsza_wart, ostatnia_wart = wartosci_spalania[0], wartosci_spalania[-1]
+                zmiana_proc = ((ostatnia_wart - pierwsza_wart) / pierwsza_wart * 100) if pierwsza_wart > 0 else 0
+
+                if zmiana_proc > 5:
+                    znacznik_trendu = ft.Container(
+                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
+                        bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.RED_700),
+                        content=ft.Text(f"📈 Rośnie o {utils.formatuj_liczba(zmiana_proc, 0)}%", size=12, weight="bold", color=ft.Colors.RED_700)
+                    )
+                elif zmiana_proc < -5:
+                    znacznik_trendu = ft.Container(
+                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
+                        bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.GREEN_700),
+                        content=ft.Text(f"📉 Spada o {utils.formatuj_liczba(abs(zmiana_proc), 0)}%", size=12, weight="bold", color=ft.Colors.GREEN_700)
+                    )
+                else:
+                    znacznik_trendu = ft.Container(
+                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
+                        content=ft.Text("➖ Stabilne", size=12, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT)
+                    )
+
+                krok_etykiet = 1 if len(punkty_spalania) <= 6 else 2
+                etykiety_osi = []
+                for i, (klucz, _) in enumerate(punkty_spalania):
+                    if i % krok_etykiet != 0 and i != len(punkty_spalania) - 1:
+                        continue
+                    rok_i, mies_i = klucz.split("-")
+                    etykiety_osi.append(
+                        fc.ChartAxisLabel(
+                            value=i,
+                            label=ft.Text(f"{mies_i}/{rok_i[2:]}", size=9, color=ft.Colors.ON_SURFACE_VARIANT)
+                        )
+                    )
+
+                wykres_liniowy = fc.LineChart(
+                    data_series=[
+                        fc.LineChartData(
+                            points=[fc.LineChartDataPoint(i, w) for i, (_, w) in enumerate(punkty_spalania)],
+                            stroke_width=3,
+                            color=ft.Colors.TEAL_700,
+                            curved=True,
+                            rounded_stroke_cap=True,
+                        )
+                    ],
+                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text("L/100km", size=10), title_size=14),
+                    bottom_axis=fc.ChartAxis(labels=etykiety_osi, label_size=24),
+                    min_y=max(0, min_val - zapas),
+                    max_y=max_val_sp + zapas,
+                    min_x=0,
+                    max_x=len(punkty_spalania) - 1,
+                    expand=True,
+                )
+
+                karta_trendu = ft.Card(
+                    elevation=1,
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Text("Średnie spalanie w miesiącu", weight="bold", size=14, expand=True),
+                                znacznik_trendu
+                            ]),
+                            ft.Container(height=200, content=wykres_liniowy),
+                        ], spacing=10)
+                    )
+                )
+
+            # 4. Złożenie widoku
             self.elementy.extend([
                 ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 karta_struktury,
@@ -1181,7 +1294,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ft.Text("Wydatki miesięczne (ostatnie 6 mies.)", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
                     ft.Text(f"Razem: {utils.formatuj_liczba(suma_okresu)}  {utils.symbol_waluty()}", weight="bold", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ]),
-                karta_wykresu
+                karta_wykresu,
+                ft.Divider(height=20),
+                ft.Text("Trend spalania w czasie", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                karta_trendu,
             ])
 
         elif self.state.stat_podzakladka == 2:

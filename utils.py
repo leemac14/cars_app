@@ -471,8 +471,9 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     if state.auto_id:
         pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=20), ft.Text("Usuń pojazd")]), on_click=lambda e: usun_auto(page, state)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.COMPARE_ARROWS, color=ft.Colors.TEAL, size=20), ft.Text("Porównaj pojazdy")]), on_click=lambda e: przejdz(page, "/porownanie")))
+    
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.MAP, color=ft.Colors.PURPLE, size=20), ft.Text("Kalkulator podróży")]), on_click=lambda e: przejdz(page, "/kalkulator")))
 
-    pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.UPLOAD_FILE, color=ft.Colors.BLUE, size=20), ft.Text("Eksportuj bazę")]), on_click=cb_export))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.SUMMARIZE, color=ft.Colors.TEAL, size=20), ft.Text("Eksport danych (CSV/PDF)")]), on_click=lambda e: przejdz(page, "/eksport")))
