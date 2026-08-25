@@ -969,7 +969,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         serw = sum(float(r['cena'] or 0.0) for r in wh) + sum(float(r['koszt_calkowity'] or 0.0) for r in ww)
         inn = sum(float(r['kwota'] or 0.0) for r in wi)
 
-        tankowania.sort(key=lambda x: (utils.parsuj_date(x.get('data')), x.get('przebieg') or 0))
+        tankowania.sort(key=lambda x: int(x.get('przebieg') or 0))
 
         pal = sum(float(t.get('kwota') or 0) for t in tankowania) if tankowania else 0.0
         litry = sum(float(t.get('litry') or 0) for t in tankowania) if tankowania else 0.0

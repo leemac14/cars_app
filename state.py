@@ -13,6 +13,7 @@ class AppState:
         self.wybrane_zadanie_nazwa = ""
         self.powiadomienia_widziane = {}   # zamiast pojedynczej sygnatury
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
+        self.porownanie_wybrane = []
 
         # --- SORTOWANIE ---
         # Klucz = nazwa listy, wartość = (pole, malejaco).

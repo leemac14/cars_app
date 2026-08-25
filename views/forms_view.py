@@ -29,6 +29,30 @@ def pobierz_dane_vin(vin: str) -> dict:
 
     return wyniki[0]
 
+# Tablica kodowania roku produkcji wg normy ISO 3779 (10. znak VIN).
+# NHTSA rozpoznaje ją głównie dla aut sprzedawanych w USA — dla europejskich
+# pojazdów pole ModelYear bywa puste, więc to lokalny fallback.
+_ISO3779_KOD_ROKU = {
+    "A": 1980, "B": 1981, "C": 1982, "D": 1983, "E": 1984, "F": 1985, "G": 1986, "H": 1987,
+    "J": 1988, "K": 1989, "L": 1990, "M": 1991, "N": 1992, "P": 1993, "R": 1994, "S": 1995,
+    "T": 1996, "V": 1997, "W": 1998, "X": 1999, "Y": 2000,
+    "1": 2001, "2": 2002, "3": 2003, "4": 2004, "5": 2005, "6": 2006, "7": 2007, "8": 2008, "9": 2009,
+}
+
+def rok_produkcji_z_vin(vin: str):
+    """Dekoduje przybliżony rok produkcji z 10. znaku VIN. Kod roku powtarza się
+    w 30-letnim cyklu, więc cykl (np. 1994 czy 2024 dla znaku 'R') rozstrzygamy
+    umowną, powszechnie stosowaną konwencją: jeśli 7. znak VIN to litera —
+    nowszy cykl (2010+), jeśli cyfra — starszy (1980-2009).
+    Zwraca None, jeśli VIN ma nietypową długość albo 10. znak nie jest rozpoznany."""
+    vin = (vin or "").strip().upper()
+    if len(vin) != 17:
+        return None
+    bazowy_rok = _ISO3779_KOD_ROKU.get(vin[9])
+    if bazowy_rok is None:
+        return None
+    return bazowy_rok + 30 if vin[6].isalpha() else bazowy_rok
+
 class FormularzAutoView(ft.View):
     def __init__(self, page: ft.Page, state, auto_id=None):
         self._page = page
@@ -198,6 +222,10 @@ class FormularzAutoView(ft.View):
         self.e_model.value = model
 
         rok = (dane.get("ModelYear") or "").strip()
+        if not rok:
+            rok_fallback = rok_produkcji_z_vin(vin)
+            if rok_fallback:
+                rok = str(rok_fallback)
         if rok:
             self.e_rok.value = rok
 

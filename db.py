@@ -196,7 +196,7 @@ def init_db():
             # magazynowa — zastępuje sztywny, wspólny dla wszystkich próg "<=1 szt.".
             """
             ALTER TABLE magazyn_czesci ADD COLUMN prog_ostrzezenia REAL DEFAULT 1;
-            """
+            """,
 
             # Wersja 12: Indywidualny kolor motywu interfejsu per pojazd — zamiast
             # jednego, globalnego koloru dla całej aplikacji. NULL = "użyj

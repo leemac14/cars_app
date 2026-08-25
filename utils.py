@@ -1131,6 +1131,7 @@ def abs_zalacznik(sciezka_wzgledna):
 
 def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
     stan = {"nowa_sciezka": None, "usuniete": False}
+    obsluzono = {"wartosc": False}  # zabezpiecza przed podwójnym zadziałaniem on_result + await
 
     def zawartosc_podgladu(sciezka):
         if sciezka:
@@ -1163,10 +1164,13 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
             pass
 
     def po_wyborze(e):
+        if obsluzono["wartosc"]:
+            return
         pliki = getattr(e, "files", None)
         if pliki and len(pliki) > 0:
             plik = pliki[0]
-            if plik.path:
+            if getattr(plik, "path", None):
+                obsluzono["wartosc"] = True
                 stan["nowa_sciezka"] = plik.path
                 stan["usuniete"] = False
                 odswiez(plik.path, plik.name, True)
@@ -1174,21 +1178,23 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
                 pokaz_komunikat(page, "Brak dostępu do ścieżki (Uprawnienia telefonu).", ft.Colors.RED_700)
 
     async def wybierz(e):
+        obsluzono["wartosc"] = False
         page.zalacznik_picker.on_result = po_wyborze
         page.zalacznik_picker.update() 
         
         try:
             wynik = await page.zalacznik_picker.pick_files(
-            file_type=ft.FilePickerFileType.CUSTOM, 
-            allowed_extensions=["jpg", "jpeg", "png", "webp", "pdf"],
-            allow_multiple=False
-        )
+                file_type=ft.FilePickerFileType.CUSTOM, 
+                allowed_extensions=["jpg", "jpeg", "png", "webp", "pdf"],
+                allow_multiple=False
+            )
             
-            if wynik is not None:
+            if wynik is not None and not obsluzono["wartosc"]:
                 pliki = getattr(wynik, "files", wynik)
                 if isinstance(pliki, list) and len(pliki) > 0:
                     plik = pliki[0]
                     if getattr(plik, "path", None):
+                        obsluzono["wartosc"] = True
                         stan["nowa_sciezka"] = plik.path
                         stan["usuniete"] = False
                         odswiez(plik.path, plik.name, True)
