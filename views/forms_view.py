@@ -71,7 +71,6 @@ class FormularzAutoView(ft.View):
                     ac_val, asy_val = str(w["ac_data"] or ""), str(w["assistance_data"] or "")
                     gas_val, apt_val = str(w["gasnica_data"] or ""), str(w["apteczka_data"] or "")
                     self.zg_val = str(w["zdjecie_glowne"]) if w["zdjecie_glowne"] else None
-                    self.zg_val = str(w["zdjecie_glowne"]) if w["zdjecie_glowne"] else None
                     self.kolor_auta_val = str(w["kolor_motywu"]) if w["kolor_motywu"] else None
                     
                     # Wczytywanie nowych kolumn
@@ -251,6 +250,8 @@ class FormularzAutoView(ft.View):
         for pole in (self.e_marka, self.e_model, self.e_rok, self.e_vin):
             pole.error_text = None
 
+        bledy = []
+        
         self.e_przebieg.error_text = None
         prz = utils.parsuj_int(self.e_przebieg.value, 0)
         if prz < 0:
@@ -259,8 +260,7 @@ class FormularzAutoView(ft.View):
         marka = (self.e_marka.value or "").strip()
         model = (self.e_model.value or "").strip()
         generacja = (self.e_generacja.value or "").strip()
-        
-        bledy = []
+
         if not marka:
             bledy.append((self.e_marka, "Podaj markę"))
         if not model:
@@ -577,8 +577,8 @@ class FormularzInneView(ft.View):
                 )
             else: 
                 conn.execute(
-                    "INSERT INTO inne_koszty (auto_id, data, nazwa, kwota, tagi, zalacznik) VALUES (?,?,?,?,?,?)", 
-                    (self.state.auto_id, self.e_d.value, opis, kwo, wybrane_tagi, nowy_zalacznik)
+                    "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, zalacznik) VALUES (?,?,?,?,?,?,?)", 
+                    (self.state.auto_id, self.e_d.value, "", opis, kwo, wybrane_tagi, nowy_zalacznik)
                 )
                 
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
