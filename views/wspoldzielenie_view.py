@@ -20,11 +20,12 @@ class WspoldzielenieView(ft.View):
         if wspolny_id:
             def _kopiuj(e, k=kod):
                 try:
-                    self._page.set_clipboard(k or "")  # starsze Flet; w nowszych: ft.Clipboard() jako service
+                    self._page.set_clipboard(k or "")
                 except Exception:
                     pass
                 utils.pokaz_komunikat(self._page, "Skopiowano kod!")
 
+            # 1. Status współdzielenia
             elementy.append(utils.karta_formularza([
                 ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_700), ft.Text("Ten pojazd jest współdzielony", weight="bold")]),
                 ft.Text("Podaj ten kod partnerowi/rodzinie — po wpisaniu go w ich aplikacji zobaczą ten pojazd i dopiszą tankowania.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -38,10 +39,17 @@ class WspoldzielenieView(ft.View):
                 ft.Text("Na razie synchronizowane są tylko tankowania (nie historia serwisu, magazyn, wizyty ani zdjęcia).", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
             ], "Status współdzielenia", ft.Icons.PEOPLE, domyslnie_otwarte=True))
 
+            # 2. Ręczna synchronizacja
             elementy.append(utils.karta_formularza([
                 ft.Text("Kliknij, aby pobrać nowe tankowania partnera i wysłać swoje.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.ElevatedButton("🔄 Synchronizuj teraz", on_click=self._synchronizuj, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ], "Synchronizacja", ft.Icons.SYNC))
+
+            # --- NOWE: 3. Zakończenie współdzielenia ---
+            elementy.append(utils.karta_formularza([
+                ft.Text("Odłącz ten pojazd od chmury. Wróci on do trybu w pełni offline. Wszystkie dotychczasowe tankowania pozostaną bezpieczne na Twoim telefonie, ale przestaną się synchronizować z innymi.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.ElevatedButton("Rozłącz pojazd", on_click=self._odlacz, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE)
+            ], "Niebezpieczna strefa", ft.Icons.WARNING_AMBER_ROUNDED))
 
         elif self.state.auto_id:
             elementy.append(utils.karta_formularza([
@@ -49,19 +57,33 @@ class WspoldzielenieView(ft.View):
                 ft.ElevatedButton("Udostępnij ten pojazd", on_click=self._udostepnij, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ], "Udostępnij", ft.Icons.SHARE, domyslnie_otwarte=True))
 
-        if not wspolny_id:
-            self.e_kod = ft.TextField(label="Kod zaproszenia od partnera", hint_text="np. A1B2C3", **utils.styl_pola())
-            elementy.append(utils.karta_formularza([
-                ft.Text("Masz kod od kogoś innego? Wpisz go tutaj — na liście pojawi się nowy pojazd ze wspólną historią tankowań.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                self.e_kod,
-                ft.ElevatedButton("Dołącz po kodzie", on_click=self._dolacz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
-            ], "Dołącz do cudzego pojazdu", ft.Icons.LOGIN))
+        self.e_kod = ft.TextField(label="Kod zaproszenia od partnera", hint_text="np. A1B2C3", **utils.styl_pola())
+        elementy.append(utils.karta_formularza([
+            ft.Text("Masz kod od kogoś innego? Wpisz go tutaj — na liście pojawi się nowy pojazd ze wspólną historią tankowań.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            self.e_kod,
+            ft.ElevatedButton("Dołącz po kodzie", on_click=self._dolacz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+        ], "Dołącz do cudzego pojazdu", ft.Icons.LOGIN))
 
         elementy.append(utils.dol_bezpieczny(20))
 
         super().__init__(
             route="/wspoldzielenie", padding=15, spacing=15,
             scroll=ft.ScrollMode.AUTO, appbar=appbar, controls=elementy
+        )
+
+    # --- NOWA FUNKCJA DO OBSŁUGI PRZYCISKU ---
+    def _odlacz(self, e):
+        def wykonaj():
+            sync.odlacz_wspoldzielenie(self.state.auto_id)
+            utils.przejdz(self._page, "/wspoldzielenie")
+            utils.pokaz_komunikat(self._page, "Pomyślnie odłączono pojazd z chmury.")
+            
+        utils.potwierdz(
+            self._page, 
+            "Zakończyć współdzielenie?", 
+            "Twój pojazd zostanie odłączony od chmury. Zapisane dane pozostaną na telefonie, ale przestaną się aktualizować u innych.", 
+            wykonaj,
+            tekst_potwierdzenia="Rozłącz"
         )
 
     def _udostepnij(self, e):

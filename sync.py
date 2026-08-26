@@ -86,20 +86,31 @@ def dolacz_po_kodzie(kod):
     wynik = klient.rpc("dolacz_do_pojazdu", {"p_kod": kod.strip().upper()}).execute()
     if not wynik.data:
         raise ValueError("Nieprawidłowy kod zaproszenia.")
+        
     wspolny_id = wynik.data[0]["pojazd_id"]
     nazwa = wynik.data[0]["nazwa"]
 
     with db.polacz_baze() as conn:
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO samochody (nazwa, wspolny_pojazd_id, kod_zaproszenia) VALUES (?,?,?)",
-            (nazwa, wspolny_id, kod.strip().upper())
-        )
-        nowy_auto_id = cur.lastrowid
+        # Sprawdzamy czy auto o tej nazwie już u nas lokalnie istnieje
+        cur.execute("SELECT id FROM samochody WHERE LOWER(nazwa)=LOWER(?)", (nazwa,))
+        istniejace = cur.fetchone()
+
+        if istniejace:
+            nowy_auto_id = istniejace[0]
+            cur.execute(
+                "UPDATE samochody SET wspolny_pojazd_id=?, kod_zaproszenia=? WHERE id=?",
+                (wspolny_id, kod.strip().upper(), nowy_auto_id)
+            )
+        else:
+            cur.execute(
+                "INSERT INTO samochody (nazwa, wspolny_pojazd_id, kod_zaproszenia) VALUES (?,?,?)",
+                (nazwa, wspolny_id, kod.strip().upper())
+            )
+            nowy_auto_id = cur.lastrowid
 
     synchronizuj_tankowania(nowy_auto_id)
     return nowy_auto_id, nazwa
-
 
 def synchronizuj_tankowania(auto_id):
     """Wypycha lokalne, jeszcze niewysłane tankowania, po czym ściąga te
@@ -152,3 +163,19 @@ def synchronizuj_tankowania(auto_id):
         pobrano += 1
 
     return wyslano, pobrano
+
+def odlacz_wspoldzielenie(auto_id):
+    """Rozłącza lokalny pojazd z chmurą. Pojazd wraca do trybu 100% offline,
+    a wszystkie dotychczas pobrane tankowania zostają zachowane lokalnie."""
+    with db.polacz_baze() as conn:
+        # 1. Usuwamy identyfikator chmurowy i kod zaproszenia z auta
+        conn.execute(
+            "UPDATE samochody SET wspolny_pojazd_id=NULL, kod_zaproszenia=NULL WHERE id=?",
+            (auto_id,)
+        )
+        # 2. Czyścimy powiązania tankowań z chmurą (jeśli kiedyś udostępnimy 
+        # auto ponownie, zsynchronizują się jako nowe)
+        conn.execute(
+            "UPDATE tankowania SET zdalne_id=NULL WHERE auto_id=?",
+            (auto_id,)
+        )
