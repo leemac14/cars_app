@@ -903,6 +903,33 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
                 "data": r["termin"] or "", "trasa": f"/do-zrobienia/edytuj/{r['id']}",
             })
 
+        # NOWE: Magazyn (części i płyny) — było obiecane w podpowiedzi wyszukiwarki
+        # ("część"), ale dotąd nieprzeszukiwane.
+        c.execute(
+            "SELECT id, nazwa, kategoria, ilosc, jednostka FROM magazyn_czesci "
+            "WHERE auto_id=? AND (nazwa LIKE ? OR kategoria LIKE ?)",
+            (auto_id, q, q)
+        )
+        for r in c.fetchall():
+            opis = f"{formatuj_liczba_eksport(r['ilosc'], 2)} {r['jednostka'] or 'szt'}" + (f" • {r['kategoria']}" if r["kategoria"] else "")
+            wyniki.append({
+                "typ": "Magazyn", "tytul": str(r["nazwa"]), "opis": opis,
+                "data": "", "trasa": "/magazyn",
+            })
+
+        # NOWE: Zestawy opon
+        c.execute(
+            "SELECT id, sezon, rozmiar, marka_model, numer_dot FROM zestawy_opon "
+            "WHERE auto_id=? AND (sezon LIKE ? OR rozmiar LIKE ? OR marka_model LIKE ? OR numer_dot LIKE ?)",
+            (auto_id, q, q, q, q)
+        )
+        for r in c.fetchall():
+            opis = str(r["rozmiar"] or "") + (f" • {r['marka_model']}" if r["marka_model"] else "")
+            wyniki.append({
+                "typ": "Opony", "tytul": f"Zestaw: {r['sezon']}", "opis": opis,
+                "data": "", "trasa": "/magazyn",
+            })
+
     wyniki.sort(key=lambda w: parsuj_date(w["data"]), reverse=True)
     return wyniki
 

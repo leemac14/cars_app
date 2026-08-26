@@ -1003,11 +1003,19 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False)
         ikona_strzalki.name = ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN
         e.control.page.update()
 
+    elementy_naglowka = []
+    if ikona:
+        elementy_naglowka.append(ft.Icon(ikona, color=ft.Colors.PRIMARY))
+    elementy_naglowka.append(
+        ft.Text(tytul, weight="bold", size=FS["title"], color=ft.Colors.ON_SURFACE, expand=True)
+    )
+    elementy_naglowka.append(ikona_strzalki)
+
     naglowek = ft.Container(
         padding=ft.Padding(20, 15, 20, 15),
         on_click=przelacz_rozwijanie,
         ink=True,
-        content=ft.Row([...], spacing=10)
+        content=ft.Row(elementy_naglowka, spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
     return ft.Container(

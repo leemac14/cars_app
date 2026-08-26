@@ -8,6 +8,8 @@ IKONY_WYSZUKIWANIA = {
     "Wizyta zbiorcza": (ft.Icons.HOME_REPAIR_SERVICE, ft.Colors.RED_700),
     "Inny koszt": (ft.Icons.RECEIPT_LONG, ft.Colors.GREEN_700),
     "Do zrobienia": (ft.Icons.CHECKLIST_RTL, ft.Colors.PURPLE_700),
+    "Magazyn": (ft.Icons.INVENTORY_2, ft.Colors.TEAL_700),
+    "Opony": (ft.Icons.TIRE_REPAIR, ft.Colors.INDIGO_700),
 }
 
 
