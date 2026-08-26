@@ -25,28 +25,32 @@ def _pobierz_klient():
         _klient_cache = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     return _klient_cache
 
-
 def _upewnij_sesje():
-    """Loguje anonimowo przy pierwszym użyciu (bez maila/hasła). Sesję trzyma
-    w tabeli 'ustawienia', żeby tożsamość — a więc dostęp do współdzielonych
-    pojazdów — przetrwała restart aplikacji."""
+    """Zwraca (klient, moje_uid). Loguje anonimowo przy pierwszym użyciu, trzyma
+    sesję w 'ustawienia' (set_session sam odświeży access_token, jeśli wygasł),
+    podpina token pod zapytania i zwraca własne uid — używane wprost przy
+    insertach zamiast polegać na kolumnowym DEFAULT auth.uid()."""
     klient = _pobierz_klient()
 
     token = db.pobierz_ustawienie("supabase_access_token")
     refresh = db.pobierz_ustawienie("supabase_refresh_token")
     if token and refresh:
         try:
-            klient.auth.set_session(access_token=token, refresh_token=refresh)
-            return klient
+            wynik = klient.auth.set_session(access_token=token, refresh_token=refresh)
+            sesja = wynik.session
+            db.zapisz_ustawienie("supabase_access_token", sesja.access_token)
+            db.zapisz_ustawienie("supabase_refresh_token", sesja.refresh_token)
+            klient.postgrest.auth(token=sesja.access_token)
+            return klient, sesja.user.id
         except Exception:
-            pass  # sesja wygasła/nieprawidłowa — logujemy się od nowa poniżej
+            pass
 
     wynik = klient.auth.sign_in_anonymously()
     sesja = wynik.session
     db.zapisz_ustawienie("supabase_access_token", sesja.access_token)
     db.zapisz_ustawienie("supabase_refresh_token", sesja.refresh_token)
-    return klient
-
+    klient.postgrest.auth(token=sesja.access_token)
+    return klient, sesja.user.id
 
 def czy_udostepniony(auto_id):
     """(wspolny_pojazd_id, kod_zaproszenia) albo (None, None). Bez sieci."""
@@ -60,15 +64,11 @@ def czy_udostepniony(auto_id):
 
 
 def utworz_udostepniony_pojazd(auto_id, nazwa):
-    """Oznacza LOKALNY pojazd jako współdzielony: tworzy wiersz w Supabase
-    i generuje kod zaproszenia. Zwraca kod (str)."""
-    klient = _upewnij_sesje()
+    klient, uid = _upewnij_sesje()
     kod = uuid_lib.uuid4().hex[:6].upper()
 
-    wynik = klient.table("udostepnione_pojazdy").insert({
-        "nazwa": nazwa, "kod_zaproszenia": kod
-    }).execute()
-    nowy_id = wynik.data[0]["id"]
+    wynik = klient.rpc("utworz_udostepniony_pojazd", {"p_nazwa": nazwa, "p_kod": kod}).execute()
+    nowy_id = wynik.data  # funkcja zwraca pojedynczy uuid, nie listę wierszy
 
     with db.polacz_baze() as conn:
         conn.execute(
@@ -82,7 +82,7 @@ def dolacz_po_kodzie(kod):
     """Dołącza do cudzego pojazdu po kodzie. TWORZY nowy lokalny wpis
     w 'samochody' (nie trzeba wcześniej ręcznie dodawać auta) i od razu ściąga
     jego dotychczasowe tankowania. Zwraca (nowy_auto_id, nazwa)."""
-    klient = _upewnij_sesje()
+    klient, uid = _upewnij_sesje()
     wynik = klient.rpc("dolacz_do_pojazdu", {"p_kod": kod.strip().upper()}).execute()
     if not wynik.data:
         raise ValueError("Nieprawidłowy kod zaproszenia.")
@@ -110,7 +110,7 @@ def synchronizuj_tankowania(auto_id):
     if not wspolny_id:
         return 0, 0
 
-    klient = _upewnij_sesje()
+    klient, uid = _upewnij_sesje()
     wyslano = 0
 
     with db.polacz_baze() as conn:
@@ -122,12 +122,12 @@ def synchronizuj_tankowania(auto_id):
         do_wyslania = c.fetchall()
 
     for lokalny_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi in do_wyslania:
-        wynik = klient.table("zdalne_tankowania").insert({
-            "pojazd_id": wspolny_id, "data": data, "przebieg": przebieg,
-            "dystans": dystans, "litry": litry, "kwota": kwota,
-            "do_pelna": bool(do_pelna), "stacja": stacja, "tagi": tagi,
+        wynik = klient.rpc("dodaj_zdalne_tankowanie", {
+            "p_pojazd_id": wspolny_id, "p_data": data, "p_przebieg": przebieg,
+            "p_dystans": dystans, "p_litry": litry, "p_kwota": kwota,
+            "p_do_pelna": bool(do_pelna), "p_stacja": stacja, "p_tagi": tagi,
         }).execute()
-        nowe_zdalne_id = wynik.data[0]["id"]
+        nowe_zdalne_id = wynik.data
         with db.polacz_baze() as conn:
             conn.execute("UPDATE tankowania SET zdalne_id=? WHERE id=?", (nowe_zdalne_id, lokalny_id))
         wyslano += 1
