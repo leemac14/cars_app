@@ -76,7 +76,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                 kolor_typu = ft.Colors.BLUE if z_typ == "Przed naprawą" else ft.Colors.GREEN if z_typ == "Po naprawie" else ft.Colors.ON_SURFACE_VARIANT
                 
                 kontener = ft.Container(
-                    width=165, padding=10, border_radius=12,
+                    width=165, padding=10, border_radius=12, ink=True,
                     bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
                     content=ft.Column([
                         ft.Image(src=utils.abs_zalacznik(z_zal), height=110, width=165, fit="cover", border_radius=8),

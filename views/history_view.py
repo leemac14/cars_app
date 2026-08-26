@@ -122,7 +122,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 sub_tekst = f"Przebieg: {utils.formatuj_liczba(int(prz or 0), 0)} km  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
                 if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
 
-                kontener = ft.Container(padding=15, border_radius=10, content=ft.Column([
+                kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column([
                     ft.Row([
                         ft.Text(str(data), weight="bold", size=16), 
                         ft.Row([
@@ -199,12 +199,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         self.state = state
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Wizyty Zbiorcze", "/")
-        fab = ft.FloatingActionButton(
-            icon=ft.Icons.ADD,
-            on_click=lambda e: utils.przejdz(self._page, "/wizyty/nowa"),
-            bgcolor=ft.Colors.PRIMARY,
-            foreground_color=ft.Colors.ON_PRIMARY
-        )
+        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/wizyty/nowa"))
 
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
         self.tryb_zaznaczania = False
@@ -340,7 +335,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 if tagi:
                     tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id))
 
-                kontener = ft.Container(padding=15, border_radius=10, content=ft.Column(tresc_karty))
+                kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
 
                 self.karty_ref[w_id] = kontener
 

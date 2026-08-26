@@ -10,12 +10,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         self.state = state
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "📈 Historia odczytów przebiegu", "/")
-        fab = ft.FloatingActionButton(
-            icon=ft.Icons.ADD,
-            on_click=utils.fab_animowany(ft.Icons.ADD, lambda e: self._dialog_odczytu()),
-            bgcolor=ft.Colors.PRIMARY,
-            foreground_color=ft.Colors.ON_PRIMARY
-        )
+        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: self._dialog_odczytu())
 
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
         self.tryb_zaznaczania = False
@@ -39,7 +34,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 tytul="Brak zapisanych odczytów",
                 opis="Dodawaj tu szybkie odczyty stanu licznika z deski rozdzielczej, bez tworzenia tankowania czy wpisu serwisowego.",
                 tekst_przycisku="Dodaj odczyt",
-                on_click=utils.fab_animowany(ft.Icons.ADD, lambda e: self._dialog_odczytu())
+                on_click=lambda e: self._dialog_odczytu()
             ))
         else:
             # Dystans od poprzedniego (chronologicznie) odczytu — dodatkowy kontekst na karcie
@@ -121,7 +116,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                         else:
                             tresc.append(ft.Text(f"⚠️ Przebieg niższy o {utils.formatuj_liczba(abs(dystans), 0)} km — sprawdź wpis", size=12, color=ft.Colors.RED_700))
 
-                    kontener = ft.Container(padding=15, border_radius=10, content=ft.Column(tresc, spacing=4))
+                    kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc, spacing=4))
 
                     self.karty_ref[wid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, wid, lambda rek=w: otworz_menu(rek))

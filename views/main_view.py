@@ -688,7 +688,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.elementy.append(self.lista_kart_serwis)
 
-        self.fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/zadanie/nowy"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+        self.fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/zadanie/nowy"))
 
     def buduj_tankowania(self):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
@@ -843,7 +843,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     if w.get('tagi'):
                         tresc_karty.append(utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id))
 
-                    kontener = ft.Container(padding=15, border_radius=10, content=ft.Column(tresc_karty))
+                    kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
                     
                     self.karty_ref[tid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, zal=w.get('zalacznik'): otworz_menu_t(id_el, zal), "tankowania")
@@ -855,7 +855,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.elementy.append(self.lista_kart_tankowania)
 
-        self.fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/tankowanie/nowe"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+        self.fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/tankowanie/nowe"))
 
     def buduj_inne(self):
         self.elementy.append(ft.Text("🎫 Inne Koszty", size=20, weight="bold", color=ft.Colors.PRIMARY))
@@ -952,7 +952,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
                     tagi_str = str(w.get('tagi') or w.get('kategoria') or "Brak tagów")
                     iid = w.get('id')
-                    kontener = ft.Container(padding=15, border_radius=10, content=ft.Column([
+                    kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column([
                         ft.Row([
                             ft.Text(str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Row([
@@ -974,7 +974,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.elementy.append(self.lista_kart_inne)
 
-        self.fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/inne/nowy"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+        self.fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/inne/nowy"))
 
     def buduj_statystyki(self):
         with db.polacz_baze() as conn:

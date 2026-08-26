@@ -64,15 +64,20 @@ def _czy_ciemny(page: ft.Page = None) -> bool:
         return False
 
 
-def tlo_karty(page: ft.Page = None, poziom="md"):
-    """Tło 'szklanej' powierzchni (karty/pola/sekcje) dopasowane do jasnego/
-    ciemnego motywu. W dark mode ON_SURFACE jest jasny, więc te same wartości
-    opacity co w light mode są ledwo widoczne — tutaj są podbite.
-    Wywołanie bez `page` zwraca wartość jak dotychczas (zgodność wsteczna)."""
-    jasny = {"xs": 0.03, "sm": 0.04, "md": 0.06, "lg": 0.08, "xl": 0.12}
-    ciemny = {"xs": 0.06, "sm": 0.08, "md": 0.12, "lg": 0.16, "xl": 0.22}
-    mapa = ciemny if _czy_ciemny(page) else jasny
-    return ft.Colors.with_opacity(mapa.get(poziom, mapa["md"]), ft.Colors.ON_SURFACE)
+def tlo_karty(page: ft.Page = None, poziom=1):
+    """Automatycznie dobiera przezroczystość koloru ON_SURFACE.
+    W trybie ciemnym podwaja opacity dla zachowania kontrastu."""
+    import flet as ft
+    ciemny = page.theme_mode == ft.ThemeMode.DARK if page else False
+    mnoznik = 2.0 if ciemny else 1.0
+    
+    if poziom == 1:   # Delikatne tło (np. wypełnienie karty / pola)
+        return ft.Colors.with_opacity(0.03 * mnoznik, ft.Colors.ON_SURFACE)
+    elif poziom == 2: # Średnie obramowania / mocniejsze tło (np. ramka karty)
+        return ft.Colors.with_opacity(0.08 * mnoznik, ft.Colors.ON_SURFACE)
+    elif poziom == 3: # Wyraźne obramowania (np. ramka pola tekstowego)
+        return ft.Colors.with_opacity(0.15 * mnoznik, ft.Colors.ON_SURFACE)
+    return ft.Colors.TRANSPARENT
 
 def parsuj_int(wartosc, domyslna=0):
     if wartosc is None: return domyslna
@@ -944,18 +949,18 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
 
 def styl_pola(page: ft.Page = None):
     return {
-        "border_radius": RADIUS["md"],
-        "border_color": ft.Colors.with_opacity(0.15, ft.Colors.ON_SURFACE),
+        "border_radius": 12,
+        "border_color": tlo_karty(page, poziom=3),
         "focused_border_color": ft.Colors.PRIMARY,
         "content_padding": 16,
         "filled": True,
-        "bgcolor": tlo_karty(page, "sm"),
+        "bgcolor": tlo_karty(page, poziom=1),
     }
 
-def styl_dropdown():
+def styl_dropdown(page: ft.Page = None):
     return {
         "border_radius": 12,
-        "border_color": ft.Colors.with_opacity(0.15, ft.Colors.ON_SURFACE),
+        "border_color": tlo_karty(page, poziom=3),
         "focused_border_color": ft.Colors.PRIMARY,
         "content_padding": 16,
         "filled": True,
@@ -976,14 +981,17 @@ def wysokosc_listy(page: ft.Page, udzial=0.5, minimalna=260):
         wys_ekranu = 800
     return max(minimalna, int(wys_ekranu * udzial))
 
-def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False):
+def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False, page: ft.Page = None):
     import flet as ft
-    kolor_ramki = ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE)
+    
+    # Wykorzystujemy naszą nową funkcję do dynamicznego kontrastu
+    kolor_ramki = tlo_karty(page, poziom=2)
+    kolor_tla = tlo_karty(page, poziom=1)
     
     if not tytul:
         return ft.Container(
-            padding=20, border_radius=RADIUS["lg"], bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
-            border=ft.Border.all(1, kolor_ramki),
+            padding=20, border_radius=16, bgcolor=kolor_tla,
+            border=ft.Border(top=ft.BorderSide(1, kolor_ramki), right=ft.BorderSide(1, kolor_ramki), bottom=ft.BorderSide(1, kolor_ramki), left=ft.BorderSide(1, kolor_ramki)),
             content=ft.Column(zawartosc, spacing=15)
         )
 
@@ -1003,25 +1011,23 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False)
         ikona_strzalki.name = ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN
         e.control.page.update()
 
-    elementy_naglowka = []
-    if ikona:
-        elementy_naglowka.append(ft.Icon(ikona, color=ft.Colors.PRIMARY))
-    elementy_naglowka.append(
-        ft.Text(tytul, weight="bold", size=FS["title"], color=ft.Colors.ON_SURFACE, expand=True)
-    )
-    elementy_naglowka.append(ikona_strzalki)
-
     naglowek = ft.Container(
         padding=ft.Padding(20, 15, 20, 15),
         on_click=przelacz_rozwijanie,
-        ink=True,
-        content=ft.Row(elementy_naglowka, spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        content=ft.Row([
+            ft.Icon(ikona, color=ft.Colors.PRIMARY, size=20) if ikona else ft.Container(),
+            ft.Text(tytul, weight="bold", size=16, color=ft.Colors.PRIMARY, expand=True),
+            ikona_strzalki
+        ], spacing=10)
     )
 
     return ft.Container(
-        border_radius=RADIUS["lg"],
-        bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
-        border=ft.Border.all(1, kolor_ramki),
+        border_radius=16,
+        bgcolor=kolor_tla,
+        border=ft.Border(
+            top=ft.BorderSide(1, kolor_ramki), right=ft.BorderSide(1, kolor_ramki),
+            bottom=ft.BorderSide(1, kolor_ramki), left=ft.BorderSide(1, kolor_ramki)
+        ),
         content=ft.Column([naglowek, cialo], spacing=0)
     )
 

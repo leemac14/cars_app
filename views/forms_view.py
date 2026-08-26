@@ -112,13 +112,13 @@ class FormularzAutoView(ft.View):
         self.k_kolor, self.get_kolor = utils.komponent_wyboru_koloru(page, self.kolor_auta_val)
 
         # Nowe 3 pola zamiast jednego pola nazwy
-        self.e_marka = ft.TextField(label="Marka pojazdu*", value=m_val, **utils.styl_pola())
-        self.e_model = ft.TextField(label="Model pojazdu*", value=mod_val, **utils.styl_pola())
-        self.e_generacja = ft.TextField(label="Generacja (opcjonalnie)", value=gen_val, **utils.styl_pola())
+        self.e_marka = ft.TextField(label="Marka pojazdu*", value=m_val, **utils.styl_pola(page=page))
+        self.e_model = ft.TextField(label="Model pojazdu*", value=mod_val, **utils.styl_pola(page=page))
+        self.e_generacja = ft.TextField(label="Generacja (opcjonalnie)", value=gen_val, **utils.styl_pola(page=page))
         
-        self.e_rej = ft.TextField(label="Nr Rejestracyjny", value=r_val, **utils.styl_pola())
-        self.e_rok = ft.TextField(label="Rok produkcji", value=ro_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_vin = ft.TextField(label="Numer VIN", value=v_val, **utils.styl_pola())
+        self.e_rej = ft.TextField(label="Nr Rejestracyjny", value=r_val, **utils.styl_pola(page=page))
+        self.e_rok = ft.TextField(label="Rok produkcji", value=ro_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_vin = ft.TextField(label="Numer VIN", value=v_val, **utils.styl_pola(page=page))
         self.btn_dekoduj_vin = ft.IconButton(
             icon=ft.Icons.AUTO_AWESOME,
             icon_color=ft.Colors.PRIMARY,
@@ -135,24 +135,24 @@ class FormularzAutoView(ft.View):
             label="Aktualny przebieg (km)", 
             value=str(akt_przebieg) if akt_przebieg else "", 
             keyboard_type=ft.KeyboardType.NUMBER, 
-            **utils.styl_pola()
+            **utils.styl_pola(page=page)
         )
 
-        self.e_poj = ft.TextField(label="Pojemność silnika (cm³)", value=poj_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_moc = ft.TextField(label="Moc silnika (KM)", value=moc_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_poj = ft.TextField(label="Pojemność silnika (cm³)", value=poj_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_moc = ft.TextField(label="Moc silnika (KM)", value=moc_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_pal = ft.Dropdown(label="Typ paliwa", options=[ft.DropdownOption(key=x, text=x) for x in ["Benzyna", "Diesel", "LPG", "Hybryda", "Elektryczny"]], value=pal_val, **utils.styl_dropdown())
         self.e_skrz = ft.Dropdown(label="Skrzynia biegów", options=[ft.DropdownOption(key=x, text=x) for x in ["Manualna", "Automatyczna"]], value=skrz_val, **utils.styl_dropdown())
-        self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
+        self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
 
-        self.e_wp = ft.TextField(label="Wycieraczki (przód)", value=wp_val, hint_text="np. 60cm", **utils.styl_pola())
-        self.e_wt = ft.TextField(label="Wycieraczki (tył)", value=wt_val, hint_text="np. 40cm", **utils.styl_pola())
-        self.e_cp = ft.TextField(label="Ciśnienie opon (przód)", value=cp_val, hint_text="np. 2.2 bar", **utils.styl_pola())
-        self.e_ct = ft.TextField(label="Ciśnienie opon (tył)", value=ct_val, hint_text="np. 2.0 bar", **utils.styl_pola())
-        self.e_ot = ft.TextField(label="Typ oleju silnikowego", value=ot_val, hint_text="np. 5W-30", **utils.styl_pola())
-        self.e_op = ft.TextField(label="Pojemność oleju", value=op_val, hint_text="np. 4.5L", **utils.styl_pola())
-        self.e_akum = ft.TextField(label="Akumulator", value=akum_val, hint_text="np. 60Ah 540A, prawy +", **utils.styl_pola())
-        self.e_zm = ft.TextField(label="Żarówki (mijania)", value=zm_val, hint_text="np. H7", **utils.styl_pola())
-        self.e_zd = ft.TextField(label="Żarówki (drogowe)", value=zd_val, hint_text="np. H1", **utils.styl_pola())
+        self.e_wp = ft.TextField(label="Wycieraczki (przód)", value=wp_val, hint_text="np. 60cm", **utils.styl_pola(page=page))
+        self.e_wt = ft.TextField(label="Wycieraczki (tył)", value=wt_val, hint_text="np. 40cm", **utils.styl_pola(page=page))
+        self.e_cp = ft.TextField(label="Ciśnienie opon (przód)", value=cp_val, hint_text="np. 2.2 bar", **utils.styl_pola(page=page))
+        self.e_ct = ft.TextField(label="Ciśnienie opon (tył)", value=ct_val, hint_text="np. 2.0 bar", **utils.styl_pola(page=page))
+        self.e_ot = ft.TextField(label="Typ oleju silnikowego", value=ot_val, hint_text="np. 5W-30", **utils.styl_pola(page=page))
+        self.e_op = ft.TextField(label="Pojemność oleju", value=op_val, hint_text="np. 4.5L", **utils.styl_pola(page=page))
+        self.e_akum = ft.TextField(label="Akumulator", value=akum_val, hint_text="np. 60Ah 540A, prawy +", **utils.styl_pola(page=page))
+        self.e_zm = ft.TextField(label="Żarówki (mijania)", value=zm_val, hint_text="np. H7", **utils.styl_pola(page=page))
+        self.e_zd = ft.TextField(label="Żarówki (drogowe)", value=zd_val, hint_text="np. H1", **utils.styl_pola(page=page))
 
         self.e_ac = utils.pole_daty(page, "Polisa AC (Autocasco)", ac_val)
         self.e_asy = utils.pole_daty(page, "Ważność Assistance", asy_val)
@@ -169,7 +169,7 @@ class FormularzAutoView(ft.View):
         
         k0 = utils.karta_formularza([self.k_zdjecie], "Zdjęcie profilowe", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
         # Zastąpiono pojedyncze pole e_nazwa rzędem i polem generacji
-        k1 = utils.karta_formularza([wiersz_auto, self.e_generacja, self.e_rej, self.e_vin, self.e_rok, self.e_przebieg], "Dane identyfikacyjne", ft.Icons.DIRECTIONS_CAR, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([wiersz_auto, self.e_generacja, self.e_rej, self.e_vin, self.e_rok, self.e_przebieg], "Dane identyfikacyjne", ft.Icons.DIRECTIONS_CAR, domyslnie_otwarte=True, page=page)
         kk = utils.karta_formularza(
             [ft.Text("Ten kolor będzie używany w całym interfejsie, gdy ten pojazd jest aktywny.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT), self.k_kolor],
             "Kolor interfejsu dla tego pojazdu", ft.Icons.PALETTE
@@ -481,14 +481,14 @@ class FormularzTankowanieView(ft.View):
                 self._blokada_sync = False
 
         self.e_d = utils.pole_daty(page, "Data tankowania", d_val)
-        self.e_stacja = ft.TextField(label="Stacja paliw (opcjonalnie)", value=stacja_val, hint_text="np. Orlen, Shell", **utils.styl_pola())
+        self.e_stacja = ft.TextField(label="Stacja paliw (opcjonalnie)", value=stacja_val, hint_text="np. Orlen, Shell", **utils.styl_pola(page=page))
         hint_prz = f"Ost.: {self.ostatni_prz} km" if self.ostatni_prz > 0 else "np. 150000"
         
-        self.e_p = ft.TextField(label="Licznik (km)", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola())
-        self.e_dys = ft.TextField(label="Dystans (km)", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola())
+        self.e_p = ft.TextField(label="Licznik (km)", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
+        self.e_dys = ft.TextField(label="Dystans (km)", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola(page=page))
         
-        self.e_l = ft.TextField(label="Zatankowano (Litry)", value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_k = ft.TextField(label=f"Całkowity Koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_l = ft.TextField(label="Zatankowano (Litry)", value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_k = ft.TextField(label=f"Całkowity Koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.c_pel = ft.Checkbox(label="Zatankowano do pełna (wymagane do spalania)", value=pelna_val)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
@@ -501,7 +501,7 @@ class FormularzTankowanieView(ft.View):
             ft.Container(self.e_dys, expand=True),
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
-        k1 = utils.karta_formularza([self.e_d, wiersz_przebiegu], "Przebieg i Data", ft.Icons.SPEED, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([self.e_d, wiersz_przebiegu], "Przebieg i Data", ft.Icons.SPEED, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza(
             [self.e_stacja, self.e_l, self.e_k, self.c_pel, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
             "Szczegóły transakcji", ft.Icons.LOCAL_GAS_STATION
@@ -579,14 +579,14 @@ class FormularzInneView(ft.View):
         
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         
-        self.e_o = ft.TextField(label="Opis / Nazwa usługi", value=op_val, **utils.styl_pola())
-        self.e_kw = ft.TextField(label=f"Kwota całkowita ({utils.symbol_waluty()})", value=kw_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_o = ft.TextField(label="Opis / Nazwa usługi", value=op_val, **utils.styl_pola(page=page))
+        self.e_kw = ft.TextField(label=f"Kwota całkowita ({utils.symbol_waluty()})", value=kw_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja kosztu" if i_id else "Nowy koszt", "/", on_save=self.zapisz)
         k1 = utils.karta_formularza(
             [self.e_d, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi, self.e_o, self.e_kw], 
-            "Szczegóły wydatku", ft.Icons.RECEIPT_LONG, domyslnie_otwarte=True
+            "Szczegóły wydatku", ft.Icons.RECEIPT_LONG, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
         elementy = [k1, k2, utils.przyciski_akcji(page, "✅ Zapisz koszt", self.zapisz, "/")]
@@ -642,7 +642,7 @@ class FormularzZadanieView(ft.View):
                     stara_nazwa = str(w[0])
                     dotyczy_opon_val = bool(w[1])
 
-        self.e_n = ft.TextField(label="Nazwa (np. Olej silnikowy, Tarcze przód)", value=stara_nazwa, **utils.styl_pola())
+        self.e_n = ft.TextField(label="Nazwa (np. Olej silnikowy, Tarcze przód)", value=stara_nazwa, **utils.styl_pola(page=page))
         self.c_dotyczy_opon = ft.Checkbox(
             label="🛞 Podzespół dotyczy opon / kół (pokaże wybór sezonu przy wpisach)",
             value=dotyczy_opon_val
@@ -654,8 +654,8 @@ class FormularzZadanieView(ft.View):
         p_val = str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
         
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
-        self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value="", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value="", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, "")
         
         # --- DODANE: Obsługa zdjęcia przy pierwszej wymianie ---
@@ -675,7 +675,7 @@ class FormularzZadanieView(ft.View):
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja podzespołu" if z_id else "Nowy podzespół", "/", on_save=self.zapisz)
         
-        k1 = utils.karta_formularza([self.e_n, self.c_dotyczy_opon, self.c_dodaj_wymiane], "Śledzony podzespół", ft.Icons.HANDYMAN, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([self.e_n, self.c_dotyczy_opon, self.c_dodaj_wymiane], "Śledzony podzespół", ft.Icons.HANDYMAN, domyslnie_otwarte=True, page=page)
         elementy = [k1, self.karta_wymiany, utils.przyciski_akcji(page, "✅ Zapisz podzespół", self.zapisz, "/")]
 
         super().__init__(
@@ -752,11 +752,11 @@ class FormularzInterwalView(ft.View):
             w = c.fetchone()
             if w: nazwa, ik, im = str(w[0]), str(w[1] or ""), str(w[2] or "")
 
-        self.e_ik = ft.TextField(label="Co ile kilometrów (np. 15000)", value=ik, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_im = ft.TextField(label="Co ile miesięcy (np. 12)", value=im, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_ik = ft.TextField(label="Co ile kilometrów (np. 15000)", value=ik, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_im = ft.TextField(label="Co ile miesięcy (np. 12)", value=im, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"Interwał: {nazwa}", "/", on_save=self.zapisz)
-        k1 = utils.karta_formularza([self.e_ik, self.e_im], "Odstępy między wymianami", ft.Icons.TIMER, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([self.e_ik, self.e_im], "Odstępy między wymianami", ft.Icons.TIMER, domyslnie_otwarte=True, page=page)
         
         btn_czysc = ft.OutlinedButton("Wyczyść przypomnienia", on_click=self.usun_interwal, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15), width=float("inf"))
         
@@ -822,8 +822,8 @@ class FormularzWpisView(ft.View):
                     self.zalacznik_val = w[5]  # <-- NOWE
 
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
-        self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value=c_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value=c_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, w_val)
         self.e_kat = ft.Dropdown(
             label="Rodzaj opon", 
@@ -839,7 +839,7 @@ class FormularzWpisView(ft.View):
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)  # <-- NOWE
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"{'Edycja' if h_id else 'Nowa wymiana'}: {nazwa}", self.trasa_powrotu, on_save=self.zapisz)
-        k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / faktura)", ft.Icons.ATTACH_FILE)  # <-- NOWE
         
         elementy = [k1, k2, utils.przyciski_akcji(page, "✅ Zapisz wpis", self.zapisz, self.trasa_powrotu)]
@@ -907,10 +907,10 @@ class FormularzWizytyView(ft.View):
                     if r[1]: kat_val = str(r[1])
 
         self.e_d = utils.pole_daty(page, "Data odebrania z warsztatu", d_val)
-        self.e_p = ft.TextField(label="Przebieg podczas wizyty (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_p = ft.TextField(label="Przebieg podczas wizyty (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, wyk_val)
-        self.e_k = ft.TextField(label=f"Całkowity koszt naprawy ({utils.symbol_waluty()})", value=kosz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
+        self.e_k = ft.TextField(label=f"Całkowity koszt naprawy ({utils.symbol_waluty()})", value=kosz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.blad_czesci = ft.Text("", color=ft.Colors.RED_700, size=13)
@@ -965,7 +965,7 @@ class FormularzWizytyView(ft.View):
                 value=utils.formatuj_liczba(juz_uzyto, 2) if zaznaczone else "1",
                 width=90, visible=zaznaczone,
                 keyboard_type=ft.KeyboardType.NUMBER,
-                **utils.styl_pola()
+                **utils.styl_pola(page=page)
             )
 
             def _przelacz(e, pole=pole_ilosc):
@@ -996,7 +996,7 @@ class FormularzWizytyView(ft.View):
         
         k1 = utils.karta_formularza(
             [self.e_d, self.e_p, self.k_wykonawca, self.e_k, self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
-            "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True
+            "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True, page=page
         )
         k1b = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
         k2 = utils.karta_formularza([self.btn_pakiety, ft.Column(self.chk_czesci, spacing=2), self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
