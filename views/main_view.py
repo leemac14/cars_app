@@ -697,9 +697,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             def _sync_click(e):
                 async def _zrob():
                     try:
-                        wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_tankowania, self.state.auto_id)
+                        wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
                         utils.przejdz(self._page, "/")
-                        utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych tankowań.")
+                        utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
                     except Exception as ex:
                         utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
                 self._page.run_task(_zrob)

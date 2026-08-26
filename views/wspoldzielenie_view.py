@@ -36,7 +36,7 @@ class WspoldzielenieView(ft.View):
                         ft.IconButton(ft.Icons.COPY, tooltip="Kopiuj kod", on_click=_kopiuj)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                 ),
-                ft.Text("Na razie synchronizowane są tylko tankowania (nie historia serwisu, magazyn, wizyty ani zdjęcia).", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text("Synchronizują się teraz wszystkie dane pojazdu (tankowania, serwis, wizyty, magazyn, opony, koszty, warsztaty, wydatki cykliczne, odczyty przebiegu i lista Do zrobienia) — poza załącznikami (zdjęcia/PDF-y), które zawsze zostają lokalnie na każdym urządzeniu.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
             ], "Status współdzielenia", ft.Icons.PEOPLE, domyslnie_otwarte=True))
 
             # 2. Ręczna synchronizacja
@@ -117,9 +117,9 @@ class WspoldzielenieView(ft.View):
     def _synchronizuj(self, e):
         async def _zrob():
             try:
-                wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_tankowania, self.state.auto_id)
+                wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
                 utils.przejdz(self._page, "/wspoldzielenie")
-                utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych tankowań.")
+                utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
             except Exception as ex:
                 utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
         self._page.run_task(_zrob)

@@ -385,7 +385,7 @@ class FormularzAutoView(ft.View):
             if wspolny_id:
                 async def _wypchnij():
                     try:
-                        await asyncio.to_thread(sync.synchronizuj_tankowania, self.state.auto_id)
+                        await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
                     except Exception:
                         pass  # brak sieci nie może zepsuć lokalnego zapisu — spróbuje się przy kolejnej synchronizacji
                 self._page.run_task(_wypchnij)

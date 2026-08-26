@@ -260,6 +260,22 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS pakiety_serwisowe_wlasne (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, pozycje TEXT NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_pakiety_wlasne_auto ON pakiety_serwisowe_wlasne(auto_id);
+            """,
+
+            # Wersja 18: Kolumny zdalne_id — rozszerzenie współdzielenia pojazdu
+            # (patrz sync.py) na resztę danych, nie tylko tankowania. NULL = rekord
+            # czysto lokalny / jeszcze niezsynchronizowany, zero zmian w zachowaniu.
+            """
+            ALTER TABLE zadania ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE historia ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE wizyty ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE magazyn_czesci ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE zestawy_opon ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE do_zrobienia ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE warsztaty ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE odczyty_przebiegu ADD COLUMN zdalne_id TEXT;
             """
         ]
 
