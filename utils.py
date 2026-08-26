@@ -434,6 +434,14 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             przejdz(page, trasa)
         return handler
 
+    def zaplac_cykliczny(wydatek_id):
+        def handler(e):
+            zamknij_dno(page, bs)
+            db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
+            pokaz_komunikat(page, "Zapisano płatność i przesunięto termin.")
+            przejdz(page, page.route)
+        return handler
+
     pozycje = [
         ft.Row([
             ft.Icon(ft.Icons.NOTIFICATIONS_ROUNDED, color=ft.Colors.PRIMARY),
@@ -451,18 +459,149 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         for p in powiadomienia:
             kolor = ft.Colors.RED_700 if p["status"] == "przeterminowane" else ft.Colors.ORANGE_700
             ikona = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
-            pozycje.append(ft.ListTile(
-                leading=ft.Icon(ikona, color=kolor),
-                title=ft.Text(p["tytul"], weight="bold"),
-                subtitle=ft.Text(p["opis"], color=kolor, size=13),
-                on_click=idz_do(p["trasa"]),
-            ))
+            if p["typ"] == "cykliczny":
+                pozycje.append(ft.ListTile(
+                    leading=ft.Icon(ikona, color=kolor),
+                    title=ft.Text(p["tytul"], weight="bold"),
+                    subtitle=ft.Text(p["opis"], color=kolor, size=13),
+                    trailing=ft.TextButton("Zapłacone", on_click=zaplac_cykliczny(p["wydatek_id"])),
+                ))
+            else:
+                pozycje.append(ft.ListTile(
+                    leading=ft.Icon(ikona, color=kolor),
+                    title=ft.Text(p["tytul"], weight="bold"),
+                    subtitle=ft.Text(p["opis"], color=kolor, size=13),
+                    on_click=idz_do(p["trasa"]),
+                ))
 
     bs.content = ft.Container(
         padding=20,
         bgcolor=ft.Colors.SURFACE,
         content=ft.Column(pozycje, tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
     )
+    otworz_dno(page, bs)
+
+def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
+    """Lekki panel (BottomSheet) do zarządzania wydatkami cyklicznymi pojazdu
+    (raty, abonamenty, ubezpieczenia ratalne) — bez osobnej trasy, analogicznie
+    do pokaz_panel_powiadomien()."""
+    bs = ft.BottomSheet(ft.Container())
+
+    def odswiez():
+        wpisy = db.pobierz_wydatki_cykliczne(state.auto_id)
+        pozycje = [
+            ft.Row([
+                ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.PRIMARY),
+                ft.Text("Wydatki cykliczne", weight="bold", size=18, color=ft.Colors.PRIMARY)
+            ], spacing=8),
+            ft.Divider(height=1),
+        ]
+
+        if not wpisy:
+            pozycje.append(ft.Container(
+                padding=ft.Padding.symmetric(vertical=15),
+                content=ft.Text("Brak zapisanych wydatków cyklicznych.", italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+            ))
+        else:
+            for w_id, nazwa, kwota, okres_dni, nastepna_data in wpisy:
+                kolor, tekst_daty = kolor_i_tekst_terminu(nastepna_data)
+                pozycje.append(ft.ListTile(
+                    leading=ft.Icon(ft.Icons.AUTORENEW, color=kolor),
+                    title=ft.Text(str(nazwa), weight="bold"),
+                    subtitle=ft.Text(
+                        f"{formatuj_liczba(kwota)} {symbol_waluty()} • co {okres_dni} dni • {tekst_daty or nastepna_data}",
+                        size=12, color=kolor
+                    ),
+                    trailing=ft.PopupMenuButton(items=[
+                        ft.PopupMenuItem(
+                            content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18), ft.Text("Zapłacone")]),
+                            on_click=lambda e, wid=w_id: zaplac(wid)
+                        ),
+                        ft.PopupMenuItem(
+                            content=ft.Row([ft.Icon(ft.Icons.EDIT, size=18), ft.Text("Edytuj")]),
+                            on_click=lambda e, w=(w_id, nazwa, kwota, okres_dni, nastepna_data): formularz(w)
+                        ),
+                        ft.PopupMenuItem(
+                            content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=18), ft.Text("Usuń")]),
+                            on_click=lambda e, wid=w_id: usun(wid)
+                        ),
+                    ])
+                ))
+
+        pozycje.append(ft.Divider(height=1))
+        pozycje.append(ft.TextButton("➕ Dodaj wydatek cykliczny", on_click=lambda e: formularz(None)))
+
+        bs.content = ft.Container(
+            padding=20, bgcolor=ft.Colors.SURFACE,
+            content=ft.Column(pozycje, tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
+        )
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def zaplac(wydatek_id):
+        db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
+        pokaz_komunikat(page, "Zapisano płatność i przesunięto termin.")
+        odswiez()
+
+    def usun(wydatek_id):
+        def wykonaj():
+            db.usun_wydatek_cykliczny(wydatek_id)
+            odswiez()
+            pokaz_komunikat(page, "Usunięto wydatek cykliczny.")
+        potwierdz(page, "Usunąć?", "Czy na pewno usunąć ten wydatek cykliczny?", wykonaj)
+
+    def formularz(istniejacy):
+        edycja = istniejacy is not None
+        w_id, nazwa_val, kwota_val, okres_val, data_val = istniejacy or (None, "", "", 30, datetime.now().strftime("%d.%m.%Y"))
+
+        e_nazwa = ft.TextField(label="Nazwa (np. Rata leasingu, OC ratalne)", value=str(nazwa_val), **styl_pola())
+        e_kwota = ft.TextField(label=f"Kwota ({symbol_waluty()})", value=str(kwota_val) if kwota_val else "", keyboard_type=ft.KeyboardType.NUMBER, **styl_pola())
+        e_okres = ft.Dropdown(
+            label="Powtarzaj co",
+            options=[
+                ft.DropdownOption(key="30", text="Miesiąc (30 dni)"),
+                ft.DropdownOption(key="90", text="Kwartał (90 dni)"),
+                ft.DropdownOption(key="180", text="Pół roku (180 dni)"),
+                ft.DropdownOption(key="365", text="Rok (365 dni)"),
+            ],
+            value=str(okres_val) if str(okres_val) in ("30", "90", "180", "365") else "30",
+            **styl_dropdown()
+        )
+        e_data = pole_daty(page, "Następna płatność", str(data_val))
+
+        def zapisz(e):
+            e_nazwa.error_text = None
+            e_kwota.error_text = None
+            n = (e_nazwa.value or "").strip()
+            kw = parsuj_float(e_kwota.value, None)
+            bledy = []
+            if not n: bledy.append((e_nazwa, "Podaj nazwę"))
+            if kw is None or kw <= 0: bledy.append((e_kwota, "Podaj poprawną kwotę"))
+            if bledy:
+                for kontrolka, komunikat in bledy: kontrolka.error_text = komunikat
+                page.update()
+                return
+            okres_dni = parsuj_int(e_okres.value, 30)
+            if edycja:
+                db.edytuj_wydatek_cykliczny(w_id, n, kw, okres_dni, e_data.value)
+            else:
+                db.dodaj_wydatek_cykliczny(state.auto_id, n, kw, okres_dni, e_data.value)
+            zamknij_dialog(page, dlg)
+            odswiez()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Edytuj wydatek" if edycja else "Nowy wydatek cykliczny", weight="bold"),
+            content=ft.Column([e_nazwa, e_kwota, e_okres, e_data], tight=True, spacing=10),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
+                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+            ]
+        )
+        otworz_dialog(page, dlg)
+
+    odswiez()
     otworz_dno(page, bs)
 
 def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
@@ -475,6 +614,7 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.PEOPLE, color=ft.Colors.TEAL, size=20), ft.Text("Współdziel pojazd")]), on_click=lambda e: przejdz(page, "/wspoldzielenie")))
     
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.MAP, color=ft.Colors.PURPLE, size=20), ft.Text("Kalkulator podróży")]), on_click=lambda e: przejdz(page, "/kalkulator")))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.INDIGO, size=20), ft.Text("Wydatki cykliczne")]), on_click=lambda e: pokaz_panel_wydatkow_cyklicznych(page, state)))
 
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.UPLOAD_FILE, color=ft.Colors.BLUE, size=20), ft.Text("Eksportuj bazę")]), on_click=cb_export))

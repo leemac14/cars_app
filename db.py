@@ -599,6 +599,27 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                         "typ": "dokument", "tytul": etykieta, "opis": opis,
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
                     })
+        # Wydatki cykliczne (raty, abonamenty, ubezpieczenia ratalne) — termin
+        # liczy się jak dla dokumentów, ale akcją jest "Zapłacone", nie przejście
+        # do formularza (stąd "trasa": None).
+        c.execute(
+            "SELECT id, nazwa, nastepna_data FROM wydatki_cykliczne WHERE auto_id=?",
+            (auto_id,)
+        )
+        for wc in c.fetchall():
+            d_wc = parsuj_date(wc["nastepna_data"])
+            if d_wc == datetime.min.date():
+                continue
+            zost_dni = (d_wc - dzis).days
+            if zost_dni <= prog_dni:
+                s = "przeterminowane" if zost_dni < 0 else "pilne"
+                opis = f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni"
+                wyniki.append({
+                    "typ": "cykliczny", "tytul": wc["nazwa"], "opis": opis,
+                    "status": s, "trasa": None, "wydatek_id": wc["id"],
+                })
+
+        kolejnosc = {"przeterminowane": 0, "pilne": 1}
 
         # Niski stan magazynu (części i płyny) — indywidualny próg per pozycja,
         # z fallbackiem na wspólną wartość domyślną dla starszych wpisów bez własnego progu.
@@ -1078,6 +1099,56 @@ def edytuj_warsztat(warsztat_id, nazwa, telefon=None, adres=None, notatki=None):
 def usun_warsztat(warsztat_id):
     with polacz_baze() as conn:
         conn.execute("DELETE FROM warsztaty WHERE id=?", (warsztat_id,))
+
+# ==================== WYDATKI CYKLICZNE ====================
+
+def pobierz_wydatki_cykliczne(auto_id):
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne WHERE auto_id=? ORDER BY nastepna_data",
+            (auto_id,)
+        )
+        return c.fetchall()
+
+def dodaj_wydatek_cykliczny(auto_id, nazwa, kwota, okres_dni, nastepna_data):
+    with polacz_baze() as conn:
+        conn.execute(
+            "INSERT INTO wydatki_cykliczne (auto_id, nazwa, kwota, okres_dni, nastepna_data) VALUES (?,?,?,?,?)",
+            (auto_id, nazwa, kwota, okres_dni, nastepna_data)
+        )
+
+def edytuj_wydatek_cykliczny(wydatek_id, nazwa, kwota, okres_dni, nastepna_data):
+    with polacz_baze() as conn:
+        conn.execute(
+            "UPDATE wydatki_cykliczne SET nazwa=?, kwota=?, okres_dni=?, nastepna_data=? WHERE id=?",
+            (nazwa, kwota, okres_dni, nastepna_data, wydatek_id)
+        )
+
+def usun_wydatek_cykliczny(wydatek_id):
+    with polacz_baze() as conn:
+        conn.execute("DELETE FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
+
+def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
+    """Tworzy wpis w inne_koszty na podstawie wydatku cyklicznego i przesuwa jego
+    następny termin płatności o okres_dni od DZISIAJ (nie od starej daty — dzięki
+    temu spóźniona płatność nie generuje serii zaległych powiadomień pod rząd)."""
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT nazwa, kwota, okres_dni FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
+        w = c.fetchone()
+        if not w:
+            return
+        nazwa, kwota, okres_dni = w
+        dzis = datetime.now()
+        conn.execute(
+            "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota) VALUES (?,?,?,?,?)",
+            (auto_id, dzis.strftime("%d.%m.%Y"), "Cykliczne", nazwa, kwota)
+        )
+        nowa_data = (dzis + timedelta(days=int(okres_dni or 30))).strftime("%d.%m.%Y")
+        conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, wydatek_id))
 
 def pobierz_uzyte_czesci_wizyty(wizyta_id):
     with polacz_baze() as conn:
