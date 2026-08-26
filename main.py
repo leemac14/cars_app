@@ -27,6 +27,7 @@ from views.eksport_view import EksportView
 from views.kalkulator_view import KalkulatorTrasyView
 from views.wspoldzielenie_view import WspoldzielenieView
 from views.timeline_view import TimelineView
+from views.search_view import SzukajView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -438,6 +439,8 @@ def main(page: ft.Page):
             page.views.append(KalkulatorTrasyView(page, app_state))
         elif segmenty[0] == "timeline":
             page.views.append(TimelineView(page, app_state))
+        elif segmenty[0] == "szukaj":
+            page.views.append(SzukajView(page, app_state))
         elif segmenty[0] == "do-zrobienia":
             page.views.append(DoZrobieniaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":

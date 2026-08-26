@@ -766,6 +766,90 @@ def pobierz_dane_do_porownania(auto_id):
 
     return dane
 
+def globalne_wyszukiwanie(auto_id, zapytanie):
+    """Przeszukuje jednocześnie tankowania, historię serwisową, wizyty zbiorcze,
+    inne koszty oraz listę Do zrobienia BIEŻĄCEGO pojazdu. Używane przez widok
+    /szukaj — jedną wspólną wyszukiwarkę dostępną z paska głównego, w odróżnieniu
+    od lokalnych pól filtruj_* działających tylko na już wczytanej liście.
+    Zwraca listę słowników {typ, tytul, opis, data, trasa}, posortowaną malejąco
+    po dacie (nierozpoznane daty lądują na końcu)."""
+    if not auto_id or not zapytanie or not zapytanie.strip():
+        return []
+
+    q = f"%{zapytanie.strip()}%"
+    wyniki = []
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        c.execute(
+            "SELECT id, data, przebieg, stacja, tagi FROM tankowania "
+            "WHERE auto_id=? AND (stacja LIKE ? OR tagi LIKE ? OR data LIKE ?)",
+            (auto_id, q, q, q)
+        )
+        for r in c.fetchall():
+            opis = f"{int(r['przebieg'] or 0)} km" + (f" • {r['stacja']}" if r["stacja"] else "")
+            wyniki.append({
+                "typ": "Tankowanie", "tytul": r["stacja"] or "Tankowanie", "opis": opis,
+                "data": r["data"], "trasa": f"/tankowanie/edytuj/{r['id']}",
+            })
+
+        c.execute(
+            "SELECT h.id, h.data, h.przebieg, h.wykonawca, h.kategoria, z.nazwa "
+            "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL AND "
+            "(z.nazwa LIKE ? OR h.wykonawca LIKE ? OR h.kategoria LIKE ? OR h.data LIKE ?)",
+            (auto_id, q, q, q, q)
+        )
+        for r in c.fetchall():
+            opis = f"{int(r['przebieg'] or 0)} km" + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            wyniki.append({
+                "typ": "Serwis", "tytul": str(r["nazwa"]), "opis": opis,
+                "data": r["data"], "trasa": f"/wpis/edytuj/{r['id']}",
+            })
+
+        c.execute(
+            "SELECT w.id, w.data, w.wykonawca, w.notatki, w.tagi, "
+            "GROUP_CONCAT(z.nazwa, ', ') as czesci "
+            "FROM wizyty w LEFT JOIN historia h ON h.wizyta_id=w.id LEFT JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE w.auto_id=? GROUP BY w.id "
+            "HAVING (w.wykonawca LIKE ? OR w.notatki LIKE ? OR w.tagi LIKE ? OR w.data LIKE ? OR czesci LIKE ?)",
+            (auto_id, q, q, q, q, q)
+        )
+        for r in c.fetchall():
+            opis = str(r["czesci"] or "Brak podpiętych części") + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            wyniki.append({
+                "typ": "Wizyta zbiorcza", "tytul": "Wizyta w warsztacie", "opis": opis,
+                "data": r["data"], "trasa": f"/wizyty/edytuj/{r['id']}",
+            })
+
+        c.execute(
+            "SELECT id, data, nazwa, kategoria, tagi FROM inne_koszty "
+            "WHERE auto_id=? AND (nazwa LIKE ? OR kategoria LIKE ? OR tagi LIKE ? OR data LIKE ?)",
+            (auto_id, q, q, q, q)
+        )
+        for r in c.fetchall():
+            opis = str(r["kategoria"] or r["tagi"] or "Inny koszt")
+            wyniki.append({
+                "typ": "Inny koszt", "tytul": str(r["nazwa"] or "Koszt"), "opis": opis,
+                "data": r["data"], "trasa": f"/inne/edytuj/{r['id']}",
+            })
+
+        c.execute(
+            "SELECT id, tytul, opis, priorytet, termin FROM do_zrobienia "
+            "WHERE auto_id=? AND (tytul LIKE ? OR opis LIKE ? OR priorytet LIKE ?)",
+            (auto_id, q, q, q)
+        )
+        for r in c.fetchall():
+            wyniki.append({
+                "typ": "Do zrobienia", "tytul": str(r["tytul"]), "opis": str(r["opis"] or r["priorytet"] or ""),
+                "data": r["termin"] or "", "trasa": f"/do-zrobienia/edytuj/{r['id']}",
+            })
+
+    wyniki.sort(key=lambda w: parsuj_date(w["data"]), reverse=True)
+    return wyniki
+
 def pobierz_dane_timeline(auto_id):
     """Zbiorcza, chronologiczna lista zdarzeń pojazdu ze wszystkich modułów
     (tankowania, historia serwisowa, wizyty zbiorcze, inne koszty, galeria

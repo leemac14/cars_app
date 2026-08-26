@@ -647,6 +647,11 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         center_title=False, 
         bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY),
         actions=[
+            ft.IconButton(
+                icon=ft.Icons.SEARCH,
+                tooltip="Szukaj we wszystkim",
+                on_click=lambda e: przejdz(page, "/szukaj")
+            ),
             przycisk_dzwonka(page, state),          
             ft.PopupMenuButton(
                 icon=ft.Icons.MORE_VERT,
