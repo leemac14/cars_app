@@ -4,6 +4,7 @@ import re
 import db
 import os
 import asyncio
+import urllib.parse
 from state import MIESIACE_NAZWY
 from date import parsuj_date
 
@@ -1124,6 +1125,133 @@ def wizualizacja_tagow(tagi_str, auto_id):
             )
         )
     return ft.Row(chipy, wrap=True, spacing=4)
+
+def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
+    stan = {"telefon": None, "adres": None}
+    
+    def wpisy_warsztatow():
+        return db.pobierz_warsztaty(state.auto_id)
+
+    warsztaty = wpisy_warsztatow()
+    pasujacy_start = next((w for w in warsztaty if w[1] == aktualna_nazwa), None) if aktualna_nazwa else None
+    
+    # Tryb ręczny włączony tylko gdy wczytujemy wpis, którego nie ma w bazie
+    pokaz_reczne = bool(aktualna_nazwa and not pasujacy_start)
+
+    def zbuduj_opcje():
+        opcje = [ft.DropdownOption(key="", text="— Brak przypisanego —")]
+        for w_id, w_nazwa, w_tel, w_adr, w_not in wpisy_warsztatow():
+            opcje.append(ft.DropdownOption(key=w_nazwa, text=w_nazwa))
+        return opcje
+
+    e_dropdown = ft.Dropdown(
+        label="Warsztat / Wykonawca",
+        options=zbuduj_opcje(),
+        value=aktualna_nazwa if pasujacy_start else "",
+        visible=not pokaz_reczne,
+        expand=True,
+        **styl_dropdown()
+    )
+
+    e_recznie = ft.TextField(
+        label="Wpisz nazwę (zapisze się automatycznie)",
+        value=aktualna_nazwa if pokaz_reczne else "",
+        visible=pokaz_reczne,
+        expand=True,
+        **styl_pola()
+    )
+
+    btn_zmien_tryb = ft.IconButton(
+        icon=ft.Icons.LIST if pokaz_reczne else ft.Icons.EDIT,
+        tooltip="Wybierz warsztat z bazy" if pokaz_reczne else "Wpisz nową nazwę ręcznie",
+        icon_color=ft.Colors.PRIMARY
+    )
+
+    wiersz_glowne = ft.Row([e_dropdown, e_recznie, btn_zmien_tryb], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
+
+    btn_dzwon = ft.OutlinedButton("📞 Zadzwoń", visible=False)
+    btn_nawiguj = ft.OutlinedButton("🧭 Nawiguj", visible=False)
+    wiersz_akcji = ft.Row([btn_dzwon, btn_nawiguj], spacing=8, visible=False)
+
+    async def zadzwon(e):
+        if stan["telefon"]: await page.launch_url(f"tel:{stan['telefon']}")
+
+    async def nawiguj(e):
+        if stan["adres"]: await page.launch_url(f"geo:0,0?q={urllib.parse.quote(stan['adres'])}")
+
+    btn_dzwon.on_click = zadzwon
+    btn_nawiguj.on_click = nawiguj
+
+    def odswiez_akcje():
+        btn_dzwon.visible = bool(stan["telefon"] and e_dropdown.visible)
+        btn_nawiguj.visible = bool(stan["adres"] and e_dropdown.visible)
+        wiersz_akcji.visible = btn_dzwon.visible or btn_nawiguj.visible
+        try: wiersz_akcji.update()
+        except Exception: pass
+
+    def przelacz_tryb(e):
+        na_reczne = not e_recznie.visible
+        if na_reczne:
+            e_dropdown.visible = False
+            e_dropdown.value = ""
+            e_recznie.visible = True
+            btn_zmien_tryb.icon = ft.Icons.LIST
+            btn_zmien_tryb.tooltip = "Wybierz z bazy"
+        else:
+            e_recznie.visible = False
+            e_recznie.value = ""
+            e_dropdown.visible = True
+            btn_zmien_tryb.icon = ft.Icons.EDIT
+            btn_zmien_tryb.tooltip = "Wpisz ręcznie"
+            e_dropdown.value = ""
+            stan["telefon"], stan["adres"] = None, None
+
+        odswiez_akcje()
+        try: wiersz_glowne.update()
+        except Exception: pass
+        
+    btn_zmien_tryb.on_click = przelacz_tryb
+
+    def ustaw_z_bazy(nazwa):
+        pasujacy = next((w for w in wpisy_warsztatow() if w[1] == nazwa), None)
+        if pasujacy:
+            stan["telefon"], stan["adres"] = pasujacy[2], pasujacy[3]
+        else:
+            stan["telefon"], stan["adres"] = None, None
+        
+        e_dropdown.options = zbuduj_opcje()
+        e_dropdown.value = nazwa if pasujacy else ""
+        odswiez_akcje()
+        try: e_dropdown.update()
+        except Exception: pass
+
+    def po_zmianie(e):
+        wart = e_dropdown.value
+        if wart == "":
+            stan["telefon"], stan["adres"] = None, None
+            odswiez_akcje()
+            try: e_dropdown.update()
+            except Exception: pass
+        else:
+            ustaw_z_bazy(wart)
+
+    e_dropdown.on_change = po_zmianie
+    
+    if pasujacy_start and not pokaz_reczne:
+        stan["telefon"], stan["adres"] = pasujacy_start[2], pasujacy_start[3]
+        odswiez_akcje()
+
+    kontener = ft.Column([wiersz_glowne, wiersz_akcji], spacing=4)
+
+    def pobierz_wynik():
+        if e_recznie.visible:
+            return (e_recznie.value or "").strip()
+        wart = e_dropdown.value
+        if wart in ("", None):
+            return ""
+        return wart
+
+    return kontener, pobierz_wynik
 
 def abs_zalacznik(sciezka_wzgledna):
     if not sciezka_wzgledna:

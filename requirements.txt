@@ -2,3 +2,4 @@ flet
 flet-charts
 Pillow
 fpdf2
+supabase

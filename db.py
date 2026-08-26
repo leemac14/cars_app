@@ -78,6 +78,15 @@ def init_db():
         # Tabela ustawień potrzebna na samym początku do sprawdzania wersji
         cursor.execute("CREATE TABLE IF NOT EXISTS ustawienia (klucz TEXT PRIMARY KEY, wartosc TEXT)")
         
+        # ================= DODAJ TEN BLOK =================
+        # TWARDE WYMUSZENIE UTWORZENIA TABEL WARSZTATÓW I WYDATKÓW
+        cursor.execute("CREATE TABLE IF NOT EXISTS warsztaty (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, telefon TEXT, adres TEXT, notatki TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_warsztaty_auto ON warsztaty(auto_id)")
+        
+        cursor.execute("CREATE TABLE IF NOT EXISTS wydatki_cykliczne (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, kwota REAL NOT NULL DEFAULT 0.0, okres_dni INTEGER NOT NULL DEFAULT 30, nastepna_data TEXT NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_wydatki_cykliczne_auto ON wydatki_cykliczne(auto_id)")
+        # ==================================================
+        
         cursor.execute("SELECT wartosc FROM ustawienia WHERE klucz='schema_version'")
         w = cursor.fetchone()
         wersja = int(w[0]) if w else 0
@@ -214,7 +223,23 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_odczyty_przebiegu_auto ON odczyty_przebiegu(auto_id);
             """,
 
-            # Wersja 14: Współdzielenie pojazdu (Supabase) — patrz sync.py. Pola
+            # Wersja 14: Baza warsztatów per pojazd — pozwala wybierać wykonawcę
+            # z listy zamiast wpisywać go ręcznie, plus telefon/adres do
+            # szybkiego "zadzwoń"/"nawiguj" z poziomu wizyty.
+            """
+            CREATE TABLE IF NOT EXISTS warsztaty (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, telefon TEXT, adres TEXT, notatki TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_warsztaty_auto ON warsztaty(auto_id);
+            """,
+
+            # Wersja 15: Wydatki cykliczne (raty, abonamenty, ubezpieczenia
+            # ratalne) — osobny harmonogram, z automatycznym przesuwaniem
+            # terminu po oznaczeniu jako zapłacone.
+            """
+            CREATE TABLE IF NOT EXISTS wydatki_cykliczne (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, kwota REAL NOT NULL DEFAULT 0.0, okres_dni INTEGER NOT NULL DEFAULT 30, nastepna_data TEXT NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_wydatki_cykliczne_auto ON wydatki_cykliczne(auto_id);
+            """,
+
+            # Wersja 16: Współdzielenie pojazdu (Supabase) — patrz sync.py. Pola
             # NULL = pojazd/tankowanie czysto lokalne, zero zmian w zachowaniu.
             """
             ALTER TABLE samochody ADD COLUMN wspolny_pojazd_id TEXT;
@@ -1017,6 +1042,43 @@ def edytuj_tag_w_slowniku(auto_id, tag_id, stara_nazwa, nowa_nazwa, nowy_kolor):
                         nowe_tagi = ",".join(tagi_lista)
                         conn.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowe_tagi, r_id))
 
+# ==================== WARSZTATY ====================
+
+def pobierz_warsztaty(auto_id):
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, nazwa, telefon, adres, notatki FROM warsztaty WHERE auto_id=? ORDER BY nazwa", (auto_id,))
+        return c.fetchall()
+
+def dodaj_warsztat(auto_id, nazwa, telefon=None, adres=None, notatki=None):
+    """Dodaje warsztat per pojazd. Jeśli warsztat o tej samej nazwie (bez
+    uwzględniania wielkości liter) już istnieje, zwraca jego id zamiast
+    tworzyć duplikat — analogicznie do dodaj_tag()."""
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM warsztaty WHERE auto_id=? AND LOWER(nazwa)=LOWER(?)", (auto_id, nazwa))
+        w = c.fetchone()
+        if w:
+            return w[0]
+        c.execute(
+            "INSERT INTO warsztaty (auto_id, nazwa, telefon, adres, notatki) VALUES (?,?,?,?,?)",
+            (auto_id, nazwa, telefon or None, adres or None, notatki or None)
+        )
+        return c.lastrowid
+
+def edytuj_warsztat(warsztat_id, nazwa, telefon=None, adres=None, notatki=None):
+    with polacz_baze() as conn:
+        conn.execute(
+            "UPDATE warsztaty SET nazwa=?, telefon=?, adres=?, notatki=? WHERE id=?",
+            (nazwa, telefon or None, adres or None, notatki or None, warsztat_id)
+        )
+
+def usun_warsztat(warsztat_id):
+    with polacz_baze() as conn:
+        conn.execute("DELETE FROM warsztaty WHERE id=?", (warsztat_id,))
+
 def pobierz_uzyte_czesci_wizyty(wizyta_id):
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -1343,7 +1405,8 @@ def usun_auto_z_cofnieciem(auto_id):
     tabele_poziom_1 = [
         "zadania", "wizyty", "magazyn_czesci", 
         "tagi", "tankowania", "inne_koszty", 
-        "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu"
+        "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
+        "warsztaty", "wydatki_cykliczne"
     ]
     tabele_poziom_2 = ["do_zrobienia"] # Zależy od zadania
     tabele_poziom_3 = ["historia", "wizyta_czesci_magazynu"] # Zależą od zadań i wizyt

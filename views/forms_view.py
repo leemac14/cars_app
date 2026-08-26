@@ -656,13 +656,13 @@ class FormularzZadanieView(ft.View):
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
         self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value="", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_w = ft.TextField(label="Mechanik / Warsztat", value="", **utils.styl_pola())
+        self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, "")
         
         # --- DODANE: Obsługa zdjęcia przy pierwszej wymianie ---
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, None)
 
         self.karta_wymiany = utils.karta_formularza(
-            [self.e_d, self.e_p, self.e_c, self.e_w, self.k_zalacznik], 
+            [self.e_d, self.e_p, self.e_c, self.k_wykonawca, self.k_zalacznik], 
             "Szczegóły pierwszej wymiany", ft.Icons.BUILD, domyslnie_otwarte=True
         )
         self.karta_wymiany.visible = False
@@ -704,8 +704,6 @@ class FormularzZadanieView(ft.View):
             if kos < 0: bledy.append((self.e_c, "Błędny koszt"))
             if bledy: return utils.pokaz_bledy_formularza(self._page, bledy)
             
-            # Zapisujemy plik już teraz (potrzebny do INSERT-u), ale sprzątamy go
-            # niżej, gdyby nazwa podzespołu okazała się zajęta
             przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
             nowy_zalacznik = przygotowany or None
 
@@ -723,9 +721,12 @@ class FormularzZadanieView(ft.View):
                 nowe_z_id = c.lastrowid
                 
                 if self.c_dodaj_wymiane.value:
-                    wyk = self.e_w.value or "Warsztat"
+                    # ZAPIS NOWEGO WARSZTATU
+                    wyk = self.get_wykonawca() or "Warsztat"
+                    if wyk and wyk != "Warsztat":
+                        db.dodaj_warsztat(self.state.auto_id, wyk)
+                        
                     kat = "Letnie" if self.c_dotyczy_opon.value else None
-                    # Dodano pole zalacznik do zapytania SQL
                     c.execute(
                         "INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik) VALUES (?,?,?,?,?,?,?)", 
                         (nowe_z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik)
@@ -823,7 +824,7 @@ class FormularzWpisView(ft.View):
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
         self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value=c_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_w = ft.TextField(label="Mechanik / Warsztat", value=w_val, **utils.styl_pola())
+        self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, w_val)
         self.e_kat = ft.Dropdown(
             label="Rodzaj opon", 
             options=[
@@ -838,7 +839,7 @@ class FormularzWpisView(ft.View):
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)  # <-- NOWE
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"{'Edycja' if h_id else 'Nowa wymiana'}: {nazwa}", self.trasa_powrotu, on_save=self.zapisz)
-        k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.e_w], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True)
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / faktura)", ft.Icons.ATTACH_FILE)  # <-- NOWE
         
         elementy = [k1, k2, utils.przyciski_akcji(page, "✅ Zapisz wpis", self.zapisz, self.trasa_powrotu)]
@@ -849,14 +850,19 @@ class FormularzWpisView(ft.View):
         )
 
     def zapisz(self, e):
-        for pole in (self.e_p, self.e_c, self.e_w): pole.error_text = None
+        for pole in (self.e_p, self.e_c): pole.error_text = None
         prz, kos = utils.parsuj_int(self.e_p.value, 0), utils.parsuj_float(self.e_c.value, 0.0)
         bledy = []
         if not (self.e_p.value or "").strip() or prz < 0: bledy.append((self.e_p, "Błędny przebieg"))
         if kos < 0: bledy.append((self.e_c, "Błędny koszt"))
         if bledy: return utils.pokaz_bledy_formularza(self._page, bledy)
 
-        wyk, kat = self.e_w.value or "Warsztat", self.e_kat.value if self.e_kat.visible else None
+        # Pobieramy wykonawcę i jeśli wpisano z palca nową nazwę, zapisujemy ją do bazy
+        wyk = self.get_wykonawca() or "Warsztat"
+        if wyk and wyk != "Warsztat":
+            db.dodaj_warsztat(self.state.auto_id, wyk)
+            
+        kat = self.e_kat.value if self.e_kat.visible else None
 
         if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.h_id, tabela="historia", nowa_data_str=self.e_d.value):
             return
@@ -902,7 +908,7 @@ class FormularzWizytyView(ft.View):
 
         self.e_d = utils.pole_daty(page, "Data odebrania z warsztatu", d_val)
         self.e_p = ft.TextField(label="Przebieg podczas wizyty (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_w = ft.TextField(label="Nazwa warsztatu / Mechanik", value=wyk_val, **utils.styl_pola())
+        self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, wyk_val)
         self.e_k = ft.TextField(label=f"Całkowity koszt naprawy ({utils.symbol_waluty()})", value=kosz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
@@ -985,7 +991,7 @@ class FormularzWizytyView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", "/wizyty", on_save=self.zapisz)
         
         k1 = utils.karta_formularza(
-            [self.e_d, self.e_p, self.e_w, self.e_k, self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
+            [self.e_d, self.e_p, self.k_wykonawca, self.e_k, self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
             "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True
         )
         k1b = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
@@ -1043,7 +1049,11 @@ class FormularzWizytyView(ft.View):
         if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.w_id, tabela="wizyty", nowa_data_str=self.e_d.value):
             return
 
-        wyk = self.e_w.value or "Warsztat"
+        # ZAPIS NOWEGO WARSZTATU
+        wyk = self.get_wykonawca() or "Warsztat"
+        if wyk and wyk != "Warsztat":
+            db.dodaj_warsztat(self.state.auto_id, wyk)
+            
         wybrane_tagi = self.get_tagi()
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
