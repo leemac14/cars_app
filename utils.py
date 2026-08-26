@@ -36,6 +36,44 @@ def formatuj_liczba(wartosc, decimale=2):
     else:
         return f"{int(round(wartosc)):,}".replace(",", " ")
 
+# ============== DESIGN TOKENS ==============
+RADIUS = {"xs": 8, "sm": 10, "md": 12, "lg": 16, "xl": 20, "pill": 999}
+SPACING = {"xs": 4, "sm": 8, "md": 15, "lg": 20, "xl": 30}
+FS = {
+    "caption": 11, "label": 12, "body": 13, "body_strong": 14,
+    "title": 16, "heading": 18, "display": 22,
+}
+KOLOR_STATUS = {
+    "critical": ft.Colors.RED_700,
+    "warning": ft.Colors.ORANGE_700,
+    "ok": ft.Colors.GREEN_700,
+    "neutral": ft.Colors.ON_SURFACE_VARIANT,
+}
+
+
+def _czy_ciemny(page: ft.Page = None) -> bool:
+    if page is None:
+        return False
+    try:
+        if page.theme_mode == ft.ThemeMode.DARK:
+            return True
+        if page.theme_mode == ft.ThemeMode.LIGHT:
+            return False
+        return getattr(page, "platform_brightness", None) == ft.Brightness.DARK
+    except Exception:
+        return False
+
+
+def tlo_karty(page: ft.Page = None, poziom="md"):
+    """Tło 'szklanej' powierzchni (karty/pola/sekcje) dopasowane do jasnego/
+    ciemnego motywu. W dark mode ON_SURFACE jest jasny, więc te same wartości
+    opacity co w light mode są ledwo widoczne — tutaj są podbite.
+    Wywołanie bez `page` zwraca wartość jak dotychczas (zgodność wsteczna)."""
+    jasny = {"xs": 0.03, "sm": 0.04, "md": 0.06, "lg": 0.08, "xl": 0.12}
+    ciemny = {"xs": 0.06, "sm": 0.08, "md": 0.12, "lg": 0.16, "xl": 0.22}
+    mapa = ciemny if _czy_ciemny(page) else jasny
+    return ft.Colors.with_opacity(mapa.get(poziom, mapa["md"]), ft.Colors.ON_SURFACE)
+
 def parsuj_int(wartosc, domyslna=0):
     if wartosc is None: return domyslna
     tekst = str(wartosc).strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
@@ -869,16 +907,24 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
     return ft.Container(
         padding=30,
         content=ft.Column([
-            ft.Container(height=20),
+            ft.Container(height=10),
             ft.Row([
-                ft.Icon(ikona, size=64, color=ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY))
+                ft.Container(
+                    width=104, height=104, border_radius=52,
+                    alignment=ft.Alignment.CENTER,
+                    gradient=ft.RadialGradient(colors=[
+                        ft.Colors.with_opacity(0.22, ft.Colors.PRIMARY),
+                        ft.Colors.with_opacity(0.0, ft.Colors.PRIMARY),
+                    ]),
+                    content=ft.Icon(ikona, size=46, color=ft.Colors.PRIMARY),
+                )
             ], alignment=ft.MainAxisAlignment.CENTER),
-            ft.Container(height=5),
+            ft.Container(height=10),
             ft.Row([
-                ft.Text(tytul, size=20, weight="bold", color=ft.Colors.ON_SURFACE)
+                ft.Text(tytul, size=FS["heading"], weight="bold", color=ft.Colors.ON_SURFACE)
             ], alignment=ft.MainAxisAlignment.CENTER),
             ft.Row([
-                ft.Text(opis, size=14, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER)
+                ft.Text(opis, size=FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER)
             ], alignment=ft.MainAxisAlignment.CENTER),
             ft.Container(height=15),
             ft.Row([
@@ -888,6 +934,7 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
                         ft.Text(tekst_przycisku, color=ft.Colors.ON_PRIMARY, weight="bold")
                     ], tight=True, spacing=6),
                     bgcolor=ft.Colors.PRIMARY,
+                    style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]), padding=ft.Padding(20, 14, 20, 14)),
                     on_click=on_click
                 )
             ], alignment=ft.MainAxisAlignment.CENTER),
@@ -895,14 +942,14 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
-def styl_pola():
+def styl_pola(page: ft.Page = None):
     return {
-        "border_radius": 12,
+        "border_radius": RADIUS["md"],
         "border_color": ft.Colors.with_opacity(0.15, ft.Colors.ON_SURFACE),
         "focused_border_color": ft.Colors.PRIMARY,
         "content_padding": 16,
         "filled": True,
-        "bgcolor": ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
+        "bgcolor": tlo_karty(page, "sm"),
     }
 
 def styl_dropdown():
@@ -935,8 +982,8 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False)
     
     if not tytul:
         return ft.Container(
-            padding=20, border_radius=16, bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
-            border=ft.Border(top=ft.BorderSide(1, kolor_ramki), right=ft.BorderSide(1, kolor_ramki), bottom=ft.BorderSide(1, kolor_ramki), left=ft.BorderSide(1, kolor_ramki)),
+            padding=20, border_radius=RADIUS["lg"], bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
+            border=ft.Border.all(1, kolor_ramki),
             content=ft.Column(zawartosc, spacing=15)
         )
 
@@ -959,20 +1006,14 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False)
     naglowek = ft.Container(
         padding=ft.Padding(20, 15, 20, 15),
         on_click=przelacz_rozwijanie,
-        content=ft.Row([
-            ft.Icon(ikona, color=ft.Colors.PRIMARY, size=20) if ikona else ft.Container(),
-            ft.Text(tytul, weight="bold", size=16, color=ft.Colors.PRIMARY, expand=True),
-            ikona_strzalki
-        ], spacing=10)
+        ink=True,
+        content=ft.Row([...], spacing=10)
     )
 
     return ft.Container(
-        border_radius=16,
+        border_radius=RADIUS["lg"],
         bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
-        border=ft.Border(
-            top=ft.BorderSide(1, kolor_ramki), right=ft.BorderSide(1, kolor_ramki),
-            bottom=ft.BorderSide(1, kolor_ramki), left=ft.BorderSide(1, kolor_ramki)
-        ),
+        border=ft.Border.all(1, kolor_ramki),
         content=ft.Column([naglowek, cialo], spacing=0)
     )
 
@@ -982,13 +1023,13 @@ def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj):
         on_click=on_zapisz, 
         bgcolor=ft.Colors.PRIMARY, 
         color=ft.Colors.ON_PRIMARY, 
-        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15),
+        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]), padding=15),
         width=float("inf")
     )
     btn_anuluj = ft.OutlinedButton(
         "Anuluj", 
         on_click=lambda e: przejdz(page, trasa_anuluj), 
-        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15),
+        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]), padding=15),
         width=float("inf")
     )
     return ft.Column([ft.Divider(height=10, color="transparent"), btn_zapisz, btn_anuluj, dol_bezpieczny(30)], spacing=10)
@@ -1651,6 +1692,85 @@ async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, st
                     pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", ft.Colors.RED_700)
     except Exception as ex:
         pokaz_komunikat(page, f"Błąd wczytywania: {ex}", ft.Colors.RED_700)
+
+def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
+    """Standardowa karta pozycji na liście, opcjonalnie z kolorowym paskiem
+    statusu/priorytetu po lewej stronie (jak w Gmailu/Todoist) — status widać
+    jednym rzutem oka, bez czytania treści karty.
+    Zwraca (karta, kontener). 'kontener' to element do podpięcia
+    on_click/on_long_press (np. przez ZaznaczanieGrupowe.podepnij_zdarzenia_grupowe),
+    dokładnie tak jak dotychczasowy 'kontener' w Twoich widokach."""
+    tlo = tlo if tlo is not None else tlo_karty(page, "xs")
+
+    kontener = ft.Container(
+        padding=15, ink=True,
+        border_radius=0 if kolor_paska else RADIUS["lg"],
+        bgcolor=tlo,
+        expand=True if kolor_paska else None,
+        content=tresc if isinstance(tresc, ft.Control) else ft.Column(tresc, spacing=4),
+    )
+
+    if not kolor_paska:
+        return ft.Card(elevation=1, content=kontener), kontener
+
+    karta = ft.Card(
+        elevation=1,
+        content=ft.Container(
+            border_radius=RADIUS["lg"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Row([ft.Container(width=4, bgcolor=kolor_paska), kontener], spacing=0),
+        )
+    )
+    return karta, kontener
+
+def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
+    """Animowany zamiennik powtarzanego wzorca 'btn_zakladki' — segmenty
+    przełączają się płynną animacją koloru i skali zamiast twardego przeskoku.
+    opcje: lista (etykieta, indeks). on_zmiana(nowy_idx) wywoływane po kliknięciu."""
+    segmenty = []
+    for etykieta, idx in opcje:
+        aktywny = (idx == aktywny_idx)
+        segmenty.append(
+            ft.Container(
+                expand=True, height=36, alignment=ft.Alignment.CENTER,
+                border_radius=RADIUS["pill"], ink=True,
+                bgcolor=ft.Colors.PRIMARY if aktywny else ft.Colors.TRANSPARENT,
+                animate=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
+                animate_scale=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
+                scale=1.0 if aktywny else 0.96,
+                on_click=lambda e, i=idx: on_zmiana(i),
+                content=ft.Text(
+                    etykieta, size=FS["label"], weight="bold",
+                    color=ft.Colors.ON_PRIMARY if aktywny else ft.Colors.ON_SURFACE_VARIANT,
+                ),
+            )
+        )
+    return ft.Container(
+        padding=4, border_radius=RADIUS["pill"], bgcolor=tlo_karty(page, "sm"),
+        content=ft.Row(segmenty, spacing=4),
+    )
+
+def fab_animowany(icon, on_click, tooltip=None):
+    """FloatingActionButton z 'namacalnym' feedbackiem dotyku — lekkie
+    zmniejszenie (scale) przy naciśnięciu i płynny powrót."""
+    fab = ft.FloatingActionButton(
+        icon=icon, bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY,
+        tooltip=tooltip, scale=1.0,
+        animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
+    )
+
+    async def _obsluz_klik(e):
+        fab.scale = 0.88
+        fab.update()
+        await asyncio.sleep(0.09)
+        fab.scale = 1.0
+        fab.update()
+        if on_click:
+            wynik = on_click(e)
+            if asyncio.iscoroutine(wynik):
+                await wynik
+
+    fab.on_click = _obsluz_klik
+    return fab
 
 class ZaznaczanieGrupowe:
     """Mixin: obsługa zaznaczania wielu kart + appbar trybu zaznaczania.

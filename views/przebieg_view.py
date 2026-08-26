@@ -12,7 +12,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "📈 Historia odczytów przebiegu", "/")
         fab = ft.FloatingActionButton(
             icon=ft.Icons.ADD,
-            on_click=lambda e: self._dialog_odczytu(),
+            on_click=utils.fab_animowany(ft.Icons.ADD, lambda e: self._dialog_odczytu()),
             bgcolor=ft.Colors.PRIMARY,
             foreground_color=ft.Colors.ON_PRIMARY
         )
@@ -39,7 +39,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 tytul="Brak zapisanych odczytów",
                 opis="Dodawaj tu szybkie odczyty stanu licznika z deski rozdzielczej, bez tworzenia tankowania czy wpisu serwisowego.",
                 tekst_przycisku="Dodaj odczyt",
-                on_click=lambda e: self._dialog_odczytu()
+                on_click=utils.fab_animowany(ft.Icons.ADD, lambda e: self._dialog_odczytu())
             ))
         else:
             # Dystans od poprzedniego (chronologicznie) odczytu — dodatkowy kontekst na karcie

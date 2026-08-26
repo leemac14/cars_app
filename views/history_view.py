@@ -17,7 +17,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         czy_opony = bool(w[1]) if w else False
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"Historia: {z_nazwa}", "/")
-        fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, f"/wpis/nowy/{z_id}"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))
 
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
         self.tryb_zaznaczania = False

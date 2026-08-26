@@ -10,12 +10,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self.state = state
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "📝 Do zrobienia", "/")
-        fab = ft.FloatingActionButton(
-            icon=ft.Icons.ADD,
-            on_click=lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"),
-            bgcolor=ft.Colors.PRIMARY,
-            foreground_color=ft.Colors.ON_PRIMARY
-        )
+        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"))
 
         # --- ZMIENNE DLA GRUPOWEGO ZAZNACZANIA / USUWANIA ---
         self.tryb_zaznaczania = False
@@ -160,13 +155,15 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         if stopka_bits:
             tresc_kolumny.append(ft.Row(stopka_bits, spacing=12))
 
-        kontener = ft.Container(
-            padding=15, border_radius=10, opacity=0.55 if zrobione else 1.0,
-            content=ft.Row([
+        karta, kontener = utils.karta_listy(
+            ft.Row([
                 chk,
                 ft.Column(tresc_kolumny, spacing=4, expand=True)
-            ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=10)
+            ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=10),
+            kolor_paska=kolor_priorytetu,
+            page=self._page,
         )
+        karta.content.opacity = 0.55 if zrobione else 1.0
 
         self.karty_ref[p_id] = kontener
 
@@ -184,7 +181,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         kontener.on_click = _on_click
         kontener.on_long_press = _on_long_press
 
-        return ft.Card(elevation=1, content=kontener)
+        return karta
 
     # --- MENU POJEDYNCZEJ POZYCJI (BOTTOM SHEET) ---
     def _otworz_menu(self, p_id, tytul, zrobione):

@@ -670,20 +670,18 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     zid = z.get('id')
                     zn = z.get('nazwa')
 
-                    kontener = ft.Container(
-                        padding=15,
-                        border_radius=10,
-                        content=ft.Column([
-                            ft.Row([ft.Text(str(zn), weight="bold", size=16, expand=True), ft.Icon(ico, color=kol)]),
-                            ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-                            ft.Text(final_status, size=14, weight="bold", color=kol)
-                        ])
+                    karta_z, kontener = utils.karta_listy(
+                        ft.Column([
+                            ft.Row([ft.Text(str(zn), weight="bold", size=utils.FS["title"], expand=True), ft.Icon(ico, color=kol)]),
+                            ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(final_status, size=utils.FS["body_strong"], weight="bold", color=kol)
+                        ]),
+                        kolor_paska=kol,
+                        page=self._page,
                     )
 
                     self.karty_ref[zid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, zid, lambda zid=zid, zn=zn: pokaz_menu(zid, zn), "zadania")
-
-                    karta_z = ft.Card(elevation=1, content=kontener)
                     tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status}".lower()
                     self.wszystkie_karty_serwis.append({"karta": karta_z, "szukaj": tekst_szukaj})
                     self.lista_kart_serwis.controls.append(karta_z)
@@ -1042,17 +1040,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             self.state.stat_podzakladka = idx
             utils.przejdz(self._page, "/")
 
-        def btn_zakladki(etykieta, idx):
-            zaznaczony = self.state.stat_podzakladka == idx
-            return ft.Button(
-                etykieta,
-                style=ft.ButtonStyle(padding=5, shape=ft.RoundedRectangleBorder(radius=10)),
-                bgcolor=ft.Colors.PRIMARY if zaznaczony else ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
-                color=ft.Colors.ON_PRIMARY if zaznaczony else ft.Colors.ON_SURFACE_VARIANT,
-                on_click=lambda e, i=idx: zmien_podzakladke(i), expand=True
-            )
-
-        self.elementy.append(ft.Row([btn_zakladki("Liczby", 0), btn_zakladki("Wykresy", 1), btn_zakladki("Tabele", 2)], spacing=5))
+        self.elementy.append(utils.segmented_control(
+            self._page, [("Liczby", 0), ("Wykresy", 1), ("Tabele", 2)], self.state.stat_podzakladka, zmien_podzakladke
+        ))
 
         if self.state.stat_podzakladka == 0:
             self.elementy.extend([

@@ -18,7 +18,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         self.uzyj_wirtualizacji = False
 
         elementy = []
-        fab = ft.FloatingActionButton(icon=ft.Icons.ADD, on_click=lambda e: utils.przejdz(self._page, "/karoseria/nowe"), bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY)
+        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/karoseria/nowe"))
 
         # Pobieranie danych
         with db.polacz_baze() as conn:

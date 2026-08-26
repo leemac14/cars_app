@@ -49,18 +49,9 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             self.state.magazyn_zakladka = idx
             utils.przejdz(self._page, "/magazyn")
 
-        def btn_zakladki(etykieta, idx):
-            zaznaczony = zakladka == idx
-            return ft.Button(
-                etykieta,
-                style=ft.ButtonStyle(padding=8, shape=ft.RoundedRectangleBorder(radius=10)),
-                bgcolor=ft.Colors.PRIMARY if zaznaczony else ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
-                color=ft.Colors.ON_PRIMARY if zaznaczony else ft.Colors.ON_SURFACE_VARIANT,
-                on_click=lambda e, i=idx: zmien_zakladke(i),
-                expand=True
-            )
-
-        elementy = [ft.Row([btn_zakladki("🛞 Opony", 0), btn_zakladki("🧰 Części i płyny", 1)], spacing=8)]
+        elementy = [utils.segmented_control(
+            page, [("🛞 Opony", 0), ("🧰 Części i płyny", 1)], zakladka, zmien_zakladke
+        )]
 
         if zakladka == 0:
             elementy.extend(self._buduj_opony())
@@ -71,12 +62,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         elementy.append(utils.dol_bezpieczny(10))
 
-        fab = ft.FloatingActionButton(
-            icon=ft.Icons.ADD,
-            on_click=lambda e: utils.przejdz(self._page, trasa_fab),
-            bgcolor=ft.Colors.PRIMARY,
-            foreground_color=ft.Colors.ON_PRIMARY
-        )
+        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, trasa_fab))
 
         super().__init__(
             route="/magazyn",
@@ -208,10 +194,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         if data_pomiaru:
             stopka += f"\nPomiar bieżnika: {data_pomiaru}"
 
-        kontener = ft.Container(
-            padding=15,
-            border_radius=10,
-            content=ft.Column([
+        karta, kontener = utils.karta_listy(
+            ft.Column([
                 ft.Row([
                     utils.wskaznik_zalacznika(self._page, zalacznik, "Zestaw opon") if zalacznik else ft.Container(),
                     ft.Text(f"{ikona_sezonu} {sezon}", weight="bold", size=16, expand=True),
@@ -224,13 +208,15 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                     ft.Text(f"|  DOT: {dot_tekst}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ], spacing=6),
                 ft.Text(stopka, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            ], spacing=4)
+            ], spacing=4),
+            kolor_paska=kol_gl if (glebokosc is not None and str(glebokosc) != "") else None,
+            page=self._page,
         )
 
         self.karty_ref[z_id] = kontener
         self.podepnij_zdarzenia_grupowe(kontener, z_id, lambda zid=z_id, zsez=sezon, zzal=zalacznik: self._pokaz_menu(zid, zsez, zzal), "zestawy_opon")
 
-        return ft.Card(elevation=1, content=kontener)
+        return karta
 
     def _pokaz_menu(self, zid, sezon, zalacznik=None):
         def zamontuj(os):
@@ -370,12 +356,14 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         if stopka_bits:
             tresc.append(ft.Text("  |  ".join(stopka_bits), size=12, color=ft.Colors.ON_SURFACE_VARIANT))
 
-        kontener = ft.Container(padding=15, border_radius=10, content=ft.Column(tresc, spacing=4))
+        karta, kontener = utils.karta_listy(
+            ft.Column(tresc, spacing=4), kolor_paska=kolor_stan, page=self._page
+        )
 
         self.karty_ref[c_id] = kontener
         self.podepnij_zdarzenia_grupowe(kontener, c_id, lambda cid=c_id, cn=nazwa, czal=zalacznik: self._pokaz_menu_czesci(cid, cn, czal), "magazyn_czesci")
 
-        return ft.Card(elevation=1, content=kontener)
+        return karta
 
     def _pokaz_menu_czesci(self, cid, nazwa, zalacznik=None):
         def usun_czesc():
