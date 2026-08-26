@@ -192,6 +192,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         k_oc, t_oc = kolor_daty(w["oc_data"])
         k_pt, t_pt = kolor_daty(w["przeglad_data"])
+        kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
+        kolor_kond, ikona_kond, etykieta_kond = utils.wskaznik_kondycji(kondycja)
 
         wiele_aut = len(auta) > 1
 
@@ -392,9 +394,20 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                             tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia odczytów",
                             padding=ft.Padding(0, 2, 0, 0)
                         ),
-                        ft.Container(height=5),
+                                                ft.Container(height=5),
                         ft.Row([ft.Text("OC:", weight="bold", size=13), ft.Text(t_oc, color=k_oc, size=13, weight="bold")], spacing=5),
-                        ft.Row([ft.Text("PT:", weight="bold", size=13), ft.Text(t_pt, color=k_pt, size=13, weight="bold")], spacing=5)
+                        ft.Row([ft.Text("PT:", weight="bold", size=13), ft.Text(t_pt, color=k_pt, size=13, weight="bold")], spacing=5),
+                        ft.Container(height=5),
+                        ft.Container(
+                            padding=ft.Padding(8, 4, 8, 4),
+                            border_radius=14,
+                            bgcolor=ft.Colors.with_opacity(0.13, kolor_kond),
+                            tooltip=f"Kondycja pojazdu: {etykieta_kond}",
+                            content=ft.Row([
+                                ft.Icon(ikona_kond, size=13, color=kolor_kond),
+                                ft.Text(f"Kondycja: {kondycja if kondycja is not None else '-'}/100", size=12, weight="bold", color=kolor_kond)
+                            ], spacing=5, tight=True)
+                        ),
                     ], spacing=2, expand=True),
                     
                     # PRAWA STRONA (Przycisk szczegółów pojazdu)

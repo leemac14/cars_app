@@ -599,6 +599,43 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
     wyniki.sort(key=lambda w: kolejnosc.get(w["status"], 2))
     return wyniki
 
+def oblicz_kondycje_pojazdu(auto_id):
+    """Wskaźnik kondycji pojazdu 0-100 (100 = wzorowo). Odejmuje punkty za
+    przeterminowane/pilne podzespoły, niski stan magazynu i płytki bieżnik
+    aktualnie zamontowanych opon. Celowo NIE uwzględnia dokumentów (OC/przegląd)
+    ani wydatków cyklicznych — te mają już własne, osobne wskaźniki na karcie."""
+    if not auto_id:
+        return None
+
+    wynik = 100
+    for p in pobierz_powiadomienia(auto_id):
+        if p["typ"] not in ("podzespol", "magazyn"):
+            continue
+        if p["status"] == "przeterminowane":
+            wynik -= 10 if p["typ"] == "magazyn" else 15
+        elif p["status"] == "pilne":
+            wynik -= 5 if p["typ"] == "magazyn" else 8
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT glebokosc_bieznika FROM zestawy_opon WHERE auto_id=? AND zamontowane=1",
+            (auto_id,)
+        )
+        for (gl,) in c.fetchall():
+            if gl is None or str(gl).strip() == "":
+                continue
+            try:
+                g = float(gl)
+            except (TypeError, ValueError):
+                continue
+            if g < 1.6:
+                wynik -= 20
+            elif g < 3.0:
+                wynik -= 10
+
+    return max(0, min(100, int(round(wynik))))
+
 def pobierz_dane_do_porownania(auto_id):
     """Zbiorcze dane pojazdu (specyfikacja, koszty, przebieg, spalanie, serwis)
     wykorzystywane przez ekran porównania pojazdów. Zwraca None, jeśli auto nie istnieje."""

@@ -1317,6 +1317,16 @@ def wskaznik_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik"):
         on_click=lambda e: pokaz_podglad_zalacznika(page, sciezka_wzgledna, tytul),
     )
 
+def wskaznik_kondycji(wynik):
+    """Zwraca (kolor, ikona, etykieta) dla wskaźnika kondycji pojazdu (0-100)."""
+    if wynik is None:
+        return ft.Colors.ON_SURFACE_VARIANT, ft.Icons.HELP_OUTLINE, "Brak danych"
+    if wynik >= 80:
+        return ft.Colors.GREEN_700, ft.Icons.FAVORITE, "Bardzo dobra"
+    if wynik >= 50:
+        return ft.Colors.ORANGE_700, ft.Icons.FAVORITE_BORDER, "Wymaga uwagi"
+    return ft.Colors.RED_700, ft.Icons.HEART_BROKEN, "Wymaga pilnej reakcji"
+
 async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, stara_sciezka, po_zapisie_callback):
     obsluzone = {"wartosc": False}
 
