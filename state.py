@@ -29,6 +29,7 @@ class AppState:
             "stat_miesiace": ("okres", True),
             "stat_lata": ("rok", True),
             "magazyn_czesci": ("nazwa", False),
+            "timeline": ("data", True),
         }
 
         # --- FILTRY ---

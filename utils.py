@@ -614,6 +614,7 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.PEOPLE, color=ft.Colors.TEAL, size=20), ft.Text("Współdziel pojazd")]), on_click=lambda e: przejdz(page, "/wspoldzielenie")))
     
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.MAP, color=ft.Colors.PURPLE, size=20), ft.Text("Kalkulator podróży")]), on_click=lambda e: przejdz(page, "/kalkulator")))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.TIMELINE, color=ft.Colors.INDIGO, size=20), ft.Text("Dziennik życia auta")]), on_click=lambda e: przejdz(page, "/timeline")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.INDIGO, size=20), ft.Text("Wydatki cykliczne")]), on_click=lambda e: pokaz_panel_wydatkow_cyklicznych(page, state)))
 
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
