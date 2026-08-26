@@ -923,6 +923,8 @@ class FormularzWizytyView(ft.View):
             self.e_kat_wizyty.visible = czy_zaznaczono_opony
             self.e_kat_wizyty.update()
 
+        self._odswiez_widocznosc_opon = odswiez_widocznosc_opon
+
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute("SELECT id, nazwa, dotyczy_opon FROM zadania WHERE auto_id=? ORDER BY nazwa", (self.state.auto_id,))
@@ -931,7 +933,9 @@ class FormularzWizytyView(ft.View):
                 self.chk_czesci.append(chk)
                 if z_opon:
                     self.zadania_opon_ids.add(z_i)
-        
+
+        self.btn_pakiety = self._zbuduj_przycisk_pakietow()
+
         czy_na_start_opony = any(z_i in podpiete for z_i in self.zadania_opon_ids)
                     
         self.e_kat_wizyty = ft.Dropdown(
@@ -995,8 +999,7 @@ class FormularzWizytyView(ft.View):
             "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True
         )
         k1b = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
-        k2 = utils.karta_formularza([ft.Column(self.chk_czesci, spacing=2), self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
-
+        k2 = utils.karta_formularza([self.btn_pakiety, ft.Column(self.chk_czesci, spacing=2), self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
         elementy = [k1, k1b, k2]
 
         if self.magazyn_kontrolki:
@@ -1012,6 +1015,51 @@ class FormularzWizytyView(ft.View):
             route=f"/wizyty/edytuj/{w_id}" if w_id else "/wizyty/nowa",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _zbuduj_przycisk_pakietow(self):
+        if not db.PAKIETY_SERWISOWE:
+            return ft.Container()
+
+        items = []
+        for nazwa_pakietu, pozycje in db.PAKIETY_SERWISOWE.items():
+            items.append(
+                ft.PopupMenuItem(
+                    content=ft.Column([
+                        ft.Text(nazwa_pakietu, weight="bold"),
+                        ft.Text(", ".join(pozycje), size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                    ], spacing=0, tight=True),
+                    on_click=lambda e, poz=pozycje: self._zastosuj_pakiet(poz)
+                )
+            )
+
+        return ft.PopupMenuButton(
+            items=items,
+            content=ft.Container(
+                padding=ft.Padding(12, 8, 12, 8),
+                border_radius=10,
+                bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.PRIMARY),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.PLAYLIST_ADD_CHECK, size=16, color=ft.Colors.PRIMARY),
+                    ft.Text("Zastosuj pakiet serwisowy", size=12, weight="bold", color=ft.Colors.PRIMARY)
+                ], spacing=6, tight=True)
+            ),
+            tooltip="Zaznacz od razu kilka podzespołów naraz"
+        )
+
+    def _zastosuj_pakiet(self, pozycje_pakietu):
+        dopasowane = 0
+        for chk in self.chk_czesci:
+            if chk.label in pozycje_pakietu:
+                chk.value = True
+                dopasowane += 1
+                chk.update()
+
+        self._odswiez_widocznosc_opon()
+
+        if dopasowane:
+            utils.pokaz_komunikat(self._page, f"Zaznaczono {dopasowane} z {len(pozycje_pakietu)} pozycji pakietu.")
+        else:
+            utils.pokaz_komunikat(self._page, "Żadna pozycja z pakietu nie pasuje do Twoich podzespołów — dodaj je najpierw w sekcji Serwis.", ft.Colors.ORANGE_700)
 
     def zapisz(self, e):
         self.e_p.error_text = None

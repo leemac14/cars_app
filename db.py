@@ -30,6 +30,14 @@ DOMYSLNE_ZADANIA = [
     "🛢️ Olej silnikowy i filtr", "💨 Filtr powietrza", "🌬️ Filtr kabinowy",
     "⚙️ Pasek / Łańcuch rozrządu", "🛞 Wymiana opon / Kół", "🛑 Klocki hamulcowe", "💿 Tarcze hamulcowe"
 ]
+
+PAKIETY_SERWISOWE = {
+    "Przegląd olejowy": ["🛢️ Olej silnikowy i filtr", "💨 Filtr powietrza", "🌬️ Filtr kabinowy"],
+    "Sezonowa wymiana opon": ["🛞 Wymiana opon / Kół"],
+    "Serwis hamulcowy (przód+tył)": ["🛑 Klocki hamulcowe", "💿 Tarcze hamulcowe"],
+    "Duży przegląd (rozrząd)": ["⚙️ Pasek / Łańcuch rozrządu", "🛢️ Olej silnikowy i filtr", "💨 Filtr powietrza"],
+}
+
 ROK_MIN = 1950
 PROG_KM_POWIADOMIEN = 1500      
 PROG_DNI_POWIADOMIEN = 30       
