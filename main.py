@@ -294,7 +294,7 @@ def main(page: ft.Page):
         oczyszczone = "".join(c if c.isalnum() else "_" for c in str(tekst))
         return oczyszczone.strip("_") or "pojazd"
 
-    async def eksportuj_dane_zaawansowane(auto_id, auto_nazwa, kategorie, od_d, do_d, opis_okresu, format_pliku, dolacz_podsumowanie, po_zakonczeniu=None):
+    async def eksportuj_dane_zaawansowane(auto_id, auto_nazwa, kategorie, od_d, do_d, opis_okresu, format_pliku, dolacz_podsumowanie, dolacz_paszport=False, po_zakonczeniu=None):
         try:
             dane = await asyncio.to_thread(db.pobierz_dane_eksportu, auto_id, kategorie, od_d, do_d)
             nazwa_bazowa = _bezpieczna_nazwa_pliku(auto_nazwa)
@@ -303,12 +303,20 @@ def main(page: ft.Page):
                 podsumowanie = None
                 if dolacz_podsumowanie:
                     podsumowanie = await asyncio.to_thread(db.oblicz_podsumowanie_okresu, auto_id, od_d, do_d)
+
+                dane_paszportu = {}
+                if dolacz_paszport:
+                    dane_paszportu = await asyncio.to_thread(db.pobierz_dane_paszportu, auto_id)
+
                 try:
-                    dane_pliku = await asyncio.to_thread(db.generuj_pdf_raportu, auto_nazwa, dane, opis_okresu, podsumowanie)
+                    dane_pliku = await asyncio.to_thread(
+                        db.generuj_pdf_raportu, auto_nazwa, dane, opis_okresu, podsumowanie,
+                        dolacz_paszport, **dane_paszportu
+                    )
                 except RuntimeError as ex:
                     utils.pokaz_komunikat(page, str(ex), ft.Colors.RED_700)
                     return
-                nazwa_pliku = f"raport_{nazwa_bazowa}.pdf"
+                nazwa_pliku = f"paszport_{nazwa_bazowa}.pdf" if dolacz_paszport else f"raport_{nazwa_bazowa}.pdf"
             else:
                 dane_pliku, rozszerzenie = await asyncio.to_thread(db.generuj_eksport_csv, dane)
                 nazwa_pliku = f"eksport_{nazwa_bazowa}.{rozszerzenie}"

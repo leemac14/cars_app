@@ -103,6 +103,10 @@ class EksportView(ft.View):
             value="pdf" if pdf_dostepny else "csv"
         )
         self.c_podsumowanie = ft.Checkbox(label="Dołącz podsumowanie kosztów (tylko PDF)", value=True)
+        self.c_paszport = ft.Checkbox(
+            label="Dołącz pełny paszport pojazdu — zdjęcie, specyfikacja, wykres przebiegu, zdjęcia karoserii (tylko PDF)",
+            value=False
+        )
 
         k1 = utils.karta_formularza(
             [self.e_okres, self.wiersz_niestandardowy],
@@ -113,7 +117,7 @@ class EksportView(ft.View):
              wiersz_szybkie] + self.checkboxy_kategorii + [self.blad_kategorii],
             "Dane do uwzględnienia", ft.Icons.CHECKLIST, domyslnie_otwarte=True
         )
-        elementy_k3 = [self.e_format, self.c_podsumowanie]
+        elementy_k3 = [self.e_format, self.c_podsumowanie, self.c_paszport]
         if not pdf_dostepny:
             elementy_k3.append(ft.Text(
                 "Aby włączyć eksport do PDF, doinstaluj bibliotekę: pip install fpdf2",
@@ -177,7 +181,7 @@ class EksportView(ft.View):
         self._page.run_task(
             self.cb_eksportuj,
             self.state.auto_id, self.state.auto_nazwa, wybrane, od_d, do_d, opis_okresu,
-            self.e_format.value, self.c_podsumowanie.value,
+            self.e_format.value, self.c_podsumowanie.value, self.c_paszport.value,
             self._po_zakonczeniu
         )
 

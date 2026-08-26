@@ -1017,23 +1017,8 @@ class FormularzWizytyView(ft.View):
         )
 
     def _zbuduj_przycisk_pakietow(self):
-        if not db.PAKIETY_SERWISOWE:
-            return ft.Container()
-
-        items = []
-        for nazwa_pakietu, pozycje in db.PAKIETY_SERWISOWE.items():
-            items.append(
-                ft.PopupMenuItem(
-                    content=ft.Column([
-                        ft.Text(nazwa_pakietu, weight="bold"),
-                        ft.Text(", ".join(pozycje), size=11, color=ft.Colors.ON_SURFACE_VARIANT)
-                    ], spacing=0, tight=True),
-                    on_click=lambda e, poz=pozycje: self._zastosuj_pakiet(poz)
-                )
-            )
-
         return ft.PopupMenuButton(
-            items=items,
+            items=self._zbuduj_pozycje_menu_pakietow(),
             content=ft.Container(
                 padding=ft.Padding(12, 8, 12, 8),
                 border_radius=10,
@@ -1046,20 +1031,153 @@ class FormularzWizytyView(ft.View):
             tooltip="Zaznacz od razu kilka podzespołów naraz"
         )
 
-    def _zastosuj_pakiet(self, pozycje_pakietu):
-        dopasowane = 0
+    def _zbuduj_pozycje_menu_pakietow(self):
+        items = []
+
+        for nazwa_pakietu, pozycje in db.PAKIETY_SERWISOWE.items():
+            items.append(
+                ft.PopupMenuItem(
+                    content=ft.Column([
+                        ft.Text(nazwa_pakietu, weight="bold"),
+                        ft.Text(", ".join(pozycje), size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                    ], spacing=0, tight=True),
+                    on_click=lambda e, nz=nazwa_pakietu, poz=pozycje: self._zastosuj_pakiet(nz, poz)
+                )
+            )
+
+        pakiety_wlasne = db.pobierz_pakiety_wlasne(self.state.auto_id)
+        if pakiety_wlasne:
+            items.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
+            for p_id, nazwa_pakietu, pozycje in pakiety_wlasne:
+                items.append(
+                    ft.PopupMenuItem(
+                        content=ft.Column([
+                            ft.Row([
+                                ft.Icon(ft.Icons.BOOKMARK, size=14, color=ft.Colors.TEAL_700),
+                                ft.Text(nazwa_pakietu, weight="bold")
+                            ], spacing=4, tight=True),
+                            ft.Text(", ".join(pozycje) or "Pusty pakiet", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                        ], spacing=0, tight=True),
+                        on_click=lambda e, nz=nazwa_pakietu, poz=pozycje: self._zastosuj_pakiet(nz, poz)
+                    )
+                )
+
+        items.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
+        items.append(
+            ft.PopupMenuItem(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, size=16, color=ft.Colors.GREEN_700),
+                    ft.Text("Zapisz obecne zaznaczenie jako pakiet", color=ft.Colors.GREEN_700)
+                ], spacing=6),
+                on_click=lambda e: self._okno_nowego_pakietu()
+            )
+        )
+        if pakiety_wlasne:
+            items.append(
+                ft.PopupMenuItem(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.DELETE_SWEEP, size=16, color=ft.Colors.RED_700),
+                        ft.Text("Zarządzaj własnymi pakietami", color=ft.Colors.RED_700)
+                    ], spacing=6),
+                    on_click=lambda e: self._okno_zarzadzania_pakietami()
+                )
+            )
+
+        return items
+
+    def _odswiez_przycisk_pakietow(self):
+        self.btn_pakiety.items = self._zbuduj_pozycje_menu_pakietow()
+        try:
+            self.btn_pakiety.update()
+        except Exception:
+            pass
+
+    def _zastosuj_pakiet(self, nazwa_pakietu, pozycje_pakietu):
+        # Odznacz to, co zaznaczył POPRZEDNIO zastosowany pakiet, a nie jest
+        # częścią nowego — inaczej przełączanie między pakietami zostawiało
+        # "resztki" zaznaczeń z wcześniejszego wyboru.
+        poprzednie = getattr(self, "_ostatni_pakiet_pozycje", [])
         for chk in self.chk_czesci:
             if chk.label in pozycje_pakietu:
-                chk.value = True
-                dopasowane += 1
-                chk.update()
+                if not chk.value:
+                    chk.value = True
+                    chk.update()
+            elif chk.label in poprzednie:
+                if chk.value:
+                    chk.value = False
+                    chk.update()
 
+        self._ostatni_pakiet_pozycje = list(pozycje_pakietu)
         self._odswiez_widocznosc_opon()
 
+        dopasowane = sum(1 for chk in self.chk_czesci if chk.label in pozycje_pakietu)
         if dopasowane:
-            utils.pokaz_komunikat(self._page, f"Zaznaczono {dopasowane} z {len(pozycje_pakietu)} pozycji pakietu.")
+            utils.pokaz_komunikat(self._page, f"Zastosowano pakiet „{nazwa_pakietu}” ({dopasowane}/{len(pozycje_pakietu)} pozycji).")
         else:
             utils.pokaz_komunikat(self._page, "Żadna pozycja z pakietu nie pasuje do Twoich podzespołów — dodaj je najpierw w sekcji Serwis.", ft.Colors.ORANGE_700)
+
+    def _okno_nowego_pakietu(self):
+        zaznaczone_teraz = [chk.label for chk in self.chk_czesci if chk.value]
+        if not zaznaczone_teraz:
+            utils.pokaz_komunikat(self._page, "Najpierw zaznacz podzespoły, które mają wejść w skład pakietu.", ft.Colors.ORANGE_700)
+            return
+
+        e_nazwa = ft.TextField(label="Nazwa pakietu", hint_text="np. Przegląd zimowy", **utils.styl_pola())
+        podglad = ft.Text(", ".join(zaznaczone_teraz), size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+
+        def zapisz(e):
+            e_nazwa.error_text = None
+            nazwa = (e_nazwa.value or "").strip()
+            if not nazwa:
+                e_nazwa.error_text = "Podaj nazwę"
+                e_nazwa.update()
+                return
+            db.dodaj_pakiet_wlasny(self.state.auto_id, nazwa, zaznaczone_teraz)
+            utils.zamknij_dialog(self._page, dlg)
+            self._odswiez_przycisk_pakietow()
+            utils.pokaz_komunikat(self._page, f"Zapisano pakiet „{nazwa}”.")
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Nowy pakiet serwisowy", weight="bold"),
+            content=ft.Column([
+                ft.Text("Pakiet zapisze dokładnie te podzespoły, które są teraz zaznaczone:", size=12),
+                podglad,
+                e_nazwa,
+            ], tight=True, spacing=10),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
+                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+            ]
+        )
+        utils.otworz_dialog(self._page, dlg)
+
+    def _okno_zarzadzania_pakietami(self):
+        pakiety_wlasne = db.pobierz_pakiety_wlasne(self.state.auto_id)
+
+        def usun(p_id, nazwa):
+            def wykonaj():
+                db.usun_pakiet_wlasny(p_id)
+                utils.zamknij_dialog(self._page, dlg)
+                self._odswiez_przycisk_pakietow()
+                utils.pokaz_komunikat(self._page, f"Usunięto pakiet „{nazwa}”.")
+            utils.potwierdz(self._page, "Usunąć pakiet?", f"Czy na pewno usunąć pakiet „{nazwa}”?", wykonaj)
+
+        wiersze = [
+            ft.ListTile(
+                leading=ft.Icon(ft.Icons.BOOKMARK, color=ft.Colors.TEAL_700),
+                title=ft.Text(nazwa, weight="bold"),
+                subtitle=ft.Text(", ".join(pozycje) or "Pusty pakiet", size=11),
+                trailing=ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED_700, on_click=lambda e, pid=p_id, n=nazwa: usun(pid, n))
+            )
+            for p_id, nazwa, pozycje in pakiety_wlasne
+        ]
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Własne pakiety serwisowe", weight="bold"),
+            content=ft.Column(wiersze, tight=True, spacing=2, scroll=ft.ScrollMode.AUTO) if wiersze else ft.Text("Brak zapisanych pakietów.", italic=True),
+            actions=[ft.TextButton("Zamknij", on_click=lambda e: utils.zamknij_dialog(self._page, dlg))]
+        )
+        utils.otworz_dialog(self._page, dlg)
 
     def zapisz(self, e):
         self.e_p.error_text = None

@@ -253,6 +253,13 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN wspolny_pojazd_id TEXT;
             ALTER TABLE samochody ADD COLUMN kod_zaproszenia TEXT;
             ALTER TABLE tankowania ADD COLUMN zdalne_id TEXT;
+            """,
+            # Wersja 17: Własne pakiety serwisowe — użytkownik może zapisać
+            # dowolny zestaw zaznaczonych podzespołów jako nazwany "pakiet",
+            # obok wbudowanych z PAKIETY_SERWISOWE. Zapisywane per pojazd.
+            """
+            CREATE TABLE IF NOT EXISTS pakiety_serwisowe_wlasne (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, pozycje TEXT NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_pakiety_wlasne_auto ON pakiety_serwisowe_wlasne(auto_id);
             """
         ]
 
@@ -482,6 +489,46 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
 
     return km_roznica / dni_roznica
 
+def pobierz_historie_przebiegu(auto_id):
+    """Chronologiczna historia stanu licznika złożona ze wszystkich źródeł
+    (tankowania, wizyty, historia bez wizyty, ręczne odczyty) — do wykresu
+    przebiegu w paszporcie pojazdu. Dla każdej daty zostaje zapisany najwyższy
+    zanotowany tego dnia przebieg; wynik jest posortowany chronologicznie.
+    Zwraca listę krotek (data_str, przebieg_int)."""
+    if not auto_id:
+        return []
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        wpisy = []
+        c.execute("SELECT data, przebieg FROM tankowania WHERE auto_id=?", (auto_id,))
+        wpisy += c.fetchall()
+        c.execute("SELECT data, przebieg FROM wizyty WHERE auto_id=?", (auto_id,))
+        wpisy += c.fetchall()
+        c.execute(
+            "SELECT h.data, h.przebieg FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        wpisy += c.fetchall()
+        c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
+        wpisy += c.fetchall()
+
+    wg_daty = {}
+    for data_str, prz in wpisy:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date():
+            continue
+        try:
+            prz_i = int(prz or 0)
+        except (TypeError, ValueError):
+            continue
+        if prz_i <= 0:
+            continue
+        if d not in wg_daty or prz_i > wg_daty[d][1]:
+            wg_daty[d] = (data_str, prz_i)
+
+    return [wg_daty[d] for d in sorted(wg_daty.keys())]
+
 def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None):
     """Zapisuje szybki, ręczny odczyt licznika (np. z deski rozdzielczej) w osobnym
     dzienniku — bez tworzenia sztucznego tankowania czy wpisu serwisowego tylko po
@@ -611,7 +658,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
         # liczy się jak dla dokumentów, ale akcją jest "Zapłacone", nie przejście
         # do formularza (stąd "trasa": None).
         c.execute(
-            "SELECT id, nazwa, nastepna_data FROM wydatki_cykliczne WHERE auto_id=?",
+            "SELECT id, nazwa, nastepna_data, okres_dni FROM wydatki_cykliczne WHERE auto_id=?",
             (auto_id,)
         )
         for wc in c.fetchall():
@@ -619,7 +666,14 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
             if d_wc == datetime.min.date():
                 continue
             zost_dni = (d_wc - dzis).days
-            if zost_dni <= prog_dni:
+            # Próg dla wydatków cyklicznych jest dodatkowo ograniczony częścią
+            # ich WŁASNEGO okresu — inaczej pozycja płatna np. co 30 dni przy
+            # globalnym progu powiadomień 30 dni byłaby "pilna" przez CAŁY
+            # cykl, a kliknięcie "Zapłacone" (przesuwające termin o okres_dni)
+            # od razu wracałoby jako to samo powiadomienie.
+            wlasny_prog = max(1, int(wc["okres_dni"] or 30) // 3)
+            prog_efektywny = min(prog_dni, wlasny_prog)
+            if zost_dni <= prog_efektywny:
                 s = "przeterminowane" if zost_dni < 0 else "pilne"
                 opis = f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni"
                 wyniki.append({
@@ -655,20 +709,22 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
 
 def oblicz_kondycje_pojazdu(auto_id):
     """Wskaźnik kondycji pojazdu 0-100 (100 = wzorowo). Odejmuje punkty za
-    przeterminowane/pilne podzespoły, niski stan magazynu i płytki bieżnik
-    aktualnie zamontowanych opon. Celowo NIE uwzględnia dokumentów (OC/przegląd)
-    ani wydatków cyklicznych — te mają już własne, osobne wskaźniki na karcie."""
+    przeterminowane/pilne podzespoły i płytki bieżnik aktualnie zamontowanych opon.
+    Celowo NIE uwzględnia stanu magazynu, dokumentów (OC/przegląd)
+    ani wydatków cyklicznych."""
     if not auto_id:
         return None
 
     wynik = 100
     for p in pobierz_powiadomienia(auto_id):
-        if p["typ"] not in ("podzespol", "magazyn"):
+        # Ignorujemy wszystko co nie jest bezpośrednio powiązane z podzespołami auta
+        if p["typ"] != "podzespol":
             continue
+            
         if p["status"] == "przeterminowane":
-            wynik -= 10 if p["typ"] == "magazyn" else 15
+            wynik -= 15
         elif p["status"] == "pilne":
-            wynik -= 5 if p["typ"] == "magazyn" else 8
+            wynik -= 8
 
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -1325,6 +1381,32 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
         nowa_data = (dzis + timedelta(days=int(okres_dni or 30))).strftime("%d.%m.%Y")
         conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, wydatek_id))
 
+# ==================== WŁASNE PAKIETY SERWISOWE ====================
+
+def pobierz_pakiety_wlasne(auto_id):
+    """Zwraca listę (id, nazwa, [lista_pozycji]) własnych pakietów użytkownika
+    dla danego pojazdu, obok wbudowanych PAKIETY_SERWISOWE."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, nazwa, pozycje FROM pakiety_serwisowe_wlasne WHERE auto_id=? ORDER BY nazwa", (auto_id,))
+        return [
+            (p_id, nazwa, [p.strip() for p in (pozycje or "").split(",") if p.strip()])
+            for p_id, nazwa, pozycje in c.fetchall()
+        ]
+
+def dodaj_pakiet_wlasny(auto_id, nazwa, pozycje_lista):
+    with polacz_baze() as conn:
+        conn.execute(
+            "INSERT INTO pakiety_serwisowe_wlasne (auto_id, nazwa, pozycje) VALUES (?,?,?)",
+            (auto_id, nazwa, ",".join(pozycje_lista))
+        )
+
+def usun_pakiet_wlasny(pakiet_id):
+    with polacz_baze() as conn:
+        conn.execute("DELETE FROM pakiety_serwisowe_wlasne WHERE id=?", (pakiet_id,))
+
 def pobierz_uzyte_czesci_wizyty(wizyta_id):
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -1652,7 +1734,7 @@ def usun_auto_z_cofnieciem(auto_id):
         "zadania", "wizyty", "magazyn_czesci", 
         "tagi", "tankowania", "inne_koszty", 
         "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
-        "warsztaty", "wydatki_cykliczne"
+        "warsztaty", "wydatki_cykliczne", "pakiety_serwisowe_wlasne"
     ]
     tabele_poziom_2 = ["do_zrobienia"] # Zależy od zadania
     tabele_poziom_3 = ["historia", "wizyta_czesci_magazynu"] # Zależą od zadań i wizyt
@@ -2113,9 +2195,11 @@ def generuj_eksport_csv(dane_eksportu):
 class _RaportPDF(FPDF if FPDF is not None else object):
     """Wrapper na FPDF z automatycznym doborem czcionki: jeśli w assets/ jest
     DejaVuSans(.ttf/-Bold.ttf), używa jej (pełne wsparcie polskich znaków).
-    W przeciwnym razie używa wbudowanej Helvetiki i transliteruje diakrytyki (metoda t())."""
-    def __init__(self):
-        super().__init__(orientation="L", unit="mm", format="A4")
+    W przeciwnym razie używa wbudowanej Helvetiki i transliteruje diakrytyki (metoda t()).
+    orientation: "L" (poziomo, domyślnie — pasuje do szerokich tabel w zwykłym
+    raporcie) albo "P" (pionowo — używane przez tryb paszportu pojazdu)."""
+    def __init__(self, orientation="L"):
+        super().__init__(orientation=orientation, unit="mm", format="A4")
         self.set_auto_page_break(auto=True, margin=15)
         self.uzywa_utf8 = False
         self.czcionka = "Helvetica"
@@ -2150,28 +2234,210 @@ class _RaportPDF(FPDF if FPDF is not None else object):
             
         return tekst
 
+def _narysuj_wykres_liniowy(pdf, punkty, x, y, w, h):
+    """Prosty wykres liniowy narysowany prymitywami fpdf2 (bez matplotlib).
+    punkty: lista (etykieta_x: str, wartosc: float), posortowana chronologicznie."""
+    if len(punkty) < 2:
+        pdf.set_font(pdf.czcionka, "", 10)
+        pdf.set_text_color(140, 140, 140)
+        pdf.set_xy(x, y + h / 2 - 4)
+        pdf.cell(w, 8, pdf.t("Za mało danych do wykresu przebiegu."), align="C")
+        pdf.set_text_color(0, 0, 0)
+        return
 
-def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=None):
+    wartosci = [p[1] for p in punkty]
+    min_v, max_v = min(wartosci), max(wartosci)
+    if max_v == min_v:
+        max_v = min_v + 1
+
+    pdf.set_draw_color(210, 210, 210)
+    pdf.set_line_width(0.2)
+    pdf.rect(x, y, w, h)
+    for i in range(1, 4):
+        yy = y + h * i / 4
+        pdf.line(x, yy, x + w, yy)
+
+    pdf.set_font(pdf.czcionka, "", 7)
+    pdf.set_text_color(120, 120, 120)
+    for wart, frakcja in ((max_v, 0.0), ((max_v + min_v) / 2, 0.5), (min_v, 1.0)):
+        pdf.set_xy(x - 22, y + h * frakcja - 2.5)
+        pdf.cell(20, 5, pdf.t(f"{int(wart):,}".replace(",", " ")), align="R")
+
+    n = len(punkty)
+
+    def punkt_na_xy(i, wartosc):
+        px = x + (w * i / (n - 1))
+        py = y + h - ((wartosc - min_v) / (max_v - min_v)) * h
+        return px, py
+
+    pdf.set_draw_color(30, 100, 220)
+    pdf.set_line_width(0.6)
+    for i in range(n - 1):
+        x1, y1 = punkt_na_xy(i, wartosci[i])
+        x2, y2 = punkt_na_xy(i + 1, wartosci[i + 1])
+        pdf.line(x1, y1, x2, y2)
+
+    pdf.set_fill_color(30, 100, 220)
+    for i in range(n):
+        px, py = punkt_na_xy(i, wartosci[i])
+        pdf.ellipse(px - 0.8, py - 0.8, 1.6, 1.6, style="F")
+
+    pdf.set_font(pdf.czcionka, "", 7)
+    for i in sorted(set([0, n // 2, n - 1])):
+        px, _ = punkt_na_xy(i, wartosci[i])
+        pdf.set_xy(px - 15, y + h + 2)
+        pdf.cell(30, 5, pdf.t(str(punkty[i][0])[:5]), align="C")
+
+    pdf.set_text_color(0, 0, 0)
+
+
+def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja, terminy):
+    """Strona tytułowa 'Cyfrowego paszportu pojazdu': zdjęcie, nazwa, specyfikacja
+    w dwóch kolumnach oraz ważne terminy kolorowane jak w reszcie aplikacji.
+    Używane wyłącznie przez generuj_pdf_raportu(tryb_paszportu=True)."""
+    if zdjecie_glowne and os.path.exists(zdjecie_glowne):
+        try:
+            szer_strony = pdf.w - pdf.l_margin - pdf.r_margin
+            szer_zdj = min(120, szer_strony)
+            pdf.image(zdjecie_glowne, x=pdf.l_margin + (szer_strony - szer_zdj) / 2, y=pdf.get_y(), w=szer_zdj)
+            pdf.set_y(pdf.get_y() + szer_zdj * 0.62 + 6)
+        except Exception:
+            pass
+
+    pdf.set_font(pdf.czcionka, "B", 22)
+    pdf.cell(0, 14, pdf.t(str(auto_nazwa or "Pojazd")), ln=1, align="C")
+
+    pdf.set_font(pdf.czcionka, "", 10)
+    pdf.set_text_color(110, 110, 110)
+    pdf.cell(0, 7, pdf.t(f"Cyfrowy paszport pojazdu • wygenerowano {datetime.now().strftime('%d.%m.%Y %H:%M')}"), ln=1, align="C")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(6)
+
+    if specyfikacja:
+        pdf.set_font(pdf.czcionka, "B", 13)
+        pdf.cell(0, 9, pdf.t("Specyfikacja pojazdu"), ln=1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+        pdf.ln(3)
+
+        szer_kolumny = (pdf.w - pdf.l_margin - pdf.r_margin) / 2
+        for i in range(0, len(specyfikacja), 2):
+            para = specyfikacja[i:i + 2]
+            y_wiersza = pdf.get_y()
+            for j, (etyk, wart) in enumerate(para):
+                pdf.set_xy(pdf.l_margin + j * szer_kolumny, y_wiersza)
+                pdf.set_font(pdf.czcionka, "B", 10)
+                pdf.cell(38, 7, pdf.t(f"{etyk}:"))
+                pdf.set_font(pdf.czcionka, "", 10)
+                pdf.cell(szer_kolumny - 38, 7, pdf.t(str(wart)))
+            pdf.set_y(y_wiersza + 7)
+        pdf.ln(4)
+
+    if terminy:
+        pdf.set_font(pdf.czcionka, "B", 13)
+        pdf.cell(0, 9, pdf.t("Ważne terminy"), ln=1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+        pdf.ln(3)
+
+        for etykieta, data_str in terminy:
+            if not data_str:
+                continue
+            d_obj = parsuj_date(data_str)
+            if d_obj == datetime.min.date():
+                kolor, tekst = (120, 120, 120), str(data_str)
+            else:
+                roz = (d_obj - datetime.now().date()).days
+                if roz < 0:
+                    kolor, tekst = (200, 40, 40), f"{data_str}  (po terminie)"
+                elif roz <= 30:
+                    kolor, tekst = (210, 130, 20), f"{data_str}  (zbliża się)"
+                else:
+                    kolor, tekst = (40, 150, 70), str(data_str)
+            pdf.set_font(pdf.czcionka, "B", 10)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(45, 7, pdf.t(f"{etykieta}:"))
+            pdf.set_font(pdf.czcionka, "", 10)
+            pdf.set_text_color(*kolor)
+            pdf.cell(0, 7, pdf.t(tekst), ln=1)
+            pdf.set_text_color(0, 0, 0)
+        pdf.ln(6)
+
+    pdf.add_page()
+
+
+def _rysuj_galerie_karoserii(pdf, zdjecia_karoserii):
+    """Siatka zdjęć karoserii (3 na wiersz) z podpisami data/strefa, doklejana
+    na końcu paszportu. zdjecia_karoserii: lista krotek (data, strefa, zalacznik, opis)."""
+    pdf.add_page()
+    pdf.set_font(pdf.czcionka, "B", 16)
+    pdf.cell(0, 12, pdf.t("Zdjęcia karoserii"), ln=1)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+    pdf.ln(4)
+
+    szer_zdj, wys_zdj, odstep, na_wiersz = 55, 42, 8, 3
+    x_start = pdf.l_margin
+    y_wiersza = pdf.get_y()
+
+    for i, (data_z, strefa_z, zalacznik_z, opis_z) in enumerate(zdjecia_karoserii):
+        kol = i % na_wiersz
+        if kol == 0:
+            if pdf.get_y() > pdf.h - (wys_zdj + 24):
+                pdf.add_page()
+            y_wiersza = pdf.get_y()
+
+        x = x_start + kol * (szer_zdj + odstep)
+        if zalacznik_z and os.path.exists(zalacznik_z):
+            try:
+                pdf.image(zalacznik_z, x=x, y=y_wiersza, w=szer_zdj, h=wys_zdj)
+            except Exception:
+                pdf.set_xy(x, y_wiersza)
+                pdf.set_font(pdf.czcionka, "", 8)
+                pdf.cell(szer_zdj, wys_zdj, pdf.t("Błąd wczytania"), border=1, align="C")
+        else:
+            pdf.set_xy(x, y_wiersza)
+            pdf.set_font(pdf.czcionka, "", 8)
+            pdf.cell(szer_zdj, wys_zdj, pdf.t("Brak zdjęcia"), border=1, align="C")
+
+        pdf.set_xy(x, y_wiersza + wys_zdj + 1)
+        pdf.set_font(pdf.czcionka, "", 8)
+        pdf.cell(szer_zdj, 5, pdf.t(f"{data_z} • {strefa_z}"[:32]), align="C")
+
+        if kol == na_wiersz - 1 or i == len(zdjecia_karoserii) - 1:
+            pdf.set_y(y_wiersza + wys_zdj + 9)
+
+def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=None,
+                         tryb_paszportu=False, zdjecie_glowne=None, specyfikacja=None,
+                         terminy=None, punkty_przebiegu=None, zdjecia_karoserii=None):
     """
     kategorie_dane: {klucz: (naglowki, wiersze)} — jak z pobierz_dane_eksportu().
     podsumowanie: opcjonalny słownik z oblicz_podsumowanie_okresu() do nagłówka raportu.
+    tryb_paszportu: gdy True, zamiast prostego 3-liniowego nagłówka renderuje pełną
+    stronę tytułową (zdjęcie, nazwa, specyfikacja, ważne terminy) i — jeśli podano —
+    wykres przebiegu w czasie oraz galerię zdjęć karoserii na końcu. Używane przez
+    generuj_pdf_paszportu() do zbudowania "Cyfrowego paszportu pojazdu". Pozostałe
+    nowe parametry mają znaczenie tylko w tym trybie.
     Zwraca bajty pliku PDF. Rzuca RuntimeError, jeśli fpdf2 nie jest zainstalowane.
     """
     if FPDF is None:
         raise RuntimeError("Biblioteka 'fpdf2' nie jest zainstalowana — eksport do PDF jest niedostępny. Zainstaluj: pip install fpdf2")
 
-    pdf = _RaportPDF()
+    pdf = _RaportPDF(orientation="P" if tryb_paszportu else "L")
     pdf.add_page()
 
-    pdf.set_font(pdf.czcionka, "B", 18)
-    pdf.cell(0, 12, pdf.t(f"Raport pojazdu: {auto_nazwa}"), ln=1)
+    if tryb_paszportu:
+        _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja or [], terminy or [])
+    else:
+        pdf.set_font(pdf.czcionka, "B", 18)
+        pdf.cell(0, 12, pdf.t(f"Raport pojazdu: {auto_nazwa}"), ln=1)
 
-    pdf.set_font(pdf.czcionka, "", 11)
-    pdf.set_text_color(110, 110, 110)
-    pdf.cell(0, 7, pdf.t(f"Okres: {okres_opis}"), ln=1)
-    pdf.cell(0, 7, pdf.t(f"Wygenerowano: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), ln=1)
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(4)
+        pdf.set_font(pdf.czcionka, "", 11)
+        pdf.set_text_color(110, 110, 110)
+        pdf.cell(0, 7, pdf.t(f"Okres: {okres_opis}"), ln=1)
+        pdf.cell(0, 7, pdf.t(f"Wygenerowano: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), ln=1)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(4)
 
     if podsumowanie:
         waluta = podsumowanie.get("waluta", "PLN")
@@ -2195,6 +2461,17 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         if podsumowanie.get("spalanie"):
             pdf.cell(0, 7, pdf.t(f"Średnie spalanie: {formatuj_liczba_eksport(podsumowanie['spalanie'], 1)} l/100km"), ln=1)
         pdf.ln(6)
+
+    if tryb_paszportu and punkty_przebiegu:
+        if pdf.get_y() > pdf.h - 80:
+            pdf.add_page()
+        pdf.set_font(pdf.czcionka, "B", 13)
+        pdf.cell(0, 9, pdf.t("Przebieg w czasie"), ln=1)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+        pdf.ln(6)
+        _narysuj_wykres_liniowy(pdf, punkty_przebiegu, pdf.l_margin + 24, pdf.get_y(), pdf.w - pdf.l_margin - pdf.r_margin - 26, 55)
+        pdf.set_y(pdf.get_y() + 55 + 14)
 
     for klucz, (naglowki, wiersze) in kategorie_dane.items():
         tytul = KATEGORIE_EKSPORTU.get(klucz, klucz)
@@ -2238,4 +2515,59 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
             pdf.ln()
         pdf.ln(5)
 
+    if tryb_paszportu and zdjecia_karoserii:
+        _rysuj_galerie_karoserii(pdf, zdjecia_karoserii)
+
     return bytes(pdf.output())
+
+def pobierz_dane_paszportu(auto_id):
+    """Zbiera dane do wzbogacenia raportu PDF o 'paszport pojazdu': zdjęcie
+    profilowe, specyfikację, ważne terminy, historię przebiegu (do wykresu)
+    i zdjęcia karoserii (do galerii na końcu). Używane przez
+    eksportuj_dane_zaawansowane() w main.py, gdy w ekranie eksportu zaznaczono
+    'Dołącz pełny paszport pojazdu'. Zwraca słownik kwargs gotowy do
+    rozpakowania w generuj_pdf_raportu(tryb_paszportu=True, **wynik)."""
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            "SELECT nazwa, marka, model, generacja, nr_rej, vin, rok_produkcji, "
+            "pojemnosc_silnika, moc_silnika, typ_paliwa, skrzynia_biegow, "
+            "oc_data, przeglad_data, ac_data, assistance_data, zdjecie_glowne "
+            "FROM samochody WHERE id=?", (auto_id,)
+        )
+        auto = c.fetchone()
+        if not auto:
+            return {}
+
+        c.execute(
+            "SELECT data, strefa, zalacznik, opis FROM zdjecia_karoserii "
+            "WHERE auto_id=? ORDER BY data", (auto_id,)
+        )
+        zdjecia_karoserii = c.fetchall()
+
+    aktualny_przebieg = pobierz_aktualny_przebieg(auto_id)
+
+    specyfikacja = [
+        (e, w) for e, w in (
+            ("Marka", auto["marka"]), ("Model", auto["model"]), ("Generacja", auto["generacja"]),
+            ("Nr rej.", auto["nr_rej"]), ("VIN", auto["vin"]), ("Rocznik", auto["rok_produkcji"]),
+            ("Silnik", f"{auto['pojemnosc_silnika']} cm³" if auto["pojemnosc_silnika"] else None),
+            ("Moc", f"{auto['moc_silnika']} KM" if auto["moc_silnika"] else None),
+            ("Paliwo", auto["typ_paliwa"]), ("Skrzynia", auto["skrzynia_biegow"]),
+            ("Aktualny przebieg", f"{formatuj_liczba_eksport(aktualny_przebieg, 0)} km" if aktualny_przebieg else None),
+        ) if w
+    ]
+
+    terminy = [
+        ("Polisa OC", auto["oc_data"]), ("Przegląd techniczny", auto["przeglad_data"]),
+        ("Polisa AC", auto["ac_data"]), ("Assistance", auto["assistance_data"]),
+    ]
+
+    return {
+        "zdjecie_glowne": auto["zdjecie_glowne"],
+        "specyfikacja": specyfikacja,
+        "terminy": terminy,
+        "punkty_przebiegu": pobierz_historie_przebiegu(auto_id),
+        "zdjecia_karoserii": zdjecia_karoserii,
+    }

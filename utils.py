@@ -425,7 +425,6 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
     return ft.Stack([ikona, odznaka_pozycja], width=48, height=48)
 
 def pokaz_panel_powiadomien(page: ft.Page, state):
-    powiadomienia = db.pobierz_powiadomienia(state.auto_id)
     bs = ft.BottomSheet(ft.Container())
 
     def idz_do(trasa):
@@ -436,49 +435,57 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
 
     def zaplac_cykliczny(wydatek_id):
         def handler(e):
-            zamknij_dno(page, bs)
             db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
             pokaz_komunikat(page, "Zapisano płatność i przesunięto termin.")
-            przejdz(page, page.route)
+            przejdz(page, page.route)  # odświeża dzwonek/badge w tle; panel zostaje otwarty
+            odswiez()
         return handler
 
-    pozycje = [
-        ft.Row([
-            ft.Icon(ft.Icons.NOTIFICATIONS_ROUNDED, color=ft.Colors.PRIMARY),
-            ft.Text("Powiadomienia", weight="bold", size=18, color=ft.Colors.PRIMARY)
-        ], spacing=8),
-        ft.Divider(height=1),
-    ]
+    def odswiez():
+        powiadomienia = db.pobierz_powiadomienia(state.auto_id)
+        pozycje = [
+            ft.Row([
+                ft.Icon(ft.Icons.NOTIFICATIONS_ROUNDED, color=ft.Colors.PRIMARY),
+                ft.Text("Powiadomienia", weight="bold", size=18, color=ft.Colors.PRIMARY)
+            ], spacing=8),
+            ft.Divider(height=1),
+        ]
 
-    if not powiadomienia:
-        pozycje.append(ft.Container(
-            padding=ft.Padding.symmetric(vertical=20),
-            content=ft.Text("Brak zbliżających się terminów 🎉", italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
-        ))
-    else:
-        for p in powiadomienia:
-            kolor = ft.Colors.RED_700 if p["status"] == "przeterminowane" else ft.Colors.ORANGE_700
-            ikona = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
-            if p["typ"] == "cykliczny":
-                pozycje.append(ft.ListTile(
-                    leading=ft.Icon(ikona, color=kolor),
-                    title=ft.Text(p["tytul"], weight="bold"),
-                    subtitle=ft.Text(p["opis"], color=kolor, size=13),
-                    trailing=ft.TextButton("Zapłacone", on_click=zaplac_cykliczny(p["wydatek_id"])),
-                ))
-            else:
-                pozycje.append(ft.ListTile(
-                    leading=ft.Icon(ikona, color=kolor),
-                    title=ft.Text(p["tytul"], weight="bold"),
-                    subtitle=ft.Text(p["opis"], color=kolor, size=13),
-                    on_click=idz_do(p["trasa"]),
-                ))
+        if not powiadomienia:
+            pozycje.append(ft.Container(
+                padding=ft.Padding.symmetric(vertical=20),
+                content=ft.Text("Brak zbliżających się terminów 🎉", italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+            ))
+        else:
+            for p in powiadomienia:
+                kolor = ft.Colors.RED_700 if p["status"] == "przeterminowane" else ft.Colors.ORANGE_700
+                ikona = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
+                if p["typ"] == "cykliczny":
+                    pozycje.append(ft.ListTile(
+                        leading=ft.Icon(ikona, color=kolor),
+                        title=ft.Text(p["tytul"], weight="bold"),
+                        subtitle=ft.Text(p["opis"], color=kolor, size=13),
+                        trailing=ft.TextButton("Zapłacone", on_click=zaplac_cykliczny(p["wydatek_id"])),
+                    ))
+                else:
+                    pozycje.append(ft.ListTile(
+                        leading=ft.Icon(ikona, color=kolor),
+                        title=ft.Text(p["tytul"], weight="bold"),
+                        subtitle=ft.Text(p["opis"], color=kolor, size=13),
+                        on_click=idz_do(p["trasa"]),
+                    ))
 
-    bs.content = ft.Container(
-        padding=20,
-        bgcolor=ft.Colors.SURFACE,
-        content=ft.Column(pozycje, tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
-    )
+        bs.content = ft.Container(
+            padding=20,
+            bgcolor=ft.Colors.SURFACE,
+            content=ft.Column(pozycje, tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
+        )
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    odswiez()
     otworz_dno(page, bs)
 
 def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
