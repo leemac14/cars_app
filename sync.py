@@ -317,8 +317,6 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
         c.execute(zapytanie_nowe, (auto_id,))
         do_wyslania = c.fetchall()
 
-    print(f"[DIAG-SYNC] {tabela}: znaleziono {len(do_wyslania)} nowych wierszy do wyslania")  # TYMCZASOWE
-
     for wiersz in do_wyslania:
         dane = zbuduj_dane(wiersz)
         wynik = klient.rpc("dodaj_zdalny_rekord", {
@@ -435,7 +433,6 @@ def synchronizuj_reszte_pojazdu(auto_id):
     i usunięcia (patrz KONFIGURACJA_SYNC). Bez efektu (0, 0), jeśli pojazd nie
     jest współdzielony. Zwraca (wyslano, pobrano)."""
     wspolny_id, _ = czy_udostepniony(auto_id)
-    print(f"[DIAG-SYNC] auto_id={auto_id} wspolny_id={wspolny_id}")  # TYMCZASOWE
     if not wspolny_id:
         return 0, 0
 
@@ -448,6 +445,117 @@ def synchronizuj_reszte_pojazdu(auto_id):
     db.przelicz_wszystkie_zadania(auto_id)
 
     return wyslano, pobrano
+
+def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
+    """Pomocnicza funkcja dla przywroc_z_chmury(): wstawia lokalnie rekordy
+    danej tabeli, które są żywe na serwerze (usuniete=false), a brakuje ich
+    lokalnie — i kasuje ewentualny lokalny nagrobek dla przywróconego rekordu,
+    żeby kolejna zwykła synchronizacja go od razu nie skasowała."""
+    tabela = konfig["tabela"]
+    kolumny = konfig["kolumny"]
+    fk = konfig["fk"]
+    przywrocono = 0
+
+    if tabela == "historia":
+        zapytanie_znane = (
+            "SELECT h.zdalne_id FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
+            "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
+        )
+    else:
+        zapytanie_znane = f"SELECT zdalne_id FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
+
+    with db.polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(zapytanie_znane, (auto_id,))
+        znane = {r[0] for r in c.fetchall()}
+
+    wynik = klient.table("zdalne_rekordy").select("*").eq("pojazd_id", wspolny_id).eq("tabela", tabela).eq("usuniete", False).execute()
+
+    for rekord in wynik.data:
+        zdalne_id = rekord["id"]
+        if zdalne_id in znane:
+            continue
+
+        dane = rekord["dane"] or {}
+        nowy_hash = _hash_zawartosci(dane)
+
+        wartosci = {nazwa: dane.get(nazwa) for nazwa in kolumny}
+        for pole_fk, tabela_fk in fk.items():
+            zdalny_fk = dane.get(f"{pole_fk}_zdalne")
+            lokalny_fk = None
+            if zdalny_fk:
+                with db.polacz_baze() as conn:
+                    c = conn.cursor()
+                    c.execute(f"SELECT id FROM {tabela_fk} WHERE zdalne_id=?", (zdalny_fk,))
+                    w = c.fetchone()
+                    lokalny_fk = w[0] if w else None
+            wartosci[pole_fk] = lokalny_fk
+
+        if tabela != "historia":
+            wartosci["auto_id"] = auto_id
+        wartosci["zdalne_id"] = zdalne_id
+        wartosci["zdalny_hash"] = nowy_hash
+
+        nazwy_kolumn = ",".join(wartosci.keys())
+        znaki_zapytania = ",".join("?" for _ in wartosci)
+        with db.polacz_baze() as conn:
+            conn.execute(f"INSERT INTO {tabela} ({nazwy_kolumn}) VALUES ({znaki_zapytania})", tuple(wartosci.values()))
+        with db.polacz_baze() as conn:
+            conn.execute("DELETE FROM zdalne_nagrobki WHERE zdalny_id=?", (zdalne_id,))
+        przywrocono += 1
+
+    return przywrocono
+
+
+def przywroc_z_chmury(auto_id):
+    """Przywraca z chmury dane, które są tam jeszcze żywe (usuniete=false), a
+    brakuje ich lokalnie — np. po przypadkowym lokalnym usunięciu, jeśli
+    zdążysz kliknąć tę funkcję ZANIM klikniesz zwykłe "Synchronizuj teraz",
+    albo po reinstalacji aplikacji. W odróżnieniu od zwykłej synchronizacji, ta
+    funkcja NIGDY nie wypycha lokalnych usunięć (nagrobków) na serwer — a dla
+    każdego przywróconego rekordu kasuje jego ewentualny nagrobek, żeby kolejna
+    zwykła synchronizacja go zaraz potem nie skasowała ponownie.
+    Jeśli usunięcie zdążyło się już wcześniej zsynchronizować (serwer ma już
+    usuniete=true), ta funkcja tego NIE cofnie — trzeba dodać wpis ręcznie.
+    Zwraca liczbę przywróconych rekordów."""
+    wspolny_id, _ = czy_udostepniony(auto_id)
+    if not wspolny_id:
+        return 0
+
+    klient, uid = _upewnij_sesje()
+    przywrocono = 0
+
+    with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT zdalne_id FROM tankowania WHERE auto_id=? AND zdalne_id IS NOT NULL", (auto_id,))
+        znane_tankowania = {r["zdalne_id"] for r in c.fetchall()}
+
+    wynik = klient.table("zdalne_tankowania").select("*").eq("pojazd_id", wspolny_id).eq("usuniete", False).execute()
+    for w in wynik.data:
+        if w["id"] in znane_tankowania:
+            continue
+        dane = {
+            "data": w["data"], "przebieg": w["przebieg"], "dystans": w["dystans"] or 0.0,
+            "litry": w["litry"], "kwota": w["kwota"], "do_pelna": 1 if w["do_pelna"] else 0,
+            "stacja": w["stacja"], "tagi": w["tagi"],
+        }
+        nowy_hash = _hash_zawartosci(dane)
+        with db.polacz_baze() as conn:
+            conn.execute(
+                "INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi, zdalne_id, zdalny_hash) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (auto_id, dane["data"], dane["przebieg"], dane["dystans"], dane["litry"], dane["kwota"],
+                 dane["do_pelna"], dane["stacja"], dane["tagi"], w["id"], nowy_hash)
+            )
+            conn.execute("DELETE FROM zdalne_nagrobki WHERE zdalny_id=?", (w["id"],))
+        przywrocono += 1
+
+    for konfig in KONFIGURACJA_SYNC:
+        przywrocono += _przywroc_tabele(klient, wspolny_id, auto_id, konfig)
+
+    db.przelicz_wszystkie_zadania(auto_id)
+    return przywrocono
 
 def synchronizuj_wszystko(auto_id):
     """Pełna synchronizacja współdzielonego pojazdu: tankowania (stara, dedykowana

@@ -41,8 +41,18 @@ class WspoldzielenieView(ft.View):
 
             # 2. Ręczna synchronizacja
             elementy.append(utils.karta_formularza([
-                ft.Text("Kliknij, aby pobrać nowe tankowania partnera i wysłać swoje.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.ElevatedButton("🔄 Synchronizuj teraz", on_click=self._synchronizuj, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                ft.Text("Kliknij, aby wysłać swoje nowe/zmienione dane i pobrać te od partnera.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.ElevatedButton("🔄 Synchronizuj teraz", on_click=self._synchronizuj, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+                ft.Container(height=10),
+                ft.Divider(height=1),
+                ft.Container(height=10),
+                ft.Text(
+                    "Przypadkowo coś skasowałeś i jeszcze NIE kliknąłeś „Synchronizuj teraz”? "
+                    "To przywróci to z chmury, zanim usunięcie zdąży się wysłać. Jeśli usunięcie "
+                    "już zostało zsynchronizowane, tędy się go nie cofnie — trzeba dodać wpis ponownie ręcznie.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+                ft.OutlinedButton("♻️ Przywróć z chmury", on_click=self._przywroc)
             ], "Synchronizacja", ft.Icons.SYNC))
 
             # --- NOWE: 3. Zakończenie współdzielenia ---
@@ -123,3 +133,25 @@ class WspoldzielenieView(ft.View):
             except Exception as ex:
                 utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
         self._page.run_task(_zrob)
+
+    def _przywroc(self, e):
+        def wykonaj():
+            async def _zrob():
+                try:
+                    przywrocono = await asyncio.to_thread(sync.przywroc_z_chmury, self.state.auto_id)
+                    utils.przejdz(self._page, "/wspoldzielenie")
+                    if przywrocono:
+                        utils.pokaz_komunikat(self._page, f"Przywrócono {przywrocono} rekordów z chmury.")
+                    else:
+                        utils.pokaz_komunikat(self._page, "Brak danych do przywrócenia — wszystko już jest na miejscu.")
+                except Exception as ex:
+                    utils.pokaz_komunikat(self._page, f"Błąd przywracania: {ex}", ft.Colors.RED_700)
+            self._page.run_task(_zrob)
+
+        utils.potwierdz(
+            self._page,
+            "Przywrócić dane z chmury?",
+            "Pobierze wszystko, co jest jeszcze żywe na serwerze, a czego brakuje lokalnie. Nie cofnie usunięć, które zdążyły się już zsynchronizować.",
+            wykonaj,
+            tekst_potwierdzenia="Przywróć"
+        )
