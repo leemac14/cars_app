@@ -36,7 +36,7 @@ class WspoldzielenieView(ft.View):
                         ft.IconButton(ft.Icons.COPY, tooltip="Kopiuj kod", on_click=_kopiuj)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                 ),
-                                ft.Text("Synchronizują się teraz wszystkie dane pojazdu (tankowania, serwis, wizyty, magazyn, opony, koszty, warsztaty, wydatki cykliczne, odczyty przebiegu i lista Do zrobienia) — poza załącznikami (zdjęcia/PDF-y), które zawsze zostają lokalnie na każdym urządzeniu.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text("Synchronizują się teraz wszystkie dane pojazdu (dane pojazdu, tankowania, serwis, wizyty, magazyn, opony, koszty, warsztaty, wydatki cykliczne, odczyty przebiegu, tagi i lista Do zrobienia) — poza zdjęciami (profilowym, karoserii i załącznikami), które zawsze zostają lokalnie na każdym urządzeniu.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
             ], "Status współdzielenia", ft.Icons.PEOPLE, domyslnie_otwarte=True))
 
             # 2. Ręczna synchronizacja

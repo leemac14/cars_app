@@ -4,19 +4,25 @@ Współdzielenie pojazdu — synchronizacja z Supabase.
 Reszta aplikacji działa dokładnie jak dotychczas: w 100% lokalnie i offline.
 Ten moduł włącza się TYLKO dla pojazdu świadomie oznaczonego jako współdzielony
 (samochody.wspolny_pojazd_id IS NOT NULL). Synchronizowane są: tankowania (stara,
-dedykowana tabela zdalne_tankowania) oraz reszta danych pojazdu — podzespoły,
-historia serwisowa, wizyty zbiorcze, magazyn części, zestawy opon, inne koszty,
-warsztaty, wydatki cykliczne, odczyty przebiegu i lista Do zrobienia (nowa,
-uniwersalna tabela zdalne_rekordy — patrz KONFIGURACJA_SYNC).
+dedykowana tabela zdalne_tankowania), dane opisowe/techniczne samego pojazdu
+(marka, model, nr rej., VIN, terminy, ściągawka do sklepu — patrz KOLUMNY_POJAZDU),
+słownik tagów (nazwa+kolor) oraz reszta danych pojazdu — podzespoły, historia
+serwisowa, wizyty zbiorcze, magazyn części, zestawy opon, inne koszty, warsztaty,
+wydatki cykliczne, odczyty przebiegu i lista Do zrobienia (uniwersalna tabela
+zdalne_rekordy — patrz KONFIGURACJA_SYNC). Synchronizowane są zarówno nowe wpisy,
+jak i późniejsze edycje oraz usunięcia (wykrywane hashem zawartości i lokalnymi
+"nagrobkami" — patrz zdalny_hash / zdalne_nagrobki).
 
 NIE są i nie będą synchronizowane:
-- Załączniki (zdjęcia, PDF-y) — zostają wyłącznie lokalne na każdym urządzeniu.
+- Załączniki (zdjęcia, PDF-y) i zdjęcie profilowe pojazdu — zostają wyłącznie
+  lokalne na każdym urządzeniu.
 - Zdjęcia karoserii (zdjecia_karoserii) — bez samego pliku wpis jest bezużyteczny.
+- Kolor motywu interfejsu pojazdu (kolor_motywu) — to osobista preferencja
+  wizualna każdego urządzenia, nie dana o pojeździe.
 - Powiązanie zużytych części z magazynu z wizytą (wizyta_czesci_magazynu) —
   każde urządzenie samo rozlicza swój lokalny stan magazynowy.
-- Edycje i usunięcia już zsynchronizowanych rekordów — synchronizowane są
-  wyłącznie NOWE wpisy (insert-only, tak jak dotychczas dla tankowań).
 """
+
 import uuid as uuid_lib
 import sqlite3
 import json
@@ -234,7 +240,21 @@ def synchronizuj_tankowania(auto_id):
 # korzystający z jednej wspólnej tabeli Supabase "zdalne_rekordy". Kolejność
 # listy MA ZNACZENIE: tabele z kluczami obcymi (fk) muszą być zsynchronizowane
 # PO tabelach, do których się odwołują.
+# Dane opisowe/techniczne pojazdu synchronizowane jako JEDEN rekord w uniwersalnej
+# tabeli zdalne_rekordy (tabela="info_pojazdu") — patrz _synchronizuj_info_pojazdu().
+# Celowo POMINIĘTE: zdjecie_glowne (zdjęcie, zostaje lokalnie) i kolor_motywu
+# (osobista preferencja interfejsu każdego urządzenia).
+KOLUMNY_POJAZDU = [
+    "nazwa", "marka", "model", "generacja", "nr_rej", "vin", "rok_produkcji",
+    "oc_data", "przeglad_data", "pojemnosc_silnika", "moc_silnika", "typ_paliwa",
+    "skrzynia_biegow", "notatki", "wycieraczki_przod", "wycieraczki_tyl",
+    "cisnienie_przod", "cisnienie_tyl", "olej_typ", "olej_pojemnosc", "akumulator",
+    "zarowki_mijania", "zarowki_drogowe", "ac_data", "assistance_data",
+    "gasnica_data", "apteczka_data",
+]
+
 KONFIGURACJA_SYNC = [
+    {"tabela": "tagi", "kolumny": ["nazwa", "kolor"], "fk": {}},
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon"], "fk": {}},
     {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi"], "fk": {}},
     {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
@@ -356,7 +376,6 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
 
     return wyslano
 
-
 def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
     """Ściąga nowe wiersze, aktualizuje lokalnie te zmienione na serwerze i
     kasuje te oznaczone jako usunięte (usuniete=true)."""
@@ -427,11 +446,70 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
 
     return pobrano
 
+def _synchronizuj_info_pojazdu(klient, wspolny_id, auto_id):
+    """Synchronizuje opisowe/techniczne dane pojazdu (patrz KOLUMNY_POJAZDU) jako
+    JEDEN wiersz w uniwersalnej tabeli zdalne_rekordy (tabela='info_pojazdu') —
+    dzięki temu korzysta z już istniejących RPC (dodaj_zdalny_rekord /
+    aktualizuj_zdalny_rekord), bez potrzeby nowej tabeli/funkcji po stronie
+    Supabase. samochody.info_zdalne_id / zdalny_hash_info to lokalne odpowiedniki
+    zdalne_id / zdalny_hash używane dla list w KONFIGURACJA_SYNC.
+    Zwraca (wyslano, pobrano) — zawsze (0 lub 1, 0 lub 1)."""
+    with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(f"SELECT {', '.join(KOLUMNY_POJAZDU)}, info_zdalne_id, zdalny_hash_info FROM samochody WHERE id=?", (auto_id,))
+        w = c.fetchone()
+    if not w:
+        return 0, 0
+
+    dane_lokalne = {k: w[k] for k in KOLUMNY_POJAZDU}
+    info_zdalne_id = w["info_zdalne_id"]
+    hash_ostatnio_zsynchronizowany = w["zdalny_hash_info"]
+    hash_teraz = _hash_zawartosci(dane_lokalne)
+
+    if info_zdalne_id:
+        wynik = klient.table("zdalne_rekordy").select("*").eq("id", info_zdalne_id).execute()
+    else:
+        wynik = klient.table("zdalne_rekordy").select("*").eq("pojazd_id", wspolny_id).eq("tabela", "info_pojazdu").execute()
+    rekord_zdalny = wynik.data[0] if wynik.data else None
+
+    # Nikt jeszcze nie wysłał danych tego pojazdu.
+    if rekord_zdalny is None:
+        wynik = klient.rpc("dodaj_zdalny_rekord", {"p_pojazd_id": wspolny_id, "p_tabela": "info_pojazdu", "p_dane": dane_lokalne}).execute()
+        with db.polacz_baze() as conn:
+            conn.execute("UPDATE samochody SET info_zdalne_id=?, zdalny_hash_info=? WHERE id=?", (wynik.data, hash_teraz, auto_id))
+        return 1, 0
+
+    info_zdalne_id = rekord_zdalny["id"]
+    dane_zdalne = {k: (rekord_zdalny.get("dane") or {}).get(k) for k in KOLUMNY_POJAZDU}
+    hash_zdalny = _hash_zawartosci(dane_zdalne)
+
+    if hash_zdalny == hash_teraz:
+        if not w["info_zdalne_id"] or hash_ostatnio_zsynchronizowany != hash_teraz:
+            with db.polacz_baze() as conn:
+                conn.execute("UPDATE samochody SET info_zdalne_id=?, zdalny_hash_info=? WHERE id=?", (info_zdalne_id, hash_teraz, auto_id))
+        return 0, 0
+
+    if hash_teraz != hash_ostatnio_zsynchronizowany:
+        # Zmieniliśmy dane lokalnie od ostatniej synchronizacji — nasza wersja wygrywa.
+        klient.rpc("aktualizuj_zdalny_rekord", {"p_id": info_zdalne_id, "p_dane": dane_lokalne}).execute()
+        with db.polacz_baze() as conn:
+            conn.execute("UPDATE samochody SET info_zdalne_id=?, zdalny_hash_info=? WHERE id=?", (info_zdalne_id, hash_teraz, auto_id))
+        return 1, 0
+
+    # Nic nie zmieniliśmy lokalnie — partner zaktualizował dane, pobieramy jego wersję.
+    przypisania = ",".join(f"{k}=?" for k in KOLUMNY_POJAZDU)
+    with db.polacz_baze() as conn:
+        conn.execute(
+            f"UPDATE samochody SET {przypisania}, info_zdalne_id=?, zdalny_hash_info=? WHERE id=?",
+            tuple(dane_zdalne[k] for k in KOLUMNY_POJAZDU) + (info_zdalne_id, hash_zdalny, auto_id)
+        )
+    return 0, 1
 
 def synchronizuj_reszte_pojazdu(auto_id):
-    """Synchronizuje WSZYSTKIE dane pojazdu oprócz tankowań: nowe wiersze, edycje
-    i usunięcia (patrz KONFIGURACJA_SYNC). Bez efektu (0, 0), jeśli pojazd nie
-    jest współdzielony. Zwraca (wyslano, pobrano)."""
+    """Synchronizuje WSZYSTKIE dane pojazdu oprócz tankowań: dane opisowe pojazdu,
+    nowe wiersze, edycje i usunięcia (patrz KONFIGURACJA_SYNC). Bez efektu (0, 0),
+    jeśli pojazd nie jest współdzielony. Zwraca (wyslano, pobrano)."""
     wspolny_id, _ = czy_udostepniony(auto_id)
     if not wspolny_id:
         return 0, 0
@@ -439,8 +517,10 @@ def synchronizuj_reszte_pojazdu(auto_id):
     klient, uid = _upewnij_sesje()
     _wypchnij_nagrobki(klient)
 
-    wyslano = sum(_wypchnij_tabele(klient, wspolny_id, auto_id, konfig) for konfig in KONFIGURACJA_SYNC)
-    pobrano = sum(_pobierz_tabele(klient, wspolny_id, auto_id, konfig) for konfig in KONFIGURACJA_SYNC)
+    wyslano_info, pobrano_info = _synchronizuj_info_pojazdu(klient, wspolny_id, auto_id)
+
+    wyslano = wyslano_info + sum(_wypchnij_tabele(klient, wspolny_id, auto_id, konfig) for konfig in KONFIGURACJA_SYNC)
+    pobrano = pobrano_info + sum(_pobierz_tabele(klient, wspolny_id, auto_id, konfig) for konfig in KONFIGURACJA_SYNC)
 
     db.przelicz_wszystkie_zadania(auto_id)
 
@@ -506,6 +586,25 @@ def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
 
     return przywrocono
 
+def utworz_udostepniony_pojazd(auto_id, nazwa):
+    klient, uid = _upewnij_sesje()
+    kod = uuid_lib.uuid4().hex[:6].upper()
+
+    wynik = klient.rpc("utworz_udostepniony_pojazd", {"p_nazwa": nazwa, "p_kod": kod}).execute()
+    nowy_id = wynik.data  # funkcja zwraca pojedynczy uuid, nie listę wierszy
+
+    with db.polacz_baze() as conn:
+        conn.execute(
+            "UPDATE samochody SET wspolny_pojazd_id=?, kod_zaproszenia=? WHERE id=?",
+            (nowy_id, kod, auto_id)
+        )
+
+    # KLUCZOWE: bez tego pojazd na serwerze zostaje pusty (bez tankowań, historii
+    # itd.), dopóki ktoś ręcznie nie kliknie "Synchronizuj teraz". Jeśli partner
+    # dołączy kodem od razu, widzi pusty pojazd. Wysyłamy więc wszystko natychmiast.
+    synchronizuj_wszystko(auto_id)
+
+    return kod
 
 def przywroc_z_chmury(auto_id):
     """Przywraca z chmury dane, które są tam jeszcze żywe (usuniete=false), a
@@ -568,19 +667,16 @@ def synchronizuj_wszystko(auto_id):
 
 def odlacz_wspoldzielenie(auto_id):
     """Rozłącza lokalny pojazd z chmurą. Pojazd wraca do trybu 100% offline,
-    a wszystkie dotychczas pobrane dane zostają zachowane lokalnie. Czyścimy
-    zdalne_id na wszystkich zsynchronizowanych tabelach, żeby ponowne
-    udostępnienie tego auta zaczęło od nowa (analogicznie jak dla tankowań)."""
+    a wszystkie dotychczas pobrane dane zostają zachowane lokalnie."""
     with db.polacz_baze() as conn:
         conn.execute(
-            "UPDATE samochody SET wspolny_pojazd_id=NULL, kod_zaproszenia=NULL WHERE id=?",
+            "UPDATE samochody SET wspolny_pojazd_id=NULL, kod_zaproszenia=NULL, "
+            "info_zdalne_id=NULL, zdalny_hash_info=NULL WHERE id=?",
             (auto_id,)
         )
         conn.execute("UPDATE tankowania SET zdalne_id=NULL, zdalny_hash=NULL WHERE auto_id=?", (auto_id,))
         for konfig in KONFIGURACJA_SYNC:
             tabela = konfig["tabela"]
-            # UWAGA: "historia" nie ma własnej kolumny auto_id — pojazd wynika
-            # pośrednio z zadanie_id -> zadania.auto_id, stąd osobna ścieżka z podzapytaniem.
             if tabela == "historia":
                 conn.execute(
                     "UPDATE historia SET zdalne_id=NULL, zdalny_hash=NULL "

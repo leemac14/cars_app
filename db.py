@@ -115,7 +115,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS wizyta_czesci_magazynu (id INTEGER PRIMARY KEY AUTOINCREMENT, wizyta_id INTEGER NOT NULL, magazyn_id INTEGER NOT NULL, ilosc_uzyta REAL NOT NULL DEFAULT 1, FOREIGN KEY (wizyta_id) REFERENCES wizyty(id) ON DELETE CASCADE, FOREIGN KEY (magazyn_id) REFERENCES magazyn_czesci(id) ON DELETE CASCADE);
             CREATE TABLE IF NOT EXISTS zdjecia_karoserii (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, strefa TEXT NOT NULL, zalacznik TEXT NOT NULL, opis TEXT, przebieg INTEGER, typ_porownania TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             """,
-            
             # Wersja 2: Kolumny dodatkowe dla samochodow
             """
             ALTER TABLE samochody ADD COLUMN oc_data TEXT;
@@ -143,20 +142,17 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN apteczka_data TEXT;
             ALTER TABLE samochody ADD COLUMN zdjecie_glowne TEXT;
             """,
-            
             # Wersja 3: Kolumny dla zadania
             """
             ALTER TABLE zadania ADD COLUMN interwal_km INTEGER;
             ALTER TABLE zadania ADD COLUMN interwal_miesiace INTEGER;
             """,
-            
             # Wersja 4: Kolumny dla historia, tankowania, zestawy_opon
             """
             ALTER TABLE historia ADD COLUMN zalacznik TEXT;
             ALTER TABLE tankowania ADD COLUMN stacja TEXT;
             ALTER TABLE zestawy_opon ADD COLUMN cena REAL DEFAULT 0.0;
             """,
-
             # Wersja 5: Tagi i załączniki
             """
             ALTER TABLE tankowania ADD COLUMN tagi TEXT;
@@ -166,14 +162,12 @@ def init_db():
             ALTER TABLE inne_koszty ADD COLUMN tagi TEXT;
             ALTER TABLE inne_koszty ADD COLUMN zalacznik TEXT;
             """,
-            
             # Wersja 6: Marka, model, generacja
             """
             ALTER TABLE samochody ADD COLUMN marka TEXT;
             ALTER TABLE samochody ADD COLUMN model TEXT;
             ALTER TABLE samochody ADD COLUMN generacja TEXT;
             """,
-
             # Wersja 7: Indeksy przyspieszające zapytania po auto_id i kluczach obcych
             """
             CREATE INDEX IF NOT EXISTS idx_zadania_auto ON zadania(auto_id);
@@ -196,32 +190,27 @@ def init_db():
             """
             ALTER TABLE zadania ADD COLUMN dotyczy_opon INTEGER DEFAULT 0;
             """,
-
             # Wersja 9: Niezależne montowanie zestawu opon per oś (przód/tył) —
             # pozwala trzymać osobne, asymetryczne komplety jednocześnie.
             """
             ALTER TABLE zestawy_opon ADD COLUMN os_montazu TEXT DEFAULT 'Wszystkie';
             """,
-
             # Wersja 10: Załączniki dla opon i części w magazynie
             """
             ALTER TABLE zestawy_opon ADD COLUMN zalacznik TEXT;
             ALTER TABLE magazyn_czesci ADD COLUMN zalacznik TEXT;
             """,
-
             # Wersja 11: Indywidualny próg ostrzegania o niskim stanie per pozycja
             # magazynowa — zastępuje sztywny, wspólny dla wszystkich próg "<=1 szt.".
             """
             ALTER TABLE magazyn_czesci ADD COLUMN prog_ostrzezenia REAL DEFAULT 1;
             """,
-
             # Wersja 12: Indywidualny kolor motywu interfejsu per pojazd — zamiast
             # jednego, globalnego koloru dla całej aplikacji. NULL = "użyj
             # domyślnego koloru z Ustawień".
             """
             ALTER TABLE samochody ADD COLUMN kolor_motywu TEXT;
             """,
-
             # Wersja 13: Szybkie odczyty przebiegu — lekki dziennik ręcznych
             # wpisów stanu licznika (np. z deski rozdzielczej), niezależny od
             # tankowań/wizyt/historii. Pozwala odświeżyć aktualny przebieg
@@ -230,7 +219,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS odczyty_przebiegu (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, przebieg INTEGER NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_odczyty_przebiegu_auto ON odczyty_przebiegu(auto_id);
             """,
-
             # Wersja 14: Baza warsztatów per pojazd — pozwala wybierać wykonawcę
             # z listy zamiast wpisywać go ręcznie, plus telefon/adres do
             # szybkiego "zadzwoń"/"nawiguj" z poziomu wizyty.
@@ -238,7 +226,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS warsztaty (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, telefon TEXT, adres TEXT, notatki TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_warsztaty_auto ON warsztaty(auto_id);
             """,
-
             # Wersja 15: Wydatki cykliczne (raty, abonamenty, ubezpieczenia
             # ratalne) — osobny harmonogram, z automatycznym przesuwaniem
             # terminu po oznaczeniu jako zapłacone.
@@ -246,7 +233,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS wydatki_cykliczne (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, kwota REAL NOT NULL DEFAULT 0.0, okres_dni INTEGER NOT NULL DEFAULT 30, nastepna_data TEXT NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_wydatki_cykliczne_auto ON wydatki_cykliczne(auto_id);
             """,
-
             # Wersja 16: Współdzielenie pojazdu (Supabase) — patrz sync.py. Pola
             # NULL = pojazd/tankowanie czysto lokalne, zero zmian w zachowaniu.
             """
@@ -261,7 +247,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS pakiety_serwisowe_wlasne (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, pozycje TEXT NOT NULL, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_pakiety_wlasne_auto ON pakiety_serwisowe_wlasne(auto_id);
             """,
-
             # Wersja 18: Kolumny zdalne_id — rozszerzenie współdzielenia pojazdu
             # (patrz sync.py) na resztę danych, nie tylko tankowania. NULL = rekord
             # czysto lokalny / jeszcze niezsynchronizowany, zero zmian w zachowaniu.
@@ -277,7 +262,6 @@ def init_db():
             ALTER TABLE wydatki_cykliczne ADD COLUMN zdalne_id TEXT;
             ALTER TABLE odczyty_przebiegu ADD COLUMN zdalne_id TEXT;
             """,
-
             # Wersja 19: Wsparcie synchronizacji EDYCJI i USUNIĘĆ (nie tylko nowych
             # wpisów). zdalny_hash pamięta hash treści ostatnio zsynchronizowanej z
             # serwerem — różnica przy kolejnej synchronizacji oznacza lokalną edycję
@@ -299,6 +283,16 @@ def init_db():
             ALTER TABLE wydatki_cykliczne ADD COLUMN zdalny_hash TEXT;
             ALTER TABLE odczyty_przebiegu ADD COLUMN zdalny_hash TEXT;
             CREATE TABLE IF NOT EXISTS zdalne_nagrobki (id INTEGER PRIMARY KEY AUTOINCREMENT, tabela TEXT NOT NULL, zdalny_id TEXT NOT NULL);
+            """,
+            # Wersja 20: Synchronizacja danych opisowych pojazdu (patrz sync.py:
+            # KOLUMNY_POJAZDU / _synchronizuj_info_pojazdu) oraz słownika tagów
+            # (nazwa+kolor) — kolejne elementy współdzielenia pojazdu, dotąd
+            # pomijane przez sync mimo że były wymieniane jako "synchronizowane".
+            """
+            ALTER TABLE samochody ADD COLUMN info_zdalne_id TEXT;
+            ALTER TABLE samochody ADD COLUMN zdalny_hash_info TEXT;
+            ALTER TABLE tagi ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE tagi ADD COLUMN zdalny_hash TEXT;
             """
         ]
 
@@ -1363,8 +1357,11 @@ def dodaj_tag(auto_id, nazwa, kolor):
 def usun_tag_ze_slownika(auto_id, tag_id, nazwa):
     """Usuwa tag z bazy i wymazuje jego nazwę z rekordów tekstowych we wszystkich tabelach."""
     with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT zdalne_id FROM tagi WHERE id=?", (tag_id,))
+        w = c.fetchone()
         conn.execute("DELETE FROM tagi WHERE id=?", (tag_id,))
-        
+
         for tabela in ["tankowania", "wizyty", "inne_koszty"]:
             c = conn.cursor()
             c.execute(f"SELECT id, tagi FROM {tabela} WHERE auto_id=? AND tagi LIKE ?", (auto_id, f'%{nazwa}%'))
@@ -1375,6 +1372,9 @@ def usun_tag_ze_slownika(auto_id, tag_id, nazwa):
                     tagi_lista.remove(nazwa)
                     nowe_tagi = ",".join(tagi_lista)
                     conn.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowe_tagi, r_id))
+
+    if w and w[0]:
+        zarejestruj_nagrobek("tagi", w[0])
 
 def edytuj_tag_w_slowniku(auto_id, tag_id, stara_nazwa, nowa_nazwa, nowy_kolor):
     """Aktualizuje nazwę/kolor taga i kaskadowo podmienia ją w tekstowych wpisach rekordu."""
@@ -1930,7 +1930,7 @@ def usun_auto_z_cofnieciem(auto_id):
     TABELE_SYNCHRONIZOWANE_AUTA = [
         "zadania", "wizyty", "magazyn_czesci", "tankowania", "inne_koszty",
         "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
-        "do_zrobienia", "historia",
+        "do_zrobienia", "historia", "tagi",
     ]
     zdalne_id_do_usuniecia = []
     for tab in TABELE_SYNCHRONIZOWANE_AUTA:
@@ -1939,6 +1939,12 @@ def usun_auto_z_cofnieciem(auto_id):
             if zid:
                 zdalne_id_do_usuniecia.append(zid)
                 zarejestruj_nagrobek(tab, zid)
+
+    # Dane opisowe pojazdu (patrz sync._synchronizuj_info_pojazdu) mają własny
+    # zdalny odpowiednik — bez tego zostałby osierocony na serwerze po usunięciu auta.
+    if dane_auta.get("info_zdalne_id"):
+        zdalne_id_do_usuniecia.append(dane_auta["info_zdalne_id"])
+        zarejestruj_nagrobek("info_pojazdu", dane_auta["info_zdalne_id"])
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 

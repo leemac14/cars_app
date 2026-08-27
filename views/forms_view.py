@@ -553,6 +553,17 @@ class FormularzTankowanieView(ft.View):
                              (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi))
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
+        # Auto-sync w tle, jeśli pojazd jest współdzielony — bez tego partner
+        # widziałby to tankowanie dopiero po ręcznym kliknięciu ikonki sync.
+        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+        if wspolny_id:
+            async def _wypchnij():
+                try:
+                    await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
+                except Exception:
+                    pass  # brak sieci nie może zepsuć lokalnego zapisu
+            self._page.run_task(_wypchnij)
+
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano tankowanie!")
 
