@@ -276,6 +276,29 @@ def init_db():
             ALTER TABLE warsztaty ADD COLUMN zdalne_id TEXT;
             ALTER TABLE wydatki_cykliczne ADD COLUMN zdalne_id TEXT;
             ALTER TABLE odczyty_przebiegu ADD COLUMN zdalne_id TEXT;
+            """,
+
+            # Wersja 19: Wsparcie synchronizacji EDYCJI i USUNIĘĆ (nie tylko nowych
+            # wpisów). zdalny_hash pamięta hash treści ostatnio zsynchronizowanej z
+            # serwerem — różnica przy kolejnej synchronizacji oznacza lokalną edycję
+            # do wypchnięcia. zdalne_nagrobki to lokalna kolejka "do usunięcia na
+            # serwerze przy najbliższej okazji": rekord znika z lokalnej bazy od razu
+            # (jak dotychczas), a jego zdalny odpowiednik trzeba jeszcze osobno
+            # oznaczyć jako usunięty. Bez auto_id — kasowanie po zdalnym ID nie jest
+            # przywiązane do konkretnego pojazdu.
+            """
+            ALTER TABLE tankowania ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE zadania ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE historia ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE wizyty ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE magazyn_czesci ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE zestawy_opon ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE do_zrobienia ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE warsztaty ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN zdalny_hash TEXT;
+            ALTER TABLE odczyty_przebiegu ADD COLUMN zdalny_hash TEXT;
+            CREATE TABLE IF NOT EXISTS zdalne_nagrobki (id INTEGER PRIMARY KEY AUTOINCREMENT, tabela TEXT NOT NULL, zdalny_id TEXT NOT NULL);
             """
         ]
 
@@ -1051,6 +1074,24 @@ def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
             )
         conn.execute("UPDATE zestawy_opon SET zamontowane=1, os_montazu=? WHERE id=?", (os_montazu, zestaw_id))
 
+def zarejestruj_nagrobek(tabela, zdalny_id):
+    """Zapamiętuje lokalnie, że wiersz o danym zdalne_id (z tabeli 'tabela') został
+    usunięty na tym urządzeniu — sam rekord znika z lokalnej bazy od razu (jak
+    dotychczas), ale info o usunięciu trzeba jeszcze wypchnąć na serwer przy
+    najbliższej synchronizacji (patrz sync._wypchnij_nagrobki)."""
+    if not zdalny_id:
+        return
+    with polacz_baze() as conn:
+        conn.execute("INSERT INTO zdalne_nagrobki (tabela, zdalny_id) VALUES (?,?)", (tabela, zdalny_id))
+
+def usun_nagrobek(zdalny_id):
+    """Kasuje nagrobek — wywoływane, gdy usunięcie zostaje cofnięte (Undo), żeby
+    NIE propagowało się na serwer."""
+    if not zdalny_id:
+        return
+    with polacz_baze() as conn:
+        conn.execute("DELETE FROM zdalne_nagrobki WHERE zdalny_id=?", (zdalny_id,))
+
 def usun_z_cofnieciem(tabela, rekord_id):
     """Usuwa pojedynczy rekord i zwraca callback cofnij() przywracający go z tymi
     samymi wartościami (i tym samym id, o ile nic go w międzyczasie nie zajęło).
@@ -1069,6 +1110,8 @@ def usun_z_cofnieciem(tabela, rekord_id):
             return None
         dane = {k: wiersz[k] for k in kolumny}
 
+    zdalny_id_usuniety = dane.get("zdalne_id")
+
     sciezka_tymczasowa = None
     if tabela in TABELE_Z_ZALACZNIKIEM:
         oryginalna = dane.get("zalacznik")
@@ -1083,12 +1126,18 @@ def usun_z_cofnieciem(tabela, rekord_id):
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id=?", (rekord_id,))
 
+    if zdalny_id_usuniety:
+        zarejestruj_nagrobek(tabela, zdalny_id_usuniety)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
         if stan["cofniete"] or stan["trwale_usuniete"]:
             return
         stan["cofniete"] = True
+
+        if zdalny_id_usuniety:
+            usun_nagrobek(zdalny_id_usuniety)
 
         if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
             try:
@@ -1133,6 +1182,8 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
             return None
         dane_lista = [{k: w[k] for k in kolumny} for w in wiersze]
 
+    zdalne_id_usuniete = [d.get("zdalne_id") for d in dane_lista if d.get("zdalne_id")]
+
     sciezki_tymczasowe = []
     if tabela in TABELE_Z_ZALACZNIKIEM:
         folder_tmp = _upewnij_folder_odroczonych()
@@ -1150,12 +1201,18 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_list))
 
+    for zid in zdalne_id_usuniete:
+        zarejestruj_nagrobek(tabela, zid)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
         if stan["cofniete"] or stan["trwale_usuniete"]:
             return
         stan["cofniete"] = True
+
+        for zid in zdalne_id_usuniete:
+            usun_nagrobek(zid)
 
         for tmp, oryg in sciezki_tymczasowe:
             if os.path.exists(tmp):
@@ -1372,7 +1429,12 @@ def edytuj_warsztat(warsztat_id, nazwa, telefon=None, adres=None, notatki=None):
 
 def usun_warsztat(warsztat_id):
     with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT zdalne_id FROM warsztaty WHERE id=?", (warsztat_id,))
+        w = c.fetchone()
         conn.execute("DELETE FROM warsztaty WHERE id=?", (warsztat_id,))
+    if w and w[0]:
+        zarejestruj_nagrobek("warsztaty", w[0])
 
 # ==================== WYDATKI CYKLICZNE ====================
 
@@ -1403,7 +1465,12 @@ def edytuj_wydatek_cykliczny(wydatek_id, nazwa, kwota, okres_dni, nastepna_data)
 
 def usun_wydatek_cykliczny(wydatek_id):
     with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT zdalne_id FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
+        w = c.fetchone()
         conn.execute("DELETE FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
+    if w and w[0]:
+        zarejestruj_nagrobek("wydatki_cykliczne", w[0])
 
 def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
     """Tworzy wpis w inne_koszty na podstawie wydatku cyklicznego i przesuwa jego
@@ -1527,12 +1594,19 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
     with polacz_baze() as conn:
         conn.execute("DELETE FROM magazyn_czesci WHERE id=?", (czesc_id,))
 
+    zdalny_id_czesci = dane_czesc.get("zdalne_id")
+    if zdalny_id_czesci:
+        zarejestruj_nagrobek("magazyn_czesci", zdalny_id_czesci)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
         if stan["cofniete"] or stan["trwale_usuniete"]:
             return
         stan["cofniete"] = True
+
+        if zdalny_id_czesci:
+            usun_nagrobek(zdalny_id_czesci)
         
         if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
             try:
@@ -1728,11 +1802,23 @@ def usun_wizyty_z_cofnieciem(ids_list):
         conn.execute(f"DELETE FROM historia WHERE wizyta_id IN ({placeholders})", tuple(ids_list))
         conn.execute(f"DELETE FROM wizyty WHERE id IN ({placeholders})", tuple(ids_list))
 
+    zdalne_id_wizyt = [d.get("zdalne_id") for d in wizyty_dane if d.get("zdalne_id")]
+    zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
+    for zid in zdalne_id_wizyt:
+        zarejestruj_nagrobek("wizyty", zid)
+    for zid in zdalne_id_historii:
+        zarejestruj_nagrobek("historia", zid)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
         if stan["cofniete"] or stan["trwale_usuniete"]: return
         stan["cofniete"] = True
+
+        for zid in zdalne_id_wizyt:
+            usun_nagrobek(zid)
+        for zid in zdalne_id_historii:
+            usun_nagrobek(zid)
 
         for tmp, oryg in sciezki_tymczasowe:
             if os.path.exists(tmp):
@@ -1840,11 +1926,28 @@ def usun_auto_z_cofnieciem(auto_id):
     with polacz_baze() as conn:
         conn.execute("DELETE FROM samochody WHERE id=?", (auto_id,))
 
+    # Nagrobki dla wszystkich zsynchronizowanych tabel tego pojazdu naraz
+    TABELE_SYNCHRONIZOWANE_AUTA = [
+        "zadania", "wizyty", "magazyn_czesci", "tankowania", "inne_koszty",
+        "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
+        "do_zrobienia", "historia",
+    ]
+    zdalne_id_do_usuniecia = []
+    for tab in TABELE_SYNCHRONIZOWANE_AUTA:
+        for d in wszystkie_dane.get(tab, {}).get("wiersze", []):
+            zid = d.get("zdalne_id")
+            if zid:
+                zdalne_id_do_usuniecia.append(zid)
+                zarejestruj_nagrobek(tab, zid)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
         if stan["cofniete"] or stan["trwale_usuniete"]: return
         stan["cofniete"] = True
+
+        for zid in zdalne_id_do_usuniecia:
+            usun_nagrobek(zid)
 
         # Przywracanie fizycznych zdjęć
         for tmp, oryg in sciezki_tymczasowe:
@@ -1926,12 +2029,24 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
     with polacz_baze() as conn:
         conn.execute("DELETE FROM zadania WHERE id=?", (zadanie_id,))
 
+    zdalny_id_zadania = dane_zad.get("zdalne_id")
+    zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
+    if zdalny_id_zadania:
+        zarejestruj_nagrobek("zadania", zdalny_id_zadania)
+    for zid in zdalne_id_historii:
+        zarejestruj_nagrobek("historia", zid)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
         if stan["cofniete"] or stan["trwale_usuniete"]:
             return
         stan["cofniete"] = True
+
+        if zdalny_id_zadania:
+            usun_nagrobek(zdalny_id_zadania)
+        for zid in zdalne_id_historii:
+            usun_nagrobek(zid)
 
         # Przywrócenie plików na dysk
         for tmp, oryg in sciezki_tymczasowe:

@@ -18,8 +18,10 @@ NIE są i nie będą synchronizowane:
   wyłącznie NOWE wpisy (insert-only, tak jak dotychczas dla tankowań).
 """
 import uuid as uuid_lib
-import db
 import sqlite3
+import json
+import hashlib
+import db
 
 # --- UZUPEŁNIJ PO ZAŁOŻENIU PROJEKTU NA supabase.com (Project Settings -> API) ---
 SUPABASE_URL = "https://ptnnejbuvymhrkouwsln.supabase.co"
@@ -125,62 +127,113 @@ def dolacz_po_kodzie(kod):
     return nowy_auto_id, nazwa
 
 def synchronizuj_tankowania(auto_id):
-    """Wypycha lokalne, jeszcze niewysłane tankowania, po czym ściąga te
-    dodane przez współlaczników. Zwraca (wyslano, pobrano). Bez efektu
-    (0, 0), jeśli pojazd nie jest współdzielony — bezpieczne do wywołania
-    zawsze, nawet dla lokalnych aut."""
+    """Synchronizuje tankowania: nowe wiersze, edycje (wykrywane hashem
+    zawartości) i usunięcia — analogicznie do synchronizuj_reszte_pojazdu(), ale
+    przez starszą, dedykowaną tabelę Supabase 'zdalne_tankowania'."""
     wspolny_id, _ = czy_udostepniony(auto_id)
     if not wspolny_id:
         return 0, 0
 
     klient, uid = _upewnij_sesje()
+    _wypchnij_nagrobki(klient)
     wyslano = 0
 
+    kolumny_tankowania = ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi"]
+
+    def zbuduj_dane(wiersz):
+        return {k: wiersz[k] for k in kolumny_tankowania}
+
+    # 1. Nowe wiersze
     with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        c.execute(
-            "SELECT id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi "
-            "FROM tankowania WHERE auto_id=? AND zdalne_id IS NULL", (auto_id,)
-        )
+        c.execute("SELECT * FROM tankowania WHERE auto_id=? AND zdalne_id IS NULL", (auto_id,))
         do_wyslania = c.fetchall()
 
-    for lokalny_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi in do_wyslania:
+    for wiersz in do_wyslania:
         wynik = klient.rpc("dodaj_zdalne_tankowanie", {
-            "p_pojazd_id": wspolny_id, "p_data": data, "p_przebieg": przebieg,
-            "p_dystans": dystans, "p_litry": litry, "p_kwota": kwota,
-            "p_do_pelna": bool(do_pelna), "p_stacja": stacja, "p_tagi": tagi,
+            "p_pojazd_id": wspolny_id, "p_data": wiersz["data"], "p_przebieg": wiersz["przebieg"],
+            "p_dystans": wiersz["dystans"], "p_litry": wiersz["litry"], "p_kwota": wiersz["kwota"],
+            "p_do_pelna": bool(wiersz["do_pelna"]), "p_stacja": wiersz["stacja"], "p_tagi": wiersz["tagi"],
         }).execute()
         nowe_zdalne_id = wynik.data
+        nowy_hash = _hash_zawartosci(zbuduj_dane(wiersz))
         with db.polacz_baze() as conn:
-            conn.execute("UPDATE tankowania SET zdalne_id=? WHERE id=?", (nowe_zdalne_id, lokalny_id))
+            conn.execute("UPDATE tankowania SET zdalne_id=?, zdalny_hash=? WHERE id=?", (nowe_zdalne_id, nowy_hash, wiersz["id"]))
         wyslano += 1
 
+    # 2. Edytowane wiersze (już wcześniej zsynchronizowane, zmienione lokalnie)
     with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        c.execute("SELECT zdalne_id FROM tankowania WHERE auto_id=? AND zdalne_id IS NOT NULL", (auto_id,))
-        znane = {r[0] for r in c.fetchall()}
+        c.execute("SELECT * FROM tankowania WHERE auto_id=? AND zdalne_id IS NOT NULL", (auto_id,))
+        istniejace = c.fetchall()
 
-    wynik = klient.table("zdalne_tankowania").select("*").eq("pojazd_id", wspolny_id).eq("usuniete", False).execute()
+    for wiersz in istniejace:
+        dane = zbuduj_dane(wiersz)
+        nowy_hash = _hash_zawartosci(dane)
+        if nowy_hash == wiersz["zdalny_hash"]:
+            continue
+
+        klient.rpc("aktualizuj_zdalne_tankowanie", {
+            "p_id": wiersz["zdalne_id"], "p_data": dane["data"], "p_przebieg": dane["przebieg"],
+            "p_dystans": dane["dystans"], "p_litry": dane["litry"], "p_kwota": dane["kwota"],
+            "p_do_pelna": bool(dane["do_pelna"]), "p_stacja": dane["stacja"], "p_tagi": dane["tagi"],
+        }).execute()
+        with db.polacz_baze() as conn:
+            conn.execute("UPDATE tankowania SET zdalny_hash=? WHERE id=?", (nowy_hash, wiersz["id"]))
+        wyslano += 1
+
+    # 3. Pobieranie: nowe, zmienione i usunięte na serwerze
+    with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, zdalne_id, zdalny_hash FROM tankowania WHERE auto_id=? AND zdalne_id IS NOT NULL", (auto_id,))
+        znane = {r["zdalne_id"]: {"id": r["id"], "hash": r["zdalny_hash"]} for r in c.fetchall()}
+
+    wynik = klient.table("zdalne_tankowania").select("*").eq("pojazd_id", wspolny_id).execute()
     pobrano = 0
     for w in wynik.data:
-        if w["id"] in znane:
+        lokalny = znane.get(w["id"])
+
+        if w.get("usuniete"):
+            if lokalny:
+                with db.polacz_baze() as conn:
+                    conn.execute("DELETE FROM tankowania WHERE id=?", (lokalny["id"],))
             continue
-        with db.polacz_baze() as conn:
-            conn.execute(
-                "INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi, zdalne_id) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (auto_id, w["data"], w["przebieg"], w["dystans"] or 0.0, w["litry"], w["kwota"],
-                 1 if w["do_pelna"] else 0, w["stacja"], w["tagi"], w["id"])
-            )
-        pobrano += 1
+
+        dane = {
+            "data": w["data"], "przebieg": w["przebieg"], "dystans": w["dystans"] or 0.0,
+            "litry": w["litry"], "kwota": w["kwota"], "do_pelna": 1 if w["do_pelna"] else 0,
+            "stacja": w["stacja"], "tagi": w["tagi"],
+        }
+        nowy_hash = _hash_zawartosci(dane)
+
+        if lokalny is None:
+            with db.polacz_baze() as conn:
+                conn.execute(
+                    "INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi, zdalne_id, zdalny_hash) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (auto_id, dane["data"], dane["przebieg"], dane["dystans"], dane["litry"], dane["kwota"],
+                     dane["do_pelna"], dane["stacja"], dane["tagi"], w["id"], nowy_hash)
+                )
+            pobrano += 1
+        elif nowy_hash != lokalny["hash"]:
+            with db.polacz_baze() as conn:
+                conn.execute(
+                    "UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, tagi=?, zdalny_hash=? WHERE id=?",
+                    (dane["data"], dane["przebieg"], dane["dystans"], dane["litry"], dane["kwota"],
+                     dane["do_pelna"], dane["stacja"], dane["tagi"], nowy_hash, lokalny["id"])
+                )
+            pobrano += 1
 
     return wyslano, pobrano
 
 # ==================== SYNCHRONIZACJA RESZTY POJAZDU ====================
-# Uniwersalny mechanizm insert-only, korzystający z JEDNEJ wspólnej tabeli
-# Supabase "zdalne_rekordy" (zamiast osobnej tabeli per typ danych, jak przy
-# tankowaniach). Kolejność listy MA ZNACZENIE: tabele z kluczami obcymi (fk)
-# muszą być zsynchronizowane PO tabelach, do których się odwołują.
+# Uniwersalny mechanizm dla WSZYSTKICH operacji (dodanie/edycja/usunięcie),
+# korzystający z jednej wspólnej tabeli Supabase "zdalne_rekordy". Kolejność
+# listy MA ZNACZENIE: tabele z kluczami obcymi (fk) muszą być zsynchronizowane
+# PO tabelach, do których się odwołują.
 KONFIGURACJA_SYNC = [
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon"], "fk": {}},
     {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi"], "fk": {}},
@@ -195,24 +248,46 @@ KONFIGURACJA_SYNC = [
 ]
 
 
+def _hash_zawartosci(dane: dict) -> str:
+    """Stabilny hash zawartości rekordu (niezależny od kolejności kluczy) —
+    używany do wykrywania, czy wiersz zmienił się od ostatniej synchronizacji."""
+    kanoniczny = json.dumps(dane, sort_keys=True, default=str, ensure_ascii=True)
+    return hashlib.sha256(kanoniczny.encode("utf-8")).hexdigest()
+
+
+def _wypchnij_nagrobki(klient):
+    """Wypycha WSZYSTKIE oczekujące lokalne usunięcia (niezależnie od pojazdu —
+    kasowanie po zdalnym ID nie wymaga kontekstu konkretnego pojazdu) i czyści
+    lokalne nagrobki po udanym wypchnięciu. Błąd pojedynczego nagrobka (np. brak
+    sieci) zostawia go w kolejce do kolejnej próby, nie przerywa reszty."""
+    with db.polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, tabela, zdalny_id FROM zdalne_nagrobki")
+        nagrobki = c.fetchall()
+
+    for nagrobek_id, tabela, zdalny_id in nagrobki:
+        try:
+            if tabela == "tankowania":
+                klient.rpc("usun_zdalne_tankowanie", {"p_id": zdalny_id}).execute()
+            else:
+                klient.rpc("usun_zdalny_rekord", {"p_id": zdalny_id}).execute()
+            with db.polacz_baze() as conn:
+                conn.execute("DELETE FROM zdalne_nagrobki WHERE id=?", (nagrobek_id,))
+        except Exception:
+            pass
+
+
 def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
-    """Wypycha nowe (jeszcze niezsynchronizowane) lokalne wiersze jednej tabeli
-    do uniwersalnej tabeli zdalne_rekordy. Klucze obce (fk) są zamieniane na
-    zdalne_id powiązanego rekordu i zapisywane w JSON pod kluczem '<pole>_zdalne'."""
+    """Wypycha NOWE lokalne wiersze (insert) oraz aktualizuje na serwerze te,
+    które zmieniły się lokalnie od ostatniej synchronizacji (wykryte przez
+    porównanie hasha zawartości — zdalny_hash)."""
     tabela = konfig["tabela"]
     kolumny = konfig["kolumny"]
     fk = konfig["fk"]
     wyslano = 0
 
-    with db.polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute(f"SELECT * FROM {tabela} WHERE auto_id=? AND zdalne_id IS NULL", (auto_id,))
-        do_wyslania = c.fetchall()
-
-    for wiersz in do_wyslania:
+    def zbuduj_dane(wiersz):
         dane = {nazwa: wiersz[nazwa] for nazwa in kolumny}
-
         for pole_fk, tabela_fk in fk.items():
             wartosc_fk = wiersz[pole_fk]
             zdalne_fk = None
@@ -223,82 +298,156 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
                     w = c.fetchone()
                     zdalne_fk = w[0] if w else None
             dane[f"{pole_fk}_zdalne"] = zdalne_fk
+        return dane
 
+    # 1. Nowe wiersze
+    # UWAGA: tabela "historia" nie ma własnej kolumny auto_id — pojazd wynika
+    # pośrednio z zadanie_id -> zadania.auto_id, więc wymaga osobnego zapytania z JOIN-em.
+    if tabela == "historia":
+        zapytanie_nowe = (
+            "SELECT h.* FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
+            "WHERE z.auto_id=? AND h.zdalne_id IS NULL"
+        )
+    else:
+        zapytanie_nowe = f"SELECT * FROM {tabela} WHERE auto_id=? AND zdalne_id IS NULL"
+
+    with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(zapytanie_nowe, (auto_id,))
+        do_wyslania = c.fetchall()
+
+    print(f"[DIAG-SYNC] {tabela}: znaleziono {len(do_wyslania)} nowych wierszy do wyslania")  # TYMCZASOWE
+
+    for wiersz in do_wyslania:
+        dane = zbuduj_dane(wiersz)
         wynik = klient.rpc("dodaj_zdalny_rekord", {
             "p_pojazd_id": wspolny_id, "p_tabela": tabela, "p_dane": dane
         }).execute()
         nowe_zdalne_id = wynik.data
-
+        nowy_hash = _hash_zawartosci(dane)
         with db.polacz_baze() as conn:
-            conn.execute(f"UPDATE {tabela} SET zdalne_id=? WHERE id=?", (nowe_zdalne_id, wiersz["id"]))
+            conn.execute(f"UPDATE {tabela} SET zdalne_id=?, zdalny_hash=? WHERE id=?", (nowe_zdalne_id, nowy_hash, wiersz["id"]))
+        wyslano += 1
+
+    # 2. Wiersze już zsynchronizowane, zmienione lokalnie od ostatniego razu
+    if tabela == "historia":
+        zapytanie_istniejace = (
+            "SELECT h.* FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
+            "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
+        )
+    else:
+        zapytanie_istniejace = f"SELECT * FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
+
+    with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(zapytanie_istniejace, (auto_id,))
+        istniejace = c.fetchall()
+
+    for wiersz in istniejace:
+        dane = zbuduj_dane(wiersz)
+        nowy_hash = _hash_zawartosci(dane)
+        if nowy_hash == wiersz["zdalny_hash"]:
+            continue  # nic się nie zmieniło
+
+        klient.rpc("aktualizuj_zdalny_rekord", {"p_id": wiersz["zdalne_id"], "p_dane": dane}).execute()
+        with db.polacz_baze() as conn:
+            conn.execute(f"UPDATE {tabela} SET zdalny_hash=? WHERE id=?", (nowy_hash, wiersz["id"]))
         wyslano += 1
 
     return wyslano
 
 
 def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
-    """Ściąga z tabeli zdalne_rekordy wpisy jednej tabeli, których jeszcze nie ma
-    lokalnie (po zdalne_id), i wstawia je do lokalnej bazy. Klucze obce (fk) są
-    odtwarzane przez odnalezienie lokalnego wiersza o pasującym zdalne_id."""
+    """Ściąga nowe wiersze, aktualizuje lokalnie te zmienione na serwerze i
+    kasuje te oznaczone jako usunięte (usuniete=true)."""
     tabela = konfig["tabela"]
     kolumny = konfig["kolumny"]
     fk = konfig["fk"]
     pobrano = 0
 
-    with db.polacz_baze() as conn:
-        c = conn.cursor()
-        c.execute(f"SELECT zdalne_id FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL", (auto_id,))
-        znane = {r[0] for r in c.fetchall()}
+    if tabela == "historia":
+        zapytanie_znane = (
+            "SELECT h.id, h.zdalne_id, h.zdalny_hash FROM historia h "
+            "JOIN zadania z ON h.zadanie_id = z.id "
+            "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
+        )
+    else:
+        zapytanie_znane = f"SELECT id, zdalne_id, zdalny_hash FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
 
-    wynik = klient.table("zdalne_rekordy").select("*").eq("pojazd_id", wspolny_id).eq("tabela", tabela).eq("usuniete", False).execute()
+    with db.polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(zapytanie_znane, (auto_id,))
+        znane = {r["zdalne_id"]: {"id": r["id"], "hash": r["zdalny_hash"]} for r in c.fetchall()}
+
+    wynik = klient.table("zdalne_rekordy").select("*").eq("pojazd_id", wspolny_id).eq("tabela", tabela).execute()
 
     for rekord in wynik.data:
-        if rekord["id"] in znane:
+        zdalne_id = rekord["id"]
+        lokalny = znane.get(zdalne_id)
+
+        if rekord.get("usuniete"):
+            if lokalny:
+                with db.polacz_baze() as conn:
+                    conn.execute(f"DELETE FROM {tabela} WHERE id=?", (lokalny["id"],))
             continue
+
         dane = rekord["dane"] or {}
+        nowy_hash = _hash_zawartosci(dane)
 
-        wartosci = {"auto_id": auto_id, "zdalne_id": rekord["id"]}
-        wartosci.update({nazwa: dane.get(nazwa) for nazwa in kolumny})
-
+        wartosci = {nazwa: dane.get(nazwa) for nazwa in kolumny}
         for pole_fk, tabela_fk in fk.items():
-            zdalne_fk = dane.get(f"{pole_fk}_zdalne")
+            zdalny_fk = dane.get(f"{pole_fk}_zdalne")
             lokalny_fk = None
-            if zdalne_fk:
+            if zdalny_fk:
                 with db.polacz_baze() as conn:
                     c = conn.cursor()
-                    c.execute(f"SELECT id FROM {tabela_fk} WHERE zdalne_id=?", (zdalne_fk,))
+                    c.execute(f"SELECT id FROM {tabela_fk} WHERE zdalne_id=?", (zdalny_fk,))
                     w = c.fetchone()
                     lokalny_fk = w[0] if w else None
             wartosci[pole_fk] = lokalny_fk
 
-        nazwy_kolumn = ",".join(wartosci.keys())
-        znaki_zapytania = ",".join("?" for _ in wartosci)
-        with db.polacz_baze() as conn:
-            conn.execute(f"INSERT INTO {tabela} ({nazwy_kolumn}) VALUES ({znaki_zapytania})", tuple(wartosci.values()))
-        pobrano += 1
+        if lokalny is None:
+            # historia nie ma kolumny auto_id — pojazd wynika z zadanie_id (patrz wyżej)
+            if tabela != "historia":
+                wartosci["auto_id"] = auto_id
+            wartosci["zdalne_id"] = zdalne_id
+            wartosci["zdalny_hash"] = nowy_hash
+            nazwy_kolumn = ",".join(wartosci.keys())
+            znaki_zapytania = ",".join("?" for _ in wartosci)
+            with db.polacz_baze() as conn:
+                conn.execute(f"INSERT INTO {tabela} ({nazwy_kolumn}) VALUES ({znaki_zapytania})", tuple(wartosci.values()))
+            pobrano += 1
+        elif nowy_hash != lokalny["hash"]:
+            przypisania = ",".join(f"{nazwa}=?" for nazwa in wartosci.keys())
+            with db.polacz_baze() as conn:
+                conn.execute(f"UPDATE {tabela} SET {przypisania}, zdalny_hash=? WHERE id=?",
+                             tuple(wartosci.values()) + (nowy_hash, lokalny["id"]))
+            pobrano += 1
 
     return pobrano
 
 
 def synchronizuj_reszte_pojazdu(auto_id):
-    """Synchronizuje WSZYSTKIE dane pojazdu oprócz tankowań (patrz KONFIGURACJA_SYNC)
-    — najpierw wypychanie wszystkich tabel w kolejności zależności FK, potem
-    ściąganie wszystkich tabel w tej samej kolejności. Bez efektu (0, 0), jeśli
-    pojazd nie jest współdzielony. Zwraca (wyslano, pobrano)."""
+    """Synchronizuje WSZYSTKIE dane pojazdu oprócz tankowań: nowe wiersze, edycje
+    i usunięcia (patrz KONFIGURACJA_SYNC). Bez efektu (0, 0), jeśli pojazd nie
+    jest współdzielony. Zwraca (wyslano, pobrano)."""
     wspolny_id, _ = czy_udostepniony(auto_id)
+    print(f"[DIAG-SYNC] auto_id={auto_id} wspolny_id={wspolny_id}")  # TYMCZASOWE
     if not wspolny_id:
         return 0, 0
 
     klient, uid = _upewnij_sesje()
+    _wypchnij_nagrobki(klient)
 
     wyslano = sum(_wypchnij_tabele(klient, wspolny_id, auto_id, konfig) for konfig in KONFIGURACJA_SYNC)
     pobrano = sum(_pobierz_tabele(klient, wspolny_id, auto_id, konfig) for konfig in KONFIGURACJA_SYNC)
 
-    # Wpisy historii mogły zmienić najnowszą datę/przebieg podzespołów
     db.przelicz_wszystkie_zadania(auto_id)
 
     return wyslano, pobrano
-
 
 def synchronizuj_wszystko(auto_id):
     """Pełna synchronizacja współdzielonego pojazdu: tankowania (stara, dedykowana
@@ -319,6 +468,16 @@ def odlacz_wspoldzielenie(auto_id):
             "UPDATE samochody SET wspolny_pojazd_id=NULL, kod_zaproszenia=NULL WHERE id=?",
             (auto_id,)
         )
-        conn.execute("UPDATE tankowania SET zdalne_id=NULL WHERE auto_id=?", (auto_id,))
+        conn.execute("UPDATE tankowania SET zdalne_id=NULL, zdalny_hash=NULL WHERE auto_id=?", (auto_id,))
         for konfig in KONFIGURACJA_SYNC:
-            conn.execute(f"UPDATE {konfig['tabela']} SET zdalne_id=NULL WHERE auto_id=?", (auto_id,))
+            tabela = konfig["tabela"]
+            # UWAGA: "historia" nie ma własnej kolumny auto_id — pojazd wynika
+            # pośrednio z zadanie_id -> zadania.auto_id, stąd osobna ścieżka z podzapytaniem.
+            if tabela == "historia":
+                conn.execute(
+                    "UPDATE historia SET zdalne_id=NULL, zdalny_hash=NULL "
+                    "WHERE zadanie_id IN (SELECT id FROM zadania WHERE auto_id=?)",
+                    (auto_id,)
+                )
+            else:
+                conn.execute(f"UPDATE {tabela} SET zdalne_id=NULL, zdalny_hash=NULL WHERE auto_id=?", (auto_id,))
