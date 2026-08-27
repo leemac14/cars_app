@@ -12,6 +12,7 @@ class UstawieniaView(ft.View):
         jednostka_val = db.pobierz_jednostke_spalania()
         prog_km_val = db.pobierz_prog_km()
         prog_dni_val = db.pobierz_prog_dni()
+        moje_imie_val = db.pobierz_moje_imie()
 
         self.e_waluta = ft.Dropdown(
             label="Waluta",
@@ -100,6 +101,22 @@ class UstawieniaView(ft.View):
             "Progi powiadomień", ft.Icons.NOTIFICATIONS_ACTIVE, domyslnie_otwarte=True
         )
 
+        self.e_moje_imie = ft.TextField(
+            label="Twoje imię / nazwa",
+            value=moje_imie_val,
+            hint_text="np. Kamil, Tata, Telefon Ani",
+            **utils.styl_pola()
+        )
+
+        k3 = utils.karta_formularza(
+            [self.e_moje_imie, ft.Text(
+                "Widoczne przy wpisach (tankowania, serwis, koszty) we współdzielonych pojazdach — "
+                "tak inni domownicy widzą, kto co dodał, a ekran „Podział kosztów” wie, kogo do czego przypisać.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            )],
+            "Twoja atrybucja przy współdzieleniu", ft.Icons.PERSON, domyslnie_otwarte=True
+        )
+
         info = ft.Container(
             padding=15,
             border_radius=10,
@@ -113,7 +130,7 @@ class UstawieniaView(ft.View):
             ], spacing=8)
         )
 
-        elementy = [k1, k2, info, utils.przyciski_akcji(page, "✅ Zapisz ustawienia", self.zapisz, "/")]
+        elementy = [k1, k2, k3, info, utils.przyciski_akcji(page, "✅ Zapisz ustawienia", self.zapisz, "/")]
 
         super().__init__(
             route="/ustawienia",
@@ -125,6 +142,7 @@ class UstawieniaView(ft.View):
         db.zapisz_ustawienie("jednostka_spalania", self.e_jednostka.value)
         db.zapisz_ustawienie("prog_km_powiadomien", self.e_prog_km.value)
         db.zapisz_ustawienie("prog_dni_powiadomien", self.e_prog_dni.value)
+        db.zapisz_moje_imie(self.e_moje_imie.value)
         
         # --- Zapis i odświeżenie wybranego koloru ---
         db.zapisz_ustawienie("kolor_motywu", self.wybrany_kolor)

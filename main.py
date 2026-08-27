@@ -28,6 +28,7 @@ from views.kalkulator_view import KalkulatorTrasyView
 from views.wspoldzielenie_view import WspoldzielenieView
 from views.timeline_view import TimelineView
 from views.search_view import SzukajView
+from views.podzial_view import PodzialKosztowView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -439,6 +440,8 @@ def main(page: ft.Page):
             page.views.append(PorownanieView(page, app_state))
         elif segmenty[0] == "wspoldzielenie":
             page.views.append(WspoldzielenieView(page, app_state))
+        elif segmenty[0] == "podzial":
+            page.views.append(PodzialKosztowView(page, app_state))
         elif segmenty[0] == "przebieg":
             page.views.append(OdczytyPrzebieguView(page, app_state))
         elif segmenty[0] == "eksport":

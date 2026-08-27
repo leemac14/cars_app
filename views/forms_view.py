@@ -649,8 +649,8 @@ class FormularzTankowanieView(ft.View):
                 conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=? WHERE id=?", 
                              (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi, self.t_id))
             else: 
-                conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi) VALUES (?,?,?,?,?,?,?,?,?,?)", 
-                             (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi))
+                conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
+                             (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie()))
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         # Auto-sync w tle, jeśli pojazd jest współdzielony — bez tego partner
@@ -727,8 +727,8 @@ class FormularzInneView(ft.View):
                 )
             else: 
                 conn.execute(
-                    "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, zalacznik) VALUES (?,?,?,?,?,?,?)", 
-                    (self.state.auto_id, self.e_d.value, "", opis, kwo, wybrane_tagi, nowy_zalacznik)
+                    "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", 
+                    (self.state.auto_id, self.e_d.value, "", opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie())
                 )
                 
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
@@ -839,10 +839,9 @@ class FormularzZadanieView(ft.View):
                         
                     kat = "Letnie" if self.c_dotyczy_opon.value else None
                     c.execute(
-                        "INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik) VALUES (?,?,?,?,?,?,?)", 
-                        (nowe_z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik)
+                        "INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", 
+                        (nowe_z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie())
                     )
-
         if not self.z_id and self.c_dodaj_wymiane.value:
             db.aktualizuj_najnowszy_wpis(nowe_z_id)
 
@@ -985,7 +984,7 @@ class FormularzWpisView(ft.View):
             if self.h_id: 
                 conn.execute("UPDATE historia SET data=?, przebieg=?, cena=?, wykonawca=?, kategoria=?, zalacznik=? WHERE id=?", (self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, self.h_id))
             else: 
-                conn.execute("INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik) VALUES (?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik))
+                conn.execute("INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie()))
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         db.aktualizuj_najnowszy_wpis(self.z_id)
@@ -1337,19 +1336,23 @@ class FormularzWizytyView(ft.View):
         with db.polacz_baze() as conn:
             cur = conn.cursor()
             if self.w_id:
+                cur.execute("SELECT dodane_przez FROM wizyty WHERE id=?", (self.w_id,))
+                w_osoba = cur.fetchone()
+                osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
                 cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, notatki=?, zalacznik=?, tagi=? WHERE id=?", (self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, self.w_id))
                 cur.execute("DELETE FROM historia WHERE wizyta_id=?", (self.w_id,))
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria) VALUES (?,?,?,?,0,?,?)", (self.w_id, zid, self.e_d.value, prz, wyk, kat))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,0,?,?,?)", (self.w_id, zid, self.e_d.value, prz, wyk, kat, osoba_wizyty))
                 wizyta_id = self.w_id
                 db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
             else:
-                cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi) VALUES (?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi))
+                osoba_wizyty = db.pobierz_moje_imie()
+                cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
                 wizyta_id = cur.lastrowid
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria) VALUES (?,?,?,?,0,?,?)", (wizyta_id, zid, self.e_d.value, prz, wyk, kat))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,0,?,?,?)", (wizyta_id, zid, self.e_d.value, prz, wyk, kat, osoba_wizyty))
  
             db.rozlicz_czesci_z_magazynu(wizyta_id, nowe_uzyte, conn=conn)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)

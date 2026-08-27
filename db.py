@@ -293,6 +293,17 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN zdalny_hash_info TEXT;
             ALTER TABLE tagi ADD COLUMN zdalne_id TEXT;
             ALTER TABLE tagi ADD COLUMN zdalny_hash TEXT;
+            """,
+            # Wersja 21: Atrybucja wpisów przy współdzielonych pojazdach — kto
+            # dodał dany wpis (tankowanie/serwis/wizytę/koszt). Wypełniane samą
+            # nazwą ustawioną lokalnie w Ustawieniach (patrz pobierz_moje_imie),
+            # bo anonymous auth w Supabase nie niesie żadnej nazwy użytkownika.
+            # Puste dla wpisów sprzed tej wersji.
+            """
+            ALTER TABLE tankowania ADD COLUMN dodane_przez TEXT;
+            ALTER TABLE historia ADD COLUMN dodane_przez TEXT;
+            ALTER TABLE wizyty ADD COLUMN dodane_przez TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN dodane_przez TEXT;
             """
         ]
 
@@ -369,6 +380,16 @@ def pobierz_prog_km():
 
 def pobierz_prog_dni():
     return int(pobierz_ustawienie("prog_dni_powiadomien", str(PROG_DNI_POWIADOMIEN)) or PROG_DNI_POWIADOMIEN)
+
+def pobierz_moje_imie():
+    """Lokalna nazwa/imię tego użytkownika/urządzenia — dopisywana jako
+    'dodane_przez' przy nowych wpisach kosztowych, żeby przy współdzielonym
+    pojeździe było widać, kto co dodał. Domyślnie 'Kierowca', dopóki nie
+    zostanie ustawiona w Ustawieniach."""
+    return pobierz_ustawienie("moje_imie", "Kierowca") or "Kierowca"
+
+def zapisz_moje_imie(imie):
+    zapisz_ustawienie("moje_imie", (imie or "").strip() or "Kierowca")
 
 def zainicjuj_domyslne_auto(state):
     with polacz_baze() as conn:
@@ -855,6 +876,68 @@ def pobierz_dane_do_porownania(auto_id):
 
     return dane
 
+def pobierz_podzial_kosztow(auto_id, rok, miesiac):
+    """Zestawienie 'kto ile wydał / przejechał' dla współdzielonego pojazdu w
+    danym miesiącu, na podstawie kolumny dodane_przez. Zwraca listę słowników
+    posortowaną malejąco po sumie wydatków:
+    [{"osoba", "paliwo", "serwis", "inne", "razem", "dystans_km", "tankowania"}, ...]
+    Uwaga: dystans_km to suma pola 'dystans' z tankowań DODANYCH przez daną
+    osobę w tym miesiącu — to przybliżenie ('kto tankował po ilu km'), nie
+    dokładny pomiar tego, kto faktycznie siedział za kierownicą. Wpisy bez
+    przypisanej osoby (sprzed tej funkcji) trafiają pod 'Nieprzypisane'."""
+    if not auto_id:
+        return []
+
+    prefiks = f"{rok:04d}-{miesiac:02d}"
+    osoby = {}
+
+    def wpis(nazwa):
+        nazwa = (nazwa or "Nieprzypisane").strip() or "Nieprzypisane"
+        return osoby.setdefault(nazwa, {"osoba": nazwa, "paliwo": 0.0, "serwis": 0.0, "inne": 0.0, "dystans_km": 0.0, "tankowania": 0})
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+
+        c.execute("SELECT data, kwota, dystans, dodane_przez FROM tankowania WHERE auto_id=?", (auto_id,))
+        for data, kwota, dystans, osoba in c.fetchall():
+            d = parsuj_date(data)
+            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
+                continue
+            w = wpis(osoba)
+            w["paliwo"] += float(kwota or 0)
+            w["dystans_km"] += float(dystans or 0)
+            w["tankowania"] += 1
+
+        c.execute(
+            "SELECT h.data, h.cena, h.dodane_przez FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        for data, cena, osoba in c.fetchall():
+            d = parsuj_date(data)
+            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
+                continue
+            wpis(osoba)["serwis"] += float(cena or 0)
+
+        c.execute("SELECT data, koszt_calkowity, dodane_przez FROM wizyty WHERE auto_id=?", (auto_id,))
+        for data, koszt, osoba in c.fetchall():
+            d = parsuj_date(data)
+            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
+                continue
+            wpis(osoba)["serwis"] += float(koszt or 0)
+
+        c.execute("SELECT data, kwota, dodane_przez FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        for data, kwota, osoba in c.fetchall():
+            d = parsuj_date(data)
+            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
+                continue
+            wpis(osoba)["inne"] += float(kwota or 0)
+
+    wynik = list(osoby.values())
+    for w in wynik:
+        w["razem"] = w["paliwo"] + w["serwis"] + w["inne"]
+    wynik.sort(key=lambda w: w["razem"], reverse=True)
+    return wynik
+
 def globalne_wyszukiwanie(auto_id, zapytanie):
     """Przeszukuje jednocześnie tankowania, historię serwisową, wizyty zbiorcze,
     inne koszty oraz listę Do zrobienia BIEŻĄCEGO pojazdu. Używane przez widok
@@ -1285,8 +1368,8 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False):
         tytuly = [p[0] for p in pozycje]
         notatki = "Utworzono z listy: " + ", ".join(tytuly)
 
-        cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki) VALUES (?,?,?,?,?,?)",
-                    (auto_id, dzis, prz, "", suma_kosztow, notatki))
+        cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, dodane_przez) VALUES (?,?,?,?,?,?,?)",
+                    (auto_id, dzis, prz, "", suma_kosztow, notatki, pobierz_moje_imie()))
         wizyta_id = cur.lastrowid
 
         for tytul, koszt, zadanie_id in pozycje:
@@ -1311,8 +1394,8 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False):
 
             if zadanie_id:
                 kat = "Letnie" if czy_opony else None
-                cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria) VALUES (?,?,?,?,?,?,?)",
-                            (wizyta_id, zadanie_id, dzis, prz, koszt or 0.0, "", kat))
+                cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
+                            (wizyta_id, zadanie_id, dzis, prz, koszt or 0.0, "", kat, pobierz_moje_imie()))
 
         cur.execute(f"DELETE FROM do_zrobienia WHERE id IN ({placeholders})", tuple(ids_list))
 
@@ -1485,8 +1568,8 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
         nazwa, kwota, okres_dni = w
         dzis = datetime.now()
         conn.execute(
-            "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota) VALUES (?,?,?,?,?)",
-            (auto_id, dzis.strftime("%d.%m.%Y"), "Cykliczne", nazwa, kwota)
+            "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, dodane_przez) VALUES (?,?,?,?,?,?)",
+            (auto_id, dzis.strftime("%d.%m.%Y"), "Cykliczne", nazwa, kwota, pobierz_moje_imie())
         )
         nowa_data = (dzis + timedelta(days=int(okres_dni or 30))).strftime("%d.%m.%Y")
         conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, wydatek_id))
@@ -1743,7 +1826,7 @@ def polacz_zdjecia_w_pdf(sciezki_zdjec):
                 img.close()
             except Exception:
                 pass
-            
+
 def usun_plik_zalacznika(sciezka_wzgledna):
     if not sciezka_wzgledna:
         return

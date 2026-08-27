@@ -1,15 +1,17 @@
 import flet as ft
 import db
+import sync
 import utils
 
 class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state, z_id):
         self._page = page
         self.state = state
+        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
         
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT nazwa, dotyczy_opon FROM zadania WHERE id=?", (z_id,))
+            c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
             w = c.fetchone()
         z_nazwa = str(w[0]) if w else self.state.wybrane_zadanie_nazwa
         self.state.wybrane_zadanie_id = z_id
@@ -109,9 +111,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
 
                 utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
 
-            # PO:
             for w in wpisy:
-                h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik = w
+                h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez = w
                 jest_zbiorcza = w_id is not None
                 # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
                 # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
@@ -122,7 +123,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 sub_tekst = f"Przebieg: {utils.formatuj_liczba(int(prz or 0), 0)} km  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
                 if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
 
-                kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column([
+                tresc_h = [
                     ft.Row([
                         ft.Text(str(data), weight="bold", size=16), 
                         ft.Row([
@@ -131,7 +132,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         ], spacing=6)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
-                ]))
+                ]
+                if wspolny_id and dodane_przez:
+                    tresc_h.append(utils.znacznik_dodane_przez(dodane_przez))
+                kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_h))
                 
                 self.karty_ref[h_id] = kontener
 
@@ -197,6 +201,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
+        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Wizyty Zbiorcze", "/")
         fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/wizyty/nowa"))
@@ -220,7 +225,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             c = conn.cursor()
             c.execute("""
                 SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.tagi,
-                       GROUP_CONCAT(z.nazwa, ', ') as czesci
+                       GROUP_CONCAT(z.nazwa, ', ') as czesci, w.dodane_przez
                 FROM wizyty w
                 LEFT JOIN historia h ON h.wizyta_id = w.id
                 LEFT JOIN zadania z ON h.zadanie_id = z.id
@@ -315,7 +320,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             elementy.append(ft.Row([ft.Text("Brak wizyt dla wybranych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
         else:
             for w in wizyty_lista:
-                w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci = w
+                w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez = w
                 czesci = czesci or "Brak podpiętych części"
                 czesci_magazynowe = czesci_magazynu_wg_wizyty.get(w_id)
 
@@ -334,6 +339,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     tresc_karty.append(ft.Text(f"Z magazynu: {', '.join(czesci_magazynowe)}", size=13, color=ft.Colors.TEAL_700))
                 if tagi:
                     tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id))
+                if wspolny_id and dodane_przez:
+                    tresc_karty.append(utils.znacznik_dodane_przez(dodane_przez))
 
                 kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
 

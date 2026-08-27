@@ -662,6 +662,7 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=20), ft.Text("Usuń pojazd")]), on_click=lambda e: usun_auto(page, state)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.COMPARE_ARROWS, color=ft.Colors.TEAL, size=20), ft.Text("Porównaj pojazdy")]), on_click=lambda e: przejdz(page, "/porownanie")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.PEOPLE, color=ft.Colors.TEAL, size=20), ft.Text("Współdziel pojazd")]), on_click=lambda e: przejdz(page, "/wspoldzielenie")))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.CALCULATE, color=ft.Colors.TEAL, size=20), ft.Text("Podział kosztów")]), on_click=lambda e: przejdz(page, "/podzial")))
     
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.MAP, color=ft.Colors.PURPLE, size=20), ft.Text("Kalkulator podróży")]), on_click=lambda e: przejdz(page, "/kalkulator")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.TIMELINE, color=ft.Colors.INDIGO, size=20), ft.Text("Dziennik życia auta")]), on_click=lambda e: przejdz(page, "/timeline")))
@@ -1333,6 +1334,21 @@ def wizualizacja_tagow(tagi_str, auto_id):
             )
         )
     return ft.Row(chipy, wrap=True, spacing=4)
+
+def znacznik_dodane_przez(nazwa):
+    """Mały, dyskretny 'chip' pokazujący kto dodał wpis — używany tylko przy
+    współdzielonych pojazdach, gdzie mogła to zrobić inna osoba."""
+    if not nazwa:
+        return ft.Container(width=0, height=0)
+    return ft.Container(
+        padding=ft.Padding(6, 2, 6, 2),
+        border_radius=6,
+        bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.TEAL_700),
+        content=ft.Row([
+            ft.Icon(ft.Icons.PERSON, size=10, color=ft.Colors.TEAL_700),
+            ft.Text(str(nazwa), size=10, weight="bold", color=ft.Colors.TEAL_700)
+        ], spacing=3, tight=True)
+    )
 
 def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
     stan = {"telefon": None, "adres": None}

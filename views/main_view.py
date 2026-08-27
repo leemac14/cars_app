@@ -842,6 +842,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ]
                     if w.get('tagi'):
                         tresc_karty.append(utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id))
+                    if wspolny_id and w.get('dodane_przez'):
+                        tresc_karty.append(utils.znacznik_dodane_przez(w.get('dodane_przez')))
 
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
                     
@@ -858,6 +860,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/tankowanie/nowe"))
 
     def buduj_inne(self):
+        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
         self.elementy.append(ft.Text("🎫 Inne Koszty", size=20, weight="bold", color=ft.Colors.PRIMARY))
         
         with db.polacz_baze() as conn:
@@ -952,17 +955,20 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
                     tagi_str = str(w.get('tagi') or w.get('kategoria') or "Brak tagów")
                     iid = w.get('id')
-                    kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column([
+                    tresc_i = [
                         ft.Row([
                             ft.Text(str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Row([
-                                utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Koszt"),  # <-- NOWE
+                                utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Koszt"),
                                 ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
                             ], spacing=6)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(str(w.get('nazwa')) if w.get('nazwa') else "Brak opisu", size=16, weight="bold"),
                         utils.wizualizacja_tagow(w.get('tagi') or w.get('kategoria'), self.state.auto_id)
-                    ]))
+                    ]
+                    if wspolny_id and w.get('dodane_przez'):
+                        tresc_i.append(utils.znacznik_dodane_przez(w.get('dodane_przez')))
+                    kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_i))
                     
                     self.karty_ref[iid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, zal=w.get('zalacznik'): otworz_menu_i(id_el, zal), "inne_koszty")
