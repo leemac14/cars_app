@@ -1706,6 +1706,44 @@ def zapisz_zalacznik(sciezka_zrodlowa):
     shutil.copyfile(sciezka_zrodlowa, docelowa)
     return docelowa
 
+def polacz_zdjecia_w_pdf(sciezki_zdjec):
+    """Łączy kilka zdjęć w jeden wielostronicowy plik PDF (jedno zdjęcie = jedna
+    strona), zapisany jako plik tymczasowy w FOLDER_ODROCZONE — sprzątany
+    automatycznie po godzinie przez posprzataj_odroczone_zalaczniki, gdyby coś
+    poszło nie tak i plik nie trafił finalnie do bazy. Koryguje orientację EXIF
+    tak samo jak zapisz_zalacznik(). Zwraca ścieżkę do PDF-a albo None, jeśli się
+    nie uda (brak Pillow albo któregoś z plików źródłowych)."""
+    if Image is None or not sciezki_zdjec:
+        return None
+
+    obrazy = []
+    try:
+        for sciezka in sciezki_zdjec:
+            if not os.path.exists(sciezka):
+                continue
+            img = Image.open(sciezka)
+            img = ImageOps.exif_transpose(img)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            obrazy.append(img)
+
+        if not obrazy:
+            return None
+
+        folder_tmp = _upewnij_folder_odroczonych()
+        docelowa = os.path.join(folder_tmp, f"polaczone_{uuid.uuid4().hex}.pdf")
+        pierwszy, reszta = obrazy[0], obrazy[1:]
+        pierwszy.save(docelowa, "PDF", save_all=True, append_images=reszta)
+        return docelowa
+    except Exception:
+        return None
+    finally:
+        for img in obrazy:
+            try:
+                img.close()
+            except Exception:
+                pass
+            
 def usun_plik_zalacznika(sciezka_wzgledna):
     if not sciezka_wzgledna:
         return

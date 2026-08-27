@@ -1466,7 +1466,12 @@ def abs_zalacznik(sciezka_wzgledna):
         return None
     return os.path.abspath(sciezka_wzgledna)
 
-def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
+def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=False):
+    """tylko_zdjecie=True wymusza pojedynczy plik (zdjęcie profilowe pojazdu,
+    pojedyncze zdjęcie w galerii karoserii) — bez wielokrotnego wyboru.
+    Domyślnie (False) pozwala zaznaczyć od razu kilka zdjęć naraz — zostaną
+    automatycznie połączone w jeden wielostronicowy PDF (np. kilka stron
+    faktury/paragonu)."""
     stan = {"nowa_sciezka": None, "usuniete": False}
     obsluzono = {"wartosc": False}  # zabezpiecza przed podwójnym zadziałaniem on_result + await
 
@@ -1496,47 +1501,59 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
         tekst_nazwy.value = etykieta
         btn_usun.visible = pokazuj_usun
         try:
-            page.update() 
+            page.update()
         except Exception:
             pass
+
+    def _obsluz_wybrane(pliki):
+        """Wspólna logika dla on_result i ścieżki await — działa i dla 1, i dla wielu plików."""
+        if not pliki:
+            return
+        sciezki = [p.path for p in pliki if getattr(p, "path", None)]
+        if not sciezki:
+            pokaz_komunikat(page, "Brak dostępu do ścieżki (Uprawnienia telefonu).", ft.Colors.RED_700)
+            return
+
+        if len(sciezki) == 1:
+            stan["nowa_sciezka"] = sciezki[0]
+            stan["usuniete"] = False
+            odswiez(sciezki[0], os.path.basename(sciezki[0]), True)
+            return
+
+        if any(s.lower().endswith(".pdf") for s in sciezki):
+            pokaz_komunikat(page, "Można połączyć wiele zdjęć w jeden PDF, ale nie plik PDF razem ze zdjęciami — wybierz same zdjęcia.", ft.Colors.ORANGE_700)
+            return
+
+        polaczony = db.polacz_zdjecia_w_pdf(sciezki)
+        if not polaczony:
+            pokaz_komunikat(page, "Nie udało się połączyć wybranych zdjęć w PDF.", ft.Colors.RED_700)
+            return
+
+        stan["nowa_sciezka"] = polaczony
+        stan["usuniete"] = False
+        odswiez(polaczony, f"{len(sciezki)} zdjęć połączonych w PDF", True)
 
     def po_wyborze(e):
         if obsluzono["wartosc"]:
             return
-        pliki = getattr(e, "files", None)
-        if pliki and len(pliki) > 0:
-            plik = pliki[0]
-            if getattr(plik, "path", None):
-                obsluzono["wartosc"] = True
-                stan["nowa_sciezka"] = plik.path
-                stan["usuniete"] = False
-                odswiez(plik.path, plik.name, True)
-            else:
-                pokaz_komunikat(page, "Brak dostępu do ścieżki (Uprawnienia telefonu).", ft.Colors.RED_700)
+        obsluzono["wartosc"] = True
+        _obsluz_wybrane(getattr(e, "files", None))
 
     async def wybierz(e):
         obsluzono["wartosc"] = False
         page.zalacznik_picker.on_result = po_wyborze
-        page.zalacznik_picker.update() 
-        
+        page.zalacznik_picker.update()
+
         try:
             wynik = await page.zalacznik_picker.pick_files(
-                file_type=ft.FilePickerFileType.CUSTOM, 
+                file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=["jpg", "jpeg", "png", "webp", "pdf"],
-                allow_multiple=False
+                allow_multiple=not tylko_zdjecie
             )
-            
             if wynik is not None and not obsluzono["wartosc"]:
+                obsluzono["wartosc"] = True
                 pliki = getattr(wynik, "files", wynik)
-                if isinstance(pliki, list) and len(pliki) > 0:
-                    plik = pliki[0]
-                    if getattr(plik, "path", None):
-                        obsluzono["wartosc"] = True
-                        stan["nowa_sciezka"] = plik.path
-                        stan["usuniete"] = False
-                        odswiez(plik.path, plik.name, True)
-                    else:
-                        pokaz_komunikat(page, "Brak dostępu do ścieżki (Uprawnienia telefonu).", ft.Colors.RED_700)
+                _obsluz_wybrane(pliki if isinstance(pliki, list) else None)
         except Exception as ex:
             pokaz_komunikat(page, f"Błąd wczytywania pliku: {ex}", ft.Colors.RED_700)
 
@@ -1548,7 +1565,11 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
     btn_usun.on_click = usun
 
     wiersz = ft.Row([ramka_podgladu, tekst_nazwy, btn_usun], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
-    btn_wybierz = ft.TextButton("📎 Dodaj / zmień załącznik (zdjęcie, PDF)", on_click=wybierz)
+    etykieta_przycisku = (
+        "📎 Dodaj / zmień załącznik (zdjęcie, PDF)" if tylko_zdjecie
+        else "📎 Dodaj / zmień załącznik (możesz zaznaczyć kilka zdjęć naraz)"
+    )
+    btn_wybierz = ft.TextButton(etykieta_przycisku, on_click=wybierz)
 
     kontener = ft.Column([wiersz, btn_wybierz], spacing=8)
 
@@ -1560,6 +1581,82 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
         return None
 
     return kontener, pobierz_wynik
+
+def komponent_wielu_nowych_zdjec(page: ft.Page):
+    """Widget do MASOWEGO dodawania nowych zdjęć (np. galeria karoserii): pozwala
+    zaznaczyć od razu kilka plików i dobierać kolejne w kilku turach (nowe pliki
+    dopisują się do listy, nie zastępują jej). Zwraca (kontrolka, pobierz_wynik),
+    gdzie pobierz_wynik() to lista ścieżek źródłowych — jeszcze niezapisanych
+    do trwałego magazynu (kopiowanie robi się dopiero przy zapisie formularza)."""
+    stan = {"pliki": []}
+    obsluzono = {"wartosc": False}
+    lista_podgladow = ft.Column(spacing=8)
+    licznik = ft.Text("Nie wybrano jeszcze żadnego zdjęcia.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+
+    def usun(sciezka):
+        stan["pliki"] = [s for s in stan["pliki"] if s != sciezka]
+        odswiez()
+
+    def odswiez():
+        lista_podgladow.controls.clear()
+        for sciezka in stan["pliki"]:
+            lista_podgladow.controls.append(
+                ft.Row([
+                    ft.Container(
+                        width=52, height=52, border_radius=8,
+                        content=ft.Image(src=sciezka, width=52, height=52, fit="cover", border_radius=8),
+                    ),
+                    ft.Text(os.path.basename(sciezka), size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ft.IconButton(icon=ft.Icons.CLOSE, icon_size=18, icon_color=ft.Colors.RED_700, on_click=lambda e, s=sciezka: usun(s)),
+                ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
+            )
+        n = len(stan["pliki"])
+        licznik.value = "Nie wybrano jeszcze żadnego zdjęcia." if n == 0 else f"Wybrano zdjęć: {n}"
+        try:
+            lista_podgladow.update()
+            licznik.update()
+        except Exception:
+            pass
+
+    def dodaj_pliki(pliki):
+        if not pliki:
+            return
+        rozszerzenia = (".jpg", ".jpeg", ".png", ".webp")
+        nowe = [p.path for p in pliki if getattr(p, "path", None) and p.path.lower().endswith(rozszerzenia)]
+        pominieto_pdf = any(getattr(p, "path", "").lower().endswith(".pdf") for p in pliki if getattr(p, "path", None))
+
+        if nowe:
+            for s in nowe:
+                if s not in stan["pliki"]:
+                    stan["pliki"].append(s)
+            odswiez()
+        if pominieto_pdf:
+            pokaz_komunikat(page, "Pliki PDF pominięto — galeria karoserii przyjmuje tylko zdjęcia.", ft.Colors.ORANGE_700)
+        elif not nowe:
+            pokaz_komunikat(page, "Brak dostępu do wybranych plików (uprawnienia).", ft.Colors.RED_700)
+
+    def po_wyborze(e):
+        obsluzono["wartosc"] = True
+        dodaj_pliki(getattr(e, "files", None))
+
+    async def wybierz(e):
+        obsluzono["wartosc"] = False
+        page.zalacznik_picker.on_result = po_wyborze
+        page.zalacznik_picker.update()
+        try:
+            wynik = await page.zalacznik_picker.pick_files(
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["jpg", "jpeg", "png", "webp"],
+                allow_multiple=True,
+            )
+            if wynik is not None and not obsluzono["wartosc"]:
+                dodaj_pliki(getattr(wynik, "files", wynik))
+        except Exception as ex:
+            pokaz_komunikat(page, f"Błąd wczytywania plików: {ex}", ft.Colors.RED_700)
+
+    btn_dodaj = ft.TextButton("📷 Wybierz zdjęcia (można zaznaczyć od razu kilka)", on_click=wybierz)
+    kontener = ft.Column([btn_dodaj, licznik, lista_podgladow], spacing=8)
+    return kontener, lambda: list(stan["pliki"])
 
 def pokaz_podglad_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik"):
     if not sciezka_wzgledna:

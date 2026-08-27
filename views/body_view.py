@@ -164,6 +164,16 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         utils.otworz_dialog(self._page, dlg)
         self.zakoncz_zaznaczanie()
 
+def _forma_zdjec(n):
+    """Poprawna polska odmiana słowa 'zdjęcie' w zależności od liczby."""
+    if n == 1:
+        return "zdjęcie"
+    ostatnia, dziesiatki = n % 10, n % 100
+    if 2 <= ostatnia <= 4 and not (12 <= dziesiatki <= 14):
+        return "zdjęcia"
+    return "zdjęć"
+
+
 class FormularzZdjecieKaroseriiView(ft.View):
     def __init__(self, page: ft.Page, state, wpis_id=None):
         self._page = page
@@ -182,25 +192,46 @@ class FormularzZdjecieKaroseriiView(ft.View):
                 c = conn.cursor()
                 c.execute("SELECT data, strefa, zalacznik, opis, przebieg, typ_porownania FROM zdjecia_karoserii WHERE id=?", (wpis_id,))
                 w = c.fetchone()
-                if w: 
+                if w:
                     d_val, strefa_val, self.zalacznik_val = str(w[0]), str(w[1]), w[2]
                     opis_val, p_val, typ_val = str(w[3] or ""), str(w[4] or ""), str(w[5] or "Brak")
 
-        self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        # Edycja jednego, konkretnego zdjęcia -> pojedynczy załącznik.
+        # Dodawanie nowych -> masowy wybór wielu zdjęć naraz; każde stanie się
+        # osobnym wpisem w galerii ze wspólnymi metadanymi z formularza poniżej.
+        if wpis_id:
+            self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val, tylko_zdjecie=True)
+        else:
+            self.k_zalacznik, self.get_wiele_zdjec = utils.komponent_wielu_nowych_zdjec(page)
+
         self.e_d = utils.pole_daty(page, "Data zrobienia zdjęcia", d_val)
         self.e_p = ft.TextField(label="Przebieg (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        
+
         self.e_strefa = ft.Dropdown(label="Strefa karoserii", options=[ft.DropdownOption(s) for s in db.STREFY_KAROSERII], value=strefa_val, **utils.styl_dropdown())
         self.e_typ = ft.Dropdown(label="Typ zdjęcia", options=[ft.DropdownOption(t) for t in db.TYPY_ZDJECIA], value=typ_val, **utils.styl_dropdown())
         self.e_opis = ft.TextField(label="Opis / Notatki", value=opis_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wpisu galerii" if wpis_id else "Nowe zdjęcie do rejestru", "/karoseria", on_save=self.zapisz)
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "Edycja wpisu galerii" if wpis_id else "Nowe zdjęcia do rejestru", "/karoseria", on_save=self.zapisz
+        )
 
-        k1 = utils.karta_formularza([self.k_zalacznik], "Wymagane zdjęcie", ft.Icons.ADD_A_PHOTO)
-        k2 = utils.karta_formularza([self.e_strefa, self.e_typ, self.e_opis], "Co widać na zdjęciu", ft.Icons.INFO_OUTLINE)
+        if wpis_id:
+            k1 = utils.karta_formularza([self.k_zalacznik], "Wymagane zdjęcie", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
+            tytul_k2 = "Co widać na zdjęciu"
+        else:
+            opis_pomocy = ft.Text(
+                "Zaznacz od razu kilka zdjęć — każde trafi jako osobny wpis w galerii, "
+                "ze wspólną strefą/opisem/datą ustawionymi poniżej.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            )
+            k1 = utils.karta_formularza([opis_pomocy, self.k_zalacznik], "Zdjęcia", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
+            tytul_k2 = "Co widać na zdjęciach (wspólne dla wszystkich)"
+
+        k2 = utils.karta_formularza([self.e_strefa, self.e_typ, self.e_opis], tytul_k2, ft.Icons.INFO_OUTLINE)
         k3 = utils.karta_formularza([self.e_d, self.e_p], "Kontekst", ft.Icons.SPEED)
 
-        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "✅ Zapisz zdjęcie", self.zapisz, "/karoseria")]
+        tekst_przycisku = "✅ Zapisz zdjęcie" if wpis_id else "✅ Zapisz zdjęcia"
+        elementy = [k1, k2, k3, utils.przyciski_akcji(page, tekst_przycisku, self.zapisz, "/karoseria")]
 
         super().__init__(
             route=f"/karoseria/edytuj/{wpis_id}" if wpis_id else "/karoseria/nowe",
@@ -209,33 +240,64 @@ class FormularzZdjecieKaroseriiView(ft.View):
 
     def zapisz(self, e):
         for pole in (self.e_p, self.e_strefa, self.e_typ, self.e_opis): pole.error_text = None
-
-        wynik_komponentu = self.get_zalacznik()
-        bedzie_zdjecie = (
-            (wynik_komponentu is None and self.zalacznik_val) or  # nic nie zmieniono, zostaje stare
-            (wynik_komponentu not in (None, ""))                   # wybrano nowe
-        )
-        if not bedzie_zdjecie:
-            return utils.pokaz_komunikat(self._page, "Wymagane jest fizyczne zdjęcie!", ft.Colors.RED_700)
-
-        przygotowany = db.przygotuj_nowy_zalacznik(wynik_komponentu)
-        nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
-
         prz = utils.parsuj_int(self.e_p.value, 0)
 
-        with db.polacz_baze() as conn:
-            if self.wpis_id:
+        if self.wpis_id:
+            wynik_komponentu = self.get_zalacznik()
+            bedzie_zdjecie = (
+                (wynik_komponentu is None and self.zalacznik_val) or
+                (wynik_komponentu not in (None, ""))
+            )
+            if not bedzie_zdjecie:
+                return utils.pokaz_komunikat(self._page, "Wymagane jest fizyczne zdjęcie!", ft.Colors.RED_700)
+
+            przygotowany = db.przygotuj_nowy_zalacznik(wynik_komponentu)
+            nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
+
+            with db.polacz_baze() as conn:
                 conn.execute(
-                    "UPDATE zdjecia_karoserii SET data=?, strefa=?, zalacznik=?, opis=?, przebieg=?, typ_porownania=? WHERE id=?", 
+                    "UPDATE zdjecia_karoserii SET data=?, strefa=?, zalacznik=?, opis=?, przebieg=?, typ_porownania=? WHERE id=?",
                     (self.e_d.value, self.e_strefa.value, nowy_zalacznik, self.e_opis.value, prz, self.e_typ.value, self.wpis_id)
                 )
-            else:
-                conn.execute(
-                    "INSERT INTO zdjecia_karoserii (auto_id, data, strefa, zalacznik, opis, przebieg, typ_porownania) VALUES (?,?,?,?,?,?,?)", 
-                    (self.state.auto_id, self.e_d.value, self.e_strefa.value, nowy_zalacznik, self.e_opis.value, prz, self.e_typ.value)
-                )
+            db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
-        db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+            utils.przejdz(self._page, "/karoseria")
+            utils.pokaz_komunikat(self._page, "Zapisano wpis w galerii!")
+            return
+
+        # --- Tryb masowego dodawania: jedno zdjęcie = jeden nowy wpis w galerii ---
+        sciezki_zrodlowe = self.get_wiele_zdjec()
+        if not sciezki_zrodlowe:
+            return utils.pokaz_komunikat(self._page, "Wybierz co najmniej jedno zdjęcie!", ft.Colors.RED_700)
+
+        przygotowane = []
+        try:
+            for sciezka in sciezki_zrodlowe:
+                nowy = db.przygotuj_nowy_zalacznik(sciezka)
+                if nowy:
+                    przygotowane.append(nowy)
+
+            if not przygotowane:
+                return utils.pokaz_komunikat(self._page, "Nie udało się wczytać żadnego z wybranych zdjęć.", ft.Colors.RED_700)
+
+            with db.polacz_baze() as conn:
+                for zalacznik in przygotowane:
+                    conn.execute(
+                        "INSERT INTO zdjecia_karoserii (auto_id, data, strefa, zalacznik, opis, przebieg, typ_porownania) VALUES (?,?,?,?,?,?,?)",
+                        (self.state.auto_id, self.e_d.value, self.e_strefa.value, zalacznik, self.e_opis.value, prz, self.e_typ.value)
+                    )
+        except Exception as ex:
+            for zalacznik in przygotowane:
+                db.anuluj_nowy_zalacznik(zalacznik)
+            return utils.pokaz_komunikat(self._page, f"Błąd zapisu galerii: {ex}", ft.Colors.RED_700)
 
         utils.przejdz(self._page, "/karoseria")
-        utils.pokaz_komunikat(self._page, "Zapisano wpis w galerii!")
+        ile_wybranych, ile_zapisanych = len(sciezki_zrodlowe), len(przygotowane)
+        if ile_zapisanych < ile_wybranych:
+            utils.pokaz_komunikat(
+                self._page,
+                f"Zapisano {ile_zapisanych} z {ile_wybranych} zdjęć — część plików była niedostępna.",
+                ft.Colors.ORANGE_700
+            )
+        else:
+            utils.pokaz_komunikat(self._page, f"Dodano {ile_zapisanych} {_forma_zdjec(ile_zapisanych)} do galerii!")

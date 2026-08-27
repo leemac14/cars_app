@@ -54,6 +54,76 @@ def rok_produkcji_z_vin(vin: str):
         return None
     return bazowy_rok + 30 if vin[6].isalpha() else bazowy_rok
 
+# --- Lokalne rozpoznawanie WMI (3 pierwsze znaki VIN) — działa offline, dla
+# KAŻDEGO regionu świata, w przeciwieństwie do NHTSA (patrz niżej), które zna
+# głównie modele kiedykolwiek sprzedawane w USA. Baza nie jest wyczerpująca —
+# światowy rejestr WMI liczy tysiące kodów (często kilka na jednego producenta,
+# wg fabryki/linii modelowej) — ale pokrywa najpopularniejsze marki w Europie.
+WMI_PRODUCENCI = {
+    # Niemcy
+    "WVW": "Volkswagen", "WV1": "Volkswagen", "WV2": "Volkswagen", "WV3": "Volkswagen",
+    "WAU": "Audi", "WA1": "Audi", "WUA": "Audi Sport",
+    "WBA": "BMW", "WBS": "BMW M", "WBY": "BMW i",
+    "WMW": "MINI",
+    "WDB": "Mercedes-Benz", "WDC": "Mercedes-Benz", "WDD": "Mercedes-Benz", "WDF": "Mercedes-Benz",
+    "W1K": "Mercedes-Benz", "W1N": "Mercedes-Benz", "W1V": "Mercedes-Benz",
+    "WME": "smart",
+    "WP0": "Porsche", "WP1": "Porsche",
+    "W0L": "Opel", "W0V": "Opel",
+    "WF0": "Ford",
+    # Francja
+    "VF1": "Renault", "VF6": "Renault",
+    "VF3": "Peugeot",
+    "VF7": "Citroën",
+    "VSS": "SEAT",
+    # Włochy
+    "ZFA": "Fiat",
+    "ZAR": "Alfa Romeo",
+    "ZLA": "Lancia",
+    "ZFF": "Ferrari",
+    "ZAM": "Maserati",
+    # Czechy
+    "TMB": "Škoda",
+    # Wielka Brytania
+    "SAJ": "Jaguar", "SAL": "Land Rover",
+    "SCC": "Lotus", "SCA": "Rolls-Royce", "SCB": "Bentley",
+    "SB1": "Toyota",
+    # Szwecja
+    "YV1": "Volvo", "YV4": "Volvo", "YS3": "Saab",
+    # Rumunia
+    "UU1": "Dacia",
+    # Słowacja / Węgry
+    "TMK": "Kia", "TSM": "Suzuki",
+    # Popularne importy spoza Europy
+    "KMH": "Hyundai", "KNA": "Kia", "KNM": "Renault Samsung",
+    "JTD": "Toyota", "JTN": "Toyota", "JHM": "Honda", "JN1": "Nissan", "JMZ": "Mazda", "JF1": "Subaru",
+    "1FA": "Ford", "1FT": "Ford", "1G1": "Chevrolet", "1HG": "Honda",
+}
+
+# Region na podstawie SAMEGO pierwszego znaku VIN (wg ISO 3780) — używany jako
+# informacja zapasowa, gdy dokładny 3-znakowy kod producenta nie jest w bazie wyżej.
+REGION_WMI = {
+    "W": "Niemcy", "V": "Francja/Hiszpania", "Z": "Włochy", "T": "Czechy/Szwajcaria/Węgry",
+    "S": "Wielka Brytania", "Y": "Szwecja/Finlandia/Belgia", "U": "Rumunia/Węgry/Dania",
+    "X": "Rosja/Holandia", "J": "Japonia", "K": "Korea Południowa", "L": "Chiny",
+    "1": "USA", "4": "USA", "5": "USA", "2": "Kanada", "3": "Meksyk", "9": "Brazylia/Argentyna",
+    "6": "Australia",
+}
+
+
+def dekoduj_wmi_lokalnie(vin: str):
+    """Rozpoznaje markę WYŁĄCZNIE na podstawie kodu WMI, bez zapytania do
+    internetu. Działa dla każdego auta zgodnego z normą VIN, niezależnie od
+    tego, czy model był kiedykolwiek sprzedawany w USA. Zwraca (marka, region)
+    — marka może być None, jeśli dokładny WMI nie jest w bazie (wtedy dostajesz
+    chociaż sam region)."""
+    vin = (vin or "").strip().upper()
+    if len(vin) != 17:
+        return None, None
+    marka = WMI_PRODUCENCI.get(vin[:3])
+    region = REGION_WMI.get(vin[0])
+    return marka, region
+
 class FormularzAutoView(ft.View):
     def __init__(self, page: ft.Page, state, auto_id=None):
         self._page = page
@@ -108,7 +178,7 @@ class FormularzAutoView(ft.View):
                     if n_val and not m_val and not mod_val:
                         m_val = n_val
 
-        self.k_zdjecie, self.get_zdjecie = utils.komponent_zalacznika(page, self.zg_val)
+        self.k_zdjecie, self.get_zdjecie = utils.komponent_zalacznika(page, self.zg_val, tylko_zdjecie=True)
         self.k_kolor, self.get_kolor = utils.komponent_wyboru_koloru(page, self.kolor_auta_val)
 
         # Nowe 3 pola zamiast jednego pola nazwy
@@ -186,10 +256,10 @@ class FormularzAutoView(ft.View):
     async def rozkoduj_vin(self, e):
         vin = (self.e_vin.value or "").strip().upper()
 
-        if not vin or len(vin) < 17:
+        if not vin or len(vin) != 17:
             self.e_vin.error_text = "Wpisz pełny, 17-znakowy numer VIN"
             self._page.update()
-            utils.pokaz_komunikat(self._page, "VIN jest pusty lub za krótki (wymagane 17 znaków).", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, "VIN jest pusty albo ma nieprawidłową długość (wymagane dokładnie 17 znaków).", ft.Colors.RED_700)
             return
 
         self.e_vin.error_text = None
@@ -197,49 +267,56 @@ class FormularzAutoView(ft.View):
         self.btn_dekoduj_vin.disabled = True
         self._page.update()
 
+        # --- KROK 1: rozpoznanie lokalne, offline, po samym WMI — działa dla
+        # każdego regionu świata, w tym modeli sprzedawanych tylko w Europie. ---
+        marka_lokalna, region = dekoduj_wmi_lokalnie(vin)
+        rok_lokalny = rok_produkcji_z_vin(vin)
+
+        if marka_lokalna:
+            self.e_marka.value = marka_lokalna
+        if rok_lokalny:
+            self.e_rok.value = str(rok_lokalny)
+
+        # --- KROK 2: próba wzbogacenia (model, silnik, moc, paliwo, skrzynia)
+        # przez darmowe API NHTSA — TRAKTOWANA JAKO BONUS. Jej brak/błąd nie
+        # jest już porażką całej operacji, bo krok 1 i tak dał markę i rok. ---
         try:
             dane = await asyncio.to_thread(pobierz_dane_vin, vin)
-        except Exception as ex:
-            self.btn_dekoduj_vin.icon = ft.Icons.AUTO_AWESOME
-            self.btn_dekoduj_vin.disabled = False
-            self._page.update()
-            utils.pokaz_komunikat(self._page, f"Brak połączenia z bazą VIN ({ex}).", ft.Colors.RED_700)
-            return
+        except Exception:
+            dane = {}
 
         self.btn_dekoduj_vin.icon = ft.Icons.AUTO_AWESOME
         self.btn_dekoduj_vin.disabled = False
 
-        marka = (dane.get("Make") or "").strip()
-        if not marka:
-            blad_api = (dane.get("ErrorText") or "Nie znaleziono danych dla podanego numeru VIN.").strip()
-            self._page.update()
-            utils.pokaz_komunikat(self._page, f"Nie udało się rozkodować VIN: {blad_api[:150]}", ft.Colors.RED_700)
-            return
+        wzbogacono_api = False
+
+        marka_api = (dane.get("Make") or "").strip()
+        if marka_api:
+            self.e_marka.value = marka_api
+            wzbogacono_api = True
 
         model = (dane.get("Model") or "").strip()
-        
-        # Przypisujemy do nowych pól
-        self.e_marka.value = marka
-        self.e_model.value = model
+        if model:
+            self.e_model.value = model
+            wzbogacono_api = True
 
-        rok = (dane.get("ModelYear") or "").strip()
-        if not rok:
-            rok_fallback = rok_produkcji_z_vin(vin)
-            if rok_fallback:
-                rok = str(rok_fallback)
-        if rok:
-            self.e_rok.value = rok
+        rok_api = (dane.get("ModelYear") or "").strip()
+        if rok_api:
+            self.e_rok.value = rok_api
+            wzbogacono_api = True
 
         poj_ccm = (dane.get("DisplacementCC") or "").strip()
         poj_l = (dane.get("DisplacementL") or "").strip()
         if poj_ccm:
             try:
                 self.e_poj.value = str(int(round(float(poj_ccm))))
+                wzbogacono_api = True
             except ValueError:
                 pass
         elif poj_l:
             try:
                 self.e_poj.value = str(int(round(float(poj_l) * 1000)))
+                wzbogacono_api = True
             except ValueError:
                 pass
 
@@ -247,33 +324,56 @@ class FormularzAutoView(ft.View):
         if moc:
             try:
                 self.e_moc.value = str(int(round(float(moc))))
+                wzbogacono_api = True
             except ValueError:
                 pass
 
         paliwo = (dane.get("FuelTypePrimary") or "").lower()
         mapa_paliwa = [
-            ("diesel", "Diesel"),
-            ("electric", "Elektryczny"),
-            ("hybrid", "Hybryda"),
-            ("natural gas", "LPG"),
-            ("propane", "LPG"),
-            ("liquefied petroleum", "LPG"),
-            ("gasoline", "Benzyna"),
-            ("flexible fuel", "Benzyna"),
+            ("diesel", "Diesel"), ("electric", "Elektryczny"), ("hybrid", "Hybryda"),
+            ("natural gas", "LPG"), ("propane", "LPG"), ("liquefied petroleum", "LPG"),
+            ("gasoline", "Benzyna"), ("flexible fuel", "Benzyna"),
         ]
         for fragment, wartosc_pl in mapa_paliwa:
             if fragment in paliwo:
                 self.e_pal.value = wartosc_pl
+                wzbogacono_api = True
                 break
 
         skrzynia = (dane.get("TransmissionStyle") or "").lower()
         if "manual" in skrzynia:
             self.e_skrz.value = "Manualna"
+            wzbogacono_api = True
         elif "automatic" in skrzynia or "cvt" in skrzynia:
             self.e_skrz.value = "Automatyczna"
+            wzbogacono_api = True
 
         self._page.update()
-        utils.pokaz_komunikat(self._page, "Rozkodowano dane z numeru VIN! Sprawdź uzupełnione pola.")
+
+        # --- Komunikat końcowy dopasowany do tego, co faktycznie się udało ---
+        if marka_lokalna and wzbogacono_api:
+            utils.pokaz_komunikat(self._page, "Rozkodowano VIN! Markę i rok rozpoznano lokalnie, resztę uzupełniono z bazy NHTSA.")
+        elif marka_lokalna and not wzbogacono_api:
+            utils.pokaz_komunikat(
+                self._page,
+                "Rozpoznano markę i rok produkcji lokalnie (baza WMI). Baza NHTSA nie miała dodatkowych "
+                "danych dla tego VIN-u (typowe dla aut spoza USA) — resztę uzupełnij ręcznie.",
+                ft.Colors.ORANGE_700
+            )
+        elif wzbogacono_api:
+            utils.pokaz_komunikat(self._page, "Rozkodowano dane z numeru VIN! Sprawdź uzupełnione pola.")
+        elif region:
+            utils.pokaz_komunikat(
+                self._page,
+                f"Nie rozpoznano dokładnej marki, ale VIN wskazuje na region: {region}. Uzupełnij dane ręcznie.",
+                ft.Colors.ORANGE_700
+            )
+        else:
+            utils.pokaz_komunikat(
+                self._page,
+                "Nie udało się rozkodować VIN-u — sprawdź poprawność numeru albo uzupełnij dane ręcznie.",
+                ft.Colors.RED_700
+            )
 
     def zapisz(self, e):
         for pole in (self.e_marka, self.e_model, self.e_rok, self.e_vin):
