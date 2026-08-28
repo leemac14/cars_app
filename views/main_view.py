@@ -71,6 +71,16 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.state.zakladka = int(e.control.selected_index)
         utils.przejdz(self._page, "/")
 
+    def _buduj_fab_szybkich_akcji(self):
+        akcje = [
+            (ft.Icons.LOCAL_GAS_STATION, "Tankowanie", lambda e: utils.przejdz(self._page, "/tankowanie/nowe")),
+            (ft.Icons.RECEIPT_LONG, "Inny koszt", lambda e: utils.przejdz(self._page, "/inne/nowy")),
+            (ft.Icons.HANDYMAN, "Podzespół", lambda e: utils.przejdz(self._page, "/zadanie/nowy")),
+            (ft.Icons.HOME_REPAIR_SERVICE, "Wizyta w warsztacie", lambda e: utils.przejdz(self._page, "/wizyty/nowa")),
+            (ft.Icons.CHECKLIST_RTL, "Do zrobienia", lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")),
+        ]
+        return utils.fab_speed_dial(self._page, akcje, tooltip="Szybkie dodawanie")
+
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
         def wykonaj():
@@ -688,7 +698,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.elementy.append(self.lista_kart_serwis)
 
-        self.fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/zadanie/nowy"))
+        self.fab = self._buduj_fab_szybkich_akcji()
 
     def buduj_tankowania(self):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
@@ -857,7 +867,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.elementy.append(self.lista_kart_tankowania)
 
-        self.fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/tankowanie/nowe"))
+        self.fab = self._buduj_fab_szybkich_akcji()
 
     def buduj_inne(self):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
@@ -980,7 +990,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.elementy.append(self.lista_kart_inne)
 
-        self.fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/inne/nowy"))
+        self.fab = self._buduj_fab_szybkich_akcji()
 
     def buduj_statystyki(self):
         with db.polacz_baze() as conn:
@@ -1309,6 +1319,126 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     )
                 )
 
+            # 3b. Trend cen paliwa + ranking stacji, na których tankowano
+            trend_paliwa = db.pobierz_trend_cen_paliwa(self.state.auto_id)
+
+            cena_wg_mc = {}
+            for data_str, cena in trend_paliwa["punkty"]:
+                d = utils.parsuj_date(data_str)
+                if d == datetime.min.date():
+                    continue
+                klucz = f"{d.year}-{d.month:02d}"
+                cena_wg_mc.setdefault(klucz, []).append(cena)
+
+            punkty_cen_mc = sorted(
+                ((k, sum(v) / len(v)) for k, v in cena_wg_mc.items()),
+                key=lambda p: p[0]
+            )[-12:]
+
+            if len(punkty_cen_mc) < 2:
+                karta_cen = ft.Card(
+                    elevation=1,
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Text(
+                            "Za mało danych do wykresu cen paliwa — potrzeba tankowań z co najmniej "
+                            "2 różnych miesięcy.",
+                            size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                        )
+                    )
+                )
+            else:
+                wartosci_cen = [w for _, w in punkty_cen_mc]
+                min_c, max_c = min(wartosci_cen), max(wartosci_cen)
+                zapas_c = max((max_c - min_c) * 0.15, 0.05)
+
+                krok_etykiet_c = 1 if len(punkty_cen_mc) <= 6 else 2
+                etykiety_osi_c = []
+                for i, (klucz, _) in enumerate(punkty_cen_mc):
+                    if i % krok_etykiet_c != 0 and i != len(punkty_cen_mc) - 1:
+                        continue
+                    rok_i, mies_i = klucz.split("-")
+                    etykiety_osi_c.append(
+                        fc.ChartAxisLabel(
+                            value=i,
+                            label=ft.Text(f"{mies_i}/{rok_i[2:]}", size=9, color=ft.Colors.ON_SURFACE_VARIANT)
+                        )
+                    )
+
+                wykres_cen = fc.LineChart(
+                    data_series=[
+                        fc.LineChartData(
+                            points=[fc.LineChartDataPoint(i, w) for i, (_, w) in enumerate(punkty_cen_mc)],
+                            stroke_width=3,
+                            color=ft.Colors.BLUE_700,
+                            curved=True,
+                            rounded_stroke_cap=True,
+                        )
+                    ],
+                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text(f"{utils.symbol_waluty()}/L", size=10), title_size=14),
+                    bottom_axis=fc.ChartAxis(labels=etykiety_osi_c, label_size=24),
+                    min_y=max(0, min_c - zapas_c),
+                    max_y=max_c + zapas_c,
+                    min_x=0,
+                    max_x=len(punkty_cen_mc) - 1,
+                    expand=True,
+                )
+
+                karta_cen = ft.Card(
+                    elevation=1,
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Column([
+                            ft.Text("Średnia cena za litr w miesiącu", weight="bold", size=14),
+                            ft.Container(height=200, content=wykres_cen),
+                        ], spacing=10)
+                    )
+                )
+
+            stacje_ranking = trend_paliwa["stacje"]
+            if stacje_ranking:
+                wiersze_stacji = []
+                for i, s in enumerate(stacje_ranking[:5]):
+                    czy_najtansza = (i == 0)
+                    wiersze_stacji.append(
+                        ft.Row([
+                            ft.Row([
+                                ft.Icon(ft.Icons.EMOJI_EVENTS if czy_najtansza else ft.Icons.LOCAL_GAS_STATION,
+                                        size=16, color=ft.Colors.AMBER_700 if czy_najtansza else ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(s["nazwa"], weight="bold" if czy_najtansza else "normal", size=13),
+                            ], spacing=6),
+                            ft.Text(
+                                f"{utils.formatuj_liczba(s['srednia_cena'], 2)} {utils.symbol_waluty()}/L  •  {s['liczba_tankowan']}x",
+                                size=13, weight="bold" if czy_najtansza else "normal",
+                                color=ft.Colors.GREEN_700 if czy_najtansza else ft.Colors.ON_SURFACE
+                            )
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+                    )
+
+                karta_stacji = ft.Card(
+                    elevation=1,
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Column([
+                            ft.Row([ft.Icon(ft.Icons.LOCAL_GAS_STATION, color=ft.Colors.PRIMARY),
+                                    ft.Text("Ranking stacji (śr. cena/L)", weight="bold", size=14, expand=True)], spacing=8),
+                            ft.Divider(height=10),
+                            ft.Column(wiersze_stacji, spacing=10),
+                        ])
+                    )
+                )
+            else:
+                karta_stacji = ft.Card(
+                    elevation=1,
+                    content=ft.Container(
+                        padding=15,
+                        content=ft.Text(
+                            "Dodaj nazwę stacji przy tankowaniu, aby zobaczyć ranking najtańszych miejsc.",
+                            size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                        )
+                    )
+                )
+
             # 4. Złożenie widoku
             self.elementy.extend([
                 ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
@@ -1322,6 +1452,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.Divider(height=20),
                 ft.Text("Trend spalania w czasie", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 karta_trendu,
+                ft.Divider(height=20),
+                ft.Text("Ceny paliwa i stacje", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                karta_cen,
+                karta_stacji,
             ])
 
         elif self.state.stat_podzakladka == 2:

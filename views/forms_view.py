@@ -640,7 +640,11 @@ class FormularzTankowanieView(ft.View):
         if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.t_id, tabela="tankowania", nowa_data_str=self.e_d.value):
             return
 
+        if utils.sprawdz_duplikat_tankowania(self._page, self.e_k, self.state.auto_id, self.e_d.value, prz, kwo, wyklucz_id=self.t_id):
+            return
+
         wybrane_tagi = self.get_tagi()
+        
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
 

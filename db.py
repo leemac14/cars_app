@@ -515,6 +515,36 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
 
     return None
 
+def sprawdz_czy_tankowanie_duplikat(auto_id, data_str, przebieg, kwota, wyklucz_id=None):
+    """Zwraca ostrzeżenie (str), jeśli dla tego pojazdu istnieje już tankowanie
+    z DOKŁADNIE tą samą datą, przebiegiem i kwotą — częsty efekt podwójnego
+    zapisu tego samego wpisu (np. dubel kliknięcia „Zapisz”). Analogicznie do
+    sprawdz_czy_przebieg_podejrzany: nie blokuje zapisu samodzielnie, tylko
+    sygnalizuje możliwy duplikat do potwierdzenia przez użytkownika."""
+    if not auto_id or not data_str:
+        return None
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        wyklucz_sql = " AND id != ?" if wyklucz_id else ""
+        params = [auto_id, data_str, int(przebieg or 0), float(kwota or 0)]
+        if wyklucz_id:
+            params.append(wyklucz_id)
+        c.execute(
+            f"SELECT id FROM tankowania WHERE auto_id=? AND data=? AND przebieg=? AND kwota=?{wyklucz_sql}",
+            params
+        )
+        istnieje = c.fetchone()
+
+    if istnieje:
+        import utils
+        return (
+            f"Uwaga: masz już zapisane tankowanie z {data_str}, przebiegiem "
+            f"{utils.formatuj_liczba(przebieg, 0)} km i kwotą {utils.formatuj_liczba(kwota, 2)} "
+            f"{pobierz_walute()}. Czy to nie duplikat?"
+        )
+    return None
+
 def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
     if not auto_id:
         return None
@@ -875,6 +905,61 @@ def pobierz_dane_do_porownania(auto_id):
     dane["pilne"] = sum(1 for p in powiadomienia if p["status"] == "pilne")
 
     return dane
+
+def pobierz_trend_cen_paliwa(auto_id):
+    """Cena za litr w czasie (do wykresu) oraz zestawienie średnich cen per
+    stacja (do rankingu „najtańsza stacja, na której tankowałeś”). Uwzględnia
+    tylko tankowania z dodatnią liczbą litrów; stacja jest opcjonalna — wpisy
+    bez niej trafiają do 'punkty', ale nie do rankingu 'stacje'.
+    Zwraca {"punkty": [(data, cena_za_litr), ...] posortowane chronologicznie,
+    "stacje": [{"nazwa","srednia_cena","liczba_tankowan","ostatnia_cena","ostatnia_data"}, ...]
+    posortowane rosnąco po średniej cenie, "najtansza": pierwszy element stacje albo None}."""
+    if not auto_id:
+        return {"punkty": [], "stacje": [], "najtansza": None}
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT data, kwota, litry, stacja FROM tankowania WHERE auto_id=? AND litry > 0",
+            (auto_id,)
+        )
+        wiersze = c.fetchall()
+
+    dane = []
+    for data_str, kwota, litry, stacja in wiersze:
+        litry_f = float(litry or 0)
+        if litry_f <= 0:
+            continue
+        cena = float(kwota or 0) / litry_f
+        d = parsuj_date(data_str)
+        dane.append((d, data_str, cena, (stacja or "").strip()))
+    dane.sort(key=lambda x: x[0])  # chronologicznie po sparsowanej dacie, nie tekście
+
+    punkty = []
+    wg_stacji = {}
+    for d, data_str, cena, stacja in dane:
+        punkty.append((data_str, cena))
+        if not stacja:
+            continue
+        wpis = wg_stacji.setdefault(stacja, {
+            "nazwa": stacja, "suma_cen": 0.0, "liczba_tankowan": 0,
+            "ostatnia_cena": None, "ostatnia_data": None, "_ostatnia_data_obj": None
+        })
+        wpis["suma_cen"] += cena
+        wpis["liczba_tankowan"] += 1
+        if wpis["_ostatnia_data_obj"] is None or d >= wpis["_ostatnia_data_obj"]:
+            wpis["_ostatnia_data_obj"] = d
+            wpis["ostatnia_cena"] = cena
+            wpis["ostatnia_data"] = data_str
+
+    stacje = []
+    for wpis in wg_stacji.values():
+        wpis["srednia_cena"] = wpis["suma_cen"] / wpis["liczba_tankowan"]
+        del wpis["suma_cen"], wpis["_ostatnia_data_obj"]
+        stacje.append(wpis)
+    stacje.sort(key=lambda s: s["srednia_cena"])
+
+    return {"punkty": punkty, "stacje": stacje, "najtansza": stacje[0] if stacje else None}
 
 def pobierz_podzial_kosztow(auto_id, rok, miesiac):
     """Zestawienie 'kto ile wydał / przejechał' dla współdzielonego pojazdu w

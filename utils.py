@@ -328,6 +328,23 @@ def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, aut
     pole_przebiegu._potwierdzona_wartosc = None
     return False
 
+def sprawdz_duplikat_tankowania(page: ft.Page, pole_kwoty: ft.TextField, auto_id, data_str, przebieg, kwota, wyklucz_id=None):
+    """Analogicznie do sprawdz_podejrzany_przebieg — ostrzega, jeśli identyczne
+    tankowanie (data+przebieg+kwota) już istnieje, zamiast cicho zapisać
+    potencjalny duplikat. Zwraca True, jeśli zapis należy przerwać."""
+    klucz = (data_str, przebieg, kwota)
+    ostrzezenie = db.sprawdz_czy_tankowanie_duplikat(auto_id, data_str, przebieg, kwota, wyklucz_id=wyklucz_id)
+
+    if ostrzezenie and getattr(pole_kwoty, "_duplikat_potwierdzony", None) != klucz:
+        pole_kwoty._duplikat_potwierdzony = klucz
+        pole_kwoty.error_text = "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić"
+        page.update()
+        pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
+        return True
+
+    pole_kwoty._duplikat_potwierdzony = None
+    return False
+
 def przycisk_sortowania(page: ft.Page, state, klucz_stanu, opcje):
     pole_akt, malejaco_akt = state.sort.setdefault(klucz_stanu, (opcje[0][1], False))
     
@@ -1875,6 +1892,127 @@ def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
         padding=4, border_radius=RADIUS["pill"], bgcolor=tlo_karty(page, "sm"),
         content=ft.Row(segmenty, spacing=4),
     )
+
+def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szybkie akcje"):
+    """FAB „rozwijany” (speed-dial): dotknięcie głównego przycisku odsłania
+    pionowy stos mniejszych przycisków z opisanymi szybkimi akcjami, zamiast
+    pojedynczego przejścia do jednego formularza. `akcje`: lista krotek
+    (ikona, etykieta, on_click) — on_click przyjmuje `e` jak zwykły on_click,
+    może być sync albo async. Menu zamyka się automatycznie po wybraniu
+    dowolnej akcji albo ponownym dotknięciu głównego przycisku."""
+    stan = {"otwarte": False}
+    kontener_akcji = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.END, visible=False)
+
+    fab_glowny = ft.FloatingActionButton(
+        icon=ikona_glowna, bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY, tooltip=tooltip,
+    )
+
+    def odswiez():
+        kontener_akcji.visible = stan["otwarte"]
+        fab_glowny.icon = ft.Icons.CLOSE if stan["otwarte"] else ikona_glowna
+        fab_glowny.bgcolor = ft.Colors.ON_SURFACE_VARIANT if stan["otwarte"] else ft.Colors.PRIMARY
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def zamknij():
+        stan["otwarte"] = False
+        odswiez()
+
+    def przelacz(e):
+        stan["otwarte"] = not stan["otwarte"]
+        odswiez()
+
+    fab_glowny.on_click = przelacz
+
+    def opakuj_akcje(akcja):
+        async def wrapper(e):
+            zamknij()
+            wynik = akcja(e)
+            if asyncio.iscoroutine(wynik):
+                await wynik
+        return wrapper
+
+    wiersze = []
+    for ikona, etykieta, akcja in akcje:
+        wiersze.append(
+            ft.Row([
+                ft.Container(
+                    padding=ft.Padding(10, 6, 10, 6), border_radius=8,
+                    bgcolor=tlo_karty(page, poziom=3),
+                    content=ft.Text(etykieta, size=12, weight="bold")
+                ),
+                ft.FloatingActionButton(
+                    icon=ikona, mini=True, bgcolor=ft.Colors.SURFACE, foreground_color=ft.Colors.PRIMARY,
+                    on_click=opakuj_akcje(akcja)
+                )
+            ], alignment=ft.MainAxisAlignment.END, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
+        )
+
+    kontener_akcji.controls = wiersze
+    return ft.Column([kontener_akcji, fab_glowny], horizontal_alignment=ft.CrossAxisAlignment.END, spacing=10, tight=True)
+
+def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szybkie akcje"):
+    """FAB „rozwijany” (speed-dial): dotknięcie głównego przycisku odsłania
+    pionowy stos mniejszych przycisków z opisanymi szybkimi akcjami, zamiast
+    pojedynczego przejścia do jednego formularza. `akcje`: lista krotek
+    (ikona, etykieta, on_click) — on_click przyjmuje `e` jak zwykły on_click,
+    może być sync albo async. Menu zamyka się automatycznie po wybraniu
+    dowolnej akcji albo ponownym dotknięciu głównego przycisku."""
+    stan = {"otwarte": False}
+    kontener_akcji = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.END, visible=False)
+
+    fab_glowny = ft.FloatingActionButton(
+        icon=ikona_glowna, bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY, tooltip=tooltip,
+    )
+
+    def odswiez():
+        kontener_akcji.visible = stan["otwarte"]
+        fab_glowny.icon = ft.Icons.CLOSE if stan["otwarte"] else ikona_glowna
+        fab_glowny.bgcolor = ft.Colors.ON_SURFACE_VARIANT if stan["otwarte"] else ft.Colors.PRIMARY
+        try:
+            page.update()
+        except Exception:
+            pass
+
+    def zamknij():
+        stan["otwarte"] = False
+        odswiez()
+
+    def przelacz(e):
+        stan["otwarte"] = not stan["otwarte"]
+        odswiez()
+
+    fab_glowny.on_click = przelacz
+
+    def opakuj_akcje(akcja):
+        async def wrapper(e):
+            zamknij()
+            wynik = akcja(e)
+            if asyncio.iscoroutine(wynik):
+                await wynik
+        return wrapper
+
+    wiersze = []
+    for ikona, etykieta, akcja in akcje:
+        wiersze.append(
+            ft.Row([
+                ft.Container(
+                    padding=ft.Padding(10, 6, 10, 6), border_radius=8,
+                    bgcolor=ft.Colors.SURFACE,
+                    shadow=ft.BoxShadow(blur_radius=4, color=ft.Colors.with_opacity(0.25, ft.Colors.BLACK)),
+                    content=ft.Text(etykieta, size=12, weight="bold")
+                ),
+                ft.FloatingActionButton(
+                    icon=ikona, mini=True, bgcolor=ft.Colors.SURFACE, foreground_color=ft.Colors.PRIMARY,
+                    on_click=opakuj_akcje(akcja)
+                )
+            ], alignment=ft.MainAxisAlignment.END, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
+        )
+
+    kontener_akcji.controls = wiersze
+    return ft.Column([kontener_akcji, fab_glowny], horizontal_alignment=ft.CrossAxisAlignment.END, spacing=10, tight=True)
 
 def fab_animowany(icon, on_click, tooltip=None):
     """FloatingActionButton z 'namacalnym' feedbackiem dotyku — lekkie
