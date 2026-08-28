@@ -66,7 +66,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             self.pole_wyszukiwarki = ft.TextField(
                 hint_text="Szukaj (np. przebieg, data, notatki)...",
                 prefix_icon=ft.Icons.SEARCH,
-                on_change=filtruj_historie,
+                on_change=utils.z_opoznieniem(self._page, filtruj_historie),
                 **utils.styl_pola()
             )
             elementy.append(self.pole_wyszukiwarki)
@@ -135,8 +135,12 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 ]
                 if wspolny_id and dodane_przez:
                     tresc_h.append(utils.znacznik_dodane_przez(dodane_przez))
-                kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_h))
-                
+                karta, kontener = utils.karta_listy(
+                    ft.Column(tresc_h, spacing=4),
+                    kolor_paska=ft.Colors.RED_700 if jest_zbiorcza else ft.Colors.ORANGE_700,
+                    page=self._page,
+                )
+
                 self.karty_ref[h_id] = kontener
 
                 def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=zalacznik):
@@ -157,7 +161,6 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 kontener.on_click = _on_click
                 kontener.on_long_press = _on_long_press
 
-                karta = ft.Card(elevation=1, content=kontener)
                 tekst_szukaj = f"{data} {sub_tekst} {k_str}".lower()
                 self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
                 self.lista_kart.controls.append(karta)
@@ -276,7 +279,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         self.pole_wyszukiwarki = ft.TextField(
             hint_text="Szukaj (część, warsztat, data, koszt)...",
             prefix_icon=ft.Icons.SEARCH,
-            on_change=filtruj_wizyty,
+            on_change=utils.z_opoznieniem(self._page, filtruj_wizyty),
             **utils.styl_pola()
         )
         elementy.append(self.pole_wyszukiwarki)
@@ -342,7 +345,11 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 if wspolny_id and dodane_przez:
                     tresc_karty.append(utils.znacznik_dodane_przez(dodane_przez))
 
-                kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
+                karta, kontener = utils.karta_listy(
+                    ft.Column(tresc_karty, spacing=4),
+                    kolor_paska=ft.Colors.RED_700,
+                    page=self._page,
+                )
 
                 self.karty_ref[w_id] = kontener
 
@@ -360,7 +367,6 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 kontener.on_click = _on_click
                 kontener.on_long_press = _on_long_press
 
-                karta = ft.Card(elevation=1, content=kontener)
                 magazyn_szukaj = " ".join(czesci_magazynowe) if czesci_magazynowe else ""
                 tekst_szukaj = f"{data} {wyk} {czesci} {kosz} {tagi} {magazyn_szukaj}".lower()
                 self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})

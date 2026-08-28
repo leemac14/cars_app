@@ -304,6 +304,26 @@ def init_db():
             ALTER TABLE historia ADD COLUMN dodane_przez TEXT;
             ALTER TABLE wizyty ADD COLUMN dodane_przez TEXT;
             ALTER TABLE inne_koszty ADD COLUMN dodane_przez TEXT;
+            """,
+            # Wersja 22: Indeksy pod synchronizację (sync.py) — _wypchnij_tabele/
+            # _pobierz_tabele robią WHERE auto_id=? AND zdalne_id IS NULL/NOT NULL
+            # na każdej tabeli przy KAŻDEJ synchronizacji; bez indeksu to pełne
+            # skanowanie tabeli, co przy dużej historii zacznie zauważalnie
+            # spowalniać sync. idx_historia_zdalne osobno, bo historia nie ma
+            # kolumny auto_id (jest tylko przez zadanie_id/wizyta_id).
+            """
+            CREATE INDEX IF NOT EXISTS idx_tankowania_auto_zdalne ON tankowania(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_zadania_auto_zdalne ON zadania(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_wizyty_auto_zdalne ON wizyty(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_magazyn_czesci_auto_zdalne ON magazyn_czesci(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_zestawy_opon_auto_zdalne ON zestawy_opon(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_inne_koszty_auto_zdalne ON inne_koszty(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_do_zrobienia_auto_zdalne ON do_zrobienia(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_warsztaty_auto_zdalne ON warsztaty(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_wydatki_cykliczne_auto_zdalne ON wydatki_cykliczne(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_odczyty_przebiegu_auto_zdalne ON odczyty_przebiegu(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_tagi_auto_zdalne ON tagi(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_historia_zdalne ON historia(zdalne_id);
             """
         ]
 

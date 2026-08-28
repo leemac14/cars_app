@@ -68,7 +68,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             self.pole_wyszukiwarki = ft.TextField(
                 hint_text="Szukaj (tytuł, opis, podzespół)...",
                 prefix_icon=ft.Icons.SEARCH,
-                on_change=filtruj_pozycje,
+                on_change=utils.z_opoznieniem(self._page, filtruj_pozycje),
                 **utils.styl_pola()
             )
             elementy.append(self.pole_wyszukiwarki)

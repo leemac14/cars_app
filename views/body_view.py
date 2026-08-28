@@ -44,7 +44,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                     if zapytanie in k["szukaj"]: self.lista_kart.controls.append(k["karta"])
                 self.update()
 
-            pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)...", prefix_icon=ft.Icons.SEARCH, on_change=filtruj_galerie, **utils.styl_pola())
+            pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)...", prefix_icon=ft.Icons.SEARCH, on_change=utils.z_opoznieniem(self._page, filtruj_galerie), **utils.styl_pola())
             
             elementy.append(ft.Row([ft.Text("Filtruj:", weight="bold", color=ft.Colors.ON_SURFACE_VARIANT), filtr_strefa_ui]))
             elementy.append(pole_szukaj)
@@ -75,20 +75,23 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                 z_id, z_data, z_strefa, z_zal, z_typ, z_opis = z
                 kolor_typu = ft.Colors.BLUE if z_typ == "Przed naprawą" else ft.Colors.GREEN if z_typ == "Po naprawie" else ft.Colors.ON_SURFACE_VARIANT
                 
-                kontener = ft.Container(
-                    width=165, padding=10, border_radius=12, ink=True,
-                    bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
-                    content=ft.Column([
+                karta, kontener = utils.karta_listy(
+                    ft.Column([
                         ft.Image(src=utils.abs_zalacznik(z_zal), height=110, width=165, fit="cover", border_radius=8),
                         ft.Text(f"{z_data} • {z_strefa}", size=12, weight="bold", no_wrap=True),
                         ft.Text(str(z_typ) if z_typ != "Brak" else "Zwykłe", size=11, color=kolor_typu, weight="bold")
-                    ], spacing=4)
+                    ], spacing=4),
+                    tlo=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
+                    page=self._page,
                 )
+                kontener.width = 165
+                kontener.padding = 10
+
                 self.karty_ref[z_id] = kontener
                 self.podepnij_zdarzenia_grupowe(kontener, z_id, lambda zid=z_id, zal=z_zal: otworz_menu(zid, zal))
-                
-                self.wszystkie_karty.append({"karta": kontener, "szukaj": f"{z_strefa} {z_opis} {z_typ} {z_data}".lower()})
-                self.lista_kart.controls.append(kontener)
+
+                self.wszystkie_karty.append({"karta": karta, "szukaj": f"{z_strefa} {z_opis} {z_typ} {z_data}".lower()})
+                self.lista_kart.controls.append(karta)
 
             elementy.append(self.lista_kart)
 

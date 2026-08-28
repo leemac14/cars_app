@@ -126,7 +126,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             ft.TextField(
                 hint_text="Szukaj opon (sezon, rozmiar, marka, DOT)...",
                 prefix_icon=ft.Icons.SEARCH,
-                on_change=filtruj_opony,
+                on_change=utils.z_opoznieniem(self._page, filtruj_opony),
                 **utils.styl_pola()
             )
         )
@@ -290,7 +290,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             ft.TextField(
                 hint_text="Szukaj części (nazwa, kategoria)...",
                 prefix_icon=ft.Icons.SEARCH,
-                on_change=filtruj_czesci,
+                on_change=utils.z_opoznieniem(self._page, filtruj_czesci),
                 **utils.styl_pola()
             )
         )

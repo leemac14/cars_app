@@ -69,7 +69,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.TextField(
                     hint_text="Szukaj odczytu (data, przebieg)...",
                     prefix_icon=ft.Icons.SEARCH,
-                    on_change=filtruj_odczyty,
+                    on_change=utils.z_opoznieniem(self._page, filtruj_odczyty),
                     **utils.styl_pola()
                 )
             )

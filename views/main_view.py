@@ -601,7 +601,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.TextField(
                     hint_text="Szukaj podzespołu (np. olej, klocki, filtr)...",
                     prefix_icon=ft.Icons.SEARCH,
-                    on_change=filtruj_zadania,
+                    on_change=utils.z_opoznieniem(self._page, filtruj_zadania),
                     **utils.styl_pola()
                 )
             )
@@ -787,7 +787,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.TextField(
                     hint_text="Szukaj tankowania (stacja, data, kwota, dystans)...",
                     prefix_icon=ft.Icons.SEARCH,
-                    on_change=filtruj_tankowania,
+                    on_change=utils.z_opoznieniem(self._page, filtruj_tankowania),
                     **utils.styl_pola()
                 )
             )
@@ -915,7 +915,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.TextField(
                     hint_text="Szukaj kosztu (opis, kategoria, kwota, data)...",
                     prefix_icon=ft.Icons.SEARCH,
-                    on_change=filtruj_inne,
+                    on_change=utils.z_opoznieniem(self._page, filtruj_inne),
                     **utils.styl_pola()
                 )
             )
@@ -1554,7 +1554,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ft.TextField(
                         hint_text="Szukaj okresu (np. 2026, Sierpień)...",
                         prefix_icon=ft.Icons.SEARCH,
-                        on_change=filtruj_okresy,
+                        on_change=utils.z_opoznieniem(self._page, filtruj_okresy),
                         **utils.styl_pola()
                     )
                 )

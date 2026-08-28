@@ -68,7 +68,7 @@ class TimelineView(ft.View):
                 ft.TextField(
                     hint_text="Szukaj (typ, tytuł, opis, data)...",
                     prefix_icon=ft.Icons.SEARCH,
-                    on_change=filtruj_timeline,
+                    on_change=utils.z_opoznieniem(self._page, filtruj_timeline),
                     **utils.styl_pola()
                 )
             )

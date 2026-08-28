@@ -136,6 +136,27 @@ def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5):
 
     page.run_task(_finalizuj_po_czasie)
 
+def z_opoznieniem(page: ft.Page, funkcja, opoznienie=0.25):
+    """Owija handler on_change pola wyszukiwania tak, by faktyczne wywołanie
+    funkcja(e) nastąpiło dopiero po 'opoznienie' sekundach ciszy od ostatniego
+    wciśnięcia klawisza — zapobiega przeliczaniu filtra (albo, w /szukaj,
+    zapytania do bazy) przy KAŻDYM pojedynczym znaku, gdy lista ma setki wpisów.
+    Użycie: on_change=utils.z_opoznieniem(self._page, moja_funkcja_filtrujaca)"""
+    stan = {"licznik": 0}
+
+    def on_change(e):
+        stan["licznik"] += 1
+        numer_wywolania = stan["licznik"]
+
+        async def _po_ciszy():
+            await asyncio.sleep(opoznienie)
+            if stan["licznik"] == numer_wywolania:
+                funkcja(e)
+
+        page.run_task(_po_ciszy)
+
+    return on_change
+
 def otworz_dialog(page: ft.Page, kontrolka):
     if hasattr(page, "open"): page.open(kontrolka)
     elif hasattr(page, "show_dialog"): page.show_dialog(kontrolka)

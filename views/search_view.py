@@ -37,7 +37,7 @@ class SzukajView(ft.View):
             hint_text="Szukaj (stacja, część, warsztat, opis, data)...",
             prefix_icon=ft.Icons.SEARCH,
             autofocus=True,
-            on_change=self._wyszukaj,
+            on_change=utils.z_opoznieniem(self._page, self._wyszukaj),
             **utils.styl_pola()
         )
 
