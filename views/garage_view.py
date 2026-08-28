@@ -67,13 +67,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         super().__init__(
             route="/magazyn",
             padding=15,
-            spacing=15,
-            scroll=ft.ScrollMode.AUTO,
             appbar=appbar,
             floating_action_button=fab,
-            controls=elementy
+            controls=[utils.z_odswiezaniem(page, elementy)]
         )
-
+        
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
         tabela = self.tabela_cel

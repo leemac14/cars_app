@@ -132,8 +132,9 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
         super().__init__(
             route="/przebieg",
-            padding=15, spacing=15, scroll=ft.ScrollMode.AUTO,
-            appbar=appbar, floating_action_button=fab, controls=elementy
+            padding=15,
+            appbar=appbar, floating_action_button=fab,
+            controls=[utils.z_odswiezaniem(page, elementy)]
         )
 
     def potwierdz_grupowe_usuwanie(self, e):

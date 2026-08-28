@@ -5,6 +5,7 @@ import db
 import os
 import asyncio
 import urllib.parse
+import inspect
 from state import MIESIACE_NAZWY
 from date import parsuj_date
 
@@ -172,6 +173,25 @@ def zamknij_dialog(page: ft.Page, kontrolka):
         kontrolka.open = False
         if kontrolka in page.overlay: page.overlay.remove(kontrolka)
         page.update()
+
+def pokaz_ladowanie(page: ft.Page, tekst="Wczytywanie..."):
+    """Blokujący, niezamykalny dialog ze spinnerem — używać w parze z
+    ukryj_ladowanie() wokół operacji trwających dłużej niż mgnienie oka
+    (np. synchronizacja z chmurą), żeby ekran nie wyglądał na zawieszony."""
+    dlg = ft.AlertDialog(
+        modal=True,
+        content_padding=ft.Padding(25, 20, 25, 20),
+        content=ft.Row([
+            ft.ProgressRing(width=20, height=20, stroke_width=3, color=ft.Colors.PRIMARY),
+            ft.Text(tekst, size=14),
+        ], spacing=15, tight=True),
+    )
+    otworz_dialog(page, dlg)
+    return dlg
+
+def ukryj_ladowanie(page: ft.Page, dlg):
+    if dlg is not None:
+        zamknij_dialog(page, dlg)
 
 def otworz_dno(page: ft.Page, bottom_sheet):
     """Automatycznie zabezpiecza dolne menu przed zasłonięciem przez przyciski systemowe telefonu."""
@@ -1886,6 +1906,49 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
         )
     )
     return karta, kontener
+
+def z_odswiezaniem(page: ft.Page, kontrolki: list, funkcja_odswiez=None):
+    """Owija kontrolki widoku w przewijaną kolumnę z przyciskiem odświeżania.
+    
+    Zwraca gotową kontrolkę — do użycia jako JEDYNY element w super().__init__(
+    controls=[...]), bez ustawiania scroll= na samym Widoku.
+    """
+    spinner = ft.ProgressRing(visible=False, width=18, height=18, stroke_width=2)
+    btn_odswiez = ft.IconButton(
+        icon=ft.Icons.REFRESH,
+        tooltip="Odśwież widok",
+        icon_size=20,
+    )
+
+    async def _wykonaj_odswiezenie(e):
+        spinner.visible = True
+        btn_odswiez.disabled = True
+        page.update()
+
+        try:
+            handler = funkcja_odswiez or (lambda ev: przejdz(page, page.route))
+            if inspect.iscoroutinefunction(handler):
+                await handler(e)
+            else:
+                handler(e)
+        finally:
+            spinner.visible = False
+            btn_odswiez.disabled = False
+            page.update()
+
+    btn_odswiez.on_click = _wykonaj_odswiezenie
+
+    pasek_gora = ft.Row(
+        controls=[spinner, btn_odswiez],
+        alignment=ft.MainAxisAlignment.END,
+    )
+
+    return ft.Column(
+        controls=[pasek_gora, *kontrolki],
+        spacing=15,
+        scroll=ft.ScrollMode.ALWAYS,
+        expand=True,
+    )
 
 def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
     """Animowany zamiennik powtarzanego wzorca 'btn_zakladki' — segmenty

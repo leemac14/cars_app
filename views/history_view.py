@@ -173,11 +173,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         super().__init__(
             route=f"/historia/{z_id}",
             padding=15,
-            spacing=15,
-            scroll=ft.ScrollMode.AUTO,
             appbar=appbar,
             floating_action_button=fab,
-            controls=elementy
+            controls=[utils.z_odswiezaniem(page, elementy)]
         )
 
     def potwierdz_grupowe_usuwanie(self, e):
@@ -377,11 +375,9 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         super().__init__(
             route="/wizyty",
             padding=15,
-            spacing=15,
-            scroll=ft.ScrollMode.AUTO,
             appbar=appbar,
             floating_action_button=fab,
-            controls=elementy
+            controls=[utils.z_odswiezaniem(page, elementy)]
         )
 
     def potwierdz_grupowe_usuwanie(self, e):

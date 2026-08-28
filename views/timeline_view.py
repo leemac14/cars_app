@@ -98,8 +98,8 @@ class TimelineView(ft.View):
 
         super().__init__(
             route="/timeline",
-            padding=15, spacing=15, scroll=ft.ScrollMode.AUTO,
-            appbar=appbar, controls=elementy
+            padding=15,
+            appbar=appbar, controls=[utils.z_odswiezaniem(page, elementy)]
         )
 
     def _karta_zdarzenia(self, z):

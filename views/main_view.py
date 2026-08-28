@@ -59,14 +59,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         super().__init__(
             route="/",
             padding=15,
-            spacing=15,
-            scroll=ft.ScrollMode.AUTO,
             appbar=appbar,
             navigation_bar=navbar,
-            controls=self.elementy,
+            controls=[utils.z_odswiezaniem(page, self.elementy)],
             floating_action_button=self.fab
         )
-        
+
     def zmien_zakladke(self, e):
         self.state.zakladka = int(e.control.selected_index)
         utils.przejdz(self._page, "/")
@@ -706,11 +704,14 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         if wspolny_id:
             def _sync_click(e):
                 async def _zrob():
+                    dlg = utils.pokaz_ladowanie(self._page, "Synchronizowanie danych...")
                     try:
                         wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
+                        utils.ukryj_ladowanie(self._page, dlg)
                         utils.przejdz(self._page, "/")
                         utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
                     except Exception as ex:
+                        utils.ukryj_ladowanie(self._page, dlg)
                         utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
                 self._page.run_task(_zrob)
             naglowek_bits.append(ft.IconButton(ft.Icons.SYNC, tooltip="Synchronizuj z partnerem", on_click=_sync_click, icon_color=ft.Colors.PRIMARY))

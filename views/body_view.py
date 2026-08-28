@@ -98,11 +98,11 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         elementy.append(utils.dol_bezpieczny(10))
 
         super().__init__(
-            route="/karoseria", padding=15, spacing=15,
-            scroll=ft.ScrollMode.AUTO,
-            appbar=appbar, floating_action_button=fab, controls=elementy
+            route="/karoseria", padding=15,
+            appbar=appbar, floating_action_button=fab,
+            controls=[utils.z_odswiezaniem(page, elementy)]
         )
-
+        
     # --- NOWE: Wymuszenie zaznaczania z menu kontekstowego zdjęcia ---
     def wymus_tryb_zaznaczania(self, element_id):
         self.tryb_zaznaczania = True

@@ -98,11 +98,9 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         super().__init__(
             route="/do-zrobienia",
             padding=15,
-            spacing=15,
-            scroll=ft.ScrollMode.AUTO,
             appbar=appbar,
             floating_action_button=fab,
-            controls=elementy
+            controls=[utils.z_odswiezaniem(page, elementy)]
         )
 
     # --- KARTA POJEDYNCZEJ POZYCJI ---

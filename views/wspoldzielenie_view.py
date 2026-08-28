@@ -100,11 +100,14 @@ class WspoldzielenieView(ft.View):
 
     def _udostepnij(self, e):
         async def _zrob():
+            dlg = utils.pokaz_ladowanie(self._page, "Tworzenie udostępnionego pojazdu...")
             try:
                 kod = await asyncio.to_thread(sync.utworz_udostepniony_pojazd, self.state.auto_id, self.state.auto_nazwa)
+                utils.ukryj_ladowanie(self._page, dlg)
                 utils.przejdz(self._page, "/wspoldzielenie")
                 utils.pokaz_komunikat(self._page, f"Udostępniono! Kod zaproszenia: {kod}")
             except Exception as ex:
+                utils.ukryj_ladowanie(self._page, dlg)
                 utils.pokaz_komunikat(self._page, f"Błąd łączenia z Supabase: {ex}", ft.Colors.RED_700)
         self._page.run_task(_zrob)
 
@@ -116,37 +119,46 @@ class WspoldzielenieView(ft.View):
             return
 
         async def _zrob():
+            dlg = utils.pokaz_ladowanie(self._page, "Dołączanie do pojazdu...")
             try:
                 nowy_auto_id, nazwa = await asyncio.to_thread(sync.dolacz_po_kodzie, kod)
+                utils.ukryj_ladowanie(self._page, dlg)
                 self.state.auto_id = nowy_auto_id
                 self.state.auto_nazwa = nazwa
                 utils.przejdz(self._page, "/")
                 utils.pokaz_komunikat(self._page, f"Dołączono do pojazdu „{nazwa}”! Zaimportowano dotychczasowe tankowania.")
             except Exception as ex:
+                utils.ukryj_ladowanie(self._page, dlg)
                 utils.pokaz_komunikat(self._page, f"Błąd: {ex}", ft.Colors.RED_700)
         self._page.run_task(_zrob)
 
     def _synchronizuj(self, e):
         async def _zrob():
+            dlg = utils.pokaz_ladowanie(self._page, "Synchronizowanie danych...")
             try:
                 wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
+                utils.ukryj_ladowanie(self._page, dlg)
                 utils.przejdz(self._page, "/wspoldzielenie")
                 utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
             except Exception as ex:
+                utils.ukryj_ladowanie(self._page, dlg)
                 utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
         self._page.run_task(_zrob)
 
     def _przywroc(self, e):
         def wykonaj():
             async def _zrob():
+                dlg = utils.pokaz_ladowanie(self._page, "Przywracanie danych z chmury...")
                 try:
                     przywrocono = await asyncio.to_thread(sync.przywroc_z_chmury, self.state.auto_id)
+                    utils.ukryj_ladowanie(self._page, dlg)
                     utils.przejdz(self._page, "/wspoldzielenie")
                     if przywrocono:
                         utils.pokaz_komunikat(self._page, f"Przywrócono {przywrocono} rekordów z chmury.")
                     else:
                         utils.pokaz_komunikat(self._page, "Brak danych do przywrócenia — wszystko już jest na miejscu.")
                 except Exception as ex:
+                    utils.ukryj_ladowanie(self._page, dlg)
                     utils.pokaz_komunikat(self._page, f"Błąd przywracania: {ex}", ft.Colors.RED_700)
             self._page.run_task(_zrob)
 
