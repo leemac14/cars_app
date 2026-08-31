@@ -59,9 +59,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         super().__init__(
             route="/",
             padding=15,
+            spacing=15,                 # Zastępuje odstępy, które wcześniej robił wrapper
             appbar=appbar,
             navigation_bar=navbar,
-            controls=[utils.z_odswiezaniem(page, self.elementy)],
+            controls=self.elementy,     # Przekazujemy elementy bezpośrednio
+            scroll=ft.ScrollMode.AUTO,  # Włączamy natywne przewijanie całej strony
             floating_action_button=self.fab
         )
 

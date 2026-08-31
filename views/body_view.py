@@ -100,7 +100,9 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         super().__init__(
             route="/karoseria", padding=15,
             appbar=appbar, floating_action_button=fab,
-            controls=[utils.z_odswiezaniem(page, elementy)]
+            spacing=15,
+            controls=elementy,          # lub self.elementy, w zależności jak masz w tym pliku
+            scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
         )
         
     # --- NOWE: Wymuszenie zaznaczania z menu kontekstowego zdjęcia ---

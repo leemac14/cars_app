@@ -69,7 +69,9 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             padding=15,
             appbar=appbar,
             floating_action_button=fab,
-            controls=[utils.z_odswiezaniem(page, elementy)]
+            spacing=15,
+            controls=elementy,          # lub self.elementy, w zależności jak masz w tym pliku
+            scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
         )
         
     def potwierdz_grupowe_usuwanie(self, e):
