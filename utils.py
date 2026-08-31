@@ -1431,11 +1431,10 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                 return akcja
 
             chip = ft.Container(
-                content=ft.Text(nazwa, size=12, color=ft.Colors.WHITE if zaznaczony else kolor_hex, weight="bold"),
-                padding=ft.Padding(10, 4, 10, 4),
-                border_radius=16,
-                border=ft.Border.all(1, kolor_hex),
-                bgcolor=kolor_hex if zaznaczony else ft.Colors.TRANSPARENT,
+                content=ft.Text(nazwa, size=FS["label"], color=ft.Colors.WHITE if zaznaczony else kolor_hex, weight="bold"),
+                padding=ft.Padding(12, 6, 12, 6),
+                border_radius=RADIUS["pill"],
+                bgcolor=kolor_hex if zaznaczony else ft.Colors.with_opacity(0.12, kolor_hex),
                 on_click=lambda e, n=nazwa: przelacz_tag(n),
                 on_long_press=stworz_akcje_opcji(t_id, nazwa, kolor),
                 tooltip="Kliknij: Zaznacz | Przytrzymaj: Edytuj / Usuń"
@@ -1443,10 +1442,10 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
             kontener_tagow.controls.append(chip)
             
         btn_dodaj = ft.Container(
-            content=ft.Row([ft.Icon(ft.Icons.ADD, size=14, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text("Nowy", size=12, color=ft.Colors.ON_SURFACE_VARIANT)], spacing=2),
-            padding=ft.Padding(10, 4, 10, 4),
-            border_radius=16,
-            border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.ON_SURFACE)),
+            content=ft.Row([ft.Icon(ft.Icons.ADD, size=14, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text("Nowy", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT)], spacing=4),
+            padding=ft.Padding(12, 6, 12, 6),
+            border_radius=RADIUS["pill"],
+            bgcolor=tlo_karty(page, poziom=2),
             on_click=lambda e: okno_nowego_tagu()
         )
         kontener_tagow.controls.append(btn_dodaj)
@@ -1512,11 +1511,10 @@ def wizualizacja_tagow(tagi_str, auto_id):
         
         chipy.append(
             ft.Container(
-                content=ft.Text(t, size=10, weight="bold", color=kolor_hex),
-                padding=ft.Padding(6, 2, 6, 2),
-                border_radius=6,
+                content=ft.Text(t, size=FS["caption"], weight="bold", color=kolor_hex),
+                padding=ft.Padding(8, 3, 8, 3),
+                border_radius=RADIUS["pill"],
                 bgcolor=ft.Colors.with_opacity(0.12, kolor_hex),
-                border=ft.Border.all(1, ft.Colors.with_opacity(0.3, kolor_hex))
             )
         )
     return ft.Row(chipy, wrap=True, spacing=4)
