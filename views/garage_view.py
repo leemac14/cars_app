@@ -1,5 +1,6 @@
 import flet as ft
 import db
+import sync
 import utils
 
 SEZONY = ["Letnie", "Zimowe", "Całoroczne"]
@@ -32,7 +33,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "📦 Magazyn", "/")
+        wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "📦 Magazyn", "/",
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/magazyn"))] if wspolny_id else None
+        )
 
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA (wspólne dla obu zakładek) ---
         self.tryb_zaznaczania = False

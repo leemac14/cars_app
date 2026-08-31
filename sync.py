@@ -10,6 +10,7 @@ import uuid as uuid_lib
 import sqlite3
 import json
 import hashlib
+from datetime import datetime
 import db
 
 # --- UZUPEŁNIJ PO ZAŁOŻENIU PROJEKTU NA supabase.com (Project Settings -> API) ---
@@ -112,18 +113,18 @@ KOLUMNY_POJAZDU = [
     "skrzynia_biegow", "notatki", "wycieraczki_przod", "wycieraczki_tyl",
     "cisnienie_przod", "cisnienie_tyl", "olej_typ", "olej_pojemnosc", "akumulator",
     "zarowki_mijania", "zarowki_drogowe", "ac_data", "assistance_data",
-    "gasnica_data", "apteczka_data",
+    "gasnica_data", "apteczka_data", "wiadomosc_statusu",
 ]
 
 KONFIGURACJA_SYNC = [
     {"tabela": "tagi", "kolumny": ["nazwa", "kolor"], "fk": {}},
-    {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "dodane_przez"], "fk": {}},
+    {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon"], "fk": {}},
-    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi", "dodane_przez"], "fk": {}},
-    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "dodane_przez"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
+    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
+    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
     {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "data_zakupu", "notatki", "prog_ostrzezenia"], "fk": {}},
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
-    {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "dodane_przez"], "fk": {}},
+    {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
     {"tabela": "wydatki_cykliczne", "kolumny": ["nazwa", "kwota", "okres_dni", "nastepna_data"], "fk": {}},
     {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg"], "fk": {}},
@@ -452,6 +453,7 @@ def synchronizuj_wszystko(auto_id):
     pobrano += sum(_pobierz_tabele(klient, wspolny_id, auto_id, konfig) for konfig in KONFIGURACJA_SYNC)
 
     db.przelicz_wszystkie_zadania(auto_id)
+    db.zapisz_ustawienie("ostatnia_synchronizacja", datetime.now().strftime("%d.%m.%Y %H:%M"))
 
     return wyslano, pobrano
 

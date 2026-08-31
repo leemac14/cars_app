@@ -324,6 +324,27 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_odczyty_przebiegu_auto_zdalne ON odczyty_przebiegu(auto_id, zdalne_id);
             CREATE INDEX IF NOT EXISTS idx_tagi_auto_zdalne ON tagi(auto_id, zdalne_id);
             CREATE INDEX IF NOT EXISTS idx_historia_zdalne ON historia(zdalne_id);
+            """,
+            # Wersja 23: Log aktywności — kto i kiedy ostatnio EDYTOWAŁ wpis (w
+            # odróżnieniu od dodane_przez, które mówi tylko kto go UTWORZYŁ).
+            # Wypełniane wyłącznie w blokach UPDATE formularzy edycji (patrz
+            # forms_view.py) — puste dla wpisów, które nigdy nie były edytowane.
+            """
+            ALTER TABLE tankowania ADD COLUMN zmodyfikowane_przez TEXT;
+            ALTER TABLE tankowania ADD COLUMN data_modyfikacji TEXT;
+            ALTER TABLE historia ADD COLUMN zmodyfikowane_przez TEXT;
+            ALTER TABLE historia ADD COLUMN data_modyfikacji TEXT;
+            ALTER TABLE wizyty ADD COLUMN zmodyfikowane_przez TEXT;
+            ALTER TABLE wizyty ADD COLUMN data_modyfikacji TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN zmodyfikowane_przez TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN data_modyfikacji TEXT;
+            """,
+            # Wersja 24: Szybki status/wiadomość pojazdu — jedna wspólna notatka
+            # widoczna dla domowników korzystających z auta (np. "Zatankowany do
+            # pełna"), edytowana z kompaktowej karty pojazdu na ekranie głównym
+            # (patrz main_view.py: buduj_naglowek_auta).
+            """
+            ALTER TABLE samochody ADD COLUMN wiadomosc_statusu TEXT;
             """
         ]
 
@@ -418,6 +439,7 @@ KOKPIT_WIDGETY = {
     "koszt_km": "🛣️ Koszt eksploatacji / km",
     "spalanie": "⛽ Średnie spalanie",
     "przebieg_dzienny": "📈 Średni przebieg dzienny",
+    "ostatnia_aktywnosc": "🕒 Ostatnia aktywność",
 }
 KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
 
@@ -434,6 +456,83 @@ def pobierz_widgety_kokpitu():
 def zapisz_widgety_kokpitu(lista_id):
     poprawne = [w for w in lista_id if w in KOKPIT_WIDGETY]
     zapisz_ustawienie("kokpit_widgety", ",".join(poprawne))
+
+def _sparsuj_datetime(tekst):
+    """Parsuje string w formacie 'DD.MM.YYYY' lub 'DD.MM.YYYY HH:MM' na obiekt
+    datetime — pomocnicze dla pobierz_ostatnia_aktywnosc(), żeby móc sortować
+    na wspólnej osi dodania (bez godziny — nigdy nie była zapisywana) i edycje
+    (z dokładną godziną, patrz data_modyfikacji)."""
+    if not tekst:
+        return None
+    for wzorzec in ("%d.%m.%Y %H:%M", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(str(tekst).strip(), wzorzec)
+        except ValueError:
+            continue
+    return None
+
+def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
+    """Zwraca listę ostatnich zdarzeń (dodań i edycji) z tankowań, serwisu,
+    wizyt i innych kosztów — dla widżetu 'Ostatnia aktywność' w kokpicie
+    (patrz MainView._buduj_kokpit). Każde zdarzenie to krotka:
+    (opis, kto, kiedy_tekst, kiedy_sort, ikona, trasa). Dodanie i edycja tego
+    samego wpisu mogą pojawić się jako dwa osobne zdarzenia."""
+    if not auto_id:
+        return []
+
+    zdarzenia = []
+
+    def _dodaj(dana_data, dodane_przez, zmodyfikowane_przez, data_modyfikacji, opis, ikona, trasa):
+        if dodane_przez:
+            kiedy_sort = _sparsuj_datetime(dana_data)
+            if kiedy_sort:
+                zdarzenia.append((f"Dodano: {opis}", dodane_przez, str(dana_data), kiedy_sort, ikona, trasa))
+        if zmodyfikowane_przez and data_modyfikacji:
+            kiedy_sort = _sparsuj_datetime(data_modyfikacji)
+            if kiedy_sort:
+                zdarzenia.append((f"Edytowano: {opis}", zmodyfikowane_przez, str(data_modyfikacji), kiedy_sort, ikona, trasa))
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        c.execute(
+            "SELECT id, data, stacja, dodane_przez, zmodyfikowane_przez, data_modyfikacji "
+            "FROM tankowania WHERE auto_id=?", (auto_id,)
+        )
+        for r in c.fetchall():
+            opis = "Tankowanie" + (f" • {r['stacja']}" if r["stacja"] else "")
+            _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
+                   opis, "⛽", f"/tankowanie/edytuj/{r['id']}")
+
+        c.execute(
+            "SELECT h.id, h.data, z.nazwa, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji "
+            "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        for r in c.fetchall():
+            _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
+                   str(r["nazwa"]), "🔧", f"/wpis/edytuj/{r['id']}")
+
+        c.execute(
+            "SELECT id, data, wykonawca, dodane_przez, zmodyfikowane_przez, data_modyfikacji "
+            "FROM wizyty WHERE auto_id=?", (auto_id,)
+        )
+        for r in c.fetchall():
+            opis = "Wizyta w warsztacie" + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
+                   opis, "🧾", f"/wizyty/edytuj/{r['id']}")
+
+        c.execute(
+            "SELECT id, data, nazwa, dodane_przez, zmodyfikowane_przez, data_modyfikacji "
+            "FROM inne_koszty WHERE auto_id=?", (auto_id,)
+        )
+        for r in c.fetchall():
+            _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
+                   str(r["nazwa"] or "Inny koszt"), "🎫", f"/inne/edytuj/{r['id']}")
+
+    zdarzenia.sort(key=lambda z: z[3], reverse=True)
+    return zdarzenia[:limit]
 
 def zainicjuj_domyslne_auto(state):
     with polacz_baze() as conn:

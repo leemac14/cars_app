@@ -8,6 +8,7 @@ import urllib.parse
 import inspect
 from state import MIESIACE_NAZWY
 from date import parsuj_date
+import sync
 
 FILTR_CALKOWITY = None
 FILTR_DZIESIETNY = None
@@ -193,14 +194,55 @@ def ukryj_ladowanie(page: ft.Page, dlg):
     if dlg is not None:
         zamknij_dialog(page, dlg)
 
-def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj"):
+def tekst_ostatniej_synchronizacji():
+    """Zwraca czytelny, względny opis czasu ostatniej udanej synchronizacji
+    (np. '4 min temu'), zapisywanej lokalnie przez sync.synchronizuj_wszystko.
+    Nigdy nie synchronizowano -> 'Nigdy nie synchronizowano'."""
+    zapis = db.pobierz_ustawienie("ostatnia_synchronizacja")
+    if not zapis:
+        return "Nigdy nie synchronizowano"
+    try:
+        moment = datetime.strptime(zapis, "%d.%m.%Y %H:%M")
+    except ValueError:
+        return "Nigdy nie synchronizowano"
+
+    roznica = datetime.now() - moment
+    sekundy = max(0, roznica.total_seconds())
+
+    if sekundy < 60:
+        return "Zsynchronizowano przed chwilą"
+    if sekundy < 3600:
+        return f"Zsynchronizowano {int(sekundy // 60)} min temu"
+    if moment.date() == datetime.now().date():
+        return f"Zsynchronizowano {int(sekundy // 3600)} godz. temu"
+    if moment.date() == (datetime.now().date() - timedelta(days=1)):
+        return f"Zsynchronizowano wczoraj o {moment.strftime('%H:%M')}"
+    return f"Zsynchronizowano {moment.strftime('%d.%m.%Y %H:%M')}"
+
+def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
+    """Zwraca gotowy async callback do użycia z przycisk_synchronizacji() —
+    synchronizuje dany pojazd i odświeża podaną trasę. Skraca boilerplate
+    powtarzany w wielu widokach (pierwowzór: MainView._synchronizuj_teraz)."""
+    async def _synchronizuj():
+        try:
+            wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, auto_id)
+            przejdz(page, trasa_powrotu)
+            pokaz_komunikat(page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+        except Exception as ex:
+            pokaz_komunikat(page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
+    return _synchronizuj
+
+def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", pokaz_czas=True):
     """Spójny, dobrze widoczny przycisk szybkiej synchronizacji z chmurą — do użycia
     w nagłówkach zakładek przy współdzielonych pojazdach. Zawsze pokazuje pełnoekranowy
     dialog ładowania na czas operacji (patrz pokaz_ladowanie), w przeciwieństwie do
     poprzednich, ledwo widocznych samych ikonek.
     funkcja_sync: async callback bez argumentów wykonujący faktyczną synchronizację
-    (zwykle cienki wrapper na sync.synchronizuj_wszystko) — sam odpowiada za
-    komunikaty o sukcesie/błędzie."""
+    (zwykle cienki wrapper na sync.synchronizuj_wszystko, patrz też
+    funkcja_szybkiej_synchronizacji) — sam odpowiada za komunikaty o sukcesie/błędzie.
+    pokaz_czas: dokleja pod przyciskiem małą etykietę 'Zsynchronizowano X temu'."""
+    etykieta_czasu = ft.Text(tekst_ostatniej_synchronizacji(), size=10, color=ft.Colors.ON_SURFACE_VARIANT)
+
     def _klik(e):
         async def _zrob():
             dlg = pokaz_ladowanie(page, "Synchronizowanie danych...")
@@ -208,9 +250,14 @@ def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj"):
                 await funkcja_sync()
             finally:
                 ukryj_ladowanie(page, dlg)
+                etykieta_czasu.value = tekst_ostatniej_synchronizacji()
+                try:
+                    page.update()
+                except Exception:
+                    pass
         page.run_task(_zrob)
 
-    return ft.Container(
+    przycisk = ft.Container(
         height=36,
         padding=ft.Padding(14, 0, 14, 0),
         border_radius=RADIUS["pill"],
@@ -224,6 +271,11 @@ def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj"):
             ft.Text(tekst, size=12, weight="bold", color=ft.Colors.PRIMARY),
         ], spacing=6, tight=True)
     )
+
+    if not pokaz_czas:
+        return przycisk
+
+    return ft.Column([przycisk, etykieta_czasu], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
 
 def otworz_dno(page: ft.Page, bottom_sheet):
     """Automatycznie zabezpiecza dolne menu przed zasłonięciem przez przyciski systemowe telefonu."""
@@ -811,7 +863,7 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         ]
     )
 
-def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None):
+def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, akcje_dodatkowe=None):
     actions = []
     if on_save:
         actions.append(
@@ -840,9 +892,11 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None):
                         on_click=lambda e: przejdz(page, trasa_powrotu)
                     )
                 ],
-                tooltip="Opcje formularza"
+                                tooltip="Opcje formularza"
             )
         )
+    if akcje_dodatkowe:
+        actions.extend(akcje_dodatkowe)
 
     return ft.AppBar(
         title=ft.Text(tytul, weight="bold", size=18),
@@ -1432,6 +1486,27 @@ def wizualizacja_tagow(tagi_str, auto_id):
             )
         )
     return ft.Row(chipy, wrap=True, spacing=4)
+
+def znacznik_atrybucji(dodane_przez, zmodyfikowane_przez=None, data_modyfikacji=None):
+    """Dyskretny 'chip' pokazujący kto dodał wpis i — jeśli był edytowany —
+    kto i kiedy go ostatnio zmienił. Używany tylko przy współdzielonych
+    pojazdach, gdzie mogła to zrobić inna osoba."""
+    if not dodane_przez and not zmodyfikowane_przez:
+        return ft.Container()
+
+    fragmenty = []
+    if dodane_przez:
+        fragmenty.append(f"Dodano: {dodane_przez}")
+    if zmodyfikowane_przez:
+        data_txt = f" ({data_modyfikacji})" if data_modyfikacji else ""
+        fragmenty.append(f"Edytowano: {zmodyfikowane_przez}{data_txt}")
+
+    return ft.Container(
+        content=ft.Row([
+            ft.Icon(ft.Icons.PERSON_OUTLINE, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(" | ".join(fragmenty), size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+        ], spacing=4),
+    )
 
 def znacznik_dodane_przez(nazwa):
     """Mały, dyskretny 'chip' pokazujący kto dodał wpis — używany tylko przy

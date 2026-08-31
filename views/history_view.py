@@ -18,7 +18,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         self.state.wybrane_zadanie_nazwa = z_nazwa
         czy_opony = bool(w[1]) if w else False
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, f"Historia: {z_nazwa}", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, f"Historia: {z_nazwa}", "/",
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, self.state.auto_id, f"/historia/{z_id}"))] if wspolny_id else None
+        )
         fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))
 
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
@@ -32,7 +35,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         elementy = []
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
+            c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
             wpisy = c.fetchall()
 
         if not wpisy:
@@ -112,7 +115,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
 
             for w in wpisy:
-                h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez = w
+                h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez, zmodyfikowane_przez, data_modyfikacji = w
                 jest_zbiorcza = w_id is not None
                 # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
                 # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
@@ -133,8 +136,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
                 ]
-                if wspolny_id and dodane_przez:
-                    tresc_h.append(utils.znacznik_dodane_przez(dodane_przez))
+                if wspolny_id and (dodane_przez or zmodyfikowane_przez):
+                    tresc_h.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
                 karta, kontener = utils.karta_listy(
                     ft.Column(tresc_h, spacing=4),
                     kolor_paska=ft.Colors.RED_700 if jest_zbiorcza else ft.Colors.ORANGE_700,
@@ -206,7 +209,10 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         self.state = state
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Wizyty Zbiorcze", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "Wizyty Zbiorcze", "/",
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, self.state.auto_id, "/wizyty"))] if wspolny_id else None
+        )
         fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/wizyty/nowa"))
 
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
@@ -228,7 +234,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             c = conn.cursor()
             c.execute("""
                 SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.tagi,
-                       GROUP_CONCAT(z.nazwa, ', ') as czesci, w.dodane_przez
+                       GROUP_CONCAT(z.nazwa, ', ') as czesci, w.dodane_przez,
+                       w.zmodyfikowane_przez, w.data_modyfikacji
                 FROM wizyty w
                 LEFT JOIN historia h ON h.wizyta_id = w.id
                 LEFT JOIN zadania z ON h.zadanie_id = z.id
@@ -323,7 +330,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             elementy.append(ft.Row([ft.Text("Brak wizyt dla wybranych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
         else:
             for w in wizyty_lista:
-                w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez = w
+                w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez, zmodyfikowane_przez, data_modyfikacji = w
                 czesci = czesci or "Brak podpiętych części"
                 czesci_magazynowe = czesci_magazynu_wg_wizyty.get(w_id)
 
@@ -342,8 +349,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     tresc_karty.append(ft.Text(f"Z magazynu: {', '.join(czesci_magazynowe)}", size=13, color=ft.Colors.TEAL_700))
                 if tagi:
                     tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id))
-                if wspolny_id and dodane_przez:
-                    tresc_karty.append(utils.znacznik_dodane_przez(dodane_przez))
+                if wspolny_id and (dodane_przez or zmodyfikowane_przez):
+                    tresc_karty.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
 
                 karta, kontener = utils.karta_listy(
                     ft.Column(tresc_karty, spacing=4),

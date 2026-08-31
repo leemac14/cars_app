@@ -1,5 +1,6 @@
 import flet as ft
 import db
+import sync
 import utils
 
 IKONY_TIMELINE = {
@@ -11,13 +12,16 @@ IKONY_TIMELINE = {
     "Odczyt przebiegu": (ft.Icons.SPEED, ft.Colors.TEAL_700),
 }
 
-
 class TimelineView(ft.View):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "🗓️ Dziennik życia auta", "/")
+        wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "🗓️ Dziennik życia auta", "/",
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/timeline"))] if wspolny_id else None
+        )
         elementy = []
 
         if not self.state.auto_id:

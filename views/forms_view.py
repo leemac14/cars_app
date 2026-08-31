@@ -650,8 +650,8 @@ class FormularzTankowanieView(ft.View):
 
         with db.polacz_baze() as conn:
             if self.t_id: 
-                conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=? WHERE id=?", 
-                             (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi, self.t_id))
+                conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
+                             (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
             else: 
                 conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
                              (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie()))
@@ -726,8 +726,8 @@ class FormularzInneView(ft.View):
         with db.polacz_baze() as conn:
             if self.i_id: 
                 conn.execute(
-                    "UPDATE inne_koszty SET data=?, nazwa=?, kwota=?, tagi=?, zalacznik=? WHERE id=?", 
-                    (self.e_d.value, opis, kwo, wybrane_tagi, nowy_zalacznik, self.i_id)
+                    "UPDATE inne_koszty SET data=?, nazwa=?, kwota=?, tagi=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
+                    (self.e_d.value, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.i_id)
                 )
             else: 
                 conn.execute(
@@ -986,7 +986,7 @@ class FormularzWpisView(ft.View):
 
         with db.polacz_baze() as conn:
             if self.h_id: 
-                conn.execute("UPDATE historia SET data=?, przebieg=?, cena=?, wykonawca=?, kategoria=?, zalacznik=? WHERE id=?", (self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, self.h_id))
+                conn.execute("UPDATE historia SET data=?, przebieg=?, cena=?, wykonawca=?, kategoria=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
             else: 
                 conn.execute("INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie()))
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
@@ -1345,7 +1345,7 @@ class FormularzWizytyView(ft.View):
                 cur.execute("SELECT dodane_przez FROM wizyty WHERE id=?", (self.w_id,))
                 w_osoba = cur.fetchone()
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
-                cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, notatki=?, zalacznik=?, tagi=? WHERE id=?", (self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, self.w_id))
+                cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
                 cur.execute("DELETE FROM historia WHERE wizyta_id=?", (self.w_id,))
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None

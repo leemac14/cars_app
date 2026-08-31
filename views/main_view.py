@@ -263,6 +263,36 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             return kafel_wartosci(ft.Icons.TIMELAPSE, ft.Colors.BLUE_GREY_700, "Śr. dzienny", wartosc,
                                    lambda e: utils.przejdz(self._page, "/przebieg"))
 
+        def widget_ostatnia_aktywnosc():
+            zdarzenia = db.pobierz_ostatnia_aktywnosc(self.state.auto_id, limit=3)
+            if not zdarzenia:
+                return ft.Container()
+
+            wiersze = []
+            for opis, kto, kiedy_tekst, _, ikona, trasa in zdarzenia:
+                wiersze.append(
+                    ft.Row([
+                        ft.Text(ikona, size=13),
+                        ft.Column([
+                            ft.Text(opis, size=11, weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.Text(f"{kto} • {kiedy_tekst}", size=10, color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                        ], spacing=0, expand=True, tight=True),
+                    ], spacing=6)
+                )
+
+            return ft.Container(
+                width=SZER_KAFLA + 90, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=lambda e: utils.przejdz(self._page, "/timeline"),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.HISTORY, size=15, color=ft.Colors.PRIMARY),
+                        ft.Text("Ostatnia aktywność", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], spacing=6),
+                    ft.Column(wiersze, spacing=6),
+                ], spacing=10),
+            )
+
         budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
@@ -270,6 +300,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             "koszt_km": widget_koszt_km,
             "spalanie": widget_spalanie,
             "przebieg_dzienny": widget_przebieg_dzienny,
+            "ostatnia_aktywnosc": widget_ostatnia_aktywnosc,
         }
 
         kafelki = [budowniczy[wid]() for wid in wlaczone if wid in budowniczy]
@@ -298,11 +329,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             c = conn.cursor()
             c.execute("SELECT id, nazwa FROM samochody ORDER BY nazwa")
             auta = c.fetchall()
-            c.execute("SELECT nr_rej, zdjecie_glowne FROM samochody WHERE id=?", (self.state.auto_id,))
+            c.execute("SELECT nr_rej, zdjecie_glowne, wiadomosc_statusu FROM samochody WHERE id=?", (self.state.auto_id,))
             w = c.fetchone()
 
         if not w: return
 
+        wiadomosc_statusu = w["wiadomosc_statusu"]
         aktualny_przebieg = db.pobierz_aktualny_przebieg(self.state.auto_id)
 
         idx = 0
@@ -592,6 +624,55 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             ft.Text(str(w["nr_rej"]) if w["nr_rej"] else "Brak rej.", size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
         ], spacing=4)
 
+        def pokaz_edycja_statusu(e):
+            pole_status = ft.TextField(
+                label="Status / wiadomość dla domowników",
+                value=str(wiadomosc_statusu) if wiadomosc_statusu else "",
+                hint_text="np. Zatankowany do pełna, Odebrałem z myjni",
+                multiline=True,
+                max_lines=3,
+                autofocus=True,
+                **utils.styl_pola()
+            )
+
+            def zapisz(e2):
+                nowa_wiadomosc = (pole_status.value or "").strip()
+
+                with db.polacz_baze() as conn:
+                    conn.execute("UPDATE samochody SET wiadomosc_statusu=? WHERE id=?", (nowa_wiadomosc or None, self.state.auto_id))
+
+                utils.zamknij_dialog(self._page, dlg)
+
+                # Ciche wypchnięcie do chmury w tle, jeśli pojazd jest współdzielony —
+                # analogicznie do zapisu tankowania (forms_view.py): partner nie musi
+                # ręcznie klikać "Synchronizuj", żeby zobaczyć nowy status. Owinięte w
+                # asyncio.to_thread + run_task, więc UI się nie zawiesza.
+                wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+                if wspolny_id:
+                    async def _wypchnij():
+                        try:
+                            await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
+                        except Exception:
+                            pass  # brak sieci nie może zepsuć lokalnego zapisu
+                    self._page.run_task(_wypchnij)
+
+                utils.przejdz(self._page, "/")
+                utils.pokaz_komunikat(self._page, "Zaktualizowano status pojazdu!")
+
+            dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Row([ft.Icon(ft.Icons.CHAT_BUBBLE_OUTLINE, color=ft.Colors.PRIMARY), ft.Text("Status pojazdu", weight="bold", size=16, expand=True)], spacing=8),
+                content=ft.Column([
+                    ft.Text("Krótka wiadomość widoczna dla wszystkich domowników korzystających z tego pojazdu.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    pole_status,
+                ], tight=True, spacing=10),
+                actions=[
+                    ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
+                    ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+                ],
+            )
+            utils.otworz_dialog(self._page, dlg)
+
         wiersz_przebieg = ft.Container(
             content=ft.Row([
                 ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -603,10 +684,28 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia odczytów",
         )
 
+        wiersz_status = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.CHAT_BUBBLE_OUTLINE, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(
+                    str(wiadomosc_statusu) if wiadomosc_statusu else "Dodaj status dla domowników...",
+                    size=13,
+                    italic=not bool(wiadomosc_statusu),
+                    color=ft.Colors.ON_SURFACE if wiadomosc_statusu else ft.Colors.ON_SURFACE_VARIANT,
+                    no_wrap=True,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                    expand=True,
+                ),
+            ], spacing=5),
+            on_click=pokaz_edycja_statusu,
+            tooltip="Dotknij, aby ustawić status dla domowników",
+        )
+
         kolumna_tekstowa = ft.Column([
             tytulowy_wiersz,
             wiersz_rejestracja,
             wiersz_przebieg,
+            wiersz_status,
         ], spacing=3, expand=True)
 
         przyciski_karty = ft.Column([
@@ -1002,8 +1101,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ]
                     if w.get('tagi'):
                         tresc_karty.append(utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id))
-                    if wspolny_id and w.get('dodane_przez'):
-                        tresc_karty.append(utils.znacznik_dodane_przez(w.get('dodane_przez')))
+                    if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
+                        tresc_karty.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
 
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
 
@@ -1127,8 +1226,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Text(str(w.get('nazwa')) if w.get('nazwa') else "Brak opisu", size=16, weight="bold"),
                         utils.wizualizacja_tagow(w.get('tagi') or w.get('kategoria'), self.state.auto_id)
                     ]
-                    if wspolny_id and w.get('dodane_przez'):
-                        tresc_i.append(utils.znacznik_dodane_przez(w.get('dodane_przez')))
+                    if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
+                        tresc_i.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_i))
 
                     self.karty_ref[iid] = kontener

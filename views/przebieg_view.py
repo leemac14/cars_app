@@ -1,15 +1,19 @@
 import flet as ft
 from datetime import datetime
 import db
+import sync
 import utils
-
 
 class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "📈 Historia odczytów przebiegu", "/")
+        wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "📈 Historia odczytów przebiegu", "/",
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/przebieg"))] if wspolny_id else None
+        )
         fab = utils.fab_animowany(ft.Icons.ADD, lambda e: self._dialog_odczytu())
 
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---

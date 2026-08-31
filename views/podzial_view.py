@@ -40,6 +40,11 @@ class PodzialKosztowView(ft.View):
             )
             return
 
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "🤝 Podział kosztów", "/",
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, self.state.auto_id, "/podzial"))]
+        )
+
         dzis = datetime.now()
         self.rok = getattr(state, "podzial_rok", None) or dzis.year
         self.miesiac = getattr(state, "podzial_miesiac", None) or dzis.month
