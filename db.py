@@ -1757,10 +1757,12 @@ def pobierz_wydatki_cykliczne(auto_id):
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT id, nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne WHERE auto_id=? ORDER BY nastepna_data",
+            "SELECT id, nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne WHERE auto_id=?",
             (auto_id,)
         )
-        return c.fetchall()
+        wpisy = c.fetchall()
+    wpisy.sort(key=lambda w: parsuj_date(w[4]))
+    return wpisy
 
 def dodaj_wydatek_cykliczny(auto_id, nazwa, kwota, okres_dni, nastepna_data):
     with polacz_baze() as conn:
@@ -2539,7 +2541,7 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
         if "tankowania" in kategorie:
             c.execute(
                 "SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi "
-                "FROM tankowania WHERE auto_id=? ORDER BY data", (auto_id,)
+                "FROM tankowania WHERE auto_id=?", (auto_id,)
             )
             wiersze = []
             for data, prz, dys, lit, kwo, pelna, stacja, tagi in c.fetchall():
@@ -2548,6 +2550,7 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
                         data, int(prz or 0), formatuj_liczba_eksport(dys), formatuj_liczba_eksport(lit),
                         formatuj_liczba_eksport(kwo), "Tak" if pelna else "Nie", stacja or "", tagi or ""
                     ])
+            wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["tankowania"] = (
                 ["Data", "Przebieg (km)", "Dystans (km)", "Litry", "Kwota", "Do pełna", "Stacja", "Tagi"], wiersze
             )
@@ -2556,12 +2559,13 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             c.execute(
                 "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.wykonawca, h.kategoria "
                 "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-                "WHERE z.auto_id=? AND h.wizyta_id IS NULL ORDER BY h.data", (auto_id,)
+                "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
             )
             wiersze = []
             for data, nazwa, prz, cena, wyk, kat in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
                     wiersze.append([data, nazwa, int(prz or 0), formatuj_liczba_eksport(cena), wyk or "", kat or ""])
+            wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["historia"] = (["Data", "Podzespół", "Przebieg (km)", "Koszt", "Wykonawca", "Kategoria"], wiersze)
 
         if "wizyty" in kategorie:
@@ -2570,7 +2574,7 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
                 "GROUP_CONCAT(z.nazwa, ', ') FROM wizyty w "
                 "LEFT JOIN historia h ON h.wizyta_id = w.id "
                 "LEFT JOIN zadania z ON h.zadanie_id = z.id "
-                "WHERE w.auto_id=? GROUP BY w.id ORDER BY w.data", (auto_id,)
+                "WHERE w.auto_id=? GROUP BY w.id", (auto_id,)
             )
             wiersze = []
             for data, prz, wyk, kosz, notatki, tagi, czesci in c.fetchall():
@@ -2579,16 +2583,18 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
                         data, int(prz or 0), wyk or "", formatuj_liczba_eksport(kosz),
                         czesci or "", tagi or "", notatki or ""
                     ])
+            wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["wizyty"] = (
                 ["Data", "Przebieg (km)", "Warsztat", "Koszt", "Podzespoły", "Tagi", "Notatki"], wiersze
             )
 
         if "inne_koszty" in kategorie:
-            c.execute("SELECT data, nazwa, kategoria, kwota, tagi FROM inne_koszty WHERE auto_id=? ORDER BY data", (auto_id,))
+            c.execute("SELECT data, nazwa, kategoria, kwota, tagi FROM inne_koszty WHERE auto_id=?", (auto_id,))
             wiersze = []
             for data, nazwa, kat, kwota, tagi in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
                     wiersze.append([data, nazwa or "", kat or "", formatuj_liczba_eksport(kwota), tagi or ""])
+            wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["inne_koszty"] = (["Data", "Opis", "Kategoria", "Kwota", "Tagi"], wiersze)
 
         if "magazyn_czesci" in kategorie:

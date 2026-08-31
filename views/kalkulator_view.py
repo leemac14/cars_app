@@ -39,9 +39,14 @@ class KalkulatorTrasyView(ft.View):
                 if d_p > 0:
                     spalanie_domyslne = (l_p / d_p) * 100
 
-            # Ostatnia cena paliwa z najnowszego tankowania
-            c.execute("SELECT kwota, litry FROM tankowania WHERE auto_id=? AND litry > 0 ORDER BY data DESC, id DESC LIMIT 1", (self.state.auto_id,))
-            ost_tank = c.fetchone()
+            # Ostatnia cena paliwa z najnowszego tankowania — sortujemy w Pythonie po
+            c.execute("SELECT kwota, litry, data, id FROM tankowania WHERE auto_id=? AND litry > 0", (self.state.auto_id,))
+            wszystkie_z_cena = c.fetchall()
+            if wszystkie_z_cena:
+                ost_tank = max(wszystkie_z_cena, key=lambda t: (utils.parsuj_date(t[2]), t[3]))
+                kwota = float(ost_tank[0] or 0)
+                litry = float(ost_tank[1] or 1)
+                cena_paliwa_domyslna = kwota / litry
             if ost_tank:
                 kwota = float(ost_tank[0] or 0)
                 litry = float(ost_tank[1] or 1)

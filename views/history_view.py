@@ -11,7 +11,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
+            c.execute("SELECT nazwa, dotyczy_opon FROM zadania WHERE id=?", (z_id,))
             w = c.fetchone()
         z_nazwa = str(w[0]) if w else self.state.wybrane_zadanie_nazwa
         self.state.wybrane_zadanie_id = z_id
