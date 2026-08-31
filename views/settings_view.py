@@ -13,6 +13,7 @@ class UstawieniaView(ft.View):
         prog_km_val = db.pobierz_prog_km()
         prog_dni_val = db.pobierz_prog_dni()
         moje_imie_val = db.pobierz_moje_imie()
+        widgety_wlaczone = set(db.pobierz_widgety_kokpitu())
 
         self.e_waluta = ft.Dropdown(
             label="Waluta",
@@ -117,6 +118,22 @@ class UstawieniaView(ft.View):
             "Twoja atrybucja przy współdzieleniu", ft.Icons.PERSON, domyslnie_otwarte=True
         )
 
+        self.checkboxy_kokpitu = [
+            ft.Checkbox(label=etykieta, value=(klucz in widgety_wlaczone), data=klucz)
+            for klucz, etykieta in db.KOKPIT_WIDGETY.items()
+        ]
+
+        k_kokpit = utils.karta_formularza(
+            [
+                ft.Text(
+                    "Wybierz, które szybkie statystyki mają się pokazywać na górze ekranu głównego "
+                    "(zakładka Serwis). Kolejność jest stała, ale możesz włączyć/wyłączyć dowolne pozycje.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+            ] + self.checkboxy_kokpitu,
+            "Kokpit ekranu głównego", ft.Icons.DASHBOARD_CUSTOMIZE, domyslnie_otwarte=True
+        )
+
         info = ft.Container(
             padding=15,
             border_radius=10,
@@ -130,7 +147,7 @@ class UstawieniaView(ft.View):
             ], spacing=8)
         )
 
-        elementy = [k1, k2, k3, info, utils.przyciski_akcji(page, "✅ Zapisz ustawienia", self.zapisz, "/")]
+        elementy = [k1, k2, k3, k_kokpit, info, utils.przyciski_akcji(page, "✅ Zapisz ustawienia", self.zapisz, "/")]
 
         super().__init__(
             route="/ustawienia",
@@ -152,6 +169,8 @@ class UstawieniaView(ft.View):
         self._page.dark_theme = ft.Theme(color_scheme_seed=nowy_kolor)
         self._page.update()
         # --------------------------------------------
+        wybrane_widgety = [chk.data for chk in self.checkboxy_kokpitu if chk.value]
+        db.zapisz_widgety_kokpitu(wybrane_widgety)
 
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano ustawienia!")

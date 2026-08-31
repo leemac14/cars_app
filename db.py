@@ -411,6 +411,30 @@ def pobierz_moje_imie():
 def zapisz_moje_imie(imie):
     zapisz_ustawienie("moje_imie", (imie or "").strip() or "Kierowca")
 
+KOKPIT_WIDGETY = {
+    "koszt_miesiac": "💰 Koszt w tym miesiącu",
+    "termin": "⏰ Najbliższy termin",
+    "wykres": "📊 Wykres wydatków (6 mies.)",
+    "koszt_km": "🛣️ Koszt eksploatacji / km",
+    "spalanie": "⛽ Średnie spalanie",
+    "przebieg_dzienny": "📈 Średni przebieg dzienny",
+}
+KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
+
+def pobierz_widgety_kokpitu():
+    """Zwraca listę ID widżetów kokpitu wybranych przez użytkownika (patrz
+    MainView._buduj_kokpit), w stałej kolejności zgodnej z KOKPIT_WIDGETY.
+    Domyślnie (brak zapisanego ustawienia) włączone są trzy podstawowe."""
+    zapisane = pobierz_ustawienie("kokpit_widgety")
+    if zapisane is None:
+        return list(KOKPIT_WIDGETY_DOMYSLNE)
+    wybrane = set(w for w in zapisane.split(",") if w in KOKPIT_WIDGETY)
+    return [w for w in KOKPIT_WIDGETY if w in wybrane]
+
+def zapisz_widgety_kokpitu(lista_id):
+    poprawne = [w for w in lista_id if w in KOKPIT_WIDGETY]
+    zapisz_ustawienie("kokpit_widgety", ",".join(poprawne))
+
 def zainicjuj_domyslne_auto(state):
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -926,6 +950,51 @@ def pobierz_dane_do_porownania(auto_id):
 
     return dane
 
+def pobierz_koszty_miesieczne(auto_id, liczba_miesiecy=6):
+    """Suma kosztów (paliwo + serwis + inne) dla ostatnich `liczba_miesiecy`
+    miesięcy, włącznie z bieżącym — używane przez mini-wykres na dashboardzie
+    startowym (patrz MainView._buduj_kokpit). Zwraca listę (rok, miesiac, suma)
+    posortowaną chronologicznie rosnąco; miesiące bez wydatków mają sumę 0.0."""
+    if not auto_id:
+        return []
+
+    dzisiaj = datetime.now()
+    klucze = []
+    for i in range(liczba_miesiecy - 1, -1, -1):
+        m = dzisiaj.month - i
+        y = dzisiaj.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        klucze.append((y, m))
+
+    sumy = {k: 0.0 for k in klucze}
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        wiersze = []
+        c.execute("SELECT data, kwota FROM tankowania WHERE auto_id=?", (auto_id,))
+        wiersze += c.fetchall()
+        c.execute(
+            "SELECT h.data, h.cena FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        wiersze += c.fetchall()
+        c.execute("SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?", (auto_id,))
+        wiersze += c.fetchall()
+        c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        wiersze += c.fetchall()
+
+    for data_str, kwota in wiersze:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date():
+            continue
+        klucz = (d.year, d.month)
+        if klucz in sumy:
+            sumy[klucz] += float(kwota or 0.0)
+
+    return [(y, m, sumy[(y, m)]) for (y, m) in klucze]
+
 def pobierz_trend_cen_paliwa(auto_id):
     """Cena za litr w czasie (do wykresu) oraz zestawienie średnich cen per
     stacja (do rankingu „najtańsza stacja, na której tankowałeś”). Uwzględnia
@@ -1236,6 +1305,36 @@ def pobierz_dane_timeline(auto_id):
             ))
 
     return zdarzenia
+
+def aktualizuj_wiele_zdjec_karoserii(ids_list, strefa=None, typ_porownania=None, opis=None):
+    """Masowa edycja wspólnych pól (strefa / typ zdjęcia / opis) dla wielu zdjęć
+    karoserii naraz — używane przez zbiorczą edycję zaznaczonych zdjęć w galerii.
+    Pole pozostawione jako None NIE jest zmieniane (stąd pusty opis trzeba
+    przekazać jako pusty string, jeśli faktycznie ma zostać wyczyszczony)."""
+    if not ids_list:
+        return 0
+
+    przypisania, wartosci = [], []
+    if strefa is not None:
+        przypisania.append("strefa=?")
+        wartosci.append(strefa)
+    if typ_porownania is not None:
+        przypisania.append("typ_porownania=?")
+        wartosci.append(typ_porownania)
+    if opis is not None:
+        przypisania.append("opis=?")
+        wartosci.append(opis)
+
+    if not przypisania:
+        return 0
+
+    placeholders = ",".join("?" for _ in ids_list)
+    with polacz_baze() as conn:
+        conn.execute(
+            f"UPDATE zdjecia_karoserii SET {', '.join(przypisania)} WHERE id IN ({placeholders})",
+            tuple(wartosci) + tuple(ids_list)
+        )
+    return len(ids_list)
 
 def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
     """Montuje zestaw opon na wskazanej osi. Zestaw montowany na całym aucie

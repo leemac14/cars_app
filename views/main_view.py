@@ -69,6 +69,14 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.state.zakladka = int(e.control.selected_index)
         utils.przejdz(self._page, "/")
 
+    async def _synchronizuj_teraz(self):
+        try:
+            wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
+            utils.przejdz(self._page, "/")
+            utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+        except Exception as ex:
+            utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
+
     def _buduj_fab_szybkich_akcji(self):
         akcje = [
             (ft.Icons.LOCAL_GAS_STATION, "Tankowanie", lambda e: utils.przejdz(self._page, "/tankowanie/nowe")),
@@ -78,6 +86,214 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             (ft.Icons.CHECKLIST_RTL, "Do zrobienia", lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")),
         ]
         return utils.fab_speed_dial(self._page, akcje, tooltip="Szybkie dodawanie")
+
+    # ================= KOKPIT / DASHBOARD STARTOWY (personalizowalny) =================
+    def _buduj_kokpit(self):
+        """Mini-dashboard nad listą podzespołów, złożony z widżetów wybranych przez
+        użytkownika w Ustawieniach (patrz db.KOKPIT_WIDGETY / db.pobierz_widgety_kokpitu).
+        Kolejność jest stała, ale zestaw i liczba widżetów są personalizowalne — gdy
+        użytkownik nie wybrał żadnego, kokpit po prostu się nie renderuje."""
+        wlaczone = db.pobierz_widgety_kokpitu()
+        if not wlaczone:
+            return ft.Container()
+
+        # --- Dane wspólne, liczone tylko gdy faktycznie potrzebne przez wybrane widżety ---
+        potrzebne_mc = {"koszt_miesiac", "wykres"} & set(wlaczone)
+        dane_mc = db.pobierz_koszty_miesieczne(self.state.auto_id, 6) if potrzebne_mc else []
+
+        potrzebne_porownanie = {"koszt_km", "spalanie"} & set(wlaczone)
+        dane_porownanie = db.pobierz_dane_do_porownania(self.state.auto_id) if potrzebne_porownanie else None
+        dane_porownanie = dane_porownanie or {}
+
+        def idz_do_statystyk(podzakladka=0):
+            def handler(e):
+                self.state.zakladka = 3
+                self.state.stat_podzakladka = podzakladka
+                utils.przejdz(self._page, "/")
+            return handler
+
+        def idz_do_zakladki(idx):
+            def handler(e):
+                self.state.zakladka = idx
+                utils.przejdz(self._page, "/")
+            return handler
+
+        def kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click):
+            return ft.Container(
+                expand=1, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=on_click,
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=kolor_ikony),
+                        ft.Text(etykieta, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(wartosc, size=utils.FS["title"], weight="bold"),
+                ], spacing=4),
+            ), "polowka"
+
+        def widget_koszt_miesiac():
+            koszt_biezacy = dane_mc[-1][2] if dane_mc else 0.0
+            koszt_poprzedni = dane_mc[-2][2] if len(dane_mc) >= 2 else None
+
+            if koszt_poprzedni and koszt_poprzedni > 0:
+                zmiana = ((koszt_biezacy - koszt_poprzedni) / koszt_poprzedni) * 100
+                if zmiana > 5:
+                    t_ikona, t_kolor = ft.Icons.TRENDING_UP, ft.Colors.RED_700
+                    t_tekst = f"+{utils.formatuj_liczba(zmiana, 0)}% vs poprzedni mies."
+                elif zmiana < -5:
+                    t_ikona, t_kolor = ft.Icons.TRENDING_DOWN, ft.Colors.GREEN_700
+                    t_tekst = f"{utils.formatuj_liczba(zmiana, 0)}% vs poprzedni mies."
+                else:
+                    t_ikona, t_kolor = ft.Icons.TRENDING_FLAT, ft.Colors.ON_SURFACE_VARIANT
+                    t_tekst = "Podobnie jak poprzedni miesiąc"
+            else:
+                t_ikona, t_kolor = ft.Icons.INFO_OUTLINE, ft.Colors.ON_SURFACE_VARIANT
+                t_tekst = "Brak danych za poprzedni miesiąc"
+
+            return ft.Container(
+                expand=1, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
+                ink=True, on_click=idz_do_statystyk(0),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=15, color=ft.Colors.PRIMARY),
+                        ft.Text("Koszt w tym miesiącu", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(f"{utils.formatuj_liczba(koszt_biezacy)} {utils.symbol_waluty()}", size=utils.FS["heading"], weight="bold"),
+                    ft.Row([
+                        ft.Icon(t_ikona, size=13, color=t_kolor),
+                        ft.Text(t_tekst, size=utils.FS["caption"], color=t_kolor, no_wrap=True),
+                    ], spacing=4),
+                ], spacing=4),
+            ), "polowka"
+
+        def widget_termin():
+            powiadomienia = db.pobierz_powiadomienia(self.state.auto_id)
+            if powiadomienia:
+                p = powiadomienia[0]
+                kolor_p = ft.Colors.RED_700 if p["status"] == "przeterminowane" else ft.Colors.ORANGE_700
+                ikona_p = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
+                dodatek = f"  (+{len(powiadomienia) - 1})" if len(powiadomienia) > 1 else ""
+
+                tresc = ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.EVENT, size=15, color=ft.Colors.PRIMARY),
+                        ft.Text(f"Najbliższy termin{dodatek}", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(str(p["tytul"]), size=utils.FS["title"], weight="bold", no_wrap=True),
+                    ft.Row([
+                        ft.Icon(ikona_p, size=13, color=kolor_p),
+                        ft.Text(p["opis"], size=utils.FS["caption"], color=kolor_p, no_wrap=True),
+                    ], spacing=4),
+                ], spacing=4)
+
+                trasa_termin = p.get("trasa")
+                on_klik = (lambda e, t=trasa_termin: utils.przejdz(self._page, t)) if trasa_termin \
+                    else (lambda e: utils.pokaz_panel_powiadomien(self._page, self.state))
+                tlo = ft.Colors.with_opacity(0.08, kolor_p)
+            else:
+                tresc = ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.EVENT_AVAILABLE, size=15, color=ft.Colors.GREEN_700),
+                        ft.Text("Najbliższy termin", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text("Wszystko na czas 🎉", size=utils.FS["title"], weight="bold", color=ft.Colors.GREEN_700),
+                    ft.Text("Brak zbliżających się terminów", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                ], spacing=4)
+                on_klik = None
+                tlo = ft.Colors.with_opacity(0.08, ft.Colors.GREEN_700)
+
+            return ft.Container(
+                expand=1, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=tlo, ink=on_klik is not None, on_click=on_klik,
+                content=tresc,
+            ), "polowka"
+
+        def widget_wykres():
+            maks_mc = max((s for _, _, s in dane_mc), default=0)
+            dzis = datetime.now()
+            slupki = []
+            for rok, mies, suma in dane_mc:
+                wysokosc = max(4, int((suma / maks_mc) * 60)) if maks_mc > 0 else 4
+                biezacy = (rok == dzis.year and mies == dzis.month)
+                slupki.append(
+                    ft.Column([
+                        ft.Container(
+                            width=20, height=wysokosc, border_radius=5,
+                            bgcolor=ft.Colors.PRIMARY if biezacy else ft.Colors.with_opacity(0.35, ft.Colors.PRIMARY),
+                            tooltip=f"{utils.MIESIACE_NAZWY[mies - 1]} {rok}: {utils.formatuj_liczba(suma)} {utils.symbol_waluty()}",
+                            animate=ft.Animation(300, ft.AnimationCurve.EASE_OUT),
+                        ),
+                        ft.Text(f"{mies:02d}", size=10, weight="bold" if biezacy else "normal",
+                                color=ft.Colors.PRIMARY if biezacy else ft.Colors.ON_SURFACE_VARIANT),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4)
+                )
+
+            return ft.Container(
+                padding=15, border_radius=utils.RADIUS["lg"], bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=idz_do_statystyk(1),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Row([
+                            ft.Icon(ft.Icons.BAR_CHART, size=15, color=ft.Colors.PRIMARY),
+                            ft.Text("Wydatki — ostatnie 6 mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                        ], spacing=6),
+                        ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Row(slupki, alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.END),
+                ], spacing=10),
+            ), "pelna"
+
+        def widget_koszt_km():
+            koszt_km = dane_porownanie.get("koszt_km")
+            wartosc = f"{utils.formatuj_liczba(koszt_km, 2)} {utils.symbol_waluty()}/km" if koszt_km else "Brak danych"
+            return kafel_wartosci(ft.Icons.ADD_ROAD, ft.Colors.PURPLE_700, "Koszt / km", wartosc, idz_do_statystyk(0))
+
+        def widget_spalanie():
+            spalanie = dane_porownanie.get("spalanie")
+            wartosc = utils.formatuj_spalanie(spalanie) if spalanie else "Za mało danych"
+            return kafel_wartosci(ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Średnie spalanie", wartosc, idz_do_zakladki(1))
+
+        def widget_przebieg_dzienny():
+            sredni = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
+            wartosc = f"{utils.formatuj_liczba(sredni, 1)} km/dzień" if sredni else "Brak danych"
+            return kafel_wartosci(ft.Icons.TIMELAPSE, ft.Colors.BLUE_GREY_700, "Śr. przebieg dzienny", wartosc,
+                                   lambda e: utils.przejdz(self._page, "/przebieg"))
+
+        budowniczy = {
+            "koszt_miesiac": widget_koszt_miesiac,
+            "termin": widget_termin,
+            "wykres": widget_wykres,
+            "koszt_km": widget_koszt_km,
+            "spalanie": widget_spalanie,
+            "przebieg_dzienny": widget_przebieg_dzienny,
+        }
+
+        # --- Układ: kolejne widżety "polowka" łączone w pary po 2, "pelna" na cały wiersz ---
+        wiersze = []
+        bufor_polowek = []
+
+        def oproznij_bufor():
+            if bufor_polowek:
+                wiersze.append(ft.Row(list(bufor_polowek), spacing=10))
+                bufor_polowek.clear()
+
+        for wid in wlaczone:
+            fn = budowniczy.get(wid)
+            if not fn:
+                continue
+            kontrolka, rozmiar = fn()
+            if rozmiar == "pelna":
+                oproznij_bufor()
+                wiersze.append(kontrolka)
+            else:
+                bufor_polowek.append(kontrolka)
+                if len(bufor_polowek) == 2:
+                    oproznij_bufor()
+        oproznij_bufor()
+
+        return ft.Column(wiersze, spacing=10)
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
@@ -477,6 +693,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.elementy.append(wiersz_karty_z_nawigacja)
 
     def buduj_serwis(self):
+        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+        naglowek_serwis = [ft.Text("🛠️ Serwis", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        if wspolny_id:
+            naglowek_serwis.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
+
         magazyn_cnt = 0
         do_zrobienia_cnt = 0
         try:
@@ -525,9 +746,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6)
             )
 
+        # 3. DOPIERO TERAZ użyj zmiennych i funkcji budując interfejs (tylko jeden raz!)
         self.elementy.append(
             ft.Column([
-                ft.Text("🛠️ Serwis", size=20, weight="bold", color=ft.Colors.PRIMARY),
+                ft.Row(naglowek_serwis, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Row([
                     kafelek_menu(ft.Icons.CHECKLIST_RTL, "Zadania", "/do-zrobienia", do_zrobienia_cnt),
                     kafelek_menu(ft.Icons.INVENTORY_2, "Magazyn", "/magazyn", magazyn_cnt),
@@ -536,8 +758,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ], spacing=8, alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
             ], spacing=15)
         )
-        self.elementy.append(ft.Divider(height=15, color="transparent"))
-        # --------------------------------------
+
+        self.elementy.append(self._buduj_kokpit())
 
         akt_prz = int(db.pobierz_aktualny_przebieg(self.state.auto_id))
         prog_km = db.pobierz_prog_km()
@@ -702,19 +924,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
         naglowek_bits = [ft.Text("⛽ Historia Tankowań", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
         if wspolny_id:
-            def _sync_click(e):
-                async def _zrob():
-                    dlg = utils.pokaz_ladowanie(self._page, "Synchronizowanie danych...")
-                    try:
-                        wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
-                        utils.ukryj_ladowanie(self._page, dlg)
-                        utils.przejdz(self._page, "/")
-                        utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
-                    except Exception as ex:
-                        utils.ukryj_ladowanie(self._page, dlg)
-                        utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
-                self._page.run_task(_zrob)
-            naglowek_bits.append(ft.IconButton(ft.Icons.SYNC, tooltip="Synchronizuj z partnerem", on_click=_sync_click, icon_color=ft.Colors.PRIMARY))
+            naglowek_bits.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
         self.elementy.append(ft.Row(naglowek_bits, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
         with db.polacz_baze() as conn:
@@ -832,7 +1042,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 for w in po_filtrach:
                     spalanie = w.get('spalanie')
                     sp_str = utils.formatuj_spalanie(spalanie)
-                    cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
+                    kwota_val = float(w.get('kwota') or 0)
+                    litry_val = float(w.get('litry') or 0)
+                    cena_str = f"{utils.formatuj_liczba(kwota_val)}  {utils.symbol_waluty()}"
+                    cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/L" if litry_val > 0 else "-"
                     dystans_val = w.get('dystans') or 0
                     
                     tid = w.get('id')
@@ -848,7 +1061,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Row([
                             ft.Column([ft.Text("Dystans", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(f"{dystans_val} km", weight="bold")]),
-                            ft.Column([ft.Text("Spalanie", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")])
+                            ft.Column([ft.Text("Spalanie", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")]),
+                            ft.Column([ft.Text("Cena/L", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(cena_litr_str, weight="bold")])
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     ]
                     if w.get('tagi'):
@@ -872,7 +1086,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
     def buduj_inne(self):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-        self.elementy.append(ft.Text("🎫 Inne Koszty", size=20, weight="bold", color=ft.Colors.PRIMARY))
+        naglowek_inne = [ft.Text("🎫 Inne Koszty", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        if wspolny_id:
+            naglowek_inne.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
+        self.elementy.append(ft.Row(naglowek_inne, vertical_alignment=ft.CrossAxisAlignment.CENTER))
         
         with db.polacz_baze() as conn:
             conn.row_factory = sqlite3.Row

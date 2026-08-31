@@ -1113,7 +1113,8 @@ class FormularzWizytyView(ft.View):
             "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True, page=page
         )
         k1b = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
-        k2 = utils.karta_formularza([self.btn_pakiety, ft.Column(self.chk_czesci, spacing=2), self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
+        self.kolumna_czesci = ft.Column(self.chk_czesci, spacing=2)
+        k2 = utils.karta_formularza([self.btn_pakiety, self.kolumna_czesci, self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
         elementy = [k1, k1b, k2]
 
         if self.magazyn_kontrolki:
@@ -1213,13 +1214,14 @@ class FormularzWizytyView(ft.View):
         poprzednie = getattr(self, "_ostatni_pakiet_pozycje", [])
         for chk in self.chk_czesci:
             if chk.label in pozycje_pakietu:
-                if not chk.value:
-                    chk.value = True
-                    chk.update()
+                chk.value = True
             elif chk.label in poprzednie:
-                if chk.value:
-                    chk.value = False
-                    chk.update()
+                chk.value = False
+
+        # WAŻNE: jedna zbiorcza aktualizacja całej kolumny zamiast osobnego
+        # chk.update() w pętli — pojedyncze wywołania potrafiły "zgubić" zmianę
+        # pierwszej checkboksy na liście przy szybkich, wielokrotnych update().
+        self.kolumna_czesci.update()
 
         self._ostatni_pakiet_pozycje = list(pozycje_pakietu)
         self._odswiez_widocznosc_opon()

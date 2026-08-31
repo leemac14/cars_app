@@ -110,10 +110,68 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         utils.pokaz_komunikat(self._page, "Zaznacz jeszcze jedno zdjęcie do porównania.", ft.Colors.PRIMARY)
 
     def aktualizuj_appbar_zaznaczania(self, dodatkowe_akcje=None):
-        extra = []
+        extra = [ft.IconButton(ft.Icons.EDIT, tooltip="Edytuj zaznaczone zbiorczo", on_click=self.edytuj_zaznaczone_zbiorczo)]
         if len(self.zaznaczone_id) == 2:
             extra.append(ft.IconButton(ft.Icons.COMPARE, tooltip="Porównaj zaznaczone", on_click=self.otworz_porownanie))
         super().aktualizuj_appbar_zaznaczania(dodatkowe_akcje=extra)
+
+    def edytuj_zaznaczone_zbiorczo(self, e):
+        ids = list(self.zaznaczone_id)
+        ile = len(ids)
+        BRAK_ZMIAN = "— Bez zmian —"
+
+        e_strefa = ft.Dropdown(
+            label="Strefa karoserii",
+            options=[ft.DropdownOption(BRAK_ZMIAN)] + [ft.DropdownOption(s) for s in db.STREFY_KAROSERII],
+            value=BRAK_ZMIAN,
+            **utils.styl_dropdown()
+        )
+        e_typ = ft.Dropdown(
+            label="Typ zdjęcia",
+            options=[ft.DropdownOption(BRAK_ZMIAN)] + [ft.DropdownOption(t) for t in db.TYPY_ZDJECIA],
+            value=BRAK_ZMIAN,
+            **utils.styl_dropdown()
+        )
+        c_opis = ft.Checkbox(label="Zmień opis dla wszystkich zaznaczonych", value=False)
+        e_opis = ft.TextField(label="Nowy opis", multiline=True, min_lines=2, max_lines=4, visible=False, **utils.styl_pola())
+
+        def przelacz_opis(ev):
+            e_opis.visible = c_opis.value
+            e_opis.update()
+        c_opis.on_change = przelacz_opis
+
+        def zapisz(ev):
+            strefa = e_strefa.value if e_strefa.value != BRAK_ZMIAN else None
+            typ = e_typ.value if e_typ.value != BRAK_ZMIAN else None
+            opis = e_opis.value if c_opis.value else None
+
+            if strefa is None and typ is None and opis is None:
+                utils.pokaz_komunikat(self._page, "Nie wybrano żadnej zmiany do zastosowania.", ft.Colors.ORANGE_700)
+                return
+
+            db.aktualizuj_wiele_zdjec_karoserii(ids, strefa=strefa, typ_porownania=typ, opis=opis)
+            utils.zamknij_dialog(self._page, dlg)
+            self.zakoncz_zaznaczanie()
+            utils.przejdz(self._page, "/karoseria")
+            utils.pokaz_komunikat(self._page, f"Zaktualizowano {ile} zdjęć.")
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([ft.Icon(ft.Icons.EDIT, color=ft.Colors.PRIMARY), ft.Text(f"Edycja zbiorcza ({ile})", weight="bold")], spacing=8),
+            content=ft.Column([
+                ft.Text("Zmień wybrane pola dla wszystkich zaznaczonych zdjęć naraz. Pozostaw „Bez zmian”, aby nie ruszać danego pola.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                e_strefa,
+                e_typ,
+                c_opis,
+                e_opis,
+            ], tight=True, spacing=10, scroll=ft.ScrollMode.AUTO),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
+                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+        )
+        utils.otworz_dialog(self._page, dlg)
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)

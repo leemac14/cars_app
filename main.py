@@ -230,21 +230,31 @@ def main(page: ft.Page):
     page.share_service = share_service  # <-- NOWE: udostępniamy serwis widokom (np. podgląd PDF)
 
     async def eksportuj_baze(e=None):
-        if page.platform in ["android", "ios"] and share_service is not None:
-            try:
-                sciezka_zip = await asyncio.to_thread(_zapisz_tymczasowy_zip)
-                if hasattr(share_service, "share_files_async"):
-                    await share_service.share_files_async([sciezka_zip])
-                else:
-                    res = share_service.share_files([sciezka_zip])
-                    if inspect.iscoroutine(res):
-                        await res
-                return
-            except Exception:
-                pass
+        dlg_ladowania = utils.pokaz_ladowanie(page, "Przygotowywanie kopii zapasowej...")
+
+        def _schowaj_ladowanie():
+            nonlocal dlg_ladowania
+            if dlg_ladowania is not None:
+                utils.ukryj_ladowanie(page, dlg_ladowania)
+                dlg_ladowania = None
 
         try:
+            if page.platform in ["android", "ios"] and share_service is not None:
+                try:
+                    sciezka_zip = await asyncio.to_thread(_zapisz_tymczasowy_zip)
+                    _schowaj_ladowanie()
+                    if hasattr(share_service, "share_files_async"):
+                        await share_service.share_files_async([sciezka_zip])
+                    else:
+                        res = share_service.share_files([sciezka_zip])
+                        if inspect.iscoroutine(res):
+                            await res
+                    return
+                except Exception:
+                    pass
+
             zip_bytes = await asyncio.to_thread(_przygotuj_zip_eksportu)
+            _schowaj_ladowanie()
 
             if hasattr(page, "services") and not hasattr(file_picker, "on_result"):
                 if hasattr(file_picker, "save_file_async"):
@@ -258,6 +268,8 @@ def main(page: ft.Page):
                 file_picker.save_file(file_name="kopia_baza.zip")
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
+        finally:
+            _schowaj_ladowanie()
 
     async def _zapisz_bajty_pliku(nazwa_pliku, dane_bytes):
         """Uniwersalny zapis/udostępnienie gotowych bajtów pliku — współdzielony mechanizm

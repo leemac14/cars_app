@@ -193,6 +193,38 @@ def ukryj_ladowanie(page: ft.Page, dlg):
     if dlg is not None:
         zamknij_dialog(page, dlg)
 
+def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj"):
+    """Spójny, dobrze widoczny przycisk szybkiej synchronizacji z chmurą — do użycia
+    w nagłówkach zakładek przy współdzielonych pojazdach. Zawsze pokazuje pełnoekranowy
+    dialog ładowania na czas operacji (patrz pokaz_ladowanie), w przeciwieństwie do
+    poprzednich, ledwo widocznych samych ikonek.
+    funkcja_sync: async callback bez argumentów wykonujący faktyczną synchronizację
+    (zwykle cienki wrapper na sync.synchronizuj_wszystko) — sam odpowiada za
+    komunikaty o sukcesie/błędzie."""
+    def _klik(e):
+        async def _zrob():
+            dlg = pokaz_ladowanie(page, "Synchronizowanie danych...")
+            try:
+                await funkcja_sync()
+            finally:
+                ukryj_ladowanie(page, dlg)
+        page.run_task(_zrob)
+
+    return ft.Container(
+        height=36,
+        padding=ft.Padding(14, 0, 14, 0),
+        border_radius=RADIUS["pill"],
+        bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.PRIMARY),
+        ink=True,
+        alignment=ft.Alignment.CENTER,
+        tooltip="Synchronizuj z partnerem",
+        on_click=_klik,
+        content=ft.Row([
+            ft.Icon(ft.Icons.SYNC, size=16, color=ft.Colors.PRIMARY),
+            ft.Text(tekst, size=12, weight="bold", color=ft.Colors.PRIMARY),
+        ], spacing=6, tight=True)
+    )
+
 def otworz_dno(page: ft.Page, bottom_sheet):
     """Automatycznie zabezpiecza dolne menu przed zasłonięciem przez przyciski systemowe telefonu."""
     if hasattr(bottom_sheet, "content") and bottom_sheet.content:
