@@ -532,7 +532,10 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
     ikona = ft.IconButton(
         icon=ft.Icons.NOTIFICATIONS_ROUNDED if liczba else ft.Icons.NOTIFICATIONS_OUTLINED,
         icon_color=kolor_ikony,
+        icon_size=20,
         tooltip=f"{liczba} powiadomień" if liczba else "Brak powiadomień",
+        width=36, height=36,
+        style=ft.ButtonStyle(padding=0),
     )
 
     if liczba == 0:
@@ -540,11 +543,11 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
         return ikona
 
     odznaka = ft.Container(
-        content=ft.Text(str(liczba) if liczba < 10 else "9+", size=10, color=ft.Colors.WHITE, weight="bold"),
-        width=16, height=16, border_radius=8, bgcolor=ft.Colors.RED_700,
+        content=ft.Text(str(liczba) if liczba < 10 else "9+", size=9, color=ft.Colors.WHITE, weight="bold"),
+        width=14, height=14, border_radius=7, bgcolor=ft.Colors.RED_700,
         alignment=ft.Alignment.CENTER,
     )
-    odznaka_pozycja = ft.Container(odznaka, right=2, top=2, visible=not juz_widziane)
+    odznaka_pozycja = ft.Container(odznaka, right=0, top=0, visible=not juz_widziane)
 
     def po_kliknieciu(e):
         state.powiadomienia_widziane[state.auto_id] = sygnatura
@@ -555,7 +558,7 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
 
     ikona.on_click = po_kliknieciu
 
-    return ft.Stack([ikona, odznaka_pozycja], width=48, height=48)
+    return ft.Stack([ikona, odznaka_pozycja], width=36, height=36)
 
 def pokaz_panel_powiadomien(page: ft.Page, state):
     bs = ft.BottomSheet(ft.Container())
@@ -772,16 +775,16 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
 
     nowoczesny_naglowek = ft.Row([
         ft.Container(
-            content=ft.Icon(ft.Icons.DIRECTIONS_CAR, size=24, color=ft.Colors.PRIMARY),
+            content=ft.Icon(ft.Icons.DIRECTIONS_CAR, size=18, color=ft.Colors.PRIMARY),
             bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.PRIMARY),
             border_radius=8,
-            padding=6
+            padding=5
         ),
         ft.Column([
-            ft.Text("Menedżer Samochodowy", size=10, weight="bold", color=ft.Colors.PRIMARY),
-            ft.Text("APLIKACJA KAMILA", weight="bold", size=18)
+            ft.Text("Menedżer Samochodowy", size=9, weight="bold", color=ft.Colors.PRIMARY, no_wrap=True),
+            ft.Text("APLIKACJA KAMILA", weight="bold", size=14, no_wrap=True)
         ], spacing=0)
-    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     return ft.AppBar(
         title=nowoczesny_naglowek,
@@ -790,16 +793,21 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         actions=[
             ft.IconButton(
                 icon=ft.Icons.SEARCH,
+                icon_size=20,
                 tooltip="Szukaj we wszystkim",
-                on_click=lambda e: przejdz(page, "/szukaj")
+                on_click=lambda e: przejdz(page, "/szukaj"),
+                width=36, height=36,
+                style=ft.ButtonStyle(padding=0),
             ),
-            przycisk_dzwonka(page, state),          
+            przycisk_dzwonka(page, state),
             ft.PopupMenuButton(
-                icon=ft.Icons.MORE_VERT,
+                content=ft.Container(
+                    width=36, height=36, alignment=ft.Alignment.CENTER,
+                    content=ft.Icon(ft.Icons.MORE_VERT, size=20, color=ft.Colors.ON_SURFACE_VARIANT),
+                ),
                 tooltip="Menu główne",
                 items=pozycje
             ),
-            ft.Container(width=4)
         ]
     )
 

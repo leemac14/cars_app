@@ -1220,6 +1220,32 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
                 "data": "", "trasa": "/magazyn",
             })
 
+        # NOWE: Warsztaty
+        c.execute(
+            "SELECT id, nazwa, telefon, adres, notatki FROM warsztaty "
+            "WHERE auto_id=? AND (nazwa LIKE ? OR telefon LIKE ? OR adres LIKE ? OR notatki LIKE ?)",
+            (auto_id, q, q, q, q)
+        )
+        for r in c.fetchall():
+            opis = str(r["adres"] or "") + (f" • {r['telefon']}" if r["telefon"] else "")
+            wyniki.append({
+                "typ": "Warsztat", "tytul": str(r["nazwa"]), "opis": opis or "Brak telefonu / adresu",
+                "data": "", "trasa": "/wizyty",
+            })
+
+        # NOWE: Wydatki cykliczne
+        c.execute(
+            "SELECT id, nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne "
+            "WHERE auto_id=? AND nazwa LIKE ?",
+            (auto_id, q)
+        )
+        for r in c.fetchall():
+            opis = f"{formatuj_liczba_eksport(r['kwota'], 2)} {pobierz_walute()} • co {int(r['okres_dni'] or 0)} dni"
+            wyniki.append({
+                "typ": "Wydatek cykliczny", "tytul": str(r["nazwa"]), "opis": opis,
+                "data": r["nastepna_data"] or "", "trasa": "__wydatki_cykliczne__",
+            })
+
     wyniki.sort(key=lambda w: parsuj_date(w["data"]), reverse=True)
     return wyniki
 

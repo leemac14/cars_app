@@ -10,6 +10,8 @@ IKONY_WYSZUKIWANIA = {
     "Do zrobienia": (ft.Icons.CHECKLIST_RTL, ft.Colors.PURPLE_700),
     "Magazyn": (ft.Icons.INVENTORY_2, ft.Colors.TEAL_700),
     "Opony": (ft.Icons.TIRE_REPAIR, ft.Colors.INDIGO_700),
+    "Warsztat": (ft.Icons.HANDYMAN, ft.Colors.BROWN_700),
+    "Wydatek cykliczny": (ft.Icons.AUTORENEW, ft.Colors.CYAN_700),
 }
 
 
@@ -43,7 +45,7 @@ class SzukajView(ft.View):
 
         self.tekst_pomocniczy = ft.Text(
             "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
-            "inne koszty i listę Do zrobienia bieżącego pojazdu.",
+            "inne koszty, warsztaty, wydatki cykliczne i listę Do zrobienia bieżącego pojazdu.",
             size=13, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER
         )
         self.kontener_pomocniczy = ft.Container(
@@ -66,11 +68,17 @@ class SzukajView(ft.View):
     def _karta_wyniku(self, w):
         ikona, kolor = IKONY_WYSZUKIWANIA.get(w["typ"], (ft.Icons.EVENT_NOTE, ft.Colors.ON_SURFACE_VARIANT))
 
+        def po_kliknieciu(e, wynik=w):
+            if wynik["trasa"] == "__wydatki_cykliczne__":
+                utils.pokaz_panel_wydatkow_cyklicznych(self._page, self.state)
+            else:
+                utils.przejdz(self._page, wynik["trasa"])
+
         return ft.Card(
             elevation=1,
             content=ft.Container(
                 padding=15, border_radius=10,
-                on_click=lambda e, trasa=w["trasa"]: utils.przejdz(self._page, trasa),
+                on_click=po_kliknieciu,
                 content=ft.Row([
                     ft.Container(
                         width=36, height=36, border_radius=18,
@@ -97,7 +105,7 @@ class SzukajView(ft.View):
         if len(zapytanie) < 2:
             self.tekst_pomocniczy.value = (
                 "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
-                "inne koszty i listę Do zrobienia bieżącego pojazdu."
+                "inne koszty, warsztaty, wydatki cykliczne i listę Do zrobienia bieżącego pojazdu."
             )
             self.kontener_pomocniczy.visible = True
             self.update()
