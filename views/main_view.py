@@ -87,15 +87,17 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         ]
         return utils.fab_speed_dial(self._page, akcje, tooltip="Szybkie dodawanie")
 
-    # ================= KOKPIT / DASHBOARD STARTOWY (personalizowalny) =================
+    # ================= KOKPIT / DASHBOARD STARTOWY (karuzela pozioma) =================
     def _buduj_kokpit(self):
         """Mini-dashboard nad listą podzespołów, złożony z widżetów wybranych przez
         użytkownika w Ustawieniach (patrz db.KOKPIT_WIDGETY / db.pobierz_widgety_kokpitu).
-        Kolejność jest stała, ale zestaw i liczba widżetów są personalizowalne — gdy
-        użytkownik nie wybrał żadnego, kokpit po prostu się nie renderuje."""
+        Renderowany jako pozioma, przewijalna karuzela (ft.Row scroll=AUTO) z kafelkami
+        o stałej szerokości — zamiast układu kolumnowego z parowaniem "połówek"."""
         wlaczone = db.pobierz_widgety_kokpitu()
         if not wlaczone:
             return ft.Container()
+
+        SZER_KAFLA = 160
 
         # --- Dane wspólne, liczone tylko gdy faktycznie potrzebne przez wybrane widżety ---
         potrzebne_mc = {"koszt_miesiac", "wykres"} & set(wlaczone)
@@ -120,7 +122,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         def kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click):
             return ft.Container(
-                expand=1, padding=15, border_radius=utils.RADIUS["lg"],
+                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
                 bgcolor=utils.tlo_karty(self._page, poziom=1),
                 ink=True, on_click=on_click,
                 content=ft.Column([
@@ -128,9 +130,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Icon(ikona, size=15, color=kolor_ikony),
                         ft.Text(etykieta, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(wartosc, size=utils.FS["title"], weight="bold"),
+                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
-            ), "polowka"
+            )
 
         def widget_koszt_miesiac():
             koszt_biezacy = dane_mc[-1][2] if dane_mc else 0.0
@@ -140,33 +142,33 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 zmiana = ((koszt_biezacy - koszt_poprzedni) / koszt_poprzedni) * 100
                 if zmiana > 5:
                     t_ikona, t_kolor = ft.Icons.TRENDING_UP, ft.Colors.RED_700
-                    t_tekst = f"+{utils.formatuj_liczba(zmiana, 0)}% vs poprzedni mies."
+                    t_tekst = f"+{utils.formatuj_liczba(zmiana, 0)}%"
                 elif zmiana < -5:
                     t_ikona, t_kolor = ft.Icons.TRENDING_DOWN, ft.Colors.GREEN_700
-                    t_tekst = f"{utils.formatuj_liczba(zmiana, 0)}% vs poprzedni mies."
+                    t_tekst = f"{utils.formatuj_liczba(zmiana, 0)}%"
                 else:
                     t_ikona, t_kolor = ft.Icons.TRENDING_FLAT, ft.Colors.ON_SURFACE_VARIANT
-                    t_tekst = "Podobnie jak poprzedni miesiąc"
+                    t_tekst = "Podobnie"
             else:
                 t_ikona, t_kolor = ft.Icons.INFO_OUTLINE, ft.Colors.ON_SURFACE_VARIANT
-                t_tekst = "Brak danych za poprzedni miesiąc"
+                t_tekst = "Brak danych"
 
             return ft.Container(
-                expand=1, padding=15, border_radius=utils.RADIUS["lg"],
+                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
                 bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
                 ink=True, on_click=idz_do_statystyk(0),
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=15, color=ft.Colors.PRIMARY),
-                        ft.Text("Koszt w tym miesiącu", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        ft.Text("Koszt w mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(f"{utils.formatuj_liczba(koszt_biezacy)} {utils.symbol_waluty()}", size=utils.FS["heading"], weight="bold"),
+                    ft.Text(f"{utils.formatuj_liczba(koszt_biezacy)} {utils.symbol_waluty()}", size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Row([
                         ft.Icon(t_ikona, size=13, color=t_kolor),
                         ft.Text(t_tekst, size=utils.FS["caption"], color=t_kolor, no_wrap=True),
                     ], spacing=4),
                 ], spacing=4),
-            ), "polowka"
+            )
 
         def widget_termin():
             powiadomienia = db.pobierz_powiadomienia(self.state.auto_id)
@@ -179,9 +181,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 tresc = ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.EVENT, size=15, color=ft.Colors.PRIMARY),
-                        ft.Text(f"Najbliższy termin{dodatek}", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        ft.Text(f"Termin{dodatek}", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(str(p["tytul"]), size=utils.FS["title"], weight="bold", no_wrap=True),
+                    ft.Text(str(p["tytul"]), size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Row([
                         ft.Icon(ikona_p, size=13, color=kolor_p),
                         ft.Text(p["opis"], size=utils.FS["caption"], color=kolor_p, no_wrap=True),
@@ -196,19 +198,19 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 tresc = ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.EVENT_AVAILABLE, size=15, color=ft.Colors.GREEN_700),
-                        ft.Text("Najbliższy termin", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        ft.Text("Termin", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text("Wszystko na czas 🎉", size=utils.FS["title"], weight="bold", color=ft.Colors.GREEN_700),
-                    ft.Text("Brak zbliżających się terminów", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text("Na czas 🎉", size=utils.FS["title"], weight="bold", color=ft.Colors.GREEN_700),
+                    ft.Text("Brak terminów", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                 ], spacing=4)
                 on_klik = None
                 tlo = ft.Colors.with_opacity(0.08, ft.Colors.GREEN_700)
 
             return ft.Container(
-                expand=1, padding=15, border_radius=utils.RADIUS["lg"],
+                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
                 bgcolor=tlo, ink=on_klik is not None, on_click=on_klik,
                 content=tresc,
-            ), "polowka"
+            )
 
         def widget_wykres():
             maks_mc = max((s for _, _, s in dane_mc), default=0)
@@ -231,19 +233,17 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 )
 
             return ft.Container(
-                padding=15, border_radius=utils.RADIUS["lg"], bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 100, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
                 ink=True, on_click=idz_do_statystyk(1),
                 content=ft.Column([
                     ft.Row([
-                        ft.Row([
-                            ft.Icon(ft.Icons.BAR_CHART, size=15, color=ft.Colors.PRIMARY),
-                            ft.Text("Wydatki — ostatnie 6 mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
-                        ], spacing=6),
-                        ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Icon(ft.Icons.BAR_CHART, size=15, color=ft.Colors.PRIMARY),
+                        ft.Text("Wydatki 6 mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], spacing=6),
                     ft.Row(slupki, alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.END),
                 ], spacing=10),
-            ), "pelna"
+            )
 
         def widget_koszt_km():
             koszt_km = dane_porownanie.get("koszt_km")
@@ -253,12 +253,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         def widget_spalanie():
             spalanie = dane_porownanie.get("spalanie")
             wartosc = utils.formatuj_spalanie(spalanie) if spalanie else "Za mało danych"
-            return kafel_wartosci(ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Średnie spalanie", wartosc, idz_do_zakladki(1))
+            return kafel_wartosci(ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Śr. spalanie", wartosc, idz_do_zakladki(1))
 
         def widget_przebieg_dzienny():
             sredni = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
             wartosc = f"{utils.formatuj_liczba(sredni, 1)} km/dzień" if sredni else "Brak danych"
-            return kafel_wartosci(ft.Icons.TIMELAPSE, ft.Colors.BLUE_GREY_700, "Śr. przebieg dzienny", wartosc,
+            return kafel_wartosci(ft.Icons.TIMELAPSE, ft.Colors.BLUE_GREY_700, "Śr. dzienny", wartosc,
                                    lambda e: utils.przejdz(self._page, "/przebieg"))
 
         budowniczy = {
@@ -270,30 +270,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             "przebieg_dzienny": widget_przebieg_dzienny,
         }
 
-        # --- Układ: kolejne widżety "polowka" łączone w pary po 2, "pelna" na cały wiersz ---
-        wiersze = []
-        bufor_polowek = []
+        kafelki = [budowniczy[wid]() for wid in wlaczone if wid in budowniczy]
+        if not kafelki:
+            return ft.Container()
 
-        def oproznij_bufor():
-            if bufor_polowek:
-                wiersze.append(ft.Row(list(bufor_polowek), spacing=10))
-                bufor_polowek.clear()
-
-        for wid in wlaczone:
-            fn = budowniczy.get(wid)
-            if not fn:
-                continue
-            kontrolka, rozmiar = fn()
-            if rozmiar == "pelna":
-                oproznij_bufor()
-                wiersze.append(kontrolka)
-            else:
-                bufor_polowek.append(kontrolka)
-                if len(bufor_polowek) == 2:
-                    oproznij_bufor()
-        oproznij_bufor()
-
-        return ft.Column(wiersze, spacing=10)
+        return ft.Row(kafelki, spacing=10, scroll=ft.ScrollMode.AUTO)
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
@@ -308,15 +289,16 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             utils.pokaz_komunikat_cofnij(self._page, f"Pomyślnie usunięto {ile} elementów.", wynik)
         utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno usunąć {ile} elementów?", wykonaj)
 
+    # ================= KOMPAKTOWA KARTA POJAZDU =================
     def buduj_naglowek_auta(self):
         with db.polacz_baze() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT id, nazwa FROM samochody ORDER BY nazwa")
             auta = c.fetchall()
-            c.execute("SELECT oc_data, przeglad_data, nr_rej, vin, zdjecie_glowne FROM samochody WHERE id=?", (self.state.auto_id,))
+            c.execute("SELECT nr_rej, zdjecie_glowne FROM samochody WHERE id=?", (self.state.auto_id,))
             w = c.fetchone()
-            
+
         if not w: return
 
         aktualny_przebieg = db.pobierz_aktualny_przebieg(self.state.auto_id)
@@ -326,7 +308,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             if a[0] == self.state.auto_id:
                 idx = i
                 break
-        
+
         poprzedni_id, poprzedni_nazwa = auta[(idx - 1) % len(auta)]
         nastepny_id, nastepny_nazwa = auta[(idx + 1) % len(auta)]
 
@@ -354,7 +336,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         kafel.leading.icon = ft.Icons.DIRECTIONS_CAR
                         kafel.leading.color = ft.Colors.ON_SURFACE_VARIANT
                         kafel.title.weight = "normal"
-                
+
                 try:
                     self._page.update()
                 except Exception:
@@ -373,7 +355,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.Text("Wybierz pojazd", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 ft.Divider(height=1)
             ]
-            
+
             for a_id, a_nazwa in auta:
                 zaznaczone = (a_id == self.state.auto_id)
                 kafel = ft.ListTile(
@@ -414,14 +396,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             except Exception:
                 return ft.Colors.ON_SURFACE_VARIANT, str(d_str)
 
-        k_oc, t_oc = kolor_daty(w["oc_data"])
-        k_pt, t_pt = kolor_daty(w["przeglad_data"])
         kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
         kolor_kond, ikona_kond, etykieta_kond = utils.wskaznik_kondycji(kondycja)
 
-        wiele_aut = len(auta) > 1
-
-        # --- FUNKCJA WYŚWIETLAJĄCA WYSKAKUJĄCE INFO O AUCIE ---
+        # --- WSZYSTKO, CO ZNIKNĘŁO Z GŁÓWNEJ KARTY (OC, PT, VIN, Kondycja) —
+        # dostępne teraz WYŁĄCZNIE po kliknięciu przycisku Info ---
         def pokaz_info_auta(e):
             with db.polacz_baze() as conn:
                 conn.row_factory = sqlite3.Row
@@ -430,15 +409,16 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     "SELECT nazwa, nr_rej, vin, rok_produkcji, pojemnosc_silnika, moc_silnika, "
                     "typ_paliwa, skrzynia_biegow, notatki, wycieraczki_przod, wycieraczki_tyl, "
                     "cisnienie_przod, cisnienie_tyl, olej_typ, olej_pojemnosc, akumulator, "
-                    "zarowki_mijania, zarowki_drogowe, ac_data, assistance_data, gasnica_data, apteczka_data, "
+                    "zarowki_mijania, zarowki_drogowe, oc_data, przeglad_data, "
+                    "ac_data, assistance_data, gasnica_data, apteczka_data, "
                     "marka, model, generacja "
-                    "FROM samochody WHERE id=?", 
+                    "FROM samochody WHERE id=?",
                     (self.state.auto_id,)
                 )
                 w_info = c.fetchone()
-            
+
             if not w_info: return
-            
+
             def wiersz_info(ikona, etykieta, wartosc):
                 return ft.Row([
                     ft.Icon(ikona, color=ft.Colors.ON_SURFACE_VARIANT, size=20),
@@ -475,6 +455,18 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                             ft.Icon(ft.Icons.INFO, size=28, color=ft.Colors.PRIMARY),
                             ft.Text("Specyfikacja pojazdu", weight="bold", size=20, color=ft.Colors.PRIMARY)
                         ], spacing=10),
+                        ft.Container(
+                            padding=ft.Padding(8, 4, 8, 4),
+                            border_radius=14,
+                            bgcolor=ft.Colors.with_opacity(0.13, kolor_kond),
+                            content=ft.Row([
+                                ft.Icon(ikona_kond, size=13, color=kolor_kond),
+                                ft.Text(
+                                    f"Kondycja: {kondycja if kondycja is not None else '-'}/100 ({etykieta_kond})",
+                                    size=12, weight="bold", color=kolor_kond
+                                )
+                            ], spacing=5, tight=True)
+                        ),
                         ft.Divider(height=15),
                         wiersz_info(ft.Icons.DIRECTIONS_CAR, "Marka", w_info["marka"]),
                         wiersz_info(ft.Icons.DIRECTIONS_CAR_FILLED, "Model", w_info["model"]),
@@ -482,12 +474,21 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         wiersz_info(ft.Icons.BADGE, "Rejestracja", w_info["nr_rej"]),
                         wiersz_info(ft.Icons.NUMBERS, "VIN", w_info["vin"]),
                         wiersz_info(ft.Icons.CALENDAR_TODAY, "Rocznik", w_info["rok_produkcji"]),
-                        
+
                         ft.Container(height=5),
                         wiersz_info(ft.Icons.LOCAL_GAS_STATION, "Paliwo", w_info["typ_paliwa"]),
                         wiersz_info(ft.Icons.SETTINGS_INPUT_COMPONENT, "Skrzynia", w_info["skrzynia_biegow"]),
                         wiersz_info(ft.Icons.SPEED, "Silnik", pojemnosc_tekst),
                         wiersz_info(ft.Icons.BOLT, "Moc silnika", moc_tekst),
+
+                        ft.Divider(height=15),
+                        ft.Text("🛡️ Ważne terminy", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        wiersz_termin(ft.Icons.SHIELD, "Polisa OC", w_info["oc_data"]),
+                        wiersz_termin(ft.Icons.FACT_CHECK, "Przegląd", w_info["przeglad_data"]),
+                        wiersz_termin(ft.Icons.SHIELD, "Polisa AC", w_info["ac_data"]),
+                        wiersz_termin(ft.Icons.SUPPORT_AGENT, "Assistance", w_info["assistance_data"]),
+                        wiersz_termin(ft.Icons.LOCAL_FIRE_DEPARTMENT, "Gaśnica", w_info["gasnica_data"]),
+                        wiersz_termin(ft.Icons.MEDICAL_SERVICES, "Apteczka", w_info["apteczka_data"]),
 
                         ft.Divider(height=15),
                         ft.Text("🛒 Ściągawka do sklepu", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -498,20 +499,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         wiersz_info(ft.Icons.LIGHTBULB, "Żarówki", zarowki_tekst),
 
                         ft.Divider(height=15),
-                        ft.Text("🛡️ Dodatkowe terminy", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                        wiersz_termin(ft.Icons.SHIELD, "Polisa AC", w_info["ac_data"]),
-                        wiersz_termin(ft.Icons.SUPPORT_AGENT, "Assistance", w_info["assistance_data"]),
-                        wiersz_termin(ft.Icons.LOCAL_FIRE_DEPARTMENT, "Gaśnica", w_info["gasnica_data"]),
-                        wiersz_termin(ft.Icons.MEDICAL_SERVICES, "Apteczka", w_info["apteczka_data"]),
-
-                        ft.Divider(height=15),
                         ft.Text("Notatki:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text(str(w_info["notatki"]) if w_info["notatki"] else "Brak dodatkowych notatek.", size=14, italic=not bool(w_info["notatki"]))
                     ], tight=True, spacing=8)
                 )
             )
             utils.otworz_dno(self._page, bs_info)
-        # ------------------------------------------------------
 
         # --- SZYBKA AKTUALIZACJA PRZEBIEGU (bez sztucznego tankowania/wpisu) ---
         def pokaz_szybka_aktualizacja_przebiegu(e):
@@ -546,7 +539,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
             dlg = ft.AlertDialog(
                 modal=True,
-                # ZMIANA: size=16 i expand=True sprawią, że tytuł idealnie zmieści się w oknie i nie wyjdzie za ekran
                 title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY), ft.Text("Aktualizacja przebiegu", weight="bold", size=16, expand=True)], spacing=8),
                 content=ft.Column([
                     ft.Text(
@@ -554,12 +546,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         size=12, color=ft.Colors.ON_SURFACE_VARIANT
                     ),
                     pole_przebiegu,
-                    # ZMIANA: Przycisk historii przeniesiony tutaj, żeby nie walczył o miejsce z Anuluj/Zapisz
                     ft.Container(height=5),
                     ft.TextButton("📈 Przejdź do historii odczytów", on_click=zobacz_historie)
                 ], tight=True, spacing=10),
                 actions=[
-                    # ZMIANA: Zostały 2 przyciski, więc mają mnóstwo miejsca i nie będą na siebie nachodzić
                     ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
                     ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
                 ],
@@ -568,197 +558,152 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             utils.otworz_dialog(self._page, dlg)
         # ------------------------------------------------------
 
-        tytulowy_wiersz = ft.Row([
-            ft.Container(
-                content=ft.Row([
-                    ft.Text(
-                        str(self.state.auto_nazwa), 
-                        size=18, 
-                        weight="bold", 
-                        color=ft.Colors.PRIMARY,
-                        text_align=ft.TextAlign.CENTER
-                    ),
-                    ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=20)
-                ], alignment=ft.MainAxisAlignment.CENTER, spacing=2),
-                on_click=pokaz_wybor_aut,
-                tooltip="Dotknij, aby wybrać z listy",
-                expand=True,
-                padding=4
-            ),
-            # Z górnego paska usunęliśmy przycisk INFO_OUTLINE, został tylko przycisk edycji
-            ft.IconButton(
-                icon=ft.Icons.EDIT, 
-                icon_size=18, 
-                icon_color=ft.Colors.ON_SURFACE_VARIANT, 
-                tooltip="Edytuj pojazd", 
-                on_click=lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}")
+        # --- KOMPAKTOWY AWATAR (60x60) ZAMIAST DUŻEGO BANERA ---
+        zdjecie_glowne = w["zdjecie_glowne"]
+        if zdjecie_glowne:
+            awatar = ft.Image(
+                src=utils.abs_zalacznik(zdjecie_glowne), width=60, height=60,
+                fit="cover", border_radius=utils.RADIUS["lg"],
             )
-        ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        else:
+            awatar = ft.Container(
+                width=60, height=60, border_radius=utils.RADIUS["lg"],
+                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY),
+                alignment=ft.Alignment.CENTER,
+                content=ft.Icon(ft.Icons.DIRECTIONS_CAR, size=28, color=ft.Colors.PRIMARY),
+            )
 
-        # 1. Budowa zawartości tekstowej karty pojazdu
-        zawartosc_tekstowa = ft.Container(
-            padding=15,
-            content=ft.Column([
-                tytulowy_wiersz,
-                ft.Divider(height=1, color=ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE)),
-                ft.Container(height=5),
-                ft.Row([
-                    # LEWA STRONA (Dane pojazdu)
-                    ft.Column([
-                        ft.Row([ft.Icon(ft.Icons.BADGE, color=ft.Colors.PRIMARY, size=20), ft.Text(str(w["nr_rej"]) if w["nr_rej"] else "Brak rej.", weight="bold", size=16)]),
-                        ft.Text(f"VIN: {str(w['vin']) if w['vin'] else '-'}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Container(
-                            content=ft.Row([
-                                ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-                                ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold"),
-                                ft.Icon(ft.Icons.EDIT, size=12, color=ft.Colors.PRIMARY)
-                            ], spacing=5),
-                            on_click=pokaz_szybka_aktualizacja_przebiegu,
-                            on_long_press=lambda e: utils.przejdz(self._page, "/przebieg"),
-                            tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia odczytów",
-                            padding=ft.Padding(0, 2, 0, 0)
-                        ),
-                                                ft.Container(height=5),
-                        ft.Row([ft.Text("OC:", weight="bold", size=13), ft.Text(t_oc, color=k_oc, size=13, weight="bold")], spacing=5),
-                        ft.Row([ft.Text("PT:", weight="bold", size=13), ft.Text(t_pt, color=k_pt, size=13, weight="bold")], spacing=5),
-                        ft.Container(height=5),
-                        ft.Container(
-                            padding=ft.Padding(8, 4, 8, 4),
-                            border_radius=14,
-                            bgcolor=ft.Colors.with_opacity(0.13, kolor_kond),
-                            tooltip=f"Kondycja pojazdu: {etykieta_kond}",
-                            content=ft.Row([
-                                ft.Icon(ikona_kond, size=13, color=kolor_kond),
-                                ft.Text(f"Kondycja: {kondycja if kondycja is not None else '-'}/100", size=12, weight="bold", color=kolor_kond)
-                            ], spacing=5, tight=True)
-                        ),
-                    ], spacing=2, expand=True),
-                    
-                    # PRAWA STRONA (Przycisk szczegółów pojazdu)
-                    ft.IconButton(
-                        icon=ft.Icons.INFO_OUTLINE, 
-                        icon_size=28, 
-                        icon_color=ft.Colors.PRIMARY, 
-                        tooltip="Szczegóły pojazdu", 
-                        on_click=pokaz_info_auta
-                    )
-                ], vertical_alignment=ft.CrossAxisAlignment.END)
-            ], spacing=2)
+        tytulowy_wiersz = ft.Container(
+            content=ft.Row([
+                ft.Text(
+                    str(self.state.auto_nazwa), size=16, weight="bold", color=ft.Colors.PRIMARY,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                ),
+                ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=18)
+            ], spacing=0, tight=True),
+            on_click=pokaz_wybor_aut,
+            tooltip="Dotknij, aby wybrać z listy",
         )
 
-        # 2. Składanie karty: dodanie banera zdjęcia na górę, jeśli istnieje
-        elementy_karty = [zawartosc_tekstowa]
-        zdjecie_glowne = w["zdjecie_glowne"]
-        
-        if zdjecie_glowne:
-            baner = ft.Image(
-                src=utils.abs_zalacznik(zdjecie_glowne),
-                height=150,
-                width=float("inf"),
-                fit="cover",
-                border_radius=10
-            )
-            elementy_karty.insert(0, baner)
+        wiersz_rejestracja = ft.Row([
+            ft.Icon(ft.Icons.BADGE, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(str(w["nr_rej"]) if w["nr_rej"] else "Brak rej.", size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+        ], spacing=4)
+
+        wiersz_przebieg = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold"),
+                ft.Icon(ft.Icons.EDIT, size=11, color=ft.Colors.PRIMARY)
+            ], spacing=5),
+            on_click=pokaz_szybka_aktualizacja_przebiegu,
+            on_long_press=lambda e: utils.przejdz(self._page, "/przebieg"),
+            tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia odczytów",
+        )
+
+        kolumna_tekstowa = ft.Column([
+            tytulowy_wiersz,
+            wiersz_rejestracja,
+            wiersz_przebieg,
+        ], spacing=3, expand=True)
+
+        przyciski_karty = ft.Column([
+            ft.IconButton(
+                icon=ft.Icons.INFO_OUTLINE, icon_size=20, icon_color=ft.Colors.PRIMARY,
+                tooltip="Szczegóły pojazdu (OC, PT, VIN, kondycja...)", on_click=pokaz_info_auta,
+                style=ft.ButtonStyle(padding=0), width=32, height=32,
+            ),
+            ft.IconButton(
+                icon=ft.Icons.EDIT, icon_size=16, icon_color=ft.Colors.ON_SURFACE_VARIANT,
+                tooltip="Edytuj pojazd",
+                on_click=lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
+                style=ft.ButtonStyle(padding=0), width=32, height=32,
+            ),
+        ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
         karta_auta = ft.Card(
             elevation=1,
             content=ft.Container(
-                border_radius=10,
-                content=ft.Column(elementy_karty, spacing=0)
+                padding=12, border_radius=10,
+                content=ft.Row([awatar, kolumna_tekstowa, przyciski_karty], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
             )
         )
 
+        wiele_aut = len(auta) > 1
+
         wiersz_karty_z_nawigacja = ft.Row([
             ft.IconButton(
-                icon=ft.Icons.CHEVRON_LEFT,
-                icon_size=34,
-                icon_color=ft.Colors.PRIMARY,
-                tooltip="Poprzedni pojazd",
-                on_click=on_prev,
-                visible=wiele_aut,
+                icon=ft.Icons.CHEVRON_LEFT, icon_size=26, icon_color=ft.Colors.PRIMARY,
+                tooltip="Poprzedni pojazd", on_click=on_prev, visible=wiele_aut,
                 style=ft.ButtonStyle(padding=0),
             ),
             ft.Container(karta_auta, expand=True),
             ft.IconButton(
-                icon=ft.Icons.CHEVRON_RIGHT,
-                icon_size=34,
-                icon_color=ft.Colors.PRIMARY,
-                tooltip="Następny pojazd",
-                on_click=on_next,
-                visible=wiele_aut,
+                icon=ft.Icons.CHEVRON_RIGHT, icon_size=26, icon_color=ft.Colors.PRIMARY,
+                tooltip="Następny pojazd", on_click=on_next, visible=wiele_aut,
                 style=ft.ButtonStyle(padding=0),
             ),
         ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         self.elementy.append(wiersz_karty_z_nawigacja)
 
+    # ================= SEKCJA SERWIS (nawigacja przeniesiona do menu ⋮) =================
     def buduj_serwis(self):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-        naglowek_serwis = [ft.Text("🛠️ Serwis", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
-        if wspolny_id:
-            naglowek_serwis.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
 
         magazyn_cnt = 0
         do_zrobienia_cnt = 0
         try:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                # Licznik na kafelku "Magazyn" ma sygnalizować NISKI STAN, a nie
-                # samą liczbę pozycji (ta jest niemal zawsze > 0 i nic nie znaczy jako alert)
+                # Licznik ma sygnalizować NISKI STAN, a nie samą liczbę pozycji
                 c.execute("SELECT COUNT(*) FROM magazyn_czesci WHERE auto_id=? AND ilosc <= COALESCE(prog_ostrzezenia, 1)", (self.state.auto_id,))
                 magazyn_cnt = (c.fetchone() or [0])[0]
 
-                # Pobieramy ilość niewykonanych zadań do powiadomień
                 c.execute("SELECT COUNT(*) FROM do_zrobienia WHERE auto_id=? AND wykonane=0", (self.state.auto_id,))
                 do_zrobienia_cnt = (c.fetchone() or [0])[0]
         except Exception:
             pass
 
-        # --- NOWOCZESNE KAFELKI NAWIGACYJNE ---
-        def kafelek_menu(ikona, etykieta, trasa, licznik=0):
-            ikona_glowna = ft.Icon(ikona, size=24, color=ft.Colors.PRIMARY)
-            
+        # --- MENU "TRZECH KROPEK" — dawne kafelki nawigacyjne + odznaki liczników ---
+        def pozycja_menu_nawigacji(ikona, etykieta, trasa, licznik=0):
+            wiersz = [
+                ft.Icon(ikona, size=18, color=ft.Colors.PRIMARY),
+                ft.Text(etykieta, expand=True),
+            ]
             if licznik > 0:
-                ikona_glowna = ft.Stack([
-                    ft.Container(ikona_glowna, padding=ft.Padding.only(right=6, top=6)),
+                wiersz.append(
                     ft.Container(
-                        content=ft.Text(str(licznik) if licznik < 100 else "99+", size=9, weight="bold", color=ft.Colors.WHITE),
-                        bgcolor=ft.Colors.RED_700,
-                        border_radius=8,
-                        padding=ft.Padding.symmetric(horizontal=4, vertical=1),
-                        alignment=ft.Alignment.CENTER,
-                        right=0,
-                        top=0
+                        content=ft.Text(str(licznik) if licznik < 100 else "99+", size=10, weight="bold", color=ft.Colors.WHITE),
+                        bgcolor=ft.Colors.RED_700, border_radius=9, padding=ft.Padding(6, 2, 6, 2),
                     )
-                ], width=36, height=36)
-            else:
-                ikona_glowna = ft.Container(ikona_glowna, height=36, alignment=ft.Alignment.CENTER)
-
-            return ft.Container(
-                expand=True, 
-                on_click=lambda e: utils.przejdz(self._page, trasa),
-                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
-                border_radius=14,
-                padding=ft.Padding.symmetric(horizontal=2, vertical=12),
-                content=ft.Column([
-                    ikona_glowna,
-                    ft.Text(etykieta, size=10, weight="bold", color=ft.Colors.PRIMARY, text_align=ft.TextAlign.CENTER)
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6)
+                )
+            return ft.PopupMenuItem(
+                content=ft.Row(wiersz, spacing=8),
+                on_click=lambda e, t=trasa: utils.przejdz(self._page, t)
             )
 
-        # 3. DOPIERO TERAZ użyj zmiennych i funkcji budując interfejs (tylko jeden raz!)
-        self.elementy.append(
-            ft.Column([
-                ft.Row(naglowek_serwis, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.Row([
-                    kafelek_menu(ft.Icons.CHECKLIST_RTL, "Zadania", "/do-zrobienia", do_zrobienia_cnt),
-                    kafelek_menu(ft.Icons.INVENTORY_2, "Magazyn", "/magazyn", magazyn_cnt),
-                    kafelek_menu(ft.Icons.HISTORY_EDU, "Wizyty", "/wizyty"),
-                    kafelek_menu(ft.Icons.PHOTO_CAMERA, "Karoseria", "/karoseria")
-                ], spacing=8, alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-            ], spacing=15)
+        menu_nawigacji = ft.PopupMenuButton(
+            content=ft.Container(
+                width=36, height=36, alignment=ft.Alignment.CENTER, border_radius=18,
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                content=ft.Icon(ft.Icons.MORE_VERT, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+            ),
+            tooltip="Zadania, magazyn, wizyty, karoseria",
+            items=[
+                pozycja_menu_nawigacji(ft.Icons.CHECKLIST_RTL, "Zadania", "/do-zrobienia", do_zrobienia_cnt),
+                pozycja_menu_nawigacji(ft.Icons.INVENTORY_2, "Magazyn", "/magazyn", magazyn_cnt),
+                pozycja_menu_nawigacji(ft.Icons.HISTORY_EDU, "Wizyty", "/wizyty"),
+                pozycja_menu_nawigacji(ft.Icons.PHOTO_CAMERA, "Karoseria", "/karoseria"),
+            ]
         )
 
+        naglowek_serwis = [ft.Text("🛠️ Serwis", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        if wspolny_id:
+            naglowek_serwis.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
+        naglowek_serwis.append(menu_nawigacji)
+
+        self.elementy.append(ft.Row(naglowek_serwis, vertical_alignment=ft.CrossAxisAlignment.CENTER))
         self.elementy.append(self._buduj_kokpit())
 
         akt_prz = int(db.pobierz_aktualny_przebieg(self.state.auto_id))
@@ -770,7 +715,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT * FROM zadania WHERE auto_id=?", (self.state.auto_id,))
-            # BEZPIECZNA KONWERSJA DO SŁOWNIKA
             baza_lista = [dict(row) for row in c.fetchall()]
 
         # --- Wyraźne oddzielenie skrótów od właściwej listy podzespołów ---
@@ -812,8 +756,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 for k in self.wszystkie_karty_serwis:
                     if zapytanie in k["szukaj"]:
                         self.lista_kart_serwis.controls.append(k["karta"])
-                
-                # Dynamiczna aktualizacja licznika po wpisaniu tekstu
+
                 self.tekst_licznik_zadan.value = f"Śledzone podzespoły ({len(self.lista_kart_serwis.controls)})"
                 self.update()
 
@@ -832,8 +775,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "serwis_rok", "data")
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "serwis_mc", "data")
             utils.posortuj_liste(po_filtrach, self.state, "zadania", opcje_sort)
-            
-            # Ustawienie poprawnego licznika uwzględniającego filtry z menu rozwijanego
+
             self.tekst_licznik_zadan.value = f"Śledzone podzespoły ({len(po_filtrach)})"
 
             def pokaz_menu(zid, zn):
@@ -942,35 +884,29 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 on_click=lambda e: utils.przejdz(self._page, "/tankowanie/nowe")
             ))
         else:
-            # --- OBLICZANIE SPALANIA I DYSTANSU ---
-            # Sortujemy chronologicznie po przebiegu, aby policzyć różnice
             baza_lista.sort(key=lambda x: int(x.get('przebieg') or 0))
-            
+
             ostatni_pelny_idx = -1
             for i, t in enumerate(baza_lista):
-                # Obliczanie dystansu od ostatniego tankowania
                 if i > 0:
                     prz_akt = int(t.get('przebieg') or 0)
                     prz_poprz = int(baza_lista[i-1].get('przebieg') or 0)
                     t['dystans'] = max(0, prz_akt - prz_poprz)
                 else:
                     t['dystans'] = 0
-                
-                # Obliczanie spalania (tylko między tankowaniami do pełna)
+
                 t['spalanie'] = None
                 if t.get('do_pelna'):
                     if ostatni_pelny_idx != -1:
                         prz_akt = int(t.get('przebieg') or 0)
                         prz_ostatni_pelny = int(baza_lista[ostatni_pelny_idx].get('przebieg') or 0)
                         dystans_od_pelnego = prz_akt - prz_ostatni_pelny
-                        
-                        # Sumujemy litry od poprzedniego pełnego tankowania do teraz
+
                         litry_od_pelnego = sum(float(baza_lista[k].get('litry') or 0) for k in range(ostatni_pelny_idx + 1, i + 1))
-                        
+
                         if dystans_od_pelnego > 0:
                             t['spalanie'] = (litry_od_pelnego / dystans_od_pelnego) * 100
                     ostatni_pelny_idx = i
-            # --- KONIEC OBLICZANIA ---
 
             opcje_sort = [
                 ("Data", "data", lambda x: (utils.parsuj_date(x.get('data')), x.get('id', 0))),
@@ -983,7 +919,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "tankowania_rok", baza_lista, "data")
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "tankowania_mc", baza_lista, "data")
             filtr_tag_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "tankowania_tag", baza_lista, "tagi", "Tagi")
-            
+
             self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_tag_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
 
             def filtruj_tankowania(e):
@@ -1006,14 +942,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             self.uzyj_wirtualizacji = True
             self.wszystkie_karty_tankowania = []
 
-            # Filtrowanie i przywracanie sortowania wybranego przez użytkownika
             po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "tankowania_rok", "data")
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "tankowania_mc", "data")
             po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "tankowania_tag", "tagi")
             utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
 
             def otworz_menu_t(tid, zalacznik=None):
-                # PO:
                 def usun_tankowanie():
                     def wykonaj():
                         wynik = db.usun_z_cofnieciem("tankowania", tid)
@@ -1030,7 +964,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
                 else:
                     pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon)", "akcja": dodaj_zmien_zdj})
-                    
+
                 pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/tankowanie/edytuj/{tid}")})
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": ft.Colors.RED})
 
@@ -1047,9 +981,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     cena_str = f"{utils.formatuj_liczba(kwota_val)}  {utils.symbol_waluty()}"
                     cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/L" if litry_val > 0 else "-"
                     dystans_val = w.get('dystans') or 0
-                    
+
                     tid = w.get('id')
-                    # Odpinamy on_click od Container i przekazujemy go naszej funkcji pomocniczej
                     tresc_karty = [
                         ft.Row([
                             ft.Text(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
@@ -1071,7 +1004,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         tresc_karty.append(utils.znacznik_dodane_przez(w.get('dodane_przez')))
 
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
-                    
+
                     self.karty_ref[tid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, zal=w.get('zalacznik'): otworz_menu_t(id_el, zal), "tankowania")
 
@@ -1090,12 +1023,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         if wspolny_id:
             naglowek_inne.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
         self.elementy.append(ft.Row(naglowek_inne, vertical_alignment=ft.CrossAxisAlignment.CENTER))
-        
+
         with db.polacz_baze() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute("SELECT * FROM inne_koszty WHERE auto_id=?", (self.state.auto_id,))
-            # BEZPIECZNA KONWERSJA DO SŁOWNIKA
             baza_lista = [dict(row) for row in c.fetchall()]
 
         if not baza_lista:
@@ -1117,10 +1049,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "inne_rok", baza_lista, "data")
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "inne_mc", baza_lista, "data")
             filtr_kat_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "inne_kat", baza_lista, "kategoria", "Kategoria")
-            
+
             self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_kat_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
 
-            # --- DODAJ WYSZUKIWARKĘ KOSZTÓW ---
             def filtruj_inne(e):
                 zapytanie = e.control.value.lower().strip()
                 self.lista_kart_inne.controls.clear()
@@ -1169,10 +1100,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT_DOCUMENT), title=ft.Text("Zmień zdjęcie"), on_click=dodaj_zmien_zdj))
                 else:
                     pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.ADD_A_PHOTO), title=ft.Text("Dodaj zdjęcie (faktura/paragon)"), on_click=dodaj_zmien_zdj))
-                    
+
                 pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Edytuj koszt"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/inne/edytuj/{iid}"))))
                 pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED), title=ft.Text("Usuń koszt", color=ft.Colors.RED), on_click=usun_koszt))
-                
+
                 bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE, content=ft.Column(pozycje, tight=True)))
                 utils.otworz_dno(self._page, bs)
 
@@ -1197,7 +1128,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     if wspolny_id and w.get('dodane_przez'):
                         tresc_i.append(utils.znacznik_dodane_przez(w.get('dodane_przez')))
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_i))
-                    
+
                     self.karty_ref[iid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, zal=w.get('zalacznik'): otworz_menu_i(id_el, zal), "inne_koszty")
 
@@ -1306,7 +1237,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             proc_ser = (serw / razem * 100) if razem > 0 else 0
             proc_inn = (inn / razem * 100) if razem > 0 else 0
 
-            # 1. Struktura kosztów (karty z paskami postępu)
             def segment_procentowy(ikona, tytul, kwota, procent, kolor):
                 return ft.Column([
                     ft.Row([
@@ -1341,7 +1271,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 )
             )
 
-            # 2. Słupkowe zestawienie wydatków z ostatnich 6 miesięcy
             dzisiaj = datetime.now()
             miesiace_klucze, miesiace_etykiety = [], []
             for i in range(5, -1, -1):
@@ -1425,10 +1354,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 )
             )
 
-            # 3. Trend spalania w czasie — na podstawie kolejnych tankowań "do pełna",
-            # zagregowany do średniej miesięcznej (jedno tankowanie do pełna nie mówi
-            # nic same w sobie — dopiero odstęp między dwoma takimi tankowaniami daje
-            # policzalny wynik spalania).
             segmenty_spalania = []
             pelne_idx_all = [i for i, t in enumerate(tankowania) if t.get('do_pelna')]
             for a, b in zip(pelne_idx_all, pelne_idx_all[1:]):
@@ -1450,7 +1375,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             punkty_spalania = sorted(
                 ((k, sum(v) / len(v)) for k, v in spalanie_wg_mc.items()),
                 key=lambda p: p[0]
-            )[-12:]  # ostatnie maks. 12 miesięcy z policzalnym spalaniem
+            )[-12:]
 
             if len(punkty_spalania) < 2:
                 karta_trendu = ft.Card(
@@ -1537,7 +1462,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     )
                 )
 
-            # 3b. Trend cen paliwa + ranking stacji, na których tankowano
             trend_paliwa = db.pobierz_trend_cen_paliwa(self.state.auto_id)
 
             cena_wg_mc = {}
@@ -1657,7 +1581,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     )
                 )
 
-            # 4. Złożenie widoku
             self.elementy.extend([
                 ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 karta_struktury,
