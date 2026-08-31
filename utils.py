@@ -39,8 +39,8 @@ def formatuj_liczba(wartosc, decimale=2):
         return f"{int(round(wartosc)):,}".replace(",", " ")
 
 # ============== DESIGN TOKENS ==============
-RADIUS = {"xs": 8, "sm": 10, "md": 12, "lg": 16, "xl": 20, "pill": 999}
-SPACING = {"xs": 4, "sm": 8, "md": 15, "lg": 20, "xl": 30}
+RADIUS = {"xs": 8, "sm": 10, "md": 12, "lg": 20, "xl": 28, "pill": 999}
+SPACING = {"xs": 4, "sm": 8, "md": 16, "lg": 20, "xl": 32}
 FS = {
     "caption": 11, "label": 12, "body": 13, "body_strong": 14,
     "title": 16, "heading": 18, "display": 22,
@@ -65,21 +65,58 @@ def _czy_ciemny(page: ft.Page = None) -> bool:
     except Exception:
         return False
 
-
 def tlo_karty(page: ft.Page = None, poziom=1):
     """Automatycznie dobiera przezroczystość koloru ON_SURFACE.
     W trybie ciemnym podwaja opacity dla zachowania kontrastu."""
-    import flet as ft
-    ciemny = page.theme_mode == ft.ThemeMode.DARK if page else False
+    ciemny = _czy_ciemny(page)
     mnoznik = 2.0 if ciemny else 1.0
-    
-    if poziom == 1:   # Delikatne tło (np. wypełnienie karty / pola)
+
+    if poziom == 1:   # Delikatne tło (karty w jasnym motywie — cień robi "unoszenie")
         return ft.Colors.with_opacity(0.03 * mnoznik, ft.Colors.ON_SURFACE)
-    elif poziom == 2: # Średnie obramowania / mocniejsze tło (np. ramka karty)
+    elif poziom == 2: # Średnie tło (pola formularza, karty w ciemnym motywie)
         return ft.Colors.with_opacity(0.08 * mnoznik, ft.Colors.ON_SURFACE)
-    elif poziom == 3: # Wyraźne obramowania (np. ramka pola tekstowego)
+    elif poziom == 3: # Najsilniejsze tło — dostępne do mocniejszych akcentów
         return ft.Colors.with_opacity(0.15 * mnoznik, ft.Colors.ON_SURFACE)
     return ft.Colors.TRANSPARENT
+
+def cien_karty(page: ft.Page = None, poziom="md"):
+    """Miękki, 'unoszący' cień w duchu Material 3 — WYŁĄCZNIE w trybie jasnym.
+    W trybie ciemnym cień jest ledwo czytelny na ciemnym tle i tylko brudzi
+    interfejs, dlatego zwracamy None — tam różnicujemy powierzchnie wyłącznie
+    jaśniejszym `bgcolor` (patrz `powierzchnia_karty` niżej). Każdy poziom to
+    dwie warstwy (blisko + rozlana), jak w prawdziwych cieniach Material 3."""
+    if _czy_ciemny(page):
+        return None
+    warstwy = {
+        "sm": [  # lekkie karty na listach — jeden, ciasny cień
+            ft.BoxShadow(blur_radius=6, spread_radius=0, offset=ft.Offset(0, 1),
+                         color=ft.Colors.with_opacity(0.05, ft.Colors.BLACK)),
+        ],
+        "md": [  # karty formularzy
+            ft.BoxShadow(blur_radius=3, spread_radius=0, offset=ft.Offset(0, 1),
+                         color=ft.Colors.with_opacity(0.04, ft.Colors.BLACK)),
+            ft.BoxShadow(blur_radius=20, spread_radius=-6, offset=ft.Offset(0, 8),
+                         color=ft.Colors.with_opacity(0.08, ft.Colors.BLACK)),
+        ],
+        "lg": [  # modale / bottom sheety
+            ft.BoxShadow(blur_radius=4, spread_radius=0, offset=ft.Offset(0, 2),
+                         color=ft.Colors.with_opacity(0.05, ft.Colors.BLACK)),
+            ft.BoxShadow(blur_radius=28, spread_radius=-8, offset=ft.Offset(0, 14),
+                         color=ft.Colors.with_opacity(0.12, ft.Colors.BLACK)),
+        ],
+    }
+    return warstwy.get(poziom, warstwy["md"])
+
+
+def powierzchnia_karty(page: ft.Page = None, cien="md"):
+    """Gotowy zestaw {bgcolor, shadow} do rozpakowania (**) w Containerze
+    karty/formularza. Jasny motyw: niemal przezroczyste tło + miękki cień
+    (cień 'unosi' kartę). Ciemny motyw: cień wyłączony, więc tło podbijamy
+    o jeden poziom mocniej (poziom=2), żeby granica karty była widoczna
+    bez cienia — dokładnie tak, jak prosisz w pkt. 1."""
+    if _czy_ciemny(page):
+        return {"bgcolor": tlo_karty(page, poziom=2), "shadow": None}
+    return {"bgcolor": tlo_karty(page, poziom=1), "shadow": cien_karty(page, cien)}
 
 def parsuj_int(wartosc, domyslna=0):
     if wartosc is None: return domyslna
@@ -345,7 +382,8 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
 
 def potwierdz(page: ft.Page, tytul, tresc, po_potwierdzeniu, tekst_potwierdzenia="Usuń"):
     dlg = ft.AlertDialog(
-        modal=True, title=ft.Text(tytul, weight="bold"), content=ft.Text(tresc)
+        modal=True, title=ft.Text(tytul, weight="bold"), content=ft.Text(tresc),
+        shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
     )
     def anuluj(e):
         zamknij_dialog(page, dlg)
@@ -1102,22 +1140,26 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
 
 def styl_pola(page: ft.Page = None):
     return {
-        "border_radius": 12,
-        "border_color": tlo_karty(page, poziom=3),
-        "focused_border_color": ft.Colors.PRIMARY,
-        "content_padding": 16,
+        "border_radius": RADIUS["md"],
+        "border_color": ft.Colors.TRANSPARENT,   # ramka niewidoczna...
+        "border_width": 1.5,
+        "focused_border_color": ft.Colors.PRIMARY,  # ...i pojawia się tylko na focus
+        "focused_border_width": 2,
+        "content_padding": ft.Padding(16, 14, 16, 14),  # 16 poziomo / 14 pionowo — pole ~52-56px
         "filled": True,
-        "bgcolor": tlo_karty(page, poziom=1),
+        "bgcolor": tlo_karty(page, poziom=2),
     }
 
 def styl_dropdown(page: ft.Page = None):
     return {
-        "border_radius": 12,
-        "border_color": tlo_karty(page, poziom=3),
+        "border_radius": RADIUS["md"],
+        "border_color": ft.Colors.TRANSPARENT,
+        "border_width": 1.5,
         "focused_border_color": ft.Colors.PRIMARY,
-        "content_padding": 16,
+        "focused_border_width": 2,
+        "content_padding": ft.Padding(16, 14, 16, 14),
         "filled": True,
-        "border_width": 1,
+        "fill_color": tlo_karty(page, poziom=2),  # UWAGA: nie "bgcolor" — patrz niżej
         "text_size": 15,
     }
 
@@ -1136,26 +1178,23 @@ def wysokosc_listy(page: ft.Page, udzial=0.5, minimalna=260):
 
 def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False, page: ft.Page = None):
     import flet as ft
-    
-    # Wykorzystujemy naszą nową funkcję do dynamicznego kontrastu
-    kolor_ramki = tlo_karty(page, poziom=2)
-    kolor_tla = tlo_karty(page, poziom=1)
-    
+    powierzchnia = powierzchnia_karty(page, "md")
+
     if not tytul:
         return ft.Container(
-            padding=20, border_radius=16, bgcolor=kolor_tla,
-            border=ft.Border(top=ft.BorderSide(1, kolor_ramki), right=ft.BorderSide(1, kolor_ramki), bottom=ft.BorderSide(1, kolor_ramki), left=ft.BorderSide(1, kolor_ramki)),
-            content=ft.Column(zawartosc, spacing=15)
+            padding=SPACING["lg"], border_radius=RADIUS["lg"],
+            bgcolor=powierzchnia["bgcolor"], shadow=powierzchnia["shadow"],
+            content=ft.Column(zawartosc, spacing=SPACING["md"])
         )
 
     cialo = ft.Container(
-        padding=ft.Padding(20, 0, 20, 20),
+        padding=ft.Padding(SPACING["lg"], 0, SPACING["lg"], SPACING["lg"]),
         visible=domyslnie_otwarte,
-        content=ft.Column(zawartosc, spacing=15)
+        content=ft.Column(zawartosc, spacing=SPACING["md"])
     )
 
     ikona_strzalki = ft.Icon(
-        ft.Icons.KEYBOARD_ARROW_UP if domyslnie_otwarte else ft.Icons.KEYBOARD_ARROW_DOWN, 
+        ft.Icons.KEYBOARD_ARROW_UP if domyslnie_otwarte else ft.Icons.KEYBOARD_ARROW_DOWN,
         color=ft.Colors.PRIMARY
     )
 
@@ -1165,22 +1204,18 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False,
         e.control.page.update()
 
     naglowek = ft.Container(
-        padding=ft.Padding(20, 15, 20, 15),
+        padding=ft.Padding(SPACING["lg"], SPACING["md"], SPACING["lg"], SPACING["md"]),
         on_click=przelacz_rozwijanie,
         content=ft.Row([
             ft.Icon(ikona, color=ft.Colors.PRIMARY, size=20) if ikona else ft.Container(),
-            ft.Text(tytul, weight="bold", size=16, color=ft.Colors.PRIMARY, expand=True),
+            ft.Text(tytul, weight="bold", size=FS["title"], color=ft.Colors.ON_SURFACE, expand=True),
             ikona_strzalki
         ], spacing=10)
     )
 
     return ft.Container(
-        border_radius=16,
-        bgcolor=kolor_tla,
-        border=ft.Border(
-            top=ft.BorderSide(1, kolor_ramki), right=ft.BorderSide(1, kolor_ramki),
-            bottom=ft.BorderSide(1, kolor_ramki), left=ft.BorderSide(1, kolor_ramki)
-        ),
+        border_radius=RADIUS["lg"],
+        bgcolor=powierzchnia["bgcolor"], shadow=powierzchnia["shadow"],
         content=ft.Column([naglowek, cialo], spacing=0)
     )
 
@@ -1286,7 +1321,6 @@ def kolor_i_tekst_terminu(termin_str):
     else:
         return ft.Colors.GREEN_700, str(termin_str)
 
-# Wstawić przed def komponent_tagow(...):
 def komponent_wyboru_koloru(page: ft.Page, aktualny_kolor=None, etykieta_brak="Domyślny (jak w Ustawieniach)"):
     """Wiersz kółek do wyboru koloru motywu interfejsu, z dodatkową pozycją
     'Brak' (użyje wtedy globalnego koloru domyślnego). Zwraca (kontener,
@@ -1995,32 +2029,57 @@ async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, st
 
 def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
     """Standardowa karta pozycji na liście, opcjonalnie z kolorowym paskiem
-    statusu/priorytetu po lewej stronie (jak w Gmailu/Todoist) — status widać
-    jednym rzutem oka, bez czytania treści karty.
-    Zwraca (karta, kontener). 'kontener' to element do podpięcia
-    on_click/on_long_press (np. przez ZaznaczanieGrupowe.podepnij_zdarzenia_grupowe),
-    dokładnie tak jak dotychczasowy 'kontener' w Twoich widokach."""
-    tlo = tlo if tlo is not None else tlo_karty(page, poziom=1)
+    statusu/priorytetu po lewej stronie. Zwraca (karta, kontener) — dokładnie
+    jak dotychczas, karta.content nadal wskazuje na to samo, więc istniejące
+    triki typu `karta.content.opacity = ...` działają bez zmian.
+    Kontener ma już gotową (ale nieaktywną) animację naciśnięcia —
+    zobacz `z_efektem_nacisniecia` niżej."""
+    powierzchnia = powierzchnia_karty(page, "sm")
+    tlo_finalne = tlo if tlo is not None else powierzchnia["bgcolor"]
 
     kontener = ft.Container(
-        padding=15, ink=True,
+        padding=SPACING["md"], ink=True,
         border_radius=0 if kolor_paska else RADIUS["lg"],
-        bgcolor=tlo,
+        bgcolor=tlo_finalne,
         expand=True if kolor_paska else None,
-        content=tresc if isinstance(tresc, ft.Control) else ft.Column(tresc, spacing=4),
+        scale=1.0,
+        animate_scale=ft.Animation(120, ft.AnimationCurve.EASE_OUT),
+        content=tresc if isinstance(tresc, ft.Control) else ft.Column(tresc, spacing=SPACING["xs"]),
     )
 
     if not kolor_paska:
-        return ft.Card(elevation=1, content=kontener), kontener
-
-    karta = ft.Card(
-        elevation=1,
-        content=ft.Container(
-            border_radius=RADIUS["lg"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-            content=ft.Row([ft.Container(width=4, bgcolor=kolor_paska), kontener], spacing=0),
+        karta = ft.Container(
+            border_radius=RADIUS["lg"],
+            shadow=powierzchnia["shadow"],
+            content=kontener,
         )
+        return karta, kontener
+
+    karta = ft.Container(
+        border_radius=RADIUS["lg"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        shadow=powierzchnia["shadow"],
+        content=ft.Row([ft.Container(width=4, bgcolor=kolor_paska), kontener], spacing=0),
     )
     return karta, kontener
+
+def z_efektem_nacisniecia(kontener: ft.Container, funkcja):
+    """Owija istniejący handler (on_click / on_long_press) tym samym efektem
+    'naciśnięcia' co `fab_animowany` — karta na chwilę się zmniejsza i wraca.
+    `kontener` musi pochodzić z `karta_listy` (ma już scale/animate_scale).
+    W widoku, zamiast:
+        kontener.on_click = _on_click
+    użyj:
+        kontener.on_click = utils.z_efektem_nacisniecia(kontener, _on_click)"""
+    async def wrapper(e):
+        kontener.scale = 0.97
+        kontener.update()
+        await asyncio.sleep(0.08)
+        kontener.scale = 1.0
+        kontener.update()
+        wynik = funkcja(e)
+        if asyncio.iscoroutine(wynik):
+            await wynik
+    return wrapper
 
 def z_odswiezaniem(page: ft.Page, kontrolki: list, funkcja_odswiez=None):
     """Owija kontrolki widoku w przewijaną kolumnę z przyciskiem odświeżania.
@@ -2088,7 +2147,7 @@ def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
             )
         )
     return ft.Container(
-        padding=4, border_radius=RADIUS["pill"], bgcolor=tlo_karty(page, "sm"),
+        padding=4, border_radius=RADIUS["pill"], bgcolor=tlo_karty(page, poziom=2),
         content=ft.Row(segmenty, spacing=4),
     )
 

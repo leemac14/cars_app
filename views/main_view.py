@@ -1359,17 +1359,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     )
                 ], spacing=4)
 
-            karta_struktury = ft.Card(
-                elevation=1,
-                content=ft.Container(
-                    padding=15,
-                    border_radius=10,
-                    content=ft.Column([
-                        segment_procentowy("⛽", "Paliwo", pal, proc_pal, ft.Colors.BLUE_700),
-                        segment_procentowy("🛠️", "Serwis i Naprawy", serw, proc_ser, ft.Colors.RED_700),
-                        segment_procentowy("🎫", "Inne Koszty", inn, proc_inn, ft.Colors.GREEN_700),
-                    ], spacing=12)
-                )
+            karta_struktury = ft.Container(
+                border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
+                **utils.powierzchnia_karty(self._page, "md"),
+                content=ft.Column([...], spacing=12)
             )
 
             dzisiaj = datetime.now()

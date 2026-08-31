@@ -342,7 +342,10 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                             ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))}  {utils.symbol_waluty()}", color=ft.Colors.RED_700, weight="bold")
                         ], spacing=6)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    ft.Text(f"Przebieg: {utils.formatuj_liczba(int(prz or 0), 0)} km  |  Mechanik: {str(wyk) if wyk else '-'}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Row([
+                        ft.Icon(ft.Icons.SPEED, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(f"{utils.formatuj_liczba(int(prz or 0), 0)} km", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], spacing=4),
                     ft.Text(f"Części: {czesci}", size=13, color=ft.Colors.PRIMARY),
                 ]
                 if czesci_magazynowe:

@@ -182,7 +182,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 self.tryb_zaznaczania = True
                 self.zaznacz_odznacz(pid, self.karty_ref[pid])
 
-        kontener.on_click = _on_click
+        kontener.on_click = utils.z_efektem_nacisniecia(kontener, _on_click)
         kontener.on_long_press = _on_long_press
 
         return karta
