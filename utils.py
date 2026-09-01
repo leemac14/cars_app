@@ -1497,11 +1497,11 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
     odswiez_tagi()
     return kontener_tagow, lambda: ",".join(wybrane)
 
-def wizualizacja_tagow(tagi_str, auto_id):
+def wizualizacja_tagow(tagi_str, auto_id, mapa_kolorow=None):
     if not tagi_str or str(tagi_str).strip() == "None":
-        return ft.Container() 
-        
-    wszystkie_kolory = {t[1]: t[2] for t in db.pobierz_tagi(auto_id)}
+        return ft.Container()
+
+    wszystkie_kolory = mapa_kolorow if mapa_kolorow is not None else {t[1]: t[2] for t in db.pobierz_tagi(auto_id)}
     tagi_lista = [t.strip() for t in str(tagi_str).split(",") if t.strip()]
     
     chipy = []
@@ -1557,9 +1557,14 @@ def znacznik_dodane_przez(nazwa):
 
 def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
     stan = {"telefon": None, "adres": None}
-    
+    cache_warsztatow = {"dane": None}
+
     def wpisy_warsztatow():
-        return db.pobierz_warsztaty(state.auto_id)
+        # Cache w obrębie życia tego komponentu — lista warsztatów nie
+        # zmienia się, dopóki formularz jest otwarty, więc wystarczy jeden SELECT.
+        if cache_warsztatow["dane"] is None:
+            cache_warsztatow["dane"] = db.pobierz_warsztaty(state.auto_id)
+        return cache_warsztatow["dane"]
 
     warsztaty = wpisy_warsztatow()
     pasujacy_start = next((w for w in warsztaty if w[1] == aktualna_nazwa), None) if aktualna_nazwa else None

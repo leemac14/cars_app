@@ -885,7 +885,18 @@ class FormularzInterwalView(ft.View):
         self.e_ik.error_text = None
         self.e_im.error_text = None
         vk, vm = utils.parsuj_int(self.e_ik.value, None), utils.parsuj_int(self.e_im.value, None)
-        if not vk and not vm: return utils.pokaz_bledy_formularza(self._page, [(self.e_ik, "Podaj wartość")])
+
+        if not vk and not vm:
+            return utils.pokaz_bledy_formularza(self._page, [(self.e_ik, "Podaj wartość")])
+
+        bledy = []
+        if vk is not None and vk <= 0:
+            bledy.append((self.e_ik, "Wartość musi być dodatnia"))
+        if vm is not None and vm <= 0:
+            bledy.append((self.e_im, "Wartość musi być dodatnia"))
+        if bledy:
+            return utils.pokaz_bledy_formularza(self._page, bledy)
+
         with db.polacz_baze() as conn: conn.execute("UPDATE zadania SET interwal_km=?, interwal_miesiace=? WHERE id=?", (vk, vm, self.z_id))
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano interwały.")

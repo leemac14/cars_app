@@ -330,6 +330,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         if not wizyty_lista:
             elementy.append(ft.Row([ft.Text("Brak wizyt dla wybranych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
         else:
+            mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
             for w in wizyty_lista:
                 w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez, zmodyfikowane_przez, data_modyfikacji = w
                 czesci = czesci or "Brak podpiętych części"
@@ -352,7 +353,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 if czesci_magazynowe:
                     tresc_karty.append(ft.Text(f"Z magazynu: {', '.join(czesci_magazynowe)}", size=13, color=ft.Colors.TEAL_700))
                 if tagi:
-                    tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id))
+                    tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id, mapa_tagow))
                 if wspolny_id and (dodane_przez or zmodyfikowane_przez):
                     tresc_karty.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
 

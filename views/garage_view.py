@@ -504,8 +504,7 @@ class FormularzOponyView(ft.View):
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
-        if glebokosc is not None and glebokosc < 1.6:
-            utils.pokaz_komunikat(self._page, "Uwaga: głębokość bieżnika poniżej ustawowego minimum (1.6 mm)!", ft.Colors.ORANGE_700)
+        bieznik_nizki = glebokosc is not None and glebokosc < 1.6
 
         dot = (self.e_dot.value or "").strip()
         przebieg_zakupu = utils.parsuj_int(self.e_pz.value, None) if (self.e_pz.value or "").strip() else None
@@ -542,7 +541,14 @@ class FormularzOponyView(ft.View):
                 conn.execute("UPDATE zestawy_opon SET zamontowane=0 WHERE id=?", (self.zestaw_id,))
 
         utils.przejdz(self._page, "/magazyn")
-        utils.pokaz_komunikat(self._page, "Zapisano zestaw opon!")
+        if bieznik_nizki:
+            utils.pokaz_komunikat(
+                self._page,
+                "Zapisano zestaw opon! Uwaga: głębokość bieżnika poniżej ustawowego minimum (1.6 mm).",
+                ft.Colors.ORANGE_700
+            )
+        else:
+            utils.pokaz_komunikat(self._page, "Zapisano zestaw opon!")
 
 
 class FormularzCzesciView(ft.View):

@@ -1817,8 +1817,9 @@ def pobierz_warsztaty(auto_id):
 
 def dodaj_warsztat(auto_id, nazwa, telefon=None, adres=None, notatki=None):
     """Dodaje warsztat per pojazd. Jeśli warsztat o tej samej nazwie (bez
-    uwzględniania wielkości liter) już istnieje, zwraca jego id zamiast
-    tworzyć duplikat — analogicznie do dodaj_tag()."""
+    uwzględniania wielkości liter i białych znaków na brzegach) już istnieje,
+    zwraca jego id zamiast tworzyć duplikat — analogicznie do dodaj_tag()."""
+    nazwa = (nazwa or "").strip()
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute("SELECT id FROM warsztaty WHERE auto_id=? AND LOWER(nazwa)=LOWER(?)", (auto_id, nazwa))

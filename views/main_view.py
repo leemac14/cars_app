@@ -1074,6 +1074,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             if not po_filtrach:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
+                mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
                 for w in po_filtrach:
                     spalanie = w.get('spalanie')
                     sp_str = utils.formatuj_spalanie(spalanie)
@@ -1100,7 +1101,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     ]
                     if w.get('tagi'):
-                        tresc_karty.append(utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id))
+                        tresc_karty.append(utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id, mapa_tagow))
                     if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
                         tresc_karty.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
 
@@ -1211,6 +1212,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             if not po_filtrach:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
+                mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
                 for w in po_filtrach:
                     cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
                     tagi_str = str(w.get('tagi') or w.get('kategoria') or "Brak tagów")
@@ -1224,7 +1226,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                             ], spacing=6)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(str(w.get('nazwa')) if w.get('nazwa') else "Brak opisu", size=16, weight="bold"),
-                        utils.wizualizacja_tagow(w.get('tagi') or w.get('kategoria'), self.state.auto_id)
+                        utils.wizualizacja_tagow(w.get('tagi') or w.get('kategoria'), self.state.auto_id, mapa_tagow)
                     ]
                     if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
                         tresc_i.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
