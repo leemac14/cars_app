@@ -64,6 +64,8 @@ TYPY_ZDJECIA = ["Brak", "Przed naprawą", "Po naprawie"]
 
 OSIE_MONTAZU = ["Wszystkie", "Przód", "Tył"]
 
+KOLEJNOSC_TRYBOW_MOTYWU = ["jasny", "ciemny", "system"]
+
 @contextmanager
 def polacz_baze():
     conn = sqlite3.connect(BAZA_DANYCH)
@@ -390,6 +392,18 @@ def zapisz_ustawienie(klucz, wartosc):
             "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc",
             (klucz, wartosc)
         )
+
+def pobierz_tryb_motywu():
+    """Zwraca 'jasny' / 'ciemny' / 'system'. Jeśli nowy klucz nie był jeszcze
+    zapisany, migruje w locie ze starego booleanowego 'tryb_ciemny'."""
+    w = pobierz_ustawienie("tryb_motywu")
+    if w in KOLEJNOSC_TRYBOW_MOTYWU:
+        return w
+    return "ciemny" if pobierz_ustawienie("tryb_ciemny", "0") == "1" else "jasny"
+
+def zapisz_tryb_motywu(tryb):
+    if tryb in KOLEJNOSC_TRYBOW_MOTYWU:
+        zapisz_ustawienie("tryb_motywu", tryb)
 
 def pobierz_walute():
     w = pobierz_ustawienie("waluta", "PLN")

@@ -279,14 +279,9 @@ class PorownanieView(ft.View):
             else:
                 pasek_kolor, znacznik = kolor_auta, ""
 
-            wiersze.append(ft.Column([
-                ft.Row([
-                    ft.Text(nazwa, size=12, weight="bold", expand=True, no_wrap=True),
-                    ft.Text(f"{utils.formatuj_liczba(wartosc, decimale)} {jednostka}{znacznik}", size=12, weight="bold", color=pasek_kolor)
-                ]),
-                ft.ProgressBar(value=max(0.03, proporcja), color=pasek_kolor,
-                               bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=8, border_radius=4)
-            ], spacing=4))
+            wiersze.append(utils.pasek_postepu(
+                nazwa, f"{utils.formatuj_liczba(wartosc, decimale)} {jednostka}{znacznik}", proporcja, pasek_kolor
+            ))
 
         return ft.Column([
             ft.Text(etykieta, size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),

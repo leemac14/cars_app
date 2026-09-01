@@ -324,7 +324,8 @@ class FormularzDoZrobieniaView(ft.View):
             **utils.styl_dropdown()
         )
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if pozycja_id else "Nowa pozycja", "/do-zrobienia", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if pozycja_id else "Nowa pozycja", "/do-zrobienia", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         k1 = utils.karta_formularza([self.e_tytul, self.e_opis, self.e_priorytet], "Co i jak pilnie", ft.Icons.CHECKLIST_RTL)
         k2 = utils.karta_formularza([self.e_koszt, self.e_termin], "Koszt i termin", ft.Icons.EVENT)
@@ -336,6 +337,13 @@ class FormularzDoZrobieniaView(ft.View):
             route=f"/do-zrobienia/edytuj/{pozycja_id}" if pozycja_id else "/do-zrobienia/nowe",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_tytul.value, self.e_opis.value, self.e_priorytet.value,
+                self.e_koszt.value, self.e_termin.value, self.e_zadanie.value)
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         self.e_tytul.error_text = None

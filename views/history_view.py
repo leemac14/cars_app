@@ -110,6 +110,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon/faktura)", "akcja": dodaj_zmien_zdj})
                 
                 pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{h_id}")})
+                pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_wpis", h_id), utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))})
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": ft.Colors.RED})
 
                 utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)

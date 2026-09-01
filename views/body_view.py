@@ -274,8 +274,10 @@ class FormularzZdjecieKaroseriiView(ft.View):
         self.e_typ = ft.Dropdown(label="Typ zdjęcia", options=[ft.DropdownOption(t) for t in db.TYPY_ZDJECIA], value=typ_val, **utils.styl_dropdown())
         self.e_opis = ft.TextField(label="Opis / Notatki", value=opis_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
 
+        self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "Edycja wpisu galerii" if wpis_id else "Nowe zdjęcia do rejestru", "/karoseria", on_save=self.zapisz
+            page, "Edycja wpisu galerii" if wpis_id else "Nowe zdjęcia do rejestru", "/karoseria",
+            on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono
         )
 
         if wpis_id:
@@ -300,6 +302,15 @@ class FormularzZdjecieKaroseriiView(ft.View):
             route=f"/karoseria/edytuj/{wpis_id}" if wpis_id else "/karoseria/nowe",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        podstawa = (self.e_d.value, self.e_p.value, self.e_strefa.value, self.e_typ.value, self.e_opis.value)
+        if self.wpis_id:
+            return podstawa
+        return podstawa + (tuple(self.get_wiele_zdjec() or []),)
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         for pole in (self.e_p, self.e_strefa, self.e_typ, self.e_opis): pole.error_text = None

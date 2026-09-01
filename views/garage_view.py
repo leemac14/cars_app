@@ -461,7 +461,8 @@ class FormularzOponyView(ft.View):
         self.e_cena = ft.TextField(label=f"Koszt zakupu ({utils.symbol_waluty()})", value=cena_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja zestawu opon" if zestaw_id else "Nowy zestaw opon", "/magazyn", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja zestawu opon" if zestaw_id else "Nowy zestaw opon", "/magazyn", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza([self.e_sezon, self.e_rozmiar, self.e_marka], "Specyfikacja opony", ft.Icons.INFO_OUTLINE, domyslnie_otwarte=True)
         k2 = utils.karta_formularza([self.e_gl, self.e_dp, self.e_dot, self.e_il, self.e_zam, self.e_os], "Stan i pomiary", ft.Icons.SEARCH)
@@ -478,6 +479,14 @@ class FormularzOponyView(ft.View):
             controls=elementy, 
             scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value, self.e_gl.value,
+                self.e_dp.value, self.e_dot.value, self.e_il.value, self.e_zam.value, self.e_os.value,
+                self.e_dz.value, self.e_pz.value, self.e_cena.value, self.e_not.value)
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         for pole in (self.e_gl, self.e_il, self.e_cena):
@@ -602,7 +611,8 @@ class FormularzCzesciView(ft.View):
         self.e_data = utils.pole_daty(page, "Data zakupu", data_val)
         self.e_not = ft.TextField(label="Notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if czesc_id else "Nowa część / płyn", "/magazyn", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if czesc_id else "Nowa część / płyn", "/magazyn", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         wiersz_ilosc = ft.Row([ft.Container(self.e_ilosc, expand=True), ft.Container(self.e_jedn, expand=True)], spacing=10)
 
@@ -617,6 +627,13 @@ class FormularzCzesciView(ft.View):
             route=f"/magazyn/czesci/edytuj/{czesc_id}" if czesc_id else "/magazyn/czesci/nowa",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_nazwa.value, self.e_kat.value, self.e_ilosc.value, self.e_jedn.value,
+                self.e_prog.value, self.e_cena.value, self.e_data.value, self.e_not.value)
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         for pole in (self.e_nazwa, self.e_ilosc, self.e_cena, self.e_prog):

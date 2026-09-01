@@ -907,8 +907,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 for z in po_filtrach:
                     kol, ico = ft.Colors.GREEN_700, ft.Icons.CHECK_CIRCLE  # domyślny status
                     stxt = []
+                    procent_km = None
                     if z.get('interwal_km') and z.get('przebieg'):
-                        zost_km = (int(z.get('przebieg')) + int(z.get('interwal_km'))) - akt_prz
+                        interwal_km = int(z.get('interwal_km'))
+                        zost_km = (int(z.get('przebieg')) + interwal_km) - akt_prz
+                        procent_km = (interwal_km - zost_km) / interwal_km if interwal_km > 0 else None
                         if zost_km < 0:
                             stxt.append(f"{utils.formatuj_liczba(abs(zost_km), 0)} km po!")
                             kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
@@ -943,11 +946,16 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     zid = z.get('id')
                     zn = z.get('nazwa')
 
+                    wiersz_statusu = (
+                        utils.pasek_postepu(final_status, f"{int(max(0.0, min(1.0, procent_km)) * 100)}%", procent_km, kol)
+                        if procent_km is not None
+                        else ft.Text(final_status, size=utils.FS["body_strong"], weight="bold", color=kol)
+                    )
                     karta_z, kontener = utils.karta_listy(
                         ft.Column([
                             ft.Row([ft.Text(str(zn), weight="bold", size=utils.FS["title"], expand=True), ft.Icon(ico, color=kol)]),
                             ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
-                            ft.Text(final_status, size=utils.FS["body_strong"], weight="bold", color=kol)
+                            wiersz_statusu
                         ]),
                         kolor_paska=kol,
                         page=self._page,
@@ -1067,6 +1075,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon)", "akcja": dodaj_zmien_zdj})
 
                 pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/tankowanie/edytuj/{tid}")})
+                pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_tankowanie", tid), utils.przejdz(self._page, "/tankowanie/nowe"))})
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": ft.Colors.RED})
 
                 utils.pokaz_menu_kontekstowe(self._page, "Opcje tankowania", pozycje)

@@ -229,7 +229,8 @@ class FormularzAutoView(ft.View):
         self.e_gas = utils.pole_daty(page, "Ważność gaśnicy", gas_val)
         self.e_apt = utils.pole_daty(page, "Ważność apteczki", apt_val)
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pojazdu" if auto_id else "Nowy pojazd", "/", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pojazdu" if auto_id else "Nowy pojazd", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         wiersz_auto = ft.Row([ft.Container(self.e_marka, expand=True), ft.Container(self.e_model, expand=True)], spacing=10)
         wiersz_wycieraczki = ft.Row([ft.Container(self.e_wp, expand=True), ft.Container(self.e_wt, expand=True)], spacing=10)
@@ -375,6 +376,21 @@ class FormularzAutoView(ft.View):
                 ft.Colors.RED_700
             )
 
+    def _migawka_formularza(self):
+        return (
+            self.e_marka.value, self.e_model.value, self.e_generacja.value,
+            self.e_rej.value, self.e_rok.value, self.e_vin.value, self.e_przebieg.value,
+            self.e_oc.value, self.e_pt.value, self.e_poj.value, self.e_moc.value,
+            self.e_pal.value, self.e_skrz.value, self.e_not.value,
+            self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
+            self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
+            self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value,
+            self.get_kolor(),
+        )
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy            
+
     def zapisz(self, e):
         for pole in (self.e_marka, self.e_model, self.e_rok, self.e_vin):
             pole.error_text = None
@@ -503,6 +519,10 @@ class FormularzTankowanieView(ft.View):
         self.t_id = t_id
         self._blokada_sync = False
 
+        duplikuj_id = getattr(state, "duplikuj_zrodlo_tankowanie", None) if not t_id else None
+        state.duplikuj_zrodlo_tankowanie = None  # zużywamy jednorazowo
+        zrodlo_id = t_id or duplikuj_id
+
         d_val = datetime.now().strftime("%d.%m.%Y")
         p_val, dys_val, l_val, k_val, stacja_val = "", "", "", "", ""
         pelna_val = True
@@ -512,8 +532,8 @@ class FormularzTankowanieView(ft.View):
         self.ostatni_prz = 0
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            if t_id:
-                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi FROM tankowania WHERE id=?", (t_id,))
+            if zrodlo_id:
+                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi FROM tankowania WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
                     d_val = str(w[0] or "")
@@ -538,6 +558,9 @@ class FormularzTankowanieView(ft.View):
                 res = c.fetchone()
                 if res and res[0]:
                     self.ostatni_prz = int(res[0])
+                if duplikuj_id:
+                    d_val = datetime.now().strftime("%d.%m.%Y")
+                    self.zalacznik_val = None
 
         def on_przebieg_changed(e):
             if self._blokada_sync:
@@ -593,7 +616,8 @@ class FormularzTankowanieView(ft.View):
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja tankowania" if t_id else "Nowe tankowanie", "/", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja tankowania" if t_id else "Nowe tankowanie", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         wiersz_przebiegu = ft.Row([
             ft.Container(self.e_p, expand=True),
@@ -614,6 +638,13 @@ class FormularzTankowanieView(ft.View):
             route=f"/tankowanie/edytuj/{t_id}" if t_id else "/tankowanie/nowe",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_d.value, self.e_p.value, self.e_dys.value, self.e_l.value,
+                self.e_k.value, self.c_pel.value, self.e_stacja.value, self.get_tagi())
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         for pole in (self.e_p, self.e_dys, self.e_l, self.e_k, self.e_stacja): pole.error_text = None
@@ -698,7 +729,8 @@ class FormularzInneView(ft.View):
         self.e_kw = ft.TextField(label=f"Kwota całkowita ({utils.symbol_waluty()})", value=kw_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja kosztu" if i_id else "Nowy koszt", "/", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja kosztu" if i_id else "Nowy koszt", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         k1 = utils.karta_formularza(
             [self.e_d, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi, self.e_o, self.e_kw], 
             "Szczegóły wydatku", ft.Icons.RECEIPT_LONG, domyslnie_otwarte=True, page=page
@@ -710,6 +742,12 @@ class FormularzInneView(ft.View):
             route=f"/inne/edytuj/{i_id}" if i_id else "/inne/nowy",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_d.value, self.get_tagi(), self.e_o.value, self.e_kw.value)
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         for pole in (self.e_o, self.e_kw): pole.error_text = None
@@ -788,7 +826,8 @@ class FormularzZadanieView(ft.View):
 
         self.c_dodaj_wymiane.on_change = toggle_wymiana
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja podzespołu" if z_id else "Nowy podzespół", "/", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja podzespołu" if z_id else "Nowy podzespół", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza([self.e_n, self.c_dotyczy_opon, self.c_dodaj_wymiane], "Śledzony podzespół", ft.Icons.HANDYMAN, domyslnie_otwarte=True, page=page)
         elementy = [k1, self.karta_wymiany, utils.przyciski_akcji(page, "✅ Zapisz podzespół", self.zapisz, "/")]
@@ -797,6 +836,13 @@ class FormularzZadanieView(ft.View):
             route=f"/zadanie/edytuj/{z_id}" if z_id else "/zadanie/nowy",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_n.value, self.c_dotyczy_opon.value, self.c_dodaj_wymiane.value,
+                self.e_d.value, self.e_p.value, self.e_c.value, self.get_wykonawca())
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         self.e_p.error_text = None
@@ -869,7 +915,8 @@ class FormularzInterwalView(ft.View):
         self.e_ik = ft.TextField(label="Co ile kilometrów (np. 15000)", value=ik, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_im = ft.TextField(label="Co ile miesięcy (np. 12)", value=im, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, f"Interwał: {nazwa}", "/", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, f"Interwał: {nazwa}", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         k1 = utils.karta_formularza([self.e_ik, self.e_im], "Odstępy między wymianami", ft.Icons.TIMER, domyslnie_otwarte=True, page=page)
         
         btn_czysc = ft.OutlinedButton("Wyczyść przypomnienia", on_click=self.usun_interwal, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15), width=float("inf"))
@@ -880,6 +927,12 @@ class FormularzInterwalView(ft.View):
             route=f"/interwal/{z_id}",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_ik.value, self.e_im.value)
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         self.e_ik.error_text = None
@@ -913,6 +966,8 @@ class FormularzWpisView(ft.View):
         self.state = state
         self.h_id = h_id
         self.z_id = z_id_param
+        duplikuj_id = getattr(state, "duplikuj_zrodlo_wpis", None) if not h_id else None
+        state.duplikuj_zrodlo_wpis = None
 
         if h_id:
             with db.polacz_baze() as conn:
@@ -936,15 +991,21 @@ class FormularzWpisView(ft.View):
         d_val, p_val, c_val, w_val, kat_val = datetime.now().strftime("%d.%m.%Y"), str(db.pobierz_aktualny_przebieg(self.state.auto_id) or ""), "", "", "Letnie"
         self.zalacznik_val = None  # <-- NOWE
 
-        if h_id:
+        duplikuj_id = getattr(state, "duplikuj_zrodlo_wpis", None) if not h_id else None
+        state.duplikuj_zrodlo_wpis = None  # zużywamy jednorazowo, niezależnie od wyniku
+
+        if h_id or duplikuj_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, zalacznik FROM historia WHERE id=?", (h_id,))
+                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, zalacznik FROM historia WHERE id=?", (h_id or duplikuj_id,))
                 w = c.fetchone()
                 if w:
                     d_val, p_val, c_val, w_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), str(w[3] or "")
                     if czy_opony and w[4]: kat_val = str(w[4])
                     self.zalacznik_val = w[5]  # <-- NOWE
+                    if duplikuj_id:
+                        d_val = datetime.now().strftime("%d.%m.%Y")
+                        self.zalacznik_val = None
 
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
         self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
@@ -963,7 +1024,8 @@ class FormularzWpisView(ft.View):
         )
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)  # <-- NOWE
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, f"{'Edycja' if h_id else 'Nowa wymiana'}: {nazwa}", self.trasa_powrotu, on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, f"{'Edycja' if h_id else 'Nowa wymiana'}: {nazwa}", self.trasa_powrotu, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / faktura)", ft.Icons.ATTACH_FILE)  # <-- NOWE
         
@@ -973,6 +1035,12 @@ class FormularzWpisView(ft.View):
             route=f"/wpis/edytuj/{h_id}" if h_id else f"/wpis/nowy/{self.z_id}",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_d.value, self.e_p.value, self.e_c.value, self.get_wykonawca(), self.e_kat.value)
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         for pole in (self.e_p, self.e_c): pole.error_text = None
@@ -1117,7 +1185,8 @@ class FormularzWizytyView(ft.View):
             on_change=_przelacz_magazyn
         )
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", "/wizyty", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", "/wizyty", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza(
             [self.e_d, self.e_p, self.k_wykonawca, self.e_k, self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
@@ -1305,6 +1374,18 @@ class FormularzWizytyView(ft.View):
             actions=[ft.TextButton("Zamknij", on_click=lambda e: utils.zamknij_dialog(self._page, dlg))]
         )
         utils.otworz_dialog(self._page, dlg)
+
+    def _migawka_formularza(self):
+        return (
+            self.e_d.value, self.e_p.value, self.get_wykonawca(), self.e_k.value, self.e_n.value,
+            self.get_tagi(), self.e_kat_wizyty.value,
+            tuple(chk.value for chk in self.chk_czesci),
+            self.c_uzyj_magazynu.value,
+            tuple((chk.value, pole.value) for chk, pole, _ in self.magazyn_kontrolki),
+        )
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         self.e_p.error_text = None

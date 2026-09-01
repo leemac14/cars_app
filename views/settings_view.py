@@ -91,7 +91,8 @@ class UstawieniaView(ft.View):
         ], spacing=8)
         # -----------------------
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "⚙️ Ustawienia aplikacji", "/", on_save=self.zapisz)
+        self._stan_poczatkowy = self._migawka_formularza()
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "⚙️ Ustawienia aplikacji", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         k1 = utils.karta_formularza(
             [self.e_waluta, self.e_jednostka, paleta_sekcja],
@@ -153,6 +154,13 @@ class UstawieniaView(ft.View):
             route="/ustawienia",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _migawka_formularza(self):
+        return (self.e_waluta.value, self.e_jednostka.value, self.e_prog_km.value, self.e_prog_dni.value,
+                self.e_moje_imie.value, self.wybrany_kolor, [chk.data for chk in self.checkboxy_kokpitu if chk.value])
+
+    def _czy_zmieniono(self):
+        return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
         db.zapisz_ustawienie("waluta", self.e_waluta.value)

@@ -859,9 +859,12 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.SETTINGS, color=ft.Colors.GREY, size=20), ft.Text("Ustawienia")]), on_click=lambda e: przejdz(page, "/ustawienia")))
     
-    ciemny = page.theme_mode == ft.ThemeMode.DARK
+    IKONY_TRYBU_MOTYWU = {"jasny": ft.Icons.LIGHT_MODE, "ciemny": ft.Icons.DARK_MODE, "system": ft.Icons.BRIGHTNESS_AUTO}
+    ETYKIETY_TRYBU_MOTYWU = {"jasny": "Tryb jasny", "ciemny": "Tryb ciemny", "system": "Tryb systemowy"}
+    obecny_tryb = db.pobierz_tryb_motywu()
+    nastepny_tryb = db.KOLEJNOSC_TRYBOW_MOTYWU[(db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny_tryb) + 1) % 3]
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.LIGHT_MODE if ciemny else ft.Icons.DARK_MODE, color=ft.Colors.YELLOW, size=20), ft.Text("Tryb jasny" if ciemny else "Tryb ciemny")]), on_click=cb_theme))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(IKONY_TRYBU_MOTYWU[nastepny_tryb], color=ft.Colors.YELLOW, size=20), ft.Text(ETYKIETY_TRYBU_MOTYWU[nastepny_tryb])]), on_click=cb_theme))
 
     nowoczesny_naglowek = ft.Row([
         ft.Container(
@@ -901,7 +904,24 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         ]
     )
 
-def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, akcje_dodatkowe=None):
+def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, akcje_dodatkowe=None, czy_zmieniono=None):
+    def wroc(e):
+        if czy_zmieniono and czy_zmieniono():
+            def wykonaj(e2):
+                zamknij_dialog(page, dlg)
+                przejdz(page, trasa_powrotu)
+            dlg = ft.AlertDialog(
+                title=ft.Text("Niezapisane zmiany"),
+                content=ft.Text("Masz niezapisane zmiany w formularzu. Wyjść bez zapisywania?"),
+                actions=[
+                    ft.TextButton("Anuluj", on_click=lambda e2: zamknij_dialog(page, dlg)),
+                    ft.TextButton("Wyjdź bez zapisywania", on_click=wykonaj, style=ft.ButtonStyle(color=ft.Colors.RED)),
+                ]
+            )
+            otworz_dialog(page, dlg)
+        else:
+            przejdz(page, trasa_powrotu)
+
     actions = []
     if on_save:
         actions.append(
@@ -927,10 +947,10 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
                             ft.Icon(ft.Icons.CANCEL, color=ft.Colors.RED, size=20), 
                             ft.Text("Anuluj i wróć")
                         ]), 
-                        on_click=lambda e: przejdz(page, trasa_powrotu)
+                        on_click=wroc
                     )
                 ],
-                                tooltip="Opcje formularza"
+                tooltip="Opcje formularza"
             )
         )
     if akcje_dodatkowe:
@@ -942,7 +962,7 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
         bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY),
         leading=ft.IconButton(
             icon=ft.Icons.ARROW_BACK,
-            on_click=lambda e: przejdz(page, trasa_powrotu)
+            on_click=wroc
         ),
         actions=actions
     )
@@ -2064,6 +2084,19 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
         content=ft.Row([ft.Container(width=4, bgcolor=kolor_paska), kontener], spacing=0),
     )
     return karta, kontener
+
+def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8):
+    """Wspólny 'wiersz postępu': etykieta + wartość nad kolorowym ProgressBar.
+    procent: 0.0-1.0 (spoza zakresu jest przycinane). Wydzielone z _pasek_porownania
+    (porownanie_view.py) — używane tam i na kartach zadań serwisowych (buduj_serwis)."""
+    return ft.Column([
+        ft.Row([
+            ft.Text(etykieta_lewa, size=12, weight="bold", expand=True, no_wrap=True),
+            ft.Text(etykieta_prawa, size=12, weight="bold", color=kolor)
+        ]),
+        ft.ProgressBar(value=max(0.03, min(1.0, procent)), color=kolor,
+                       bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=wysokosc, border_radius=4)
+    ], spacing=4)
 
 def z_efektem_nacisniecia(kontener: ft.Container, funkcja):
     """Owija istniejący handler (on_click / on_long_press) tym samym efektem

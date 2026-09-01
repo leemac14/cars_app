@@ -42,9 +42,14 @@ def main(page: ft.Page):
     kolor_ustawiony = db.pobierz_kolor_motywu()
     kolor_seed = utils.MAPA_KOLOROW.get(kolor_ustawiony, ft.Colors.INDIGO)
     
+    MAPA_TRYBU_MOTYWU = {"jasny": ft.ThemeMode.LIGHT, "ciemny": ft.ThemeMode.DARK, "system": ft.ThemeMode.SYSTEM}
+
+    def zastosuj_tryb_motywu():
+        page.theme_mode = MAPA_TRYBU_MOTYWU.get(db.pobierz_tryb_motywu(), ft.ThemeMode.LIGHT)
+
     page.theme = ft.Theme(color_scheme_seed=kolor_seed)
     page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
-    page.theme_mode = ft.ThemeMode.DARK if db.pobierz_ustawienie("tryb_ciemny", "0") == "1" else ft.ThemeMode.LIGHT
+    zastosuj_tryb_motywu()
 
     # Zapamiętujemy ostatnio zastosowany kolor motywu i auto, dla którego go
     # policzyliśmy — każdy pojazd może mieć teraz własny kolor interfejsu.
@@ -166,7 +171,7 @@ def main(page: ft.Page):
             kolor_seed = utils.MAPA_KOLOROW.get(kolor_biezacy, ft.Colors.INDIGO)
             page.theme = ft.Theme(color_scheme_seed=kolor_seed)
             page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
-            page.theme_mode = ft.ThemeMode.DARK if db.pobierz_ustawienie("tryb_ciemny", "0") == "1" else ft.ThemeMode.LIGHT
+            zastosuj_tryb_motywu()
             page.update()
             kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
             kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
@@ -357,9 +362,10 @@ def main(page: ft.Page):
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
 
     def przelacz_tryb(e=None):
-        nowy = ft.ThemeMode.LIGHT if page.theme_mode == ft.ThemeMode.DARK else ft.ThemeMode.DARK
-        page.theme_mode = nowy
-        db.zapisz_ustawienie("tryb_ciemny", "1" if nowy == ft.ThemeMode.DARK else "0")
+        obecny = db.pobierz_tryb_motywu()
+        nowy = db.KOLEJNOSC_TRYBOW_MOTYWU[(db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny) + 1) % 3]
+        db.zapisz_tryb_motywu(nowy)
+        zastosuj_tryb_motywu()
         utils.przejdz(page, page.route)
 
     # ---- SYSTEM ROUTINGU ----
