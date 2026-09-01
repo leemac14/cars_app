@@ -47,10 +47,6 @@ class KalkulatorTrasyView(ft.View):
                 kwota = float(ost_tank[0] or 0)
                 litry = float(ost_tank[1] or 1)
                 cena_paliwa_domyslna = kwota / litry
-            if ost_tank:
-                kwota = float(ost_tank[0] or 0)
-                litry = float(ost_tank[1] or 1)
-                cena_paliwa_domyslna = kwota / litry
 
         # Pola tekstowe (podpięte pod event on_change dla wyliczeń w locie)
         self.e_dystans = ft.TextField(label="Planowany dystans (km)", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())

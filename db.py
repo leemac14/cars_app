@@ -929,8 +929,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                     "typ": "magazyn", "tytul": m["nazwa"], "opis": opis,
                     "status": s, "trasa": "/magazyn",
                 })
-
-    kolejnosc = {"przeterminowane": 0, "pilne": 1}
+                
     wyniki.sort(key=lambda w: kolejnosc.get(w["status"], 2))
     return wyniki
 

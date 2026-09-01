@@ -292,6 +292,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         elementy.append(self.pole_wyszukiwarki)
 
         self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+        self.uzyj_wirtualizacji = True
         self.wszystkie_karty = []
         # ---------------------------------------------
 

@@ -1362,7 +1362,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             karta_struktury = ft.Container(
                 border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
                 **utils.powierzchnia_karty(self._page, "md"),
-                content=ft.Column([...], spacing=12)
+                content=ft.Column([
+                    segment_procentowy("⛽", "Paliwo", pal, proc_pal, ft.Colors.BLUE_700),
+                    segment_procentowy("🛠️", "Serwis", serw, proc_ser, ft.Colors.ORANGE_700),
+                    segment_procentowy("🎫", "Inne", inn, proc_inn, ft.Colors.GREEN_700),
+                ], spacing=12)
             )
 
             dzisiaj = datetime.now()
