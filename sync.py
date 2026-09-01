@@ -123,6 +123,7 @@ KONFIGURACJA_SYNC = [
     {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
     {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "data_zakupu", "notatki", "prog_ostrzezenia"], "fk": {}},
+    {"tabela": "wizyta_czesci_magazynu", "kolumny": ["ilosc_uzyta"], "fk": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
@@ -149,6 +150,19 @@ def _wypchnij_nagrobki(klient):
         except Exception:
             pass
 
+# Konflikty wykryte podczas bieżącej synchronizacji — rekordy nadpisane mimo że
+# zmieniły się niezależnie po obu stronach (edycja z dwóch urządzeń offline).
+# Czyszczone na starcie każdego synchronizuj_wszystko().
+_konflikty_biezacej_synchronizacji = []
+
+def _zarejestruj_konflikt(tabela):
+    _konflikty_biezacej_synchronizacji.append(tabela)
+
+def pobierz_konflikty_ostatniej_synchronizacji():
+    """Liczba rekordów nadpisanych przy ostatniej synchronizacji, których zdalna
+    wersja zmieniła się niezależnie od naszej — czyli edycja z dwóch urządzeń."""
+    return len(_konflikty_biezacej_synchronizacji)
+
 def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
     tabela = konfig["tabela"]
     kolumny = konfig["kolumny"]
@@ -173,6 +187,11 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
         zapytanie_nowe = (
             "SELECT h.* FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
             "WHERE z.auto_id=? AND h.zdalne_id IS NULL"
+        )
+    elif tabela == "wizyta_czesci_magazynu":
+        zapytanie_nowe = (
+            "SELECT wcm.* FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON wcm.wizyta_id = w.id "
+            "WHERE w.auto_id=? AND wcm.zdalne_id IS NULL"
         )
     else:
         zapytanie_nowe = f"SELECT * FROM {tabela} WHERE auto_id=? AND zdalne_id IS NULL"
@@ -199,6 +218,11 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
             "SELECT h.* FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
             "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
         )
+    elif tabela == "wizyta_czesci_magazynu":
+        zapytanie_istniejace = (
+            "SELECT wcm.* FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON wcm.wizyta_id = w.id "
+            "WHERE w.auto_id=? AND wcm.zdalne_id IS NOT NULL"
+        )
     else:
         zapytanie_istniejace = f"SELECT * FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
 
@@ -208,11 +232,24 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
         c.execute(zapytanie_istniejace, (auto_id,))
         istniejace = c.fetchall()
 
+    # NOWE: aktualne hashe po stronie serwera — do wykrycia, czy ktoś inny zmienił
+    # dany rekord niezależnie od nas (konflikt edycji z dwóch urządzeń offline).
+    zdalne_hashe_teraz = {}
+    if istniejace:
+        wynik_zdalne = klient.table("zdalne_rekordy").select("id,dane").eq("pojazd_id", wspolny_id).eq("tabela", tabela).execute()
+        zdalne_hashe_teraz = {r["id"]: _hash_zawartosci(r["dane"] or {}) for r in wynik_zdalne.data}
+
     for wiersz in istniejace:
         dane = zbuduj_dane(wiersz)
         nowy_hash = _hash_zawartosci(dane)
         if nowy_hash == wiersz["zdalny_hash"]:
             continue  # nic się nie zmieniło
+
+        hash_zdalny_teraz = zdalne_hashe_teraz.get(wiersz["zdalne_id"])
+        if hash_zdalny_teraz is not None and hash_zdalny_teraz != wiersz["zdalny_hash"]:
+            # Zdalna wersja zmieniła się niezależnie od naszej ostatniej synchronizacji —
+            # ktoś edytował ten sam rekord na innym urządzeniu offline. Zaraz go nadpiszemy.
+            _zarejestruj_konflikt(tabela)
 
         klient.rpc("aktualizuj_zdalny_rekord", {"p_id": wiersz["zdalne_id"], "p_dane": dane}).execute()
         with db.polacz_baze() as conn:
@@ -232,6 +269,12 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
             "SELECT h.id, h.zdalne_id, h.zdalny_hash FROM historia h "
             "JOIN zadania z ON h.zadanie_id = z.id "
             "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
+        )
+    elif tabela == "wizyta_czesci_magazynu":
+        zapytanie_znane = (
+            "SELECT wcm.id, wcm.zdalne_id, wcm.zdalny_hash FROM wizyta_czesci_magazynu wcm "
+            "JOIN wizyty w ON wcm.wizyta_id = w.id "
+            "WHERE w.auto_id=? AND wcm.zdalne_id IS NOT NULL"
         )
     else:
         zapytanie_znane = f"SELECT id, zdalne_id, zdalny_hash FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
@@ -287,7 +330,7 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
                         continue
             # -------------------------------------------------------------------------
             
-            if tabela != "historia":
+            if tabela not in ("historia", "wizyta_czesci_magazynu"):
                 wartosci["auto_id"] = auto_id
             wartosci["zdalne_id"] = zdalne_id
             wartosci["zdalny_hash"] = nowy_hash
@@ -366,6 +409,11 @@ def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
             "SELECT h.zdalne_id FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
             "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
         )
+    elif tabela == "wizyta_czesci_magazynu":
+        zapytanie_znane = (
+            "SELECT wcm.zdalne_id FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON wcm.wizyta_id = w.id "
+            "WHERE w.auto_id=? AND wcm.zdalne_id IS NOT NULL"
+        )
     else:
         zapytanie_znane = f"SELECT zdalne_id FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
 
@@ -396,7 +444,7 @@ def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
                     lokalny_fk = w[0] if w else None
             wartosci[pole_fk] = lokalny_fk
 
-        if tabela != "historia":
+        if tabela not in ("historia", "wizyta_czesci_magazynu"):
             wartosci["auto_id"] = auto_id
         wartosci["zdalne_id"] = zdalne_id
         wartosci["zdalny_hash"] = nowy_hash
@@ -440,6 +488,7 @@ def synchronizuj_wszystko(auto_id):
     # ----------------------------------------------------------------------
 
     klient, uid = _upewnij_sesje()
+    _konflikty_biezacej_synchronizacji.clear()
     _wypchnij_nagrobki(klient)
 
     wyslano = 0
@@ -470,6 +519,12 @@ def odlacz_wspoldzielenie(auto_id):
                 conn.execute(
                     "UPDATE historia SET zdalne_id=NULL, zdalny_hash=NULL "
                     "WHERE zadanie_id IN (SELECT id FROM zadania WHERE auto_id=?)",
+                    (auto_id,)
+                )
+            elif tabela == "wizyta_czesci_magazynu":
+                conn.execute(
+                    "UPDATE wizyta_czesci_magazynu SET zdalne_id=NULL, zdalny_hash=NULL "
+                    "WHERE wizyta_id IN (SELECT id FROM wizyty WHERE auto_id=?)",
                     (auto_id,)
                 )
             else:

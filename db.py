@@ -347,6 +347,17 @@ def init_db():
             # (patrz main_view.py: buduj_naglowek_auta).
             """
             ALTER TABLE samochody ADD COLUMN wiadomosc_statusu TEXT;
+            """,
+            # Wersja 25: Synchronizacja zużycia części z magazynu podczas wizyt
+            # (wizyta_czesci_magazynu) — dotąd tabela była celowo pomijana przez
+            # sync (patrz KONFIGURACJA_SYNC w sync.py), więc przy współdzielonym
+            # pojeździe zużycie części dodane offline na jednym urządzeniu nie
+            # pojawiało się na drugim. Bez auto_id, tak jak historia — dowiązanie
+            # do pojazdu tylko pośrednio przez wizyta_id -> wizyty.auto_id.
+            """
+            ALTER TABLE wizyta_czesci_magazynu ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE wizyta_czesci_magazynu ADD COLUMN zdalny_hash TEXT;
+            CREATE INDEX IF NOT EXISTS idx_wizyta_czesci_magazynu_zdalne ON wizyta_czesci_magazynu(zdalne_id);
             """
         ]
 
@@ -2396,7 +2407,7 @@ def usun_auto_z_cofnieciem(auto_id):
     TABELE_SYNCHRONIZOWANE_AUTA = [
         "zadania", "wizyty", "magazyn_czesci", "tankowania", "inne_koszty",
         "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
-        "do_zrobienia", "historia", "tagi",
+        "do_zrobienia", "historia", "tagi", "wizyta_czesci_magazynu",
     ]
     zdalne_id_do_usuniecia = []
     for tab in TABELE_SYNCHRONIZOWANE_AUTA:

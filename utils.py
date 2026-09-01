@@ -264,7 +264,15 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
         try:
             wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, auto_id)
             przejdz(page, trasa_powrotu)
-            pokaz_komunikat(page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+            konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
+            if konflikty:
+                pokaz_komunikat(
+                    page,
+                    f"Wykryto edycję z dwóch urządzeń w {konflikty} rekordach — zachowano wersję z tego urządzenia.",
+                    ft.Colors.AMBER_700
+                )
+            else:
+                pokaz_komunikat(page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
         except Exception as ex:
             pokaz_komunikat(page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
     return _synchronizuj
