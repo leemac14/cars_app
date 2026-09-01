@@ -12,6 +12,7 @@ class AppState:
         self.wybrane_zadanie_id = None
         self.duplikuj_zrodlo_tankowanie = None
         self.duplikuj_zrodlo_wpis = None
+        self.duplikuj_zrodlo_koszt = None
         self.wybrane_zadanie_nazwa = ""
         self.powiadomienia_widziane = {}   # zamiast pojedynczej sygnatury
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny

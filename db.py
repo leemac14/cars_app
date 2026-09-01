@@ -713,6 +713,35 @@ def sprawdz_czy_tankowanie_duplikat(auto_id, data_str, przebieg, kwota, wyklucz_
         )
     return None
 
+def sprawdz_czy_koszt_duplikat(auto_id, data_str, nazwa, kwota, wyklucz_id=None):
+    """Zwraca ostrzeżenie (str), jeśli dla tego pojazdu istnieje już inny koszt
+    z DOKŁADNIE tą samą datą, opisem i kwotą — częsty efekt podwójnego zapisu
+    tego samego wpisu (np. dubel kliknięcia „Zapisz”). Analogicznie do
+    sprawdz_czy_tankowanie_duplikat: nie blokuje zapisu samodzielnie, tylko
+    sygnalizuje możliwy duplikat do potwierdzenia przez użytkownika."""
+    if not auto_id or not data_str:
+        return None
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        wyklucz_sql = " AND id != ?" if wyklucz_id else ""
+        params = [auto_id, data_str, (nazwa or "").strip(), float(kwota or 0)]
+        if wyklucz_id:
+            params.append(wyklucz_id)
+        c.execute(
+            f"SELECT id FROM inne_koszty WHERE auto_id=? AND data=? AND nazwa=? AND kwota=?{wyklucz_sql}",
+            params
+        )
+        istnieje = c.fetchone()
+
+    if istnieje:
+        import utils
+        return (
+            f"Uwaga: masz już zapisany koszt „{nazwa}” z {data_str} na kwotę "
+            f"{utils.formatuj_liczba(kwota, 2)} {pobierz_walute()}. Czy to nie duplikat?"
+        )
+    return None
+
 def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
     if not auto_id:
         return None
@@ -785,9 +814,10 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None):
     """Zapisuje szybki, ręczny odczyt licznika (np. z deski rozdzielczej) w osobnym
     dzienniku — bez tworzenia sztucznego tankowania czy wpisu serwisowego tylko po
     to, by odświeżyć aktualny przebieg. Jeśli w danym dniu istnieje już odczyt,
-    aktualizuje go zamiast duplikować."""
+    aktualizuje go zamiast duplikować. Zwraca True, jeśli nadpisano istniejący
+    wpis z tego dnia, False, jeśli dodano zupełnie nowy."""
     if not auto_id or not przebieg or przebieg <= 0:
-        return
+        return False
     if not data_str:
         data_str = datetime.now().strftime("%d.%m.%Y")
 
@@ -797,8 +827,10 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None):
         w = c.fetchone()
         if w:
             conn.execute("UPDATE odczyty_przebiegu SET przebieg=? WHERE id=?", (przebieg, w[0]))
+            return True
         else:
             conn.execute("INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)", (auto_id, data_str, przebieg))
+            return False
 
 def aktualizuj_odczyt_przebiegu(odczyt_id, przebieg, data_str):
     """Edycja konkretnego, istniejącego odczytu (z poziomu listy historii) —
@@ -933,8 +965,6 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                     "status": s, "trasa": None, "wydatek_id": wc["id"],
                 })
 
-        kolejnosc = {"przeterminowane": 0, "pilne": 1}
-
         # Niski stan magazynu (części i płyny) — indywidualny próg per pozycja,
         # z fallbackiem na wspólną wartość domyślną dla starszych wpisów bez własnego progu.
         import utils
@@ -954,7 +984,9 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                     "typ": "magazyn", "tytul": m["nazwa"], "opis": opis,
                     "status": s, "trasa": "/magazyn",
                 })
-                
+
+    kolejnosc = {"przeterminowane": 0, "pilne": 1}
+    
     wyniki.sort(key=lambda w: kolejnosc.get(w["status"], 2))
     return wyniki
 
@@ -1369,7 +1401,21 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
                 "data": r["nastepna_data"] or "", "trasa": "__wydatki_cykliczne__",
             })
 
+        # NOWE: Podzespoły — samodzielna kategoria, bo świeżo dodany podzespół bez
+        # ŻADNEJ historii wymiany (powyższy JOIN wymaga wpisu w historii) był dotąd
+        # całkowicie niewidoczny dla wyszukiwarki.
+        c.execute(
+            "SELECT id, nazwa FROM zadania WHERE auto_id=? AND nazwa LIKE ?",
+            (auto_id, q)
+        )
+        for r in c.fetchall():
+            wyniki.append({
+                "typ": "Podzespół", "tytul": str(r["nazwa"]), "opis": "Śledzony podzespół",
+                "data": "", "trasa": f"/historia/{r['id']}",
+            })
+
     wyniki.sort(key=lambda w: parsuj_date(w["data"]), reverse=True)
+
     return wyniki
 
 def pobierz_dane_timeline(auto_id):
@@ -1963,11 +2009,21 @@ def pobierz_uzyte_czesci_wizyty(wizyta_id):
         return c.fetchall()
 
 def przywroc_czesci_wizyty(wizyta_id, conn=None):
+    """Oddaje do magazynu wykorzystane wcześniej części i usuwa powiązania
+    wizyta_czesci_magazynu. Zwraca listę zdalne_id usuniętych powiązań —
+    WYWOŁUJĄCY musi je zarejestrować jako nagrobki (zarejestruj_nagrobek)
+    DOPIERO PO zamknięciu/commicie bieżącej transakcji (conn). Rejestracja
+    w środku otwartej transakcji otworzyłaby drugie połączenie do tego
+    samego pliku SQLite i mogłaby zakleszczyć bazę."""
+    usuniete_zdalne_id = []
+
     def _wykonaj(c):
         cur = c.cursor()
-        cur.execute("SELECT magazyn_id, ilosc_uzyta FROM wizyta_czesci_magazynu WHERE wizyta_id=?", (wizyta_id,))
-        for magazyn_id, ilosc in cur.fetchall():
+        cur.execute("SELECT magazyn_id, ilosc_uzyta, zdalne_id FROM wizyta_czesci_magazynu WHERE wizyta_id=?", (wizyta_id,))
+        for magazyn_id, ilosc, zdalne_id in cur.fetchall():
             cur.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (ilosc, magazyn_id))
+            if zdalne_id:
+                usuniete_zdalne_id.append(zdalne_id)
         cur.execute("DELETE FROM wizyta_czesci_magazynu WHERE wizyta_id=?", (wizyta_id,))
 
     if conn is not None:
@@ -1975,6 +2031,8 @@ def przywroc_czesci_wizyty(wizyta_id, conn=None):
     else:
         with polacz_baze() as conn_local:
             _wykonaj(conn_local)
+
+    return usuniete_zdalne_id
 
 def rozlicz_czesci_z_magazynu(wizyta_id, uzyte, conn=None):
     if not uzyte:
@@ -2037,6 +2095,10 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
     if zdalny_id_czesci:
         zarejestruj_nagrobek("magazyn_czesci", zdalny_id_czesci)
 
+    zdalne_id_uzycia = [d.get("zdalne_id") for d in uzycia_dane if d.get("zdalne_id")]
+    for zid in zdalne_id_uzycia:
+        zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
@@ -2046,6 +2108,8 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
 
         if zdalny_id_czesci:
             usun_nagrobek(zdalny_id_czesci)
+        for zid in zdalne_id_uzycia:
+            usun_nagrobek(zid)
         
         if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
             try:
@@ -2281,10 +2345,13 @@ def usun_wizyty_z_cofnieciem(ids_list):
 
     zdalne_id_wizyt = [d.get("zdalne_id") for d in wizyty_dane if d.get("zdalne_id")]
     zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
+    zdalne_id_czesci = [d.get("zdalne_id") for d in czesci_dane if d.get("zdalne_id")]
     for zid in zdalne_id_wizyt:
         zarejestruj_nagrobek("wizyty", zid)
     for zid in zdalne_id_historii:
         zarejestruj_nagrobek("historia", zid)
+    for zid in zdalne_id_czesci:
+        zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -2295,6 +2362,8 @@ def usun_wizyty_z_cofnieciem(ids_list):
         for zid in zdalne_id_wizyt:
             usun_nagrobek(zid)
         for zid in zdalne_id_historii:
+            usun_nagrobek(zid)
+        for zid in zdalne_id_czesci:
             usun_nagrobek(zid)
 
         for tmp, oryg in sciezki_tymczasowe:

@@ -516,6 +516,23 @@ def sprawdz_duplikat_tankowania(page: ft.Page, pole_kwoty: ft.TextField, auto_id
     pole_kwoty._duplikat_potwierdzony = None
     return False
 
+def sprawdz_duplikat_kosztu(page: ft.Page, pole_kwoty: ft.TextField, auto_id, data_str, nazwa, kwota, wyklucz_id=None):
+    """Analogicznie do sprawdz_duplikat_tankowania — ostrzega, jeśli identyczny
+    koszt (data+nazwa+kwota) już istnieje, zamiast cicho zapisać potencjalny
+    duplikat. Zwraca True, jeśli zapis należy przerwać."""
+    klucz = (data_str, nazwa, kwota)
+    ostrzezenie = db.sprawdz_czy_koszt_duplikat(auto_id, data_str, nazwa, kwota, wyklucz_id=wyklucz_id)
+
+    if ostrzezenie and getattr(pole_kwoty, "_duplikat_potwierdzony", None) != klucz:
+        pole_kwoty._duplikat_potwierdzony = klucz
+        pole_kwoty.error_text = "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić"
+        page.update()
+        pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
+        return True
+
+    pole_kwoty._duplikat_potwierdzony = None
+    return False
+
 def przycisk_sortowania(page: ft.Page, state, klucz_stanu, opcje):
     pole_akt, malejaco_akt = state.sort.setdefault(klucz_stanu, (opcje[0][1], False))
     

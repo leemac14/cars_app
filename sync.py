@@ -75,35 +75,56 @@ def utworz_udostepniony_pojazd(auto_id, nazwa):
     synchronizuj_wszystko(auto_id)
     return kod
 
+def _unikalna_nazwa_pojazdu(cur, nazwa_bazowa):
+    """Zwraca nazwę pojazdu różną (bez rozróżniania wielkości liter) od już
+    istniejących w tabeli samochody. Używane WYŁĄCZNIE przy dołączaniu do
+    współdzielonego pojazdu kodem (patrz dolacz_po_kodzie) — przy kolizji
+    nazwy zawsze dopisujemy odróżnik, zamiast kiedykolwiek próbować
+    "dopasować się" pod istniejący, prywatny wiersz."""
+    cur.execute("SELECT LOWER(nazwa) FROM samochody")
+    zajete = {r[0] for r in cur.fetchall()}
+    if nazwa_bazowa.lower() not in zajete:
+        return nazwa_bazowa
+    kandydat = f"{nazwa_bazowa} (współdzielony)"
+    if kandydat.lower() not in zajete:
+        return kandydat
+    i = 2
+    while f"{kandydat} {i}".lower() in zajete:
+        i += 1
+    return f"{kandydat} {i}"
+
 def dolacz_po_kodzie(kod):
     klient, uid = _upewnij_sesje()
     wynik = klient.rpc("dolacz_do_pojazdu", {"p_kod": kod.strip().upper()}).execute()
     if not wynik.data:
         raise ValueError("Nieprawidłowy kod zaproszenia.")
-        
+
     wspolny_id = wynik.data[0]["pojazd_id"]
-    nazwa = wynik.data[0]["nazwa"]
+    nazwa_zdalna = wynik.data[0]["nazwa"]
 
     with db.polacz_baze() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id FROM samochody WHERE LOWER(nazwa)=LOWER(?)", (nazwa,))
-        istniejace = cur.fetchone()
 
-        if istniejace:
-            nowy_auto_id = istniejace[0]
-            cur.execute(
-                "UPDATE samochody SET wspolny_pojazd_id=?, kod_zaproszenia=? WHERE id=?",
-                (wspolny_id, kod.strip().upper(), nowy_auto_id)
-            )
-        else:
-            cur.execute(
-                "INSERT INTO samochody (nazwa, wspolny_pojazd_id, kod_zaproszenia) VALUES (?,?,?)",
-                (nazwa, wspolny_id, kod.strip().upper())
-            )
-            nowy_auto_id = cur.lastrowid
+        # WAŻNE — bezpieczeństwo danych: NIGDY nie dopasowujemy po nazwie do
+        # istniejącego lokalnego pojazdu. Dwa różne auta o tej samej, popularnej
+        # nazwie (np. dwie "Škoda Octavia" różnych osób) mogłyby się przez to
+        # przypadkiem zlać w jeden wiersz — a zaraz potem synchronizuj_wszystko()
+        # poniżej wypchnęłoby CAŁĄ dotychczasową, prywatną historię lokalnego
+        # auta (tankowania, serwis, koszty...) do CUDZEGO współdzielonego
+        # pojazdu. Dołączenie po kodzie zawsze tworzy NOWY wiersz; przy kolizji
+        # nazwy dopisujemy odróżnik.
+        cur.execute("SELECT COUNT(*) FROM samochody WHERE LOWER(nazwa)=LOWER(?)", (nazwa_zdalna,))
+        kolizja_nazwy = cur.fetchone()[0] > 0
+        nazwa = _unikalna_nazwa_pojazdu(cur, nazwa_zdalna) if kolizja_nazwy else nazwa_zdalna
+
+        cur.execute(
+            "INSERT INTO samochody (nazwa, wspolny_pojazd_id, kod_zaproszenia) VALUES (?,?,?)",
+            (nazwa, wspolny_id, kod.strip().upper())
+        )
+        nowy_auto_id = cur.lastrowid
 
     synchronizuj_wszystko(nowy_auto_id)
-    return nowy_auto_id, nazwa
+    return nowy_auto_id, nazwa, kolizja_nazwy
 
 
 # ==================== UNIWERSALNA SYNCHRONIZACJA ====================

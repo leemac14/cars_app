@@ -180,8 +180,8 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 db.aktualizuj_odczyt_przebiegu(odczyt[0], nowy, e_data.value)
                 utils.pokaz_komunikat(self._page, "Zapisano zmiany!")
             else:
-                db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy, e_data.value)
-                utils.pokaz_komunikat(self._page, "Dodano odczyt przebiegu!")
+                nadpisano = db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy, e_data.value)
+                utils.pokaz_komunikat(self._page, "Zaktualizowano odczyt z tego dnia!" if nadpisano else "Dodano odczyt przebiegu!")
             utils.przejdz(self._page, "/przebieg")
 
         dlg = ft.AlertDialog(

@@ -709,17 +709,24 @@ class FormularzInneView(ft.View):
         self.state = state
         self.i_id = i_id
 
+        duplikuj_id = getattr(state, "duplikuj_zrodlo_koszt", None) if not i_id else None
+        state.duplikuj_zrodlo_koszt = None  # zużywamy jednorazowo
+        zrodlo_id = i_id or duplikuj_id
+
         d_val, op_val, kw_val, tagi_val = datetime.now().strftime("%d.%m.%Y"), "", "", ""
         self.zalacznik_val = None
-        if i_id:
+        if zrodlo_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, kategoria, nazwa, kwota, tagi, zalacznik FROM inne_koszty WHERE id=?", (i_id,))
+                c.execute("SELECT data, kategoria, nazwa, kwota, tagi, zalacznik FROM inne_koszty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
                     d_val, op_val, kw_val = str(w[0] or ""), str(w[2] or ""), str(w[3] or "")
                     tagi_val = str(w[4] or w[1] or "")
                     self.zalacznik_val = w[5]
+                    if duplikuj_id:
+                        d_val = datetime.now().strftime("%d.%m.%Y")
+                        self.zalacznik_val = None
         
         self.e_d = utils.pole_daty(page, "Data", d_val)
         
@@ -756,6 +763,9 @@ class FormularzInneView(ft.View):
         if not opis: bledy.append((self.e_o, "Podaj opis"))
         if kwo <= 0: bledy.append((self.e_kw, "Podaj kwotę"))
         if bledy: return utils.pokaz_bledy_formularza(self._page, bledy)
+
+        if utils.sprawdz_duplikat_kosztu(self._page, self.e_kw, self.state.auto_id, self.e_d.value, opis, kwo, wyklucz_id=self.i_id):
+            return
 
         wybrane_tagi = self.get_tagi()
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
@@ -1431,6 +1441,10 @@ class FormularzWizytyView(ft.View):
         wybrane_tagi = self.get_tagi()
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
+
+        zdalne_id_historii_do_nagrobka = []
+        zdalne_id_czesci_do_nagrobka = []
+
         with db.polacz_baze() as conn:
             cur = conn.cursor()
             if self.w_id:
@@ -1438,12 +1452,20 @@ class FormularzWizytyView(ft.View):
                 w_osoba = cur.fetchone()
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
                 cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
+
+                # Zapamiętujemy zdalne_id usuwanych wpisów historii — DELETE+INSERT
+                # niżej to z punktu widzenia sync'a "usunięcie starych + utworzenie
+                # nowych", więc stare zdalne_id muszą dostać nagrobek (rejestrujemy
+                # go dopiero po commicie tej transakcji, patrz niżej).
+                cur.execute("SELECT zdalne_id FROM historia WHERE wizyta_id=? AND zdalne_id IS NOT NULL", (self.w_id,))
+                zdalne_id_historii_do_nagrobka = [r[0] for r in cur.fetchall()]
+
                 cur.execute("DELETE FROM historia WHERE wizyta_id=?", (self.w_id,))
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
                     cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,0,?,?,?)", (self.w_id, zid, self.e_d.value, prz, wyk, kat, osoba_wizyty))
                 wizyta_id = self.w_id
-                db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
+                zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
             else:
                 osoba_wizyty = db.pobierz_moje_imie()
                 cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
@@ -1454,6 +1476,14 @@ class FormularzWizytyView(ft.View):
  
             db.rozlicz_czesci_z_magazynu(wizyta_id, nowe_uzyte, conn=conn)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+
+        # WAŻNE: rejestrujemy nagrobki dopiero PO zamknięciu/commicie transakcji
+        # `conn` powyżej — zarejestruj_nagrobek() otwiera własne połączenie do
+        # SQLite i wywołane w środku otwartej transakcji mogłoby zakleszczyć bazę.
+        for zid in zdalne_id_historii_do_nagrobka:
+            db.zarejestruj_nagrobek("historia", zid)
+        for zid in zdalne_id_czesci_do_nagrobka:
+            db.zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
 
         db.przelicz_wszystkie_zadania(self.state.auto_id)
         utils.przejdz(self._page, "/wizyty")

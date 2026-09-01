@@ -12,6 +12,7 @@ IKONY_WYSZUKIWANIA = {
     "Opony": (ft.Icons.TIRE_REPAIR, ft.Colors.INDIGO_700),
     "Warsztat": (ft.Icons.HANDYMAN, ft.Colors.BROWN_700),
     "Wydatek cykliczny": (ft.Icons.AUTORENEW, ft.Colors.CYAN_700),
+    "Podzespół": (ft.Icons.SETTINGS, ft.Colors.BLUE_GREY_700),
 }
 
 

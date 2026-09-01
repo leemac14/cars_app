@@ -83,7 +83,6 @@ class WspoldzielenieView(ft.View):
             scroll=ft.ScrollMode.AUTO, appbar=appbar, controls=elementy
         )
 
-    # --- NOWA FUNKCJA DO OBSŁUGI PRZYCISKU ---
     def _odlacz(self, e):
         def wykonaj():
             sync.odlacz_wspoldzielenie(self.state.auto_id)
@@ -121,12 +120,20 @@ class WspoldzielenieView(ft.View):
         async def _zrob():
             dlg = utils.pokaz_ladowanie(self._page, "Dołączanie do pojazdu...")
             try:
-                nowy_auto_id, nazwa = await asyncio.to_thread(sync.dolacz_po_kodzie, kod)
+                nowy_auto_id, nazwa, kolizja_nazwy = await asyncio.to_thread(sync.dolacz_po_kodzie, kod)
                 utils.ukryj_ladowanie(self._page, dlg)
                 self.state.auto_id = nowy_auto_id
                 self.state.auto_nazwa = nazwa
                 utils.przejdz(self._page, "/")
-                utils.pokaz_komunikat(self._page, f"Dołączono do pojazdu „{nazwa}”! Zaimportowano dotychczasowe tankowania.")
+                if kolizja_nazwy:
+                    utils.pokaz_komunikat(
+                        self._page,
+                        f"Dołączono jako nowy, osobny pojazd „{nazwa}”. Miałeś/aś już auto o tej samej "
+                        f"nazwie, więc dopisaliśmy odróżnik, żeby ich nie pomylić — to dwa niezależne pojazdy.",
+                        ft.Colors.ORANGE_700
+                    )
+                else:
+                    utils.pokaz_komunikat(self._page, f"Dołączono do pojazdu „{nazwa}”! Zaimportowano dotychczasowe tankowania.")
             except Exception as ex:
                 utils.ukryj_ladowanie(self._page, dlg)
                 utils.pokaz_komunikat(self._page, f"Błąd: {ex}", ft.Colors.RED_700)
