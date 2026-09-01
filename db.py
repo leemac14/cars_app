@@ -743,24 +743,24 @@ def sprawdz_czy_koszt_duplikat(auto_id, data_str, nazwa, kwota, wyklucz_id=None)
     return None
 
 def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
+    """Średni przebieg dzienny liczony na podstawie WSZYSTKICH źródeł przebiegu —
+    dokładnie tych samych, których używa pobierz_historie_przebiegu() (wykres
+    przebiegu w paszporcie PDF): tankowania, wizyty, pojedyncze wpisy historii
+    i ręczne odczyty. Wcześniej ta funkcja liczyła TYLKO z tankowań i odczytów
+    ręcznych — ktoś logujący wyłącznie wizyty serwisowe (bez tankowań w
+    aplikacji) zawsze dostawał None, a przez to znikały mu prognozy terminów
+    ("Zostanie ok. X dni") w powiadomieniach i na kartach podzespołów."""
     if not auto_id:
         return None
 
-    with polacz_baze() as conn:
-        c = conn.cursor()
-        c.execute("SELECT data, przebieg FROM tankowania WHERE auto_id=?", (auto_id,))
-        wiersze = c.fetchall()
-        c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
-        wiersze += c.fetchall()
-
-    punkty = [(parsuj_date(d), int(p)) for d, p in wiersze]
-    punkty = [p for p in punkty if p[0] != datetime.min.date()]
+    punkty = pobierz_historie_przebiegu(auto_id)
     if len(punkty) < 2:
         return None
 
-    punkty.sort(key=lambda p: p[0])
-    pierwsza_data, pierwszy_przebieg = punkty[0]
-    ostatnia_data, ostatni_przebieg = punkty[-1]
+    pierwsza_data = parsuj_date(punkty[0][0])
+    ostatnia_data = parsuj_date(punkty[-1][0])
+    pierwszy_przebieg = punkty[0][1]
+    ostatni_przebieg = punkty[-1][1]
 
     dni_roznica = (ostatnia_data - pierwsza_data).days
     km_roznica = ostatni_przebieg - pierwszy_przebieg
@@ -1150,6 +1150,41 @@ def pobierz_koszty_miesieczne(auto_id, liczba_miesiecy=6):
 
     return [(y, m, sumy[(y, m)]) for (y, m) in klucze]
 
+def pobierz_koszt_miesiaca_do_dnia(auto_id, rok, miesiac, do_dnia):
+    """Suma kosztów (paliwo + serwis + inne) dla danego miesiąca, ale TYLKO do
+    dnia `do_dnia` włącznie. Używane do uczciwego porównania 'ile wydałem w tym
+    miesiącu do dzisiaj' z analogicznym okresem poprzedniego miesiąca — zamiast
+    mylącego porównania niepełnego bieżącego miesiąca z CAŁYM poprzednim
+    (patrz MainView._buduj_kokpit -> widget_koszt_miesiac), które 2. dnia
+    miesiąca niemal zawsze pokazywało fałszywe "📉 Spada o 95%"."""
+    if not auto_id:
+        return 0.0
+
+    suma = 0.0
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        wiersze = []
+        c.execute("SELECT data, kwota FROM tankowania WHERE auto_id=?", (auto_id,))
+        wiersze += c.fetchall()
+        c.execute(
+            "SELECT h.data, h.cena FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        wiersze += c.fetchall()
+        c.execute("SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?", (auto_id,))
+        wiersze += c.fetchall()
+        c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        wiersze += c.fetchall()
+
+    for data_str, kwota in wiersze:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date():
+            continue
+        if d.year == rok and d.month == miesiac and d.day <= do_dnia:
+            suma += float(kwota or 0.0)
+
+    return suma
+
 def pobierz_trend_cen_paliwa(auto_id):
     """Cena za litr w czasie (do wykresu) oraz zestawienie średnich cen per
     stacja (do rankingu „najtańsza stacja, na której tankowałeś”). Uwzględnia
@@ -1308,6 +1343,23 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
             wyniki.append({
                 "typ": "Serwis", "tytul": str(r["nazwa"]), "opis": opis,
                 "data": r["data"], "trasa": f"/wpis/edytuj/{r['id']}",
+            })
+
+        c.execute(
+            "SELECT id, nazwa, interwal_km, interwal_miesiace FROM zadania "
+            "WHERE auto_id=? AND nazwa LIKE ?",
+            (auto_id, q)
+        )
+        for r in c.fetchall():
+            bits = []
+            if r["interwal_km"]:
+                bits.append(f"co {int(r['interwal_km'])} km")
+            if r["interwal_miesiace"]:
+                bits.append(f"co {int(r['interwal_miesiace'])} mies.")
+            opis = " • ".join(bits) if bits else "Brak ustawionego interwału"
+            wyniki.append({
+                "typ": "Podzespół", "tytul": str(r["nazwa"]), "opis": opis,
+                "data": "", "trasa": f"/historia/{r['id']}",
             })
 
         c.execute(

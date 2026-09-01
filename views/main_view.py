@@ -1,6 +1,7 @@
 import flet as ft
 import flet_charts as fc
 from datetime import datetime, timedelta
+import calendar
 import sqlite3
 import db
 import utils
@@ -100,6 +101,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             return ft.Container()
 
         SZER_KAFLA = 160
+        dzisiaj = datetime.now()
 
         # --- Dane wspólne, liczone tylko gdy faktycznie potrzebne przez wybrane widżety ---
         potrzebne_mc = {"koszt_miesiac", "wykres"} & set(wlaczone)
@@ -138,22 +140,42 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         def widget_koszt_miesiac():
             koszt_biezacy = dane_mc[-1][2] if dane_mc else 0.0
-            koszt_poprzedni = dane_mc[-2][2] if len(dane_mc) >= 2 else None
+            dzien_dzisiaj = dzisiaj.day
 
-            if koszt_poprzedni and koszt_poprzedni > 0:
-                zmiana = ((koszt_biezacy - koszt_poprzedni) / koszt_poprzedni) * 100
-                if zmiana > 5:
-                    t_ikona, t_kolor = ft.Icons.TRENDING_UP, ft.Colors.RED_700
-                    t_tekst = f"+{utils.formatuj_liczba(zmiana, 0)}%"
-                elif zmiana < -5:
-                    t_ikona, t_kolor = ft.Icons.TRENDING_DOWN, ft.Colors.GREEN_700
-                    t_tekst = f"{utils.formatuj_liczba(zmiana, 0)}%"
-                else:
-                    t_ikona, t_kolor = ft.Icons.TRENDING_FLAT, ft.Colors.ON_SURFACE_VARIANT
-                    t_tekst = "Podobnie"
-            else:
+            # W pierwszym tygodniu miesiąca nawet uczciwe porównanie dzień-do-dnia
+            # jest zbyt szumiące (1 tankowanie 2. dnia potrafi dać "+900%") — nie
+            # pokazujemy wtedy żadnej strzałki trendu, tylko neutralny stan.
+            if dzien_dzisiaj < 7 or not dane_mc:
                 t_ikona, t_kolor = ft.Icons.INFO_OUTLINE, ft.Colors.ON_SURFACE_VARIANT
-                t_tekst = "Brak danych"
+                t_tekst = "Za wcześnie na trend"
+            else:
+                rok_poprz, mies_poprz = dzisiaj.year, dzisiaj.month - 1
+                if mies_poprz <= 0:
+                    mies_poprz += 12
+                    rok_poprz -= 1
+                dni_w_poprz_miesiacu = calendar.monthrange(rok_poprz, mies_poprz)[1]
+                # Zabezpieczenie na 31. dzień miesiąca porównywanego z krótszym
+                # poprzednim miesiącem (np. 31 marca -> luty ma max 28/29 dni).
+                do_dnia = min(dzien_dzisiaj, dni_w_poprz_miesiacu)
+
+                koszt_poprzedni_do_dnia = db.pobierz_koszt_miesiaca_do_dnia(
+                    self.state.auto_id, rok_poprz, mies_poprz, do_dnia
+                )
+
+                if koszt_poprzedni_do_dnia > 0:
+                    zmiana = ((koszt_biezacy - koszt_poprzedni_do_dnia) / koszt_poprzedni_do_dnia) * 100
+                    if zmiana > 5:
+                        t_ikona, t_kolor = ft.Icons.TRENDING_UP, ft.Colors.RED_700
+                        t_tekst = f"+{utils.formatuj_liczba(zmiana, 0)}%"
+                    elif zmiana < -5:
+                        t_ikona, t_kolor = ft.Icons.TRENDING_DOWN, ft.Colors.GREEN_700
+                        t_tekst = f"{utils.formatuj_liczba(zmiana, 0)}%"
+                    else:
+                        t_ikona, t_kolor = ft.Icons.TRENDING_FLAT, ft.Colors.ON_SURFACE_VARIANT
+                        t_tekst = "Podobnie"
+                else:
+                    t_ikona, t_kolor = ft.Icons.INFO_OUTLINE, ft.Colors.ON_SURFACE_VARIANT
+                    t_tekst = "Brak danych"
 
             return ft.Container(
                 width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
@@ -908,6 +930,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     kol, ico = ft.Colors.GREEN_700, ft.Icons.CHECK_CIRCLE  # domyślny status
                     stxt = []
                     procent_km = None
+                    procent_dni = None
                     if z.get('interwal_km') and z.get('przebieg'):
                         interwal_km = int(z.get('interwal_km'))
                         zost_km = (int(z.get('przebieg')) + interwal_km) - akt_prz
@@ -926,7 +949,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     if z.get('interwal_miesiace') and z.get('data'):
                         d_w = utils.parsuj_date(z.get('data'))
                         if d_w != datetime.min.date():
-                            zost_dni = (d_w + timedelta(days=int(float(z.get('interwal_miesiace'))*30.5)) - datetime.now().date()).days
+                            interwal_dni = int(float(z.get('interwal_miesiace')) * 30.5)
+                            zost_dni = (d_w + timedelta(days=interwal_dni) - datetime.now().date()).days
+                            procent_dni = (interwal_dni - zost_dni) / interwal_dni if interwal_dni > 0 else None
                             if zost_dni < 0:
                                 stxt.append(f"{abs(zost_dni)} dni po!")
                                 kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
@@ -946,9 +971,16 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     zid = z.get('id')
                     zn = z.get('nazwa')
 
+                    # Jeśli podzespół ma zarówno interwał km, jak i miesięczny,
+                    # pasek pokazuje ten, który jest BLIŻEJ przekroczenia (wyższy
+                    # procent zużycia) — to ten sam interwał, który decyduje
+                    # o kolorze/pilności karty wyliczonym wyżej.
+                    kandydaci_procent = [p for p in (procent_km, procent_dni) if p is not None]
+                    procent_do_paska = max(kandydaci_procent) if kandydaci_procent else None
+
                     wiersz_statusu = (
-                        utils.pasek_postepu(final_status, f"{int(max(0.0, min(1.0, procent_km)) * 100)}%", procent_km, kol)
-                        if procent_km is not None
+                        utils.pasek_postepu(final_status, f"{int(max(0.0, min(1.0, procent_do_paska)) * 100)}%", procent_do_paska, kol)
+                        if procent_do_paska is not None
                         else ft.Text(final_status, size=utils.FS["body_strong"], weight="bold", color=kol)
                     )
                     karta_z, kontener = utils.karta_listy(

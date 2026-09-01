@@ -5,6 +5,7 @@ import utils
 IKONY_WYSZUKIWANIA = {
     "Tankowanie": (ft.Icons.LOCAL_GAS_STATION, ft.Colors.BLUE_700),
     "Serwis": (ft.Icons.BUILD, ft.Colors.ORANGE_700),
+    "Podzespół": (ft.Icons.BUILD_CIRCLE, ft.Colors.DEEP_ORANGE_700),
     "Wizyta zbiorcza": (ft.Icons.HOME_REPAIR_SERVICE, ft.Colors.RED_700),
     "Inny koszt": (ft.Icons.RECEIPT_LONG, ft.Colors.GREEN_700),
     "Do zrobienia": (ft.Icons.CHECKLIST_RTL, ft.Colors.PURPLE_700),
@@ -12,7 +13,6 @@ IKONY_WYSZUKIWANIA = {
     "Opony": (ft.Icons.TIRE_REPAIR, ft.Colors.INDIGO_700),
     "Warsztat": (ft.Icons.HANDYMAN, ft.Colors.BROWN_700),
     "Wydatek cykliczny": (ft.Icons.AUTORENEW, ft.Colors.CYAN_700),
-    "Podzespół": (ft.Icons.SETTINGS, ft.Colors.BLUE_GREY_700),
 }
 
 
