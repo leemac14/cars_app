@@ -613,6 +613,7 @@ KOKPIT_WIDGETY = {
     "spalanie": "⛽ Średnie spalanie",
     "przebieg_dzienny": "📈 Średni przebieg dzienny",
     "ostatnia_aktywnosc": "🕒 Ostatnia aktywność",
+    "kondycja": "❤️ Kondycja pojazdu",
 }
 KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
 

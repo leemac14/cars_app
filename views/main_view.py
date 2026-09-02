@@ -326,6 +326,15 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ], spacing=10),
             )
 
+        def widget_kondycja():
+            kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
+            kolor_kond, ikona_kond, etykieta_kond = utils.wskaznik_kondycji(kondycja)
+            wartosc = f"{kondycja}/100" if kondycja is not None else "Brak danych"
+            return kafel_wartosci(
+                ikona_kond, kolor_kond, "Kondycja", wartosc,
+                lambda e: utils.przejdz(self._page, "/magazyn")
+            )
+
         budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
@@ -334,6 +343,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             "spalanie": widget_spalanie,
             "przebieg_dzienny": widget_przebieg_dzienny,
             "ostatnia_aktywnosc": widget_ostatnia_aktywnosc,
+            "kondycja": widget_kondycja,
         }
 
         kafelki = [budowniczy[wid]() for wid in wlaczone if wid in budowniczy]
