@@ -36,7 +36,7 @@ class TimelineView(ft.View):
                 )]
             )
             return
-
+        
         zdarzenia = db.pobierz_dane_timeline(self.state.auto_id)
 
         if not zdarzenia:
@@ -48,6 +48,8 @@ class TimelineView(ft.View):
                 on_click=lambda e: utils.przejdz(self._page, "/")
             ))
         else:
+            elementy.append(utils.heatmapa_aktywnosci(self._page, [z[2] for z in zdarzenia]))
+
             opcje_sort = [
                 ("Data", "data", lambda x: (utils.parsuj_date(x[2]), str(x[0]))),
                 ("Kwota", "kwota", lambda x: float(x[5] or 0)),

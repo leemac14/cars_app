@@ -637,20 +637,38 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             utils.otworz_dialog(self._page, dlg)
         # ------------------------------------------------------
 
-        # --- KOMPAKTOWY AWATAR (60x60) ZAMIAST DUŻEGO BANERA ---
+        # --- KOMPAKTOWY AWATAR (60x60) Z PIERŚCIENIEM KONDYCJI ---
+        WYM_AWATARA, WYM_PIERSCIENIA = 60, 68
         zdjecie_glowne = w["zdjecie_glowne"]
         if zdjecie_glowne:
-            awatar = ft.Image(
-                src=utils.abs_zalacznik(zdjecie_glowne), width=60, height=60,
+            tresc_awatara = ft.Image(
+                src=utils.abs_zalacznik(zdjecie_glowne), width=WYM_AWATARA, height=WYM_AWATARA,
                 fit="cover", border_radius=utils.RADIUS["lg"],
             )
         else:
-            awatar = ft.Container(
-                width=60, height=60, border_radius=utils.RADIUS["lg"],
+            tresc_awatara = ft.Container(
+                width=WYM_AWATARA, height=WYM_AWATARA, border_radius=utils.RADIUS["lg"],
                 bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY),
                 alignment=ft.Alignment.CENTER,
                 content=ft.Icon(ft.Icons.DIRECTIONS_CAR, size=28, color=ft.Colors.PRIMARY),
             )
+
+        # NOWE: wartość i kolor identyczne jak w bottom-sheecie (pokaz_info_auta) —
+        # tylko teraz widoczne od razu, bez klikania w "Info".
+        wartosc_pierscienia = (max(0, min(100, kondycja)) / 100) if kondycja is not None else 0.0
+        awatar = ft.Container(
+            width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA,
+            tooltip=f"Kondycja: {kondycja if kondycja is not None else '-'}/100 ({etykieta_kond})",
+            on_click=pokaz_info_auta,
+            content=ft.Stack([
+                ft.ProgressRing(
+                    value=wartosc_pierscienia, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA,
+                    stroke_width=4, color=kolor_kond,
+                    bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                ),
+                ft.Container(tresc_awatara, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA, alignment=ft.Alignment.CENTER),
+            ], width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA),
+        )
 
         tytulowy_wiersz = ft.Container(
             content=ft.Row([

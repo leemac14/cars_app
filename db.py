@@ -388,6 +388,16 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN gwarancja_przebieg INTEGER;
             CREATE TABLE IF NOT EXISTS kolejka_sync (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, powod TEXT, proby INTEGER NOT NULL DEFAULT 0, ostatnia_proba TEXT, nastepna_proba TEXT, ostatni_blad TEXT);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_kolejka_sync_auto ON kolejka_sync(auto_id);
+            """,
+            # Wersja 28: Cykliczne przypomnienia bez kosztu — wydatki_cykliczne
+            # może teraz reprezentować też zwykłe przypomnienie (np. "co miesiąc
+            # sprawdź ciśnienie w oponach"), bez wymuszania kwoty. czy_koszt=1
+            # (domyślnie, zgodnie z dotychczasowym zachowaniem) to klasyczny
+            # wydatek cykliczny — zaznaczenie "Zapłacone" dopisuje kwotę do
+            # inne_koszty. czy_koszt=0 to samo przypomnienie — zaznaczenie
+            # "Wykonano" tylko przesuwa termin, bez wpisu kosztu.
+            """
+            ALTER TABLE wydatki_cykliczne ADD COLUMN czy_koszt INTEGER NOT NULL DEFAULT 1;
             """
         ]
 
@@ -1109,7 +1119,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
         # liczy się jak dla dokumentów, ale akcją jest "Zapłacone", nie przejście
         # do formularza (stąd "trasa": None).
         c.execute(
-            "SELECT id, nazwa, nastepna_data, okres_dni FROM wydatki_cykliczne WHERE auto_id=?",
+            "SELECT id, nazwa, nastepna_data, okres_dni, czy_koszt FROM wydatki_cykliczne WHERE auto_id=?",
             (auto_id,)
         )
         for wc in c.fetchall():
@@ -1130,6 +1140,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                 wyniki.append({
                     "typ": "cykliczny", "tytul": wc["nazwa"], "opis": opis,
                     "status": s, "trasa": None, "wydatek_id": wc["id"],
+                    "czy_koszt": bool(wc["czy_koszt"]),
                 })
 
         # Niski stan magazynu (części i płyny) — indywidualny próg per pozycja,
@@ -1667,12 +1678,15 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
 
         # NOWE: Wydatki cykliczne
         c.execute(
-            "SELECT id, nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne "
+            "SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt FROM wydatki_cykliczne "
             "WHERE auto_id=? AND nazwa LIKE ?",
             (auto_id, q)
         )
         for r in c.fetchall():
-            opis = f"{formatuj_liczba_eksport(r['kwota'], 2)} {pobierz_walute()} • co {int(r['okres_dni'] or 0)} dni"
+            if r["czy_koszt"]:
+                opis = f"{formatuj_liczba_eksport(r['kwota'], 2)} {pobierz_walute()} • co {int(r['okres_dni'] or 0)} dni"
+            else:
+                opis = f"Przypomnienie • co {int(r['okres_dni'] or 0)} dni"
             wyniki.append({
                 "typ": "Wydatek cykliczny", "tytul": str(r["nazwa"]), "opis": opis,
                 "data": r["nastepna_data"] or "", "trasa": "__wydatki_cykliczne__",
@@ -2204,25 +2218,25 @@ def pobierz_wydatki_cykliczne(auto_id):
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT id, nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne WHERE auto_id=?",
+            "SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt FROM wydatki_cykliczne WHERE auto_id=?",
             (auto_id,)
         )
         wpisy = c.fetchall()
     wpisy.sort(key=lambda w: parsuj_date(w[4]))
     return wpisy
 
-def dodaj_wydatek_cykliczny(auto_id, nazwa, kwota, okres_dni, nastepna_data):
+def dodaj_wydatek_cykliczny(auto_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt=1):
     with polacz_baze() as conn:
         conn.execute(
-            "INSERT INTO wydatki_cykliczne (auto_id, nazwa, kwota, okres_dni, nastepna_data) VALUES (?,?,?,?,?)",
-            (auto_id, nazwa, kwota, okres_dni, nastepna_data)
+            "INSERT INTO wydatki_cykliczne (auto_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt) VALUES (?,?,?,?,?,?)",
+            (auto_id, nazwa, kwota, okres_dni, nastepna_data, int(bool(czy_koszt)))
         )
 
-def edytuj_wydatek_cykliczny(wydatek_id, nazwa, kwota, okres_dni, nastepna_data):
+def edytuj_wydatek_cykliczny(wydatek_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt=1):
     with polacz_baze() as conn:
         conn.execute(
-            "UPDATE wydatki_cykliczne SET nazwa=?, kwota=?, okres_dni=?, nastepna_data=? WHERE id=?",
-            (nazwa, kwota, okres_dni, nastepna_data, wydatek_id)
+            "UPDATE wydatki_cykliczne SET nazwa=?, kwota=?, okres_dni=?, nastepna_data=?, czy_koszt=? WHERE id=?",
+            (nazwa, kwota, okres_dni, nastepna_data, int(bool(czy_koszt)), wydatek_id)
         )
 
 def usun_wydatek_cykliczny(wydatek_id):
@@ -2235,21 +2249,25 @@ def usun_wydatek_cykliczny(wydatek_id):
         zarejestruj_nagrobek("wydatki_cykliczne", w[0])
 
 def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
-    """Tworzy wpis w inne_koszty na podstawie wydatku cyklicznego i przesuwa jego
-    następny termin płatności o okres_dni od DZISIAJ (nie od starej daty — dzięki
-    temu spóźniona płatność nie generuje serii zaległych powiadomień pod rząd)."""
+    """Dla klasycznego wydatku (czy_koszt=1) tworzy wpis w inne_koszty na podstawie
+    wydatku cyklicznego, tak jak dotychczas. Dla samego przypomnienia bez kosztu
+    (czy_koszt=0, np. "co miesiąc sprawdź ciśnienie w oponach") NIE dopisuje nic
+    do inne_koszty — tylko odnotowuje wykonanie. W obu przypadkach przesuwa
+    następny termin o okres_dni od DZISIAJ (nie od starej daty — dzięki temu
+    spóźniona pozycja nie generuje serii zaległych powiadomień pod rząd)."""
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT nazwa, kwota, okres_dni FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
+        c.execute("SELECT nazwa, kwota, okres_dni, czy_koszt FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
         w = c.fetchone()
         if not w:
             return
-        nazwa, kwota, okres_dni = w
+        nazwa, kwota, okres_dni, czy_koszt = w
         dzis = datetime.now()
-        conn.execute(
-            "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, dodane_przez) VALUES (?,?,?,?,?,?)",
-            (auto_id, dzis.strftime("%d.%m.%Y"), "Cykliczne", nazwa, kwota, pobierz_moje_imie())
-        )
+        if czy_koszt:
+            conn.execute(
+                "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, dodane_przez) VALUES (?,?,?,?,?,?)",
+                (auto_id, dzis.strftime("%d.%m.%Y"), "Cykliczne", nazwa, kwota, pobierz_moje_imie())
+            )
         nowa_data = (dzis + timedelta(days=int(okres_dni or 30))).strftime("%d.%m.%Y")
         conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, wydatek_id))
 
@@ -2967,7 +2985,7 @@ KATEGORIE_EKSPORTU = {
     "zadania": "🧰 Podzespoły i interwały",
     "wizyty": "🛠️ Wizyty zbiorcze (warsztat)",
     "inne_koszty": "🎫 Inne koszty",
-    "wydatki_cykliczne": "🔁 Wydatki cykliczne",
+    "wydatki_cykliczne": "🔁 Wydatki cykliczne i przypomnienia",
     "magazyn_czesci": "📦 Magazyn części i płynów",
     "zestawy_opon": "🛞 Zestawy opon",
     "do_zrobienia": "✅ Lista Do zrobienia",
@@ -3149,14 +3167,14 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
 
         if "wydatki_cykliczne" in kategorie:
             c.execute(
-                "SELECT nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne "
+                "SELECT nazwa, kwota, okres_dni, nastepna_data, czy_koszt FROM wydatki_cykliczne "
                 "WHERE auto_id=? ORDER BY nazwa", (auto_id,)
             )
             wiersze = [
-                [n or "", formatuj_liczba_eksport(kw), int(okr or 0), nd or ""]
-                for n, kw, okr, nd in c.fetchall()
+                [n or "", formatuj_liczba_eksport(kw) if ck else "", int(okr or 0), nd or "", "Koszt" if ck else "Przypomnienie"]
+                for n, kw, okr, nd, ck in c.fetchall()
             ]
-            wynik["wydatki_cykliczne"] = (["Nazwa", "Kwota", "Co ile dni", "Następna płatność"], wiersze)
+            wynik["wydatki_cykliczne"] = (["Nazwa", "Kwota", "Co ile dni", "Następna płatność", "Typ"], wiersze)
 
         if "warsztaty" in kategorie:
             c.execute(

@@ -752,10 +752,11 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             przejdz(page, trasa)
         return handler
 
-    def zaplac_cykliczny(wydatek_id):
+    def zaplac_cykliczny(wydatek_id, czy_koszt=True):
         def handler(e):
             db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
-            pokaz_komunikat(page, "Zapisano płatność i przesunięto termin.")
+            komunikat = "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
+            pokaz_komunikat(page, komunikat)
             przejdz(page, page.route)  # odświeża dzwonek/badge w tle; panel zostaje otwarty
             odswiez()
         return handler
@@ -780,11 +781,15 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 kolor = ft.Colors.RED_700 if p["status"] == "przeterminowane" else ft.Colors.ORANGE_700
                 ikona = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
                 if p["typ"] == "cykliczny":
+                    czy_koszt_p = p.get("czy_koszt", True)
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=ft.Text(p["tytul"], weight="bold"),
                         subtitle=ft.Text(p["opis"], color=kolor, size=13),
-                        trailing=ft.TextButton("Zapłacone", on_click=zaplac_cykliczny(p["wydatek_id"])),
+                        trailing=ft.TextButton(
+                            "Zapłacone" if czy_koszt_p else "Wykonano",
+                            on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p)
+                        ),
                     ))
                 else:
                     pozycje.append(ft.ListTile(
@@ -809,8 +814,9 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
 
 def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
     """Lekki panel (BottomSheet) do zarządzania wydatkami cyklicznymi pojazdu
-    (raty, abonamenty, ubezpieczenia ratalne) — bez osobnej trasy, analogicznie
-    do pokaz_panel_powiadomien()."""
+    (raty, abonamenty, ubezpieczenia ratalne) ORAZ zwykłymi przypomnieniami
+    cyklicznymi bez kosztu (np. "co miesiąc sprawdź ciśnienie w oponach") —
+    bez osobnej trasy, analogicznie do pokaz_panel_powiadomien()."""
     bs = ft.BottomSheet(ft.Container())
 
     def odswiez():
@@ -818,7 +824,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         pozycje = [
             ft.Row([
                 ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.PRIMARY),
-                ft.Text("Wydatki cykliczne", weight="bold", size=18, color=ft.Colors.PRIMARY)
+                ft.Text("Wydatki cykliczne i przypomnienia", weight="bold", size=18, color=ft.Colors.PRIMARY)
             ], spacing=8),
             ft.Divider(height=1),
         ]
@@ -826,26 +832,29 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         if not wpisy:
             pozycje.append(ft.Container(
                 padding=ft.Padding.symmetric(vertical=15),
-                content=ft.Text("Brak zapisanych wydatków cyklicznych.", italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+                content=ft.Text("Brak zapisanych wydatków cyklicznych ani przypomnień.", italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
             ))
         else:
-            for w_id, nazwa, kwota, okres_dni, nastepna_data in wpisy:
+            for w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt in wpisy:
                 kolor, tekst_daty = kolor_i_tekst_terminu(nastepna_data)
+                czy_koszt = bool(czy_koszt)
+                podtytul = (
+                    f"{formatuj_liczba(kwota)} {symbol_waluty()} • co {okres_dni} dni • {tekst_daty or nastepna_data}"
+                    if czy_koszt else
+                    f"Przypomnienie • co {okres_dni} dni • {tekst_daty or nastepna_data}"
+                )
                 pozycje.append(ft.ListTile(
-                    leading=ft.Icon(ft.Icons.AUTORENEW, color=kolor),
+                    leading=ft.Icon(ft.Icons.AUTORENEW if czy_koszt else ft.Icons.NOTIFICATIONS_ACTIVE, color=kolor),
                     title=ft.Text(str(nazwa), weight="bold"),
-                    subtitle=ft.Text(
-                        f"{formatuj_liczba(kwota)} {symbol_waluty()} • co {okres_dni} dni • {tekst_daty or nastepna_data}",
-                        size=12, color=kolor
-                    ),
+                    subtitle=ft.Text(podtytul, size=12, color=kolor),
                     trailing=ft.PopupMenuButton(items=[
                         ft.PopupMenuItem(
-                            content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18), ft.Text("Zapłacone")]),
-                            on_click=lambda e, wid=w_id: zaplac(wid)
+                            content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18), ft.Text("Zapłacone" if czy_koszt else "Wykonano")]),
+                            on_click=lambda e, wid=w_id, ck=czy_koszt: zaplac(wid, ck)
                         ),
                         ft.PopupMenuItem(
                             content=ft.Row([ft.Icon(ft.Icons.EDIT, size=18), ft.Text("Edytuj")]),
-                            on_click=lambda e, w=(w_id, nazwa, kwota, okres_dni, nastepna_data): formularz(w)
+                            on_click=lambda e, w=(w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt): formularz(w)
                         ),
                         ft.PopupMenuItem(
                             content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=18), ft.Text("Usuń")]),
@@ -855,7 +864,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
                 ))
 
         pozycje.append(ft.Divider(height=1))
-        pozycje.append(ft.TextButton("➕ Dodaj wydatek cykliczny", on_click=lambda e: formularz(None)))
+        pozycje.append(ft.TextButton("➕ Dodaj wydatek / przypomnienie", on_click=lambda e: formularz(None)))
 
         bs.content = ft.Container(
             padding=20, bgcolor=ft.Colors.SURFACE,
@@ -866,24 +875,38 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         except Exception:
             pass
 
-    def zaplac(wydatek_id):
+    def zaplac(wydatek_id, czy_koszt=True):
         db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
-        pokaz_komunikat(page, "Zapisano płatność i przesunięto termin.")
+        komunikat = "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
+        pokaz_komunikat(page, komunikat)
         odswiez()
 
     def usun(wydatek_id):
         def wykonaj():
             db.usun_wydatek_cykliczny(wydatek_id)
             odswiez()
-            pokaz_komunikat(page, "Usunięto wydatek cykliczny.")
-        potwierdz(page, "Usunąć?", "Czy na pewno usunąć ten wydatek cykliczny?", wykonaj)
+            pokaz_komunikat(page, "Usunięto wpis.")
+        potwierdz(page, "Usunąć?", "Czy na pewno usunąć ten wpis?", wykonaj)
 
     def formularz(istniejacy):
         edycja = istniejacy is not None
-        w_id, nazwa_val, kwota_val, okres_val, data_val = istniejacy or (None, "", "", 30, datetime.now().strftime("%d.%m.%Y"))
+        w_id, nazwa_val, kwota_val, okres_val, data_val, czy_koszt_val = (
+            istniejacy if istniejacy is not None
+            else (None, "", "", 30, datetime.now().strftime("%d.%m.%Y"), 1)
+        )
 
-        e_nazwa = ft.TextField(label="Nazwa (np. Rata leasingu, OC ratalne)", value=str(nazwa_val), **styl_pola())
+        e_nazwa = ft.TextField(label="Nazwa (np. Rata leasingu, Sprawdź ciśnienie w oponach)", value=str(nazwa_val), **styl_pola())
         e_kwota = ft.TextField(label=f"Kwota ({symbol_waluty()})", value=str(kwota_val) if kwota_val else "", keyboard_type=ft.KeyboardType.NUMBER, **styl_pola())
+        e_tylko_przypomnienie = ft.Switch(label="Tylko przypomnienie (bez kwoty)", value=not bool(czy_koszt_val))
+        e_kwota.visible = not e_tylko_przypomnienie.value
+
+        def przelacz_typ(e):
+            e_kwota.visible = not e_tylko_przypomnienie.value
+            if not e_kwota.visible:
+                e_kwota.error_text = None
+            page.update()
+        e_tylko_przypomnienie.on_change = przelacz_typ
+
         e_okres = ft.Dropdown(
             label="Powtarzaj co",
             options=[
@@ -895,31 +918,32 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
             value=str(okres_val) if str(okres_val) in ("30", "90", "180", "365") else "30",
             **styl_dropdown()
         )
-        e_data = pole_daty(page, "Następna płatność", str(data_val))
+        e_data = pole_daty(page, "Następny termin", str(data_val))
 
         def zapisz(e):
             e_nazwa.error_text = None
             e_kwota.error_text = None
             n = (e_nazwa.value or "").strip()
-            kw = parsuj_float(e_kwota.value, None)
+            czy_koszt = not e_tylko_przypomnienie.value
+            kw = parsuj_float(e_kwota.value, None) if czy_koszt else 0.0
             bledy = []
             if not n: bledy.append((e_nazwa, "Podaj nazwę"))
-            if kw is None or kw <= 0: bledy.append((e_kwota, "Podaj poprawną kwotę"))
+            if czy_koszt and (kw is None or kw <= 0): bledy.append((e_kwota, "Podaj poprawną kwotę"))
             if bledy:
                 for kontrolka, komunikat in bledy: kontrolka.error_text = komunikat
                 page.update()
                 return
             okres_dni = parsuj_int(e_okres.value, 30)
             if edycja:
-                db.edytuj_wydatek_cykliczny(w_id, n, kw, okres_dni, e_data.value)
+                db.edytuj_wydatek_cykliczny(w_id, n, kw or 0.0, okres_dni, e_data.value, czy_koszt)
             else:
-                db.dodaj_wydatek_cykliczny(state.auto_id, n, kw, okres_dni, e_data.value)
+                db.dodaj_wydatek_cykliczny(state.auto_id, n, kw or 0.0, okres_dni, e_data.value, czy_koszt)
             zamknij_dialog(page, dlg)
             odswiez()
 
         dlg = ft.AlertDialog(
-            title=ft.Text("Edytuj wydatek" if edycja else "Nowy wydatek cykliczny", weight="bold"),
-            content=ft.Column([e_nazwa, e_kwota, e_okres, e_data], tight=True, spacing=10),
+            title=ft.Text("Edytuj wpis" if edycja else "Nowy wydatek cykliczny / przypomnienie", weight="bold"),
+            content=ft.Column([e_nazwa, e_tylko_przypomnienie, e_kwota, e_okres, e_data], tight=True, spacing=10),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
                 ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
@@ -942,7 +966,7 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.MAP, color=ft.Colors.PURPLE, size=20), ft.Text("Kalkulator podróży")]), on_click=lambda e: przejdz(page, "/kalkulator")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.TIMELINE, color=ft.Colors.INDIGO, size=20), ft.Text("Dziennik życia auta")]), on_click=lambda e: przejdz(page, "/timeline")))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.INDIGO, size=20), ft.Text("Wydatki cykliczne")]), on_click=lambda e: pokaz_panel_wydatkow_cyklicznych(page, state)))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.INDIGO, size=20), ft.Text("Wydatki cykliczne i przypomnienia")]), on_click=lambda e: pokaz_panel_wydatkow_cyklicznych(page, state)))
 
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.UPLOAD_FILE, color=ft.Colors.BLUE, size=20), ft.Text("Eksportuj bazę")]), on_click=cb_export))
@@ -2316,6 +2340,93 @@ def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8):
         ft.ProgressBar(value=max(0.03, min(1.0, procent)), color=kolor,
                        bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=wysokosc, border_radius=4)
     ], spacing=4)
+
+def _odmiana_liczby(n, forma_1, forma_2_4, forma_pozostale):
+    """Generyczna polska odmiana liczebnikowa: 1 -> forma_1, 2-4 (poza
+    nastolatkami 12-14) -> forma_2_4, pozostałe -> forma_pozostale."""
+    if n == 1:
+        return forma_1
+    ostatnia, dziesiatki = n % 10, n % 100
+    if 2 <= ostatnia <= 4 and not (12 <= dziesiatki <= 14):
+        return forma_2_4
+    return forma_pozostale
+
+
+def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53):
+    """Heatmapa aktywności w stylu GitHub 'contributions': siatka kwadracików
+    (kolumna = tydzień, wiersz = dzień tygodnia) pokazująca, w które dni z
+    ostatniego roku pojawiło się jakiekolwiek zdarzenie w dzienniku auta.
+    `daty_zdarzen`: dowolna iterowalna surowych dat tekstowych (DD.MM.YYYY);
+    kilka zdarzeń tego samego dnia jest sumowanych. Używane przez /timeline."""
+    liczba_wg_dnia = {}
+    for data_str in daty_zdarzen:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date():
+            continue
+        liczba_wg_dnia[d] = liczba_wg_dnia.get(d, 0) + 1
+
+    dzis = datetime.now().date()
+    koniec = dzis + timedelta(days=(6 - dzis.weekday()))  # zaokrąglenie w górę do niedzieli
+    poczatek = koniec - timedelta(days=tygodnie * 7 - 1)
+    maks = max(liczba_wg_dnia.values(), default=0)
+
+    def kolor_dnia(n):
+        if n <= 0:
+            return ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE)
+        if maks <= 1:
+            return ft.Colors.with_opacity(0.85, ft.Colors.PRIMARY)
+        udzial = n / maks
+        poziom = 0.30 if udzial <= 0.25 else 0.55 if udzial <= 0.5 else 0.75 if udzial <= 0.75 else 0.95
+        return ft.Colors.with_opacity(poziom, ft.Colors.PRIMARY)
+
+    WYM = 11
+    kursor = poczatek
+    poprzedni_miesiac = None
+    kolumny_tygodni = []
+    aktywne_dni = 0
+
+    for _ in range(tygodnie):
+        if kursor.month != poprzedni_miesiac:
+            naglowek = ft.Container(height=14, content=ft.Text(MIESIACE_NAZWY[kursor.month - 1][:3], size=10, color=ft.Colors.ON_SURFACE_VARIANT))
+            poprzedni_miesiac = kursor.month
+        else:
+            naglowek = ft.Container(height=14)
+
+        komorki = [naglowek]
+        for _ in range(7):
+            if kursor > dzis:
+                komorki.append(ft.Container(width=WYM, height=WYM))
+            else:
+                n = liczba_wg_dnia.get(kursor, 0)
+                if n:
+                    aktywne_dni += 1
+                komorki.append(ft.Container(
+                    width=WYM, height=WYM, border_radius=3, bgcolor=kolor_dnia(n),
+                    tooltip=f"{kursor.strftime('%d.%m.%Y')}: {n} {_odmiana_liczby(n, 'wpis', 'wpisy', 'wpisów')}" if n else kursor.strftime("%d.%m.%Y"),
+                ))
+            kursor += timedelta(days=1)
+
+        kolumny_tygodni.append(ft.Column(komorki, spacing=3))
+
+    # Odwracamy kolejność kolumn — najnowszy tydzień ma być widoczny od razu
+    # (po lewej), bez przewijania w prawo, żeby go zobaczyć.
+    siatka = ft.Row(list(reversed(kolumny_tygodni)), spacing=3, scroll=ft.ScrollMode.AUTO)
+
+    def kw_legendy(poziom, kolor_bazowy=None):
+        return ft.Container(width=WYM, height=WYM, border_radius=3, bgcolor=ft.Colors.with_opacity(poziom, kolor_bazowy or ft.Colors.PRIMARY))
+
+    legenda = ft.Row([
+        ft.Text("Mniej", size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+        kw_legendy(0.06, ft.Colors.ON_SURFACE), kw_legendy(0.30), kw_legendy(0.55), kw_legendy(0.75), kw_legendy(0.95),
+        ft.Text("Więcej", size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+    ], spacing=4)
+
+    opis = f"Najnowszy tydzień po lewej • {aktywne_dni} {_odmiana_liczby(aktywne_dni, 'aktywny dzień', 'aktywne dni', 'aktywnych dni')} w ciągu ostatniego roku."
+
+    return karta_formularza(
+        [siatka, legenda, ft.Text(opis, size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)],
+        "Aktywność w ciągu roku", ft.Icons.CALENDAR_MONTH, domyslnie_otwarte=True, page=page
+    )
 
 def z_efektem_nacisniecia(kontener: ft.Container, funkcja):
     """Owija istniejący handler (on_click / on_long_press) tym samym efektem

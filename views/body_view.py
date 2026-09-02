@@ -186,42 +186,90 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
             
         utils.potwierdz(self._page, "Usuwanie grupowe", f"Czy na pewno usunąć {ile} zaznaczonych zdjęć?", wykonaj)
 
-    # --- NOWE: Porównanie w locie w ładnym oknie dialogowym ---
     def otworz_porownanie(self, e):
         ids = list(self.zaznaczone_id)
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute("SELECT data, strefa, zalacznik, opis FROM zdjecia_karoserii WHERE id IN (?, ?)", (ids[0], ids[1]))
             zdjecia = c.fetchall()
-            
-        if len(zdjecia) != 2: return
-        
-        # Sortujemy starsze na górę, nowsze na dół na podstawie daty
-        zdjecia.sort(key=lambda z: utils.parsuj_date(z[0]))
-        z1, z2 = zdjecia
 
-        def zbuduj_obraz(z):
-            d_val, s_val, zal_val, op_val = z
-            return ft.Column([
-                ft.Text(f"{d_val} • {s_val}", weight="bold", size=14, color=ft.Colors.PRIMARY),
-                ft.Image(src=utils.abs_zalacznik(zal_val), fit="contain", border_radius=8, expand=True),
-                ft.Text(str(op_val) if op_val else "Brak opisu", size=12, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER)
-            ], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        if len(zdjecia) != 2: return
+
+        # Starsze zdjęcie = "przed", nowsze = "po" (sortowanie po dacie)
+        zdjecia.sort(key=lambda z: utils.parsuj_date(z[0]))
+        (d_przed, s_przed, zal_przed, op_przed), (d_po, s_po, zal_po, op_po) = zdjecia
+
+        SZER, WYS = 320, 420
+        pozycja_startowa = SZER / 2
+
+        obraz_po = ft.Image(src=utils.abs_zalacznik(zal_po), width=SZER, height=WYS, fit="cover")
+        obraz_przed = ft.Image(src=utils.abs_zalacznik(zal_przed), width=SZER, height=WYS, fit="cover")
+
+        # "Okienko ujawnienia": kontener o zmiennej szerokości = pozycja suwaka.
+        # Obraz "przed" w środku ma PEŁNY rozmiar (SZER x WYS) i jest przypięty
+        # (left=0, top=0) w Stacku — wystaje poza węższe okienko i zostaje
+        # PRZYCIĘTY (nie przeskalowany) do widocznej części. Standardowa
+        # technika sliderów porównawczych "przed/po".
+        warstwa_przed = ft.Container(
+            width=pozycja_startowa, height=WYS,
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+            content=ft.Stack([ft.Container(left=0, top=0, content=obraz_przed)]),
+        )
+
+        uchwyt_linia = ft.Container(width=3, height=WYS, bgcolor=ft.Colors.WHITE, left=pozycja_startowa - 1.5)
+        uchwyt_kolko = ft.Container(
+            width=36, height=36, border_radius=18, bgcolor=ft.Colors.WHITE,
+            left=pozycja_startowa - 18, top=(WYS / 2) - 18, alignment=ft.Alignment.CENTER,
+            shadow=ft.BoxShadow(blur_radius=8, color=ft.Colors.with_opacity(0.4, ft.Colors.BLACK)),
+            content=ft.Icon(ft.Icons.COMPARE_ARROWS, color=ft.Colors.BLACK, size=18),
+        )
+        etykieta_przed = ft.Container(
+            top=10, left=10, padding=ft.Padding(8, 4, 8, 4), border_radius=8,
+            bgcolor=ft.Colors.with_opacity(0.55, ft.Colors.BLACK),
+            content=ft.Text(f"PRZED • {d_przed}", size=11, weight="bold", color=ft.Colors.WHITE),
+        )
+        etykieta_po = ft.Container(
+            top=10, right=10, padding=ft.Padding(8, 4, 8, 4), border_radius=8,
+            bgcolor=ft.Colors.with_opacity(0.55, ft.Colors.BLACK),
+            content=ft.Text(f"PO • {d_po}", size=11, weight="bold", color=ft.Colors.WHITE),
+        )
+
+        obszar = ft.GestureDetector(
+            content=ft.Stack([obraz_po, warstwa_przed, uchwyt_linia, uchwyt_kolko, etykieta_przed, etykieta_po], width=SZER, height=WYS),
+            width=SZER, height=WYS,
+        )
+
+        def przesun(nowy_x):
+            nowy_x = max(0.0, min(float(SZER), nowy_x))
+            warstwa_przed.width = nowy_x
+            uchwyt_linia.left = nowy_x - 1.5
+            uchwyt_kolko.left = nowy_x - 18
+            obszar.update()
+
+        obszar.on_pan_update = lambda e2: przesun(e2.local_x)
+        obszar.on_tap_down = lambda e2: przesun(e2.local_x)
+
+        bits_podpisu = [f"{s_przed} → {s_po}" if s_przed != s_po else str(s_przed)]
+        if op_przed: bits_podpisu.append(f"Przed: {op_przed}")
+        if op_po: bits_podpisu.append(f"Po: {op_po}")
 
         dlg = ft.AlertDialog(
             title=ft.Row([
                 ft.Icon(ft.Icons.COMPARE, color=ft.Colors.PRIMARY),
-                ft.Text("Porównanie", weight="bold")
+                ft.Text("Przeciągnij suwak, by porównać", weight="bold", size=15)
             ]),
             content=ft.Container(
-                width=350, height=600,
+                width=SZER,
                 content=ft.Column([
-                    zbuduj_obraz(z1),
-                    ft.Divider(height=20, color=ft.Colors.with_opacity(0.5, ft.Colors.PRIMARY)),
-                    zbuduj_obraz(z2)
-                ], spacing=10)
+                    ft.Container(
+                        width=SZER, height=WYS, border_radius=12,
+                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                        content=obszar,
+                    ),
+                    ft.Text("  •  ".join(bits_podpisu), size=12, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
+                ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
             ),
-            actions=[ft.TextButton("Zamknij", on_click=lambda e: utils.zamknij_dialog(self._page, dlg))],
+            actions=[ft.TextButton("Zamknij", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg))],
             content_padding=15
         )
         utils.otworz_dialog(self._page, dlg)
