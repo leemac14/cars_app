@@ -29,6 +29,13 @@ class UstawieniaView(ft.View):
             **utils.styl_dropdown()
         )
 
+        self.e_jednostka_ev = ft.Dropdown(
+            label="Jednostka zużycia (pojazdy elektryczne)",
+            options=[ft.DropdownOption(key=j, text=j) for j in db.JEDNOSTKI_ZUZYCIA_EV],
+            value=db.pobierz_jednostke_zuzycia_ev(),
+            **utils.styl_dropdown()
+        )
+
         self.e_prog_km = ft.Dropdown(
             label="Powiadamiaj o wymianie na tyle km przed",
             options=[ft.DropdownOption(key=str(k), text=f"{k} km") for k in db.PROGI_KM_OPCJE],
@@ -157,7 +164,7 @@ class UstawieniaView(ft.View):
         )
 
     def _migawka_formularza(self):
-        return (self.e_waluta.value, self.e_jednostka.value, self.e_prog_km.value, self.e_prog_dni.value,
+        return (self.e_waluta.value, self.e_jednostka.value, self.e_jednostka_ev.value, self.e_prog_km.value, self.e_prog_dni.value,
                 self.e_moje_imie.value, self.wybrany_kolor, [chk.data for chk in self.checkboxy_kokpitu if chk.value])
 
     def _czy_zmieniono(self):
@@ -166,6 +173,7 @@ class UstawieniaView(ft.View):
     def zapisz(self, e):
         db.zapisz_ustawienie("waluta", self.e_waluta.value)
         db.zapisz_ustawienie("jednostka_spalania", self.e_jednostka.value)
+        db.zapisz_ustawienie("jednostka_zuzycia_ev", self.e_jednostka_ev.value)
         db.zapisz_ustawienie("prog_km_powiadomien", self.e_prog_km.value)
         db.zapisz_ustawienie("prog_dni_powiadomien", self.e_prog_dni.value)
         db.zapisz_moje_imie(self.e_moje_imie.value)

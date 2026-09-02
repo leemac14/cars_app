@@ -233,7 +233,8 @@ def ukryj_ladowanie(page: ft.Page, dlg):
 
 def tekst_ostatniej_synchronizacji():
     """Zwraca czytelny, względny opis czasu ostatniej udanej synchronizacji
-    (np. '4 min temu'), zapisywanej lokalnie przez sync.synchronizuj_wszystko.
+    (np. '4 min temu'), zapisywanej lokalnie przez sync.synchronizuj_wszystko,
+    plus dopisek o zaległych zmianach w kolejce offline (patrz db.kolejka_sync).
     Nigdy nie synchronizowano -> 'Nigdy nie synchronizowano'."""
     zapis = db.pobierz_ustawienie("ostatnia_synchronizacja")
     if not zapis:
@@ -247,14 +248,78 @@ def tekst_ostatniej_synchronizacji():
     sekundy = max(0, roznica.total_seconds())
 
     if sekundy < 60:
-        return "Zsynchronizowano przed chwilą"
-    if sekundy < 3600:
-        return f"Zsynchronizowano {int(sekundy // 60)} min temu"
-    if moment.date() == datetime.now().date():
-        return f"Zsynchronizowano {int(sekundy // 3600)} godz. temu"
-    if moment.date() == (datetime.now().date() - timedelta(days=1)):
-        return f"Zsynchronizowano wczoraj o {moment.strftime('%H:%M')}"
-    return f"Zsynchronizowano {moment.strftime('%d.%m.%Y %H:%M')}"
+        podstawa = "Zsynchronizowano przed chwilą"
+    elif sekundy < 3600:
+        podstawa = f"Zsynchronizowano {int(sekundy // 60)} min temu"
+    elif moment.date() == datetime.now().date():
+        podstawa = f"Zsynchronizowano {int(sekundy // 3600)} godz. temu"
+    elif moment.date() == (datetime.now().date() - timedelta(days=1)):
+        podstawa = f"Zsynchronizowano wczoraj o {moment.strftime('%H:%M')}"
+    else:
+        podstawa = f"Zsynchronizowano {moment.strftime('%d.%m.%Y %H:%M')}"
+
+    zalegle = db.opis_oczekujacej_synchronizacji()
+    return f"{podstawa} • {zalegle}" if zalegle else podstawa
+
+def wypchnij_w_tle(page: ft.Page, auto_id, powod="zapis"):
+    """Zastępuje dawne `try: ... except Exception: pass` przy auto-synchronizacji
+    po zapisie. Różnica: nieudana próba (brak sieci) nie znika — ląduje w kolejce
+    kolejka_sync i zostanie ponowiona przy następnym zapisie albo starcie aplikacji.
+    Dla pojazdu niewspółdzielonego nie robi nic."""
+    if not auto_id:
+        return
+    try:
+        wspolny_id, _ = sync.czy_udostepniony(auto_id)
+    except Exception:
+        return
+    if not wspolny_id:
+        return
+
+    async def _zadanie():
+        await asyncio.to_thread(sync.synchronizuj_w_tle, auto_id, powod)
+        await asyncio.to_thread(sync.przetworz_kolejke_sync)
+
+    page.run_task(_zadanie)
+
+def podsumowanie_konfliktow(konflikty, maks_nazw=2):
+    """Jednozdaniowe streszczenie konfliktów do snackbara — z nazwami pierwszych
+    rekordów zamiast samej liczby."""
+    if not konflikty:
+        return ""
+    nazwy = [k["opis"] for k in konflikty[:maks_nazw]]
+    reszta = len(konflikty) - len(nazwy)
+    tekst = ", ".join(nazwy)
+    if reszta > 0:
+        tekst += f" i {reszta} inn." if reszta > 1 else " i 1 inny"
+    return f"Edycja z dwóch urządzeń — nadpisano: {tekst}. Zachowano wersję z tego telefonu."
+
+def pokaz_dialog_konfliktow(page: ft.Page, konflikty):
+    """Pełna lista nadpisanych rekordów z ostatniej synchronizacji."""
+    if not konflikty:
+        return
+    wiersze = [
+        ft.Row([
+            ft.Icon(ft.Icons.MERGE_TYPE, size=16, color=ft.Colors.AMBER_700),
+            ft.Text(k["opis"], size=13, expand=True),
+        ], spacing=8)
+        for k in konflikty
+    ]
+    dlg = ft.AlertDialog(
+        title=ft.Row([
+            ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER_700),
+            ft.Text("Edycja z dwóch urządzeń", weight="bold", expand=True),
+        ], spacing=8),
+        content=ft.Column(
+            [ft.Text(
+                "Te rekordy zmieniły się równolegle na innym urządzeniu. Zachowano wersję "
+                "z tego telefonu — sprawdź, czy nie trzeba czegoś poprawić ręcznie.",
+                size=12, color=ft.Colors.ON_SURFACE_VARIANT
+            ), ft.Divider(height=10)] + wiersze,
+            tight=True, spacing=6, scroll=ft.ScrollMode.AUTO
+        ),
+        actions=[ft.TextButton("Rozumiem", on_click=lambda e: zamknij_dialog(page, dlg))]
+    )
+    otworz_dialog(page, dlg)
 
 def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
     """Zwraca gotowy async callback do użycia z przycisk_synchronizacji() —
@@ -263,18 +328,21 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
     async def _synchronizuj():
         try:
             wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, auto_id)
+            await asyncio.to_thread(sync.przetworz_kolejke_sync)
             przejdz(page, trasa_powrotu)
             konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
             if konflikty:
-                pokaz_komunikat(
-                    page,
-                    f"Wykryto edycję z dwóch urządzeń w {konflikty} rekordach — zachowano wersję z tego urządzenia.",
-                    ft.Colors.AMBER_700
-                )
+                pokaz_komunikat(page, podsumowanie_konfliktow(konflikty), ft.Colors.AMBER_700)
+                pokaz_dialog_konfliktow(page, konflikty)
             else:
                 pokaz_komunikat(page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
         except Exception as ex:
-            pokaz_komunikat(page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
+            db.zakolejkuj_synchronizacje(auto_id, "reczna", str(ex))
+            pokaz_komunikat(
+                page,
+                f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
+                ft.Colors.RED_700
+            )
     return _synchronizuj
 
 def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", pokaz_czas=True):
@@ -879,6 +947,7 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.UPLOAD_FILE, color=ft.Colors.BLUE, size=20), ft.Text("Eksportuj bazę")]), on_click=cb_export))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.SUMMARIZE, color=ft.Colors.TEAL, size=20), ft.Text("Eksport danych (CSV/PDF)")]), on_click=lambda e: przejdz(page, "/eksport")))
+    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.INPUT, color=ft.Colors.TEAL, size=20), ft.Text("Import tankowań (CSV)")]), on_click=lambda e: przejdz(page, "/import")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DOWNLOAD, color=ft.Colors.ORANGE, size=20), ft.Text("Importuj bazę")]), on_click=cb_import))
 
     pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
@@ -1287,16 +1356,19 @@ def dol_bezpieczny(wysokosc=20):
         avoid_intrusions_top=False,
     )
 
-def formatuj_spalanie(l_na_100km, decimale=1):
-    jednostka = db.pobierz_jednostke_spalania()
+def formatuj_spalanie(wartosc_na_100km, decimale=1, elektryczny=False):
+    """Formatuje zużycie w jednostce z Ustawień. Wejściem ZAWSZE jest zużycie
+    na 100 km (l/100km albo kWh/100km) — dokładnie to, co liczy reszta aplikacji;
+    przeliczenie na km/l, mpg czy km/kWh robimy dopiero tutaj."""
+    jednostka = db.pobierz_jednostke_zuzycia_ev() if elektryczny else db.pobierz_jednostke_spalania()
     try:
-        val = float(l_na_100km)
+        val = float(wartosc_na_100km)
     except (TypeError, ValueError):
         return f"- {jednostka}"
     if val <= 0:
         return f"- {jednostka}"
 
-    if jednostka == "km/l":
+    if jednostka in ("km/l", "km/kWh"):
         wynik = 100.0 / val
     elif jednostka == "mpg":
         wynik = 235.214583 / val
@@ -1732,13 +1804,14 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
 
     return kontener, pobierz_wynik
 
-def komponent_wyboru_stacji(page: ft.Page, state, aktualna_nazwa=""):
+def komponent_wyboru_stacji(page: ft.Page, state, aktualna_nazwa="", elektryczny=False):
     """Wybór stacji paliw z listy tych, na których już tankowałeś (słownik
     budowany w locie z tabeli 'tankowania' — patrz db.pobierz_stacje_paliw),
     z możliwością przełączenia na ręczne wpisanie nowej nazwy. Ten sam wzorzec
     co komponent_wyboru_warsztatu. Dzięki temu 'Orlen', 'orlen' i 'ORLEN'
     nie rozjeżdżają rankingu cen (db.pobierz_trend_cen_paliwa).
     Zwraca (kontener, pobierz_wartosc, ustaw_wartosc)."""
+    etyk = db.etykiety_paliwa(elektryczny)
     cache_stacji = {"dane": None}
 
     def nazwy_stacji():
@@ -1762,7 +1835,7 @@ def komponent_wyboru_stacji(page: ft.Page, state, aktualna_nazwa=""):
         return opcje
 
     e_dropdown = ft.Dropdown(
-        label="Stacja paliw (opcjonalnie)",
+        label=etyk["punkt_opcjonalnie"],
         options=zbuduj_opcje(),
         value=biezaca if pasuje_start else "",
         visible=not pokaz_reczne,
@@ -1771,8 +1844,8 @@ def komponent_wyboru_stacji(page: ft.Page, state, aktualna_nazwa=""):
     )
 
     e_recznie = ft.TextField(
-        label="Wpisz nazwę stacji",
-        hint_text="np. Orlen, Shell, BP",
+        label=etyk["punkt_recznie"],
+        hint_text=etyk["punkt_hint"],
         value=biezaca if pokaz_reczne else "",
         visible=pokaz_reczne,
         expand=True,
@@ -1781,7 +1854,7 @@ def komponent_wyboru_stacji(page: ft.Page, state, aktualna_nazwa=""):
 
     btn_zmien_tryb = ft.IconButton(
         icon=ft.Icons.LIST if pokaz_reczne else ft.Icons.EDIT,
-        tooltip="Wybierz stację z listy" if pokaz_reczne else "Wpisz nową stację ręcznie",
+        tooltip=f"Wybierz {etyk['punkt'].lower()} z listy" if pokaz_reczne else "Wpisz nową nazwę ręcznie",
         icon_color=ft.Colors.PRIMARY
     )
 

@@ -7,6 +7,7 @@ import tempfile
 import io
 import asyncio
 import db
+import sync
 import utils
 from state import AppState
 
@@ -24,6 +25,7 @@ from views.body_view import KaroseriaView, FormularzZdjecieKaroseriiView
 from views.porownanie_view import PorownanieView
 from views.przebieg_view import OdczytyPrzebieguView
 from views.eksport_view import EksportView
+from views.import_view import ImportCSVView
 from views.kalkulator_view import KalkulatorTrasyView
 from views.wspoldzielenie_view import WspoldzielenieView
 from views.timeline_view import TimelineView
@@ -464,6 +466,8 @@ def main(page: ft.Page):
             page.views.append(OdczytyPrzebieguView(page, app_state))
         elif segmenty[0] == "eksport":
             page.views.append(EksportView(page, app_state, eksportuj_dane_zaawansowane))
+        elif segmenty[0] == "import":
+            page.views.append(ImportCSVView(page, app_state))
         elif segmenty[0] == "kalkulator":
             page.views.append(KalkulatorTrasyView(page, app_state))
         elif segmenty[0] == "timeline":
@@ -494,6 +498,13 @@ def main(page: ft.Page):
 
     page.on_route_change = trasa_zmieniona
     page.on_view_pop = widok_zamkniety
+
+    async def _nadgon_kolejke_sync():
+        try:
+            await asyncio.to_thread(sync.przetworz_kolejke_sync, 10)
+        except Exception:
+            pass  # start aplikacji nigdy nie może się wywalić przez brak sieci
+    page.run_task(_nadgon_kolejke_sync)
 
     utils.przejdz(page, page.route or "/")
 

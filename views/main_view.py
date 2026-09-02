@@ -75,10 +75,21 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
     async def _synchronizuj_teraz(self):
         try:
             wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
+            await asyncio.to_thread(sync.przetworz_kolejke_sync)
             utils.przejdz(self._page, "/")
-            utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+            konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
+            if konflikty:
+                utils.pokaz_komunikat(self._page, utils.podsumowanie_konfliktow(konflikty), ft.Colors.AMBER_700)
+                utils.pokaz_dialog_konfliktow(self._page, konflikty)
+            else:
+                utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
         except Exception as ex:
-            utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
+            db.zakolejkuj_synchronizacje(self.state.auto_id, "reczna", str(ex))
+            utils.pokaz_komunikat(
+                self._page,
+                f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
+                ft.Colors.RED_700
+            )
 
     def _buduj_fab_szybkich_akcji(self):
         akcje = [
@@ -466,7 +477,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     "typ_paliwa, skrzynia_biegow, notatki, wycieraczki_przod, wycieraczki_tyl, "
                     "cisnienie_przod, cisnienie_tyl, olej_typ, olej_pojemnosc, akumulator, "
                     "zarowki_mijania, zarowki_drogowe, oc_data, przeglad_data, "
-                    "ac_data, assistance_data, gasnica_data, apteczka_data, "
+                    "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, "
                     "marka, model, generacja "
                     "FROM samochody WHERE id=?",
                     (self.state.auto_id,)
@@ -545,6 +556,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         wiersz_termin(ft.Icons.SUPPORT_AGENT, "Assistance", w_info["assistance_data"]),
                         wiersz_termin(ft.Icons.LOCAL_FIRE_DEPARTMENT, "Gaśnica", w_info["gasnica_data"]),
                         wiersz_termin(ft.Icons.MEDICAL_SERVICES, "Apteczka", w_info["apteczka_data"]),
+                        wiersz_termin(ft.Icons.VERIFIED_USER, "Gwarancja", w_info["gwarancja_data"]),
+                        wiersz_info(ft.Icons.SPEED, "Gwarancja do", f"{w_info['gwarancja_przebieg']} km" if w_info["gwarancja_przebieg"] else None),
 
                         ft.Divider(height=15),
                         ft.Text("🛒 Ściągawka do sklepu", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -667,16 +680,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
                 # Ciche wypchnięcie do chmury w tle, jeśli pojazd jest współdzielony —
                 # analogicznie do zapisu tankowania (forms_view.py): partner nie musi
-                # ręcznie klikać "Synchronizuj", żeby zobaczyć nowy status. Owinięte w
-                # asyncio.to_thread + run_task, więc UI się nie zawiesza.
-                wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-                if wspolny_id:
-                    async def _wypchnij():
-                        try:
-                            await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
-                        except Exception:
-                            pass  # brak sieci nie może zepsuć lokalnego zapisu
-                    self._page.run_task(_wypchnij)
+                # ręcznie klikać "Synchronizuj", żeby zobaczyć nowy status.
+                utils.wypchnij_w_tle(self._page, self.state.auto_id, "status")
 
                 utils.przejdz(self._page, "/")
                 utils.pokaz_komunikat(self._page, "Zaktualizowano status pojazdu!")
@@ -1007,7 +1012,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
     def buduj_tankowania(self):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-        naglowek_bits = [ft.Text("⛽ Historia Tankowań", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        elektryczny = db.czy_pojazd_elektryczny(self.state.auto_id)
+        etykiety = db.etykiety_paliwa(elektryczny)
+        naglowek_bits = [ft.Text(etykiety["naglowek_listy"], size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
         if wspolny_id:
             naglowek_bits.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
         self.elementy.append(ft.Row(naglowek_bits, vertical_alignment=ft.CrossAxisAlignment.CENTER))
@@ -1120,11 +1127,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
                 for w in po_filtrach:
                     spalanie = w.get('spalanie')
-                    sp_str = utils.formatuj_spalanie(spalanie)
+                    sp_str = utils.formatuj_spalanie(spalanie, elektryczny=elektryczny)
                     kwota_val = float(w.get('kwota') or 0)
                     litry_val = float(w.get('litry') or 0)
                     cena_str = f"{utils.formatuj_liczba(kwota_val)}  {utils.symbol_waluty()}"
-                    cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/L" if litry_val > 0 else "-"
+                    cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/{etykiety['jednostka']}" if litry_val > 0 else "-"
                     dystans_val = w.get('dystans') or 0
 
                     tid = w.get('id')
@@ -1133,14 +1140,14 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                             ft.Text(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Row([
                                 utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Tankowanie"),
-                                ft.Icon(ft.Icons.LOCAL_GAS_STATION, size=14, color=ft.Colors.PRIMARY, tooltip="Do pełna") if w.get('do_pelna') else ft.Container(),
+                                ft.Icon(ft.Icons.EV_STATION if elektryczny else ft.Icons.LOCAL_GAS_STATION, size=14, color=ft.Colors.PRIMARY, tooltip="Do pełna") if w.get('do_pelna') else ft.Container(),
                                 ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
                             ], spacing=4)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Row([
                             ft.Column([ft.Text("Dystans", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(f"{dystans_val} km", weight="bold")]),
-                            ft.Column([ft.Text("Spalanie", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")]),
-                            ft.Column([ft.Text("Cena/L", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(cena_litr_str, weight="bold")])
+                            ft.Column([ft.Text(etykiety["zuzycie"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")]),
+                            ft.Column([ft.Text(etykiety["cena_jednostkowa"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(cena_litr_str, weight="bold")]),
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     ]
                     if w.get('tagi'):
@@ -1357,6 +1364,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         ))
 
         if self.state.stat_podzakladka == 0:
+            elektryczny = db.czy_pojazd_elektryczny(self.state.auto_id)
+            etykiety = db.etykiety_paliwa(elektryczny)
             self.elementy.extend([
                 ft.Text("📊 Podsumowanie Kosztów", size=20, weight="bold", color=ft.Colors.PRIMARY),
                 kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)}  {utils.symbol_waluty()}", ft.Colors.RED_700),
@@ -1370,12 +1379,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ], spacing=10),
                 ft.Text("📈 Wskaźniki i Paliwo", size=20, weight="bold", color=ft.Colors.PRIMARY),
                 ft.Row([
-                    kafel(ft.Icons.SPEED, "Średnie spalanie", utils.formatuj_spalanie(spalanie) if spalanie > 0 else "Wymaga 2x do pełna", ft.Colors.TEAL_700, expand=1),
+                    kafel(ft.Icons.SPEED, etykiety["zuzycie"], utils.formatuj_spalanie(spalanie, elektryczny=elektryczny) if spalanie > 0 else etykiety["brak_pelnych"], ft.Colors.TEAL_700, expand=1),
                     kafel(ft.Icons.ROUTE, "Zanotowany dystans", f"{utils.formatuj_liczba(dystans, 0)} km", ft.Colors.INDIGO_700, expand=1),
                 ], spacing=10),
                 ft.Row([
                     kafel(ft.Icons.TIMELAPSE, "Średnio dziennie", sredni_dz_str, ft.Colors.BLUE_GREY_700, expand=1),
-                    kafel(ft.Icons.WATER_DROP, "Zatankowano", f"{utils.formatuj_liczba(litry)} L", ft.Colors.CYAN_700, expand=1),
+                    kafel(ft.Icons.WATER_DROP, etykiety["suma_ilosci"], f"{utils.formatuj_liczba(litry)} {etykiety['jednostka']}", ft.Colors.CYAN_700, expand=1),
                 ], spacing=10),
             ])
 

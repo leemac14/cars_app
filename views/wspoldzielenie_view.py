@@ -1,5 +1,6 @@
 import flet as ft
 import asyncio
+import db
 import sync
 import utils
 
@@ -144,12 +145,23 @@ class WspoldzielenieView(ft.View):
             dlg = utils.pokaz_ladowanie(self._page, "Synchronizowanie danych...")
             try:
                 wyslano, pobrano = await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
+                await asyncio.to_thread(sync.przetworz_kolejke_sync)
                 utils.ukryj_ladowanie(self._page, dlg)
                 utils.przejdz(self._page, "/wspoldzielenie")
-                utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+                konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
+                if konflikty:
+                    utils.pokaz_komunikat(self._page, utils.podsumowanie_konfliktow(konflikty), ft.Colors.AMBER_700)
+                    utils.pokaz_dialog_konfliktow(self._page, konflikty)
+                else:
+                    utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
             except Exception as ex:
+                db.zakolejkuj_synchronizacje(self.state.auto_id, "reczna", str(ex))
                 utils.ukryj_ladowanie(self._page, dlg)
-                utils.pokaz_komunikat(self._page, f"Błąd synchronizacji: {ex}", ft.Colors.RED_700)
+                utils.pokaz_komunikat(
+                    self._page,
+                    f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
+                    ft.Colors.RED_700
+                )
         self._page.run_task(_zrob)
 
     def _przywroc(self, e):

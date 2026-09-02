@@ -7,7 +7,6 @@ import urllib.request
 import urllib.parse
 import asyncio
 import sqlite3
-import sync
 
 def pobierz_dane_vin(vin: str) -> dict:
     """
@@ -136,6 +135,7 @@ class FormularzAutoView(ft.View):
         wp_val, wt_val, cp_val, ct_val = "", "", "", ""
         ot_val, op_val, akum_val, zm_val, zd_val = "", "", "", "", ""
         ac_val, asy_val, gas_val, apt_val = "", "", "", ""
+        gw_val, gwp_val = "", ""
         self.zg_val = None
         self.kolor_auta_val = None
         
@@ -148,7 +148,7 @@ class FormularzAutoView(ft.View):
                     "pojemnosc_silnika, moc_silnika, typ_paliwa, skrzynia_biegow, notatki, "
                     "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                     "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
-                    "ac_data, assistance_data, gasnica_data, apteczka_data, zdjecie_glowne, "
+                    "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, zdjecie_glowne, "
                     "marka, model, generacja, kolor_motywu "
                     "FROM samochody WHERE id=?", 
                     (auto_id,)
@@ -165,6 +165,7 @@ class FormularzAutoView(ft.View):
                     akum_val, zm_val, zd_val = str(w["akumulator"] or ""), str(w["zarowki_mijania"] or ""), str(w["zarowki_drogowe"] or "")
                     ac_val, asy_val = str(w["ac_data"] or ""), str(w["assistance_data"] or "")
                     gas_val, apt_val = str(w["gasnica_data"] or ""), str(w["apteczka_data"] or "")
+                    gw_val, gwp_val = str(w["gwarancja_data"] or ""), str(w["gwarancja_przebieg"] or "")
                     self.zg_val = str(w["zdjecie_glowne"]) if w["zdjecie_glowne"] else None
                     self.kolor_auta_val = str(w["kolor_motywu"]) if w["kolor_motywu"] else None
                     
@@ -210,7 +211,7 @@ class FormularzAutoView(ft.View):
 
         self.e_poj = ft.TextField(label="Pojemność silnika (cm³)", value=poj_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_moc = ft.TextField(label="Moc silnika (KM)", value=moc_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
-        self.e_pal = ft.Dropdown(label="Typ paliwa", options=[ft.DropdownOption(key=x, text=x) for x in ["Benzyna", "Diesel", "LPG", "Hybryda", "Elektryczny"]], value=pal_val, **utils.styl_dropdown())
+        self.e_pal = ft.Dropdown(label="Typ paliwa", options=[ft.DropdownOption(key=x, text=x) for x in db.TYPY_PALIWA], value=pal_val, **utils.styl_dropdown())
         self.e_skrz = ft.Dropdown(label="Skrzynia biegów", options=[ft.DropdownOption(key=x, text=x) for x in ["Manualna", "Automatyczna"]], value=skrz_val, **utils.styl_dropdown())
         self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
 
@@ -228,6 +229,8 @@ class FormularzAutoView(ft.View):
         self.e_asy = utils.pole_daty(page, "Ważność Assistance", asy_val)
         self.e_gas = utils.pole_daty(page, "Ważność gaśnicy", gas_val)
         self.e_apt = utils.pole_daty(page, "Ważność apteczki", apt_val)
+        self.e_gw = utils.pole_daty(page, "Gwarancja producenta (do)", gw_val)
+        self.e_gwp = ft.TextField(label="Gwarancja — limit przebiegu (km)", value=gwp_val, hint_text="np. 150000", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
 
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pojazdu" if auto_id else "Nowy pojazd", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
@@ -248,7 +251,7 @@ class FormularzAutoView(ft.View):
         k2 = utils.karta_formularza([self.e_pal, self.e_skrz, self.e_poj, self.e_moc], "Specyfikacja techniczna", ft.Icons.SETTINGS)
         k3 = utils.karta_formularza([self.e_oc, self.e_pt], "Ważne daty", ft.Icons.CALENDAR_MONTH)
         k5 = utils.karta_formularza([wiersz_wycieraczki, wiersz_cisnienie, wiersz_olej, self.e_akum, wiersz_zarowki], "Ściągawka do sklepu", ft.Icons.SHOPPING_CART)
-        k6 = utils.karta_formularza([self.e_ac, self.e_asy, self.e_gas, self.e_apt], "Dodatkowe polisy i BHP", ft.Icons.SHIELD)
+        k6 = utils.karta_formularza([self.e_ac, self.e_asy, self.e_gas, self.e_apt, self.e_gw, self.e_gwp], "Dodatkowe polisy, gwarancja i BHP", ft.Icons.SHIELD)
         k4 = utils.karta_formularza([self.e_not], "Uwagi", ft.Icons.NOTES)
         
         elementy = [k0, k1, kk, k2, k3, k5, k6, k4, utils.przyciski_akcji(page, "✅ Zapisz pojazd", self.zapisz, "/")]
@@ -385,6 +388,7 @@ class FormularzAutoView(ft.View):
             self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
             self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
             self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value,
+            self.e_gw.value, self.e_gwp.value,
             self.get_kolor(),
         )
 
@@ -417,7 +421,14 @@ class FormularzAutoView(ft.View):
                 bledy.append((self.e_rok, f"Rok poza zakresem {db.ROK_MIN}–{datetime.now().year + 1}"))
         if self.e_vin.value and len(self.e_vin.value) > 17:
             bledy.append((self.e_vin, "Maks. 17 znaków"))
-        
+
+        self.e_gwp.error_text = None
+        gwarancja_km = None
+        if (self.e_gwp.value or "").strip():
+            gwarancja_km = utils.parsuj_int(self.e_gwp.value, None)
+            if gwarancja_km is None or gwarancja_km <= 0:
+                bledy.append((self.e_gwp, "Podaj poprawny limit km"))
+
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
@@ -447,14 +458,14 @@ class FormularzAutoView(ft.View):
                         "pojemnosc_silnika=?, moc_silnika=?, typ_paliwa=?, skrzynia_biegow=?, notatki=?, "
                         "wycieraczki_przod=?, wycieraczki_tyl=?, cisnienie_przod=?, cisnienie_tyl=?, "
                         "olej_typ=?, olej_pojemnosc=?, akumulator=?, zarowki_mijania=?, zarowki_drogowe=?, "
-                        "ac_data=?, assistance_data=?, gasnica_data=?, apteczka_data=?, zdjecie_glowne=?, "
-                        "marka=?, model=?, generacja=?, kolor_motywu=? WHERE id=?", 
+                        "ac_data=?, assistance_data=?, gasnica_data=?, apteczka_data=?, gwarancja_data=?, gwarancja_przebieg=?, "
+                        "zdjecie_glowne=?, marka=?, model=?, generacja=?, kolor_motywu=? WHERE id=?", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value, 
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
-                         self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, nowe_zdj, 
-                         marka, model, generacja, nowy_kolor, self.auto_id)
+                         self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
+                         nowe_zdj, marka, model, generacja, nowy_kolor, self.auto_id)
                     )
                     if self.state.auto_id == self.auto_id:
                         self.state.auto_nazwa = n
@@ -465,15 +476,15 @@ class FormularzAutoView(ft.View):
                         "pojemnosc_silnika, moc_silnika, typ_paliwa, skrzynia_biegow, notatki, "
                         "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                         "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
-                        "ac_data, assistance_data, gasnica_data, apteczka_data, zdjecie_glowne, "
-                        "marka, model, generacja, kolor_motywu) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                        "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, "
+                        "zdjecie_glowne, marka, model, generacja, kolor_motywu) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value,
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
-                         self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, nowe_zdj,
-                         marka, model, generacja, nowy_kolor)
+                         self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
+                         nowe_zdj, marka, model, generacja, nowy_kolor)
                     )
                     n_id = cur.lastrowid
                     for dz in db.DOMYSLNE_ZADANIA:
@@ -497,14 +508,7 @@ class FormularzAutoView(ft.View):
 
             db.zatwierdz_zalacznik(self.zg_val, przygotowany_zdj)
 
-            wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-            if wspolny_id:
-                async def _wypchnij():
-                    try:
-                        await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
-                    except Exception:
-                        pass  # brak sieci nie może zepsuć lokalnego zapisu — spróbuje się przy kolejnej synchronizacji
-                self._page.run_task(_wypchnij)
+            utils.wypchnij_w_tle(self._page, self.state.auto_id, "pojazd")
 
             utils.przejdz(self._page, "/")
             utils.pokaz_komunikat(self._page, "Zapisano pojazd!")
@@ -518,6 +522,8 @@ class FormularzTankowanieView(ft.View):
         self.state = state
         self.t_id = t_id
         self._blokada_sync = False
+        self.elektryczny = db.czy_pojazd_elektryczny(state.auto_id)
+        self.etykiety = db.etykiety_paliwa(self.elektryczny)
 
         duplikuj_id = getattr(state, "duplikuj_zrodlo_tankowanie", None) if not t_id else None
         state.duplikuj_zrodlo_tankowanie = None  # zużywamy jednorazowo
@@ -604,20 +610,20 @@ class FormularzTankowanieView(ft.View):
                 self._blokada_sync = False
 
         self.e_d = utils.pole_daty(page, "Data tankowania", d_val)
-        self.k_stacja, self.get_stacja, self.ustaw_stacja = utils.komponent_wyboru_stacji(page, state, stacja_val)
+        self.k_stacja, self.get_stacja, self.ustaw_stacja = utils.komponent_wyboru_stacji(page, state, stacja_val, elektryczny=self.elektryczny)
         hint_prz = f"Ost.: {self.ostatni_prz} km" if self.ostatni_prz > 0 else "np. 150000"
         
         self.e_p = ft.TextField(label="Licznik (km)", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
         self.e_dys = ft.TextField(label="Dystans (km)", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola(page=page))
         
-        self.e_l = ft.TextField(label="Zatankowano (Litry)", value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_l = ft.TextField(label=self.etykiety["ilosc"], value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_k = ft.TextField(label=f"Całkowity Koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
-        self.c_pel = ft.Checkbox(label="Zatankowano do pełna (wymagane do spalania)", value=pelna_val)
+        self.c_pel = ft.Checkbox(label=self.etykiety["do_pelna"], value=pelna_val)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
 
         self._stan_poczatkowy = self._migawka_formularza()
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja tankowania" if t_id else "Nowe tankowanie", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+        appbar = utils.zbuduj_pasek_z_powrotem(page, f"Edycja: {self.etykiety['zdarzenie']}" if t_id else f"Nowe {self.etykiety['zdarzenie']}", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         wiersz_przebiegu = ft.Row([
             ft.Container(self.e_p, expand=True),
@@ -628,7 +634,7 @@ class FormularzTankowanieView(ft.View):
         k1 = utils.karta_formularza([self.e_d, wiersz_przebiegu], "Przebieg i Data", ft.Icons.SPEED, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza(
             [self.k_stacja, self.e_l, self.e_k, self.c_pel, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
-            "Szczegóły transakcji", ft.Icons.LOCAL_GAS_STATION
+            "Szczegóły transakcji", ft.Icons.EV_STATION if self.elektryczny else ft.Icons.LOCAL_GAS_STATION
         )
         k3 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
 
@@ -689,19 +695,10 @@ class FormularzTankowanieView(ft.View):
                              (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie()))
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
-        # Auto-sync w tle, jeśli pojazd jest współdzielony — bez tego partner
-        # widziałby to tankowanie dopiero po ręcznym kliknięciu ikonki sync.
-        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-        if wspolny_id:
-            async def _wypchnij():
-                try:
-                    await asyncio.to_thread(sync.synchronizuj_wszystko, self.state.auto_id)
-                except Exception:
-                    pass  # brak sieci nie może zepsuć lokalnego zapisu
-            self._page.run_task(_wypchnij)
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "tankowanie")
 
         utils.przejdz(self._page, "/")
-        utils.pokaz_komunikat(self._page, "Zapisano tankowanie!")
+        utils.pokaz_komunikat(self._page, f"Zapisano {self.etykiety['zdarzenie']}!")
 
 
 class FormularzInneView(ft.View):

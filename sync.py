@@ -135,6 +135,7 @@ KOLUMNY_POJAZDU = [
     "cisnienie_przod", "cisnienie_tyl", "olej_typ", "olej_pojemnosc", "akumulator",
     "zarowki_mijania", "zarowki_drogowe", "ac_data", "assistance_data",
     "gasnica_data", "apteczka_data", "wiadomosc_statusu",
+    "gwarancja_data", "gwarancja_przebieg",
 ]
 
 KONFIGURACJA_SYNC = [
@@ -177,12 +178,75 @@ def _wypchnij_nagrobki(klient):
 # Czyszczone na starcie każdego synchronizuj_wszystko().
 _konflikty_biezacej_synchronizacji = []
 
-def _zarejestruj_konflikt(tabela):
-    _konflikty_biezacej_synchronizacji.append(tabela)
+ETYKIETY_TABEL_SYNC = {
+    "tankowania": "Tankowanie",
+    "historia": "Wpis serwisowy",
+    "wizyty": "Wizyta w warsztacie",
+    "zadania": "Podzespół",
+    "magazyn_czesci": "Pozycja magazynu",
+    "wizyta_czesci_magazynu": "Zużycie części",
+    "zestawy_opon": "Zestaw opon",
+    "inne_koszty": "Inny koszt",
+    "warsztaty": "Warsztat",
+    "wydatki_cykliczne": "Wydatek cykliczny",
+    "odczyty_przebiegu": "Odczyt licznika",
+    "do_zrobienia": "Zadanie do zrobienia",
+    "tagi": "Tag",
+    "pakiety_serwisowe_wlasne": "Własny pakiet serwisowy",
+    "info_pojazdu": "Dane pojazdu",
+}
+
+def _opis_rekordu(tabela, dane):
+    """Krótki, ludzki opis konfliktowego rekordu — żeby komunikat mówił CO zostało
+    nadpisane, a nie tylko ile rzeczy. Buduje się wyłącznie z pól, które i tak
+    lecą do chmury (patrz KONFIGURACJA_SYNC), więc nie wymaga dobicia do bazy."""
+    dane = dane or {}
+
+    def pole(*nazwy):
+        for n in nazwy:
+            w = dane.get(n)
+            if w not in (None, ""):
+                return str(w)
+        return ""
+
+    czesci = []
+    data_txt = pole("data", "termin", "nastepna_data", "data_zakupu")
+    if data_txt:
+        czesci.append(data_txt)
+
+    nazwa_txt = pole("nazwa", "tytul", "stacja", "wykonawca", "sezon")
+    if nazwa_txt:
+        czesci.append(nazwa_txt)
+
+    kwota = dane.get("kwota", dane.get("cena", dane.get("koszt_calkowity", dane.get("szacowany_koszt"))))
+    if kwota not in (None, ""):
+        try:
+            czesci.append(f"{float(kwota):.2f}")
+        except (TypeError, ValueError):
+            pass
+
+    if not czesci:
+        przebieg = pole("przebieg")
+        if przebieg:
+            czesci.append(f"{przebieg} km")
+
+    etykieta = ETYKIETY_TABEL_SYNC.get(tabela, tabela)
+    return f"{etykieta}: {' • '.join(czesci)}" if czesci else etykieta
+
+def _zarejestruj_konflikt(tabela, dane=None, zdalne_id=None):
+    _konflikty_biezacej_synchronizacji.append({
+        "tabela": tabela,
+        "etykieta": ETYKIETY_TABEL_SYNC.get(tabela, tabela),
+        "opis": _opis_rekordu(tabela, dane),
+        "zdalne_id": zdalne_id,
+    })
 
 def pobierz_konflikty_ostatniej_synchronizacji():
-    """Liczba rekordów nadpisanych przy ostatniej synchronizacji, których zdalna
-    wersja zmieniła się niezależnie od naszej — czyli edycja z dwóch urządzeń."""
+    """Lista nadpisanych rekordów z ostatniej synchronizacji:
+    [{"tabela","etykieta","opis","zdalne_id"}, ...]. Pusta lista = brak konfliktów."""
+    return list(_konflikty_biezacej_synchronizacji)
+
+def liczba_konfliktow_ostatniej_synchronizacji():
     return len(_konflikty_biezacej_synchronizacji)
 
 def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
@@ -271,7 +335,7 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
         if hash_zdalny_teraz is not None and hash_zdalny_teraz != wiersz["zdalny_hash"]:
             # Zdalna wersja zmieniła się niezależnie od naszej ostatniej synchronizacji —
             # ktoś edytował ten sam rekord na innym urządzeniu offline. Zaraz go nadpiszemy.
-            _zarejestruj_konflikt(tabela)
+            _zarejestruj_konflikt(tabela, dane=dane, zdalne_id=wiersz["zdalne_id"])
 
         klient.rpc("aktualizuj_zdalny_rekord", {"p_id": wiersz["zdalne_id"], "p_dane": dane}).execute()
         with db.polacz_baze() as conn:
@@ -551,3 +615,37 @@ def odlacz_wspoldzielenie(auto_id):
                 )
             else:
                 conn.execute(f"UPDATE {tabela} SET zdalne_id=NULL, zdalny_hash=NULL WHERE auto_id=?", (auto_id,))
+
+def synchronizuj_w_tle(auto_id, powod="zapis"):
+    """Cicha synchronizacja po zapisie formularza. NIE rzuca wyjątków, ale — w
+    przeciwieństwie do dawnego `except: pass` — nieudana próba trafia do kolejki
+    (kolejka_sync) i zostanie automatycznie ponowiona. Zwraca (czy_udane, blad)."""
+    wspolny_id, _ = czy_udostepniony(auto_id)
+    if not wspolny_id:
+        return True, None
+    try:
+        synchronizuj_wszystko(auto_id)
+        db.usun_z_kolejki_sync(auto_id)
+        return True, None
+    except Exception as ex:
+        db.zakolejkuj_synchronizacje(auto_id, powod, str(ex))
+        return False, str(ex)
+
+def przetworz_kolejke_sync(limit=5):
+    """Ponawia zaległe synchronizacje, których termin ponowienia już minął.
+    Wołane przy starcie aplikacji i przy każdym kolejnym zapisie — nie rzuca
+    wyjątków, kolejny nieudany strzał tylko odsuwa termin (backoff w db).
+    Zwraca liczbę pojazdów zsynchronizowanych z zaległości."""
+    udane = 0
+    for auto_id, _powod, _proby in db.pobierz_kolejke_sync(limit=limit):
+        wspolny_id, _ = czy_udostepniony(auto_id)
+        if not wspolny_id:
+            db.usun_z_kolejki_sync(auto_id)  # pojazd odłączony od chmury — kolejka bezprzedmiotowa
+            continue
+        try:
+            synchronizuj_wszystko(auto_id)
+            db.usun_z_kolejki_sync(auto_id)
+            udane += 1
+        except Exception as ex:
+            db.zakolejkuj_synchronizacje(auto_id, "ponowienie", str(ex))
+    return udane
