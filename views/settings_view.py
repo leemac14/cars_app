@@ -91,7 +91,6 @@ class UstawieniaView(ft.View):
         ], spacing=8)
         # -----------------------
 
-        self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, "⚙️ Ustawienia aplikacji", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         k1 = utils.karta_formularza(
@@ -123,6 +122,8 @@ class UstawieniaView(ft.View):
             ft.Checkbox(label=etykieta, value=(klucz in widgety_wlaczone), data=klucz)
             for klucz, etykieta in db.KOKPIT_WIDGETY.items()
         ]
+
+        self._stan_poczatkowy = self._migawka_formularza()
 
         k_kokpit = utils.karta_formularza(
             [

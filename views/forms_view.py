@@ -414,7 +414,7 @@ class FormularzAutoView(ft.View):
         if self.e_rok.value:
             r = utils.parsuj_int(self.e_rok.value, None)
             if r is None or r < db.ROK_MIN or r > datetime.now().year + 1:
-                bledy.append((self.e_rok, "Błędny rok"))
+                bledy.append((self.e_rok, f"Rok poza zakresem {db.ROK_MIN}–{datetime.now().year + 1}"))
         if self.e_vin.value and len(self.e_vin.value) > 17:
             bledy.append((self.e_vin, "Maks. 17 znaków"))
         
@@ -604,7 +604,7 @@ class FormularzTankowanieView(ft.View):
                 self._blokada_sync = False
 
         self.e_d = utils.pole_daty(page, "Data tankowania", d_val)
-        self.e_stacja = ft.TextField(label="Stacja paliw (opcjonalnie)", value=stacja_val, hint_text="np. Orlen, Shell", **utils.styl_pola(page=page))
+        self.k_stacja, self.get_stacja, self.ustaw_stacja = utils.komponent_wyboru_stacji(page, state, stacja_val)
         hint_prz = f"Ost.: {self.ostatni_prz} km" if self.ostatni_prz > 0 else "np. 150000"
         
         self.e_p = ft.TextField(label="Licznik (km)", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
@@ -627,7 +627,7 @@ class FormularzTankowanieView(ft.View):
 
         k1 = utils.karta_formularza([self.e_d, wiersz_przebiegu], "Przebieg i Data", ft.Icons.SPEED, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza(
-            [self.e_stacja, self.e_l, self.e_k, self.c_pel, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
+            [self.k_stacja, self.e_l, self.e_k, self.c_pel, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
             "Szczegóły transakcji", ft.Icons.LOCAL_GAS_STATION
         )
         k3 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
@@ -641,13 +641,13 @@ class FormularzTankowanieView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_d.value, self.e_p.value, self.e_dys.value, self.e_l.value,
-                self.e_k.value, self.c_pel.value, self.e_stacja.value, self.get_tagi())
-
+                self.e_k.value, self.c_pel.value, self.get_stacja(), self.get_tagi())
+    
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        for pole in (self.e_p, self.e_dys, self.e_l, self.e_k, self.e_stacja): pole.error_text = None
+        for pole in (self.e_p, self.e_dys, self.e_l, self.e_k): pole.error_text = None
         prz = utils.parsuj_int(self.e_p.value, 0)
         dys = utils.parsuj_float(self.e_dys.value, 0.0)
         lit = utils.parsuj_float(self.e_l.value, 0.0)
@@ -678,14 +678,15 @@ class FormularzTankowanieView(ft.View):
         
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
+        stacja_wart = self.get_stacja()
 
         with db.polacz_baze() as conn:
             if self.t_id: 
                 conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
-                             (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
+                             (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
             else: 
                 conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
-                             (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, self.e_stacja.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie()))
+                             (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie()))
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         # Auto-sync w tle, jeśli pojazd jest współdzielony — bez tego partner
@@ -916,22 +917,60 @@ class FormularzInterwalView(ft.View):
         self.z_id = z_id
 
         nazwa, ik, im = "", "", ""
+        prog_km_val, prog_dni_val = "", ""
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT nazwa, interwal_km, interwal_miesiace FROM zadania WHERE id=?", (z_id,))
+            c.execute("SELECT nazwa, interwal_km, interwal_miesiace, prog_km, prog_dni FROM zadania WHERE id=?", (z_id,))
             w = c.fetchone()
-            if w: nazwa, ik, im = str(w[0]), str(w[1] or ""), str(w[2] or "")
+            if w:
+                nazwa, ik, im = str(w[0]), str(w[1] or ""), str(w[2] or "")
+                prog_km_val, prog_dni_val = str(w[3] or ""), str(w[4] or "")
 
         self.e_ik = ft.TextField(label="Co ile kilometrów (np. 15000)", value=ik, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_im = ft.TextField(label="Co ile miesięcy (np. 12)", value=im, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
 
+        dozwolone_km = [str(v) for v in db.PROGI_KM_OPCJE]
+        dozwolone_dni = [str(v) for v in db.PROGI_DNI_OPCJE]
+
+        self.e_prog_km = ft.Dropdown(
+            label="Ostrzegaj na ile km przed",
+            options=(
+                [ft.DropdownOption(key="", text=f"Domyślny z Ustawień ({db.pobierz_prog_km()} km)")]
+                + [ft.DropdownOption(key=str(v), text=f"{v} km przed terminem") for v in db.PROGI_KM_OPCJE]
+            ),
+            value=prog_km_val if prog_km_val in dozwolone_km else "",
+            **utils.styl_dropdown()
+        )
+        self.e_prog_dni = ft.Dropdown(
+            label="Ostrzegaj na ile dni przed",
+            options=(
+                [ft.DropdownOption(key="", text=f"Domyślny z Ustawień ({db.pobierz_prog_dni()} dni)")]
+                + [ft.DropdownOption(key=str(v), text=f"{v} dni przed terminem") for v in db.PROGI_DNI_OPCJE]
+            ),
+            value=prog_dni_val if prog_dni_val in dozwolone_dni else "",
+            **utils.styl_dropdown()
+        )
+
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"Interwał: {nazwa}", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         k1 = utils.karta_formularza([self.e_ik, self.e_im], "Odstępy między wymianami", ft.Icons.TIMER, domyslnie_otwarte=True, page=page)
-        
+        k2 = utils.karta_formularza(
+            [
+                ft.Text(
+                    "Domyślne progi z Ustawień obowiązują wszystkie podzespoły naraz. Tutaj możesz "
+                    "ustawić własne okno ostrzegania tylko dla tego jednego — np. rozrząd 5000 km "
+                    "wcześniej, a filtr powietrza dopiero 500 km przed terminem.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+                self.e_prog_km,
+                self.e_prog_dni,
+            ],
+            "Próg ostrzeżenia dla tego podzespołu", ft.Icons.NOTIFICATIONS_ACTIVE, page=page
+        )
+
         btn_czysc = ft.OutlinedButton("Wyczyść przypomnienia", on_click=self.usun_interwal, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15), width=float("inf"))
-        
-        elementy = [k1, btn_czysc, utils.przyciski_akcji(page, "✅ Zapisz interwał", self.zapisz, "/")]
+
+        elementy = [k1, k2, btn_czysc, utils.przyciski_akcji(page, "✅ Zapisz interwał", self.zapisz, "/")]
 
         super().__init__(
             route=f"/interwal/{z_id}",
@@ -939,7 +978,7 @@ class FormularzInterwalView(ft.View):
         )
 
     def _migawka_formularza(self):
-        return (self.e_ik.value, self.e_im.value)
+        return (self.e_ik.value, self.e_im.value, self.e_prog_km.value, self.e_prog_dni.value)
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -960,12 +999,24 @@ class FormularzInterwalView(ft.View):
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
-        with db.polacz_baze() as conn: conn.execute("UPDATE zadania SET interwal_km=?, interwal_miesiace=? WHERE id=?", (vk, vm, self.z_id))
+        # Pusty wybór = None = korzystaj z globalnego progu z Ustawień.
+        prog_km_zapis = utils.parsuj_int(self.e_prog_km.value, None) if self.e_prog_km.value else None
+        prog_dni_zapis = utils.parsuj_int(self.e_prog_dni.value, None) if self.e_prog_dni.value else None
+
+        with db.polacz_baze() as conn:
+            conn.execute(
+                "UPDATE zadania SET interwal_km=?, interwal_miesiace=?, prog_km=?, prog_dni=? WHERE id=?",
+                (vk, vm, prog_km_zapis, prog_dni_zapis, self.z_id)
+            )
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano interwały.")
 
     def usun_interwal(self, e):
-        with db.polacz_baze() as conn: conn.execute("UPDATE zadania SET interwal_km=NULL, interwal_miesiace=NULL WHERE id=?", (self.z_id,))
+        with db.polacz_baze() as conn:
+            conn.execute(
+                "UPDATE zadania SET interwal_km=NULL, interwal_miesiace=NULL, prog_km=NULL, prog_dni=NULL WHERE id=?",
+                (self.z_id,)
+            )
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Usunięto przypomnienie.")
 
@@ -1229,8 +1280,8 @@ class FormularzWizytyView(ft.View):
                 border_radius=10,
                 bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.PRIMARY),
                 content=ft.Row([
-                    ft.Icon(ft.Icons.PLAYLIST_ADD_CHECK, size=16, color=ft.Colors.PRIMARY),
-                    ft.Text("Zastosuj pakiet serwisowy", size=12, weight="bold", color=ft.Colors.PRIMARY)
+                    ft.Icon(ft.Icons.TUNE, size=16, color=ft.Colors.TEAL_700),
+                    ft.Text("Zarządzaj własnymi pakietami", color=ft.Colors.TEAL_700)
                 ], spacing=6, tight=True)
             ),
             tooltip="Zaznacz od razu kilka podzespołów naraz"
@@ -1357,6 +1408,53 @@ class FormularzWizytyView(ft.View):
         )
         utils.otworz_dialog(self._page, dlg)
 
+    def _okno_edycji_pakietu(self, p_id, nazwa, pozycje, po_zapisie=None):
+        zaznaczone_teraz = [chk.label for chk in self.chk_czesci if chk.value]
+
+        e_nazwa = ft.TextField(label="Nazwa pakietu", value=nazwa, **utils.styl_pola())
+        c_zastap = ft.Checkbox(
+            label=f"Zastąp skład obecnym zaznaczeniem ({len(zaznaczone_teraz)} poz.)",
+            value=False,
+            disabled=not zaznaczone_teraz,
+        )
+        podpowiedz = ft.Text(
+            ", ".join(zaznaczone_teraz) if zaznaczone_teraz
+            else "Aby podmienić skład, zamknij to okno, zaznacz podzespoły na liście i wróć tutaj.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+        )
+
+        def zapisz(e):
+            e_nazwa.error_text = None
+            nowa_nazwa = (e_nazwa.value or "").strip()
+            if not nowa_nazwa:
+                e_nazwa.error_text = "Podaj nazwę"
+                e_nazwa.update()
+                return
+            nowe_pozycje = zaznaczone_teraz if (c_zastap.value and zaznaczone_teraz) else pozycje
+            db.aktualizuj_pakiet_wlasny(p_id, nowa_nazwa, nowe_pozycje)
+            utils.zamknij_dialog(self._page, dlg)
+            self._odswiez_przycisk_pakietow()
+            utils.pokaz_komunikat(self._page, f"Zapisano pakiet „{nowa_nazwa}”.")
+            if po_zapisie:
+                po_zapisie()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Edycja pakietu", weight="bold"),
+            content=ft.Column([
+                e_nazwa,
+                ft.Text("Obecny skład:", size=12, weight="bold"),
+                ft.Text(", ".join(pozycje) or "Pusty pakiet", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Divider(height=10),
+                c_zastap,
+                podpowiedz,
+            ], tight=True, spacing=8, scroll=ft.ScrollMode.AUTO),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
+                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+            ]
+        )
+        utils.otworz_dialog(self._page, dlg)
+
     def _okno_zarzadzania_pakietami(self):
         pakiety_wlasne = db.pobierz_pakiety_wlasne(self.state.auto_id)
 
@@ -1368,12 +1466,23 @@ class FormularzWizytyView(ft.View):
                 utils.pokaz_komunikat(self._page, f"Usunięto pakiet „{nazwa}”.")
             utils.potwierdz(self._page, "Usunąć pakiet?", f"Czy na pewno usunąć pakiet „{nazwa}”?", wykonaj)
 
+        def edytuj(p_id, nazwa, pozycje):
+            # Najpierw zamykamy listę — dwa nałożone AlertDialogi potrafią się
+            # w Flet "zjeść" nawzajem. Po zapisie otwieramy listę od nowa.
+            utils.zamknij_dialog(self._page, dlg)
+            self._okno_edycji_pakietu(p_id, nazwa, pozycje, po_zapisie=self._okno_zarzadzania_pakietami)
+
         wiersze = [
             ft.ListTile(
                 leading=ft.Icon(ft.Icons.BOOKMARK, color=ft.Colors.TEAL_700),
                 title=ft.Text(nazwa, weight="bold"),
                 subtitle=ft.Text(", ".join(pozycje) or "Pusty pakiet", size=11),
-                trailing=ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED_700, on_click=lambda e, pid=p_id, n=nazwa: usun(pid, n))
+                trailing=ft.Row([
+                    ft.IconButton(ft.Icons.EDIT, icon_color=ft.Colors.PRIMARY, tooltip="Zmień nazwę / skład",
+                                  on_click=lambda e, pid=p_id, n=nazwa, poz=pozycje: edytuj(pid, n, poz)),
+                    ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED_700, tooltip="Usuń pakiet",
+                                  on_click=lambda e, pid=p_id, n=nazwa: usun(pid, n)),
+                ], tight=True, spacing=0)
             )
             for p_id, nazwa, pozycje in pakiety_wlasne
         ]

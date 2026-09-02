@@ -931,6 +931,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     stxt = []
                     procent_km = None
                     procent_dni = None
+                    prog_km_z = int(z.get('prog_km') or prog_km)
+                    prog_dni_z = int(z.get('prog_dni') or prog_dni)
                     if z.get('interwal_km') and z.get('przebieg'):
                         interwal_km = int(z.get('interwal_km'))
                         zost_km = (int(z.get('przebieg')) + interwal_km) - akt_prz
@@ -938,7 +940,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         if zost_km < 0:
                             stxt.append(f"{utils.formatuj_liczba(abs(zost_km), 0)} km po!")
                             kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
-                        elif zost_km <= prog_km:
+                        elif zost_km <= prog_km_z:
                             prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny)
                             stxt.append(prognoza or f"{utils.formatuj_liczba(zost_km, 0)} km")
                             kol, ico = ft.Colors.ORANGE_700, ft.Icons.HOURGLASS_BOTTOM
@@ -955,7 +957,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                             if zost_dni < 0:
                                 stxt.append(f"{abs(zost_dni)} dni po!")
                                 kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
-                            elif zost_dni <= prog_dni:
+                            elif zost_dni <= prog_dni_z:
                                 stxt.append(f"{zost_dni} dni")
                                 if kol != ft.Colors.RED_700: kol, ico = ft.Colors.ORANGE_700, ft.Icons.HOURGLASS_BOTTOM
                             else: stxt.append(f"~{zost_dni//30} m-cy")

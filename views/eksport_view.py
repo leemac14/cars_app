@@ -130,9 +130,9 @@ class EksportView(ft.View):
             content=ft.Row([
                 ft.Icon(ft.Icons.INFO_OUTLINE, color=ft.Colors.PRIMARY, size=18),
                 ft.Text(
-                    "Magazyn, zestawy opon i lista Do zrobienia eksportują się jako aktualny stan, "
-                    "niezależnie od wybranego zakresu dat.",
-                    size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True
+                    "Magazyn, opony, lista Do zrobienia, podzespoły z interwałami, wydatki cykliczne, "
+                    "warsztaty i tagi eksportują się jako aktualny stan — niezależnie od wybranego zakresu dat.",
+                    size=12, expand=True
                 )
             ], spacing=8)
         )

@@ -49,8 +49,12 @@ class KalkulatorTrasyView(ft.View):
                 cena_paliwa_domyslna = kwota / litry
 
         # Pola tekstowe (podpięte pod event on_change dla wyliczeń w locie)
-        self.e_dystans = ft.TextField(label="Planowany dystans (km)", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
-        self.e_osoby = ft.TextField(label="Liczba pasażerów", value="1", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
+        self.e_dystans = ft.TextField(label="Planowany dystans w jedną stronę (km)", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
+        self.c_powrot = ft.Checkbox(label="Podróż w obie strony (×2 dystans)", value=False, on_change=self.przelicz)
+        self.e_osoby = ft.TextField(
+            label="Liczba osób dzielących koszt (z kierowcą)",
+            value="1", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola()
+        )
         
         self.e_spalanie = ft.TextField(
             label="Średnie spalanie (l/100km)", 
@@ -72,7 +76,7 @@ class KalkulatorTrasyView(ft.View):
 
         # Karty interfejsu
         k1 = utils.karta_formularza(
-            [self.e_dystans, self.e_osoby],
+            [self.e_dystans, self.c_powrot, self.e_osoby],
             "Trasa i ekipa", ft.Icons.ROUTE, domyslnie_otwarte=True
         )
         
@@ -115,10 +119,12 @@ class KalkulatorTrasyView(ft.View):
         return utils.parsuj_float(kontrolka.value, 0.0)
 
     def przelicz(self, e):
-        dystans = self._pobierz_float(self.e_dystans)
+        dystans_wpisany = self._pobierz_float(self.e_dystans)
+        dystans = dystans_wpisany * 2 if self.c_powrot.value else dystans_wpisany
+
         osoby = int(utils.parsuj_float(self.e_osoby.value, 1.0))
         if osoby < 1: osoby = 1
-        
+
         spalanie = self._pobierz_float(self.e_spalanie)
         cena = self._pobierz_float(self.e_cena)
         dodatkowe = self._pobierz_float(self.e_dodatkowe)
@@ -132,6 +138,10 @@ class KalkulatorTrasyView(ft.View):
         self.t_koszt_paliwa.value = f"{utils.formatuj_liczba(koszt_paliwa, 2)} {waluta}"
         self.t_koszt_calkowity.value = f"{utils.formatuj_liczba(koszt_calkowity, 2)} {waluta}"
         self.t_koszt_osoba.value = f"{utils.formatuj_liczba(koszt_osoba, 2)} {waluta}"
-        self.t_litry.value = f"Potrzebne paliwo: {utils.formatuj_liczba(potrzebne_litry, 1)} L"
-        
+
+        opis_trasy = f" • trasa {utils.formatuj_liczba(dystans, 0)} km" if dystans > 0 else ""
+        if self.c_powrot.value and dystans > 0:
+            opis_trasy += " (tam i z powrotem)"
+        self.t_litry.value = f"Potrzebne paliwo: {utils.formatuj_liczba(potrzebne_litry, 1)} L{opis_trasy}"
+
         self._page.update()

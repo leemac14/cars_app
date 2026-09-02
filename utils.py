@@ -1732,6 +1732,127 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
 
     return kontener, pobierz_wynik
 
+def komponent_wyboru_stacji(page: ft.Page, state, aktualna_nazwa=""):
+    """Wybór stacji paliw z listy tych, na których już tankowałeś (słownik
+    budowany w locie z tabeli 'tankowania' — patrz db.pobierz_stacje_paliw),
+    z możliwością przełączenia na ręczne wpisanie nowej nazwy. Ten sam wzorzec
+    co komponent_wyboru_warsztatu. Dzięki temu 'Orlen', 'orlen' i 'ORLEN'
+    nie rozjeżdżają rankingu cen (db.pobierz_trend_cen_paliwa).
+    Zwraca (kontener, pobierz_wartosc, ustaw_wartosc)."""
+    cache_stacji = {"dane": None}
+
+    def nazwy_stacji():
+        # Cache w obrębie życia komponentu — lista nie zmienia się, dopóki
+        # formularz jest otwarty, więc wystarczy jeden SELECT.
+        if cache_stacji["dane"] is None:
+            cache_stacji["dane"] = db.pobierz_stacje_paliw(state.auto_id)
+        return cache_stacji["dane"]
+
+    biezaca = " ".join((aktualna_nazwa or "").split())
+    pasuje_start = biezaca in nazwy_stacji()
+
+    # Tryb ręczny: wpis spoza słownika ALBO brak jakiejkolwiek zapisanej stacji
+    # (pierwsze tankowanie — pusty dropdown byłby ślepą uliczką).
+    pokaz_reczne = bool(biezaca and not pasuje_start) or not nazwy_stacji()
+
+    def zbuduj_opcje():
+        opcje = [ft.DropdownOption(key="", text="— Nie podano —")]
+        for nazwa in nazwy_stacji():
+            opcje.append(ft.DropdownOption(key=nazwa, text=nazwa))
+        return opcje
+
+    e_dropdown = ft.Dropdown(
+        label="Stacja paliw (opcjonalnie)",
+        options=zbuduj_opcje(),
+        value=biezaca if pasuje_start else "",
+        visible=not pokaz_reczne,
+        expand=True,
+        **styl_dropdown()
+    )
+
+    e_recznie = ft.TextField(
+        label="Wpisz nazwę stacji",
+        hint_text="np. Orlen, Shell, BP",
+        value=biezaca if pokaz_reczne else "",
+        visible=pokaz_reczne,
+        expand=True,
+        **styl_pola()
+    )
+
+    btn_zmien_tryb = ft.IconButton(
+        icon=ft.Icons.LIST if pokaz_reczne else ft.Icons.EDIT,
+        tooltip="Wybierz stację z listy" if pokaz_reczne else "Wpisz nową stację ręcznie",
+        icon_color=ft.Colors.PRIMARY
+    )
+
+    wiersz = ft.Row(
+        [e_dropdown, e_recznie, btn_zmien_tryb],
+        vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10
+    )
+
+    def _tryb_listy():
+        e_dropdown.visible = True
+        e_recznie.visible = False
+        btn_zmien_tryb.icon = ft.Icons.EDIT
+        btn_zmien_tryb.tooltip = "Wpisz nową stację ręcznie"
+
+    def _tryb_reczny():
+        e_dropdown.visible = False
+        e_recznie.visible = True
+        btn_zmien_tryb.icon = ft.Icons.LIST
+        btn_zmien_tryb.tooltip = "Wybierz stację z listy"
+
+    def przelacz_tryb(e):
+        if e_recznie.visible:
+            wpisana = " ".join((e_recznie.value or "").split())
+            e_dropdown.options = zbuduj_opcje()
+            e_dropdown.value = wpisana if wpisana in nazwy_stacji() else ""
+            _tryb_listy()
+        else:
+            e_recznie.value = e_dropdown.value or ""
+            _tryb_reczny()
+        try:
+            wiersz.update()
+        except Exception:
+            pass
+
+    btn_zmien_tryb.on_click = przelacz_tryb
+
+    def dopasuj_do_slownika(tekst):
+        """Zwraca istniejącą pisownię stacji, jeśli wpisany tekst to tylko inny
+        wariant zapisu ('orlen' -> 'Orlen'). W przeciwnym razie zwraca tekst."""
+        czysty = " ".join((tekst or "").split())
+        if not czysty:
+            return ""
+        klucz = db.klucz_stacji(czysty)
+        for nazwa in nazwy_stacji():
+            if db.klucz_stacji(nazwa) == klucz:
+                return nazwa
+        return czysty
+
+    def pobierz_wartosc():
+        if e_recznie.visible:
+            return dopasuj_do_slownika(e_recznie.value)
+        return e_dropdown.value or ""
+
+    def ustaw_wartosc(nazwa):
+        """Wpisanie wartości z zewnątrz (np. rozpoznanej z paragonu przez OCR)."""
+        dopasowana = dopasuj_do_slownika(nazwa)
+        if dopasowana and dopasowana in nazwy_stacji():
+            e_dropdown.options = zbuduj_opcje()
+            e_dropdown.value = dopasowana
+            e_recznie.value = ""
+            _tryb_listy()
+        else:
+            e_recznie.value = dopasowana
+            _tryb_reczny()
+        try:
+            wiersz.update()
+        except Exception:
+            pass
+
+    return wiersz, pobierz_wartosc, ustaw_wartosc
+
 def abs_zalacznik(sciezka_wzgledna):
     if not sciezka_wzgledna:
         return None

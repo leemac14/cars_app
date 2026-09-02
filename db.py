@@ -38,7 +38,7 @@ PAKIETY_SERWISOWE = {
     "Duży przegląd (rozrząd)": ["⚙️ Pasek / Łańcuch rozrządu", "🛢️ Olej silnikowy i filtr", "💨 Filtr powietrza"],
 }
 
-ROK_MIN = 1950
+ROK_MIN = 1900
 PROG_KM_POWIADOMIEN = 1500      
 PROG_DNI_POWIADOMIEN = 30       
 PROG_ILOSC_MAGAZYNU_DOMYSLNY = 1.0    
@@ -358,6 +358,19 @@ def init_db():
             ALTER TABLE wizyta_czesci_magazynu ADD COLUMN zdalne_id TEXT;
             ALTER TABLE wizyta_czesci_magazynu ADD COLUMN zdalny_hash TEXT;
             CREATE INDEX IF NOT EXISTS idx_wizyta_czesci_magazynu_zdalne ON wizyta_czesci_magazynu(zdalne_id);
+            """,
+            # Wersja 26: (a) indywidualne progi powiadomień per podzespół —
+            # analogicznie do prog_ostrzezenia w magazyn_czesci. NULL = użyj
+            # globalnych prog_km_powiadomien / prog_dni_powiadomien z Ustawień,
+            # więc dla istniejących wpisów nic się nie zmienia. (b) kolumny
+            # synchronizacji dla własnych pakietów serwisowych — bez nich partner
+            # przy współdzielonym pojeździe nie widział Twoich pakietów.
+            """
+            ALTER TABLE zadania ADD COLUMN prog_km INTEGER;
+            ALTER TABLE zadania ADD COLUMN prog_dni INTEGER;
+            ALTER TABLE pakiety_serwisowe_wlasne ADD COLUMN zdalne_id TEXT;
+            ALTER TABLE pakiety_serwisowe_wlasne ADD COLUMN zdalny_hash TEXT;
+            CREATE INDEX IF NOT EXISTS idx_pakiety_wlasne_auto_zdalne ON pakiety_serwisowe_wlasne(auto_id, zdalne_id);
             """
         ]
 
@@ -874,16 +887,18 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
         c = conn.cursor()
 
         c.execute(
-            "SELECT id, nazwa, data, przebieg, interwal_km, interwal_miesiace FROM zadania "
+            "SELECT id, nazwa, data, przebieg, interwal_km, interwal_miesiace, prog_km, prog_dni FROM zadania "
             "WHERE auto_id=? AND (interwal_km IS NOT NULL OR interwal_miesiace IS NOT NULL)",
             (auto_id,)
         )
         for z in c.fetchall():
             powody, status_zadania = [], None
+            prog_km_z = int(z["prog_km"]) if z["prog_km"] else prog_km
+            prog_dni_z = int(z["prog_dni"]) if z["prog_dni"] else prog_dni
 
             if z["interwal_km"] and z["przebieg"] and aktualny_przebieg:
                 zost_km = (int(z["przebieg"]) + int(z["interwal_km"])) - aktualny_przebieg
-                if zost_km <= prog_km:
+                if zost_km <= prog_km_z:
                     s = "przeterminowane" if zost_km < 0 else "pilne"
                     if zost_km < 0:
                         powody.append(f"Przekroczono o {abs(zost_km)} km")
@@ -898,7 +913,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                 if d_w != datetime.min.date():
                     termin = d_w + timedelta(days=int(float(z["interwal_miesiace"]) * 30.5))
                     zost_dni = (termin - dzis).days
-                    if zost_dni <= prog_dni:
+                    if zost_dni <= prog_dni_z:
                         s = "przeterminowane" if zost_dni < 0 else "pilne"
                         powody.append(f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni")
                         if status_zadania != "przeterminowane":
@@ -1185,6 +1200,57 @@ def pobierz_koszt_miesiaca_do_dnia(auto_id, rok, miesiac, do_dnia):
 
     return suma
 
+def klucz_stacji(nazwa):
+    """Klucz porównawczy nazw stacji — bez wielkości liter, bez nadmiarowych
+    spacji i bez końcowej interpunkcji. Dzięki temu 'Orlen', 'orlen  ' i
+    'ORLEN.' to jedna i ta sama stacja w rankingu cen i w podpowiedziach."""
+    tekst = " ".join((nazwa or "").split()).lower()
+    return tekst.strip(" .,;:-")
+
+
+def pobierz_stacje_paliw(auto_id):
+    """Słownik stacji budowany w locie z dotychczasowych tankowań pojazdu — bez
+    osobnej tabeli, bo dane już są w 'tankowania'. Warianty zapisu tej samej
+    stacji są scalane; jako kanoniczna wygrywa forma użyta najczęściej, a przy
+    remisie ostatnio użyta. Zwraca listę nazw posortowaną malejąco po liczbie
+    tankowań, przy remisie alfabetycznie."""
+    if not auto_id:
+        return []
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT stacja, data FROM tankowania "
+            "WHERE auto_id=? AND stacja IS NOT NULL AND TRIM(stacja) <> ''",
+            (auto_id,)
+        )
+        wiersze = c.fetchall()
+
+    grupy = {}
+    for stacja, data_str in wiersze:
+        nazwa = " ".join((stacja or "").split())
+        klucz = klucz_stacji(nazwa)
+        if not klucz:
+            continue
+        d = parsuj_date(data_str)
+        grupa = grupy.setdefault(klucz, {"licznik": 0, "warianty": {}})
+        grupa["licznik"] += 1
+        wariant = grupa["warianty"].setdefault(nazwa, {"ile": 0, "ostatnia": datetime.min.date()})
+        wariant["ile"] += 1
+        if d > wariant["ostatnia"]:
+            wariant["ostatnia"] = d
+
+    wynik = []
+    for grupa in grupy.values():
+        kanoniczna = max(
+            grupa["warianty"].items(),
+            key=lambda kv: (kv[1]["ile"], kv[1]["ostatnia"], kv[0])
+        )[0]
+        wynik.append((kanoniczna, grupa["licznik"]))
+
+    wynik.sort(key=lambda x: (-x[1], x[0].lower()))
+    return [nazwa for nazwa, _ in wynik]
+
 def pobierz_trend_cen_paliwa(auto_id):
     """Cena za litr w czasie (do wykresu) oraz zestawienie średnich cen per
     stacja (do rankingu „najtańsza stacja, na której tankowałeś”). Uwzględnia
@@ -1204,26 +1270,31 @@ def pobierz_trend_cen_paliwa(auto_id):
         )
         wiersze = c.fetchall()
 
-    dane = []
+        dane = []
     for data_str, kwota, litry, stacja in wiersze:
         litry_f = float(litry or 0)
         if litry_f <= 0:
             continue
         cena = float(kwota or 0) / litry_f
         d = parsuj_date(data_str)
-        dane.append((d, data_str, cena, (stacja or "").strip()))
+        dane.append((d, data_str, cena, " ".join((stacja or "").split())))
     dane.sort(key=lambda x: x[0])  # chronologicznie po sparsowanej dacie, nie tekście
 
     punkty = []
     wg_stacji = {}
     for d, data_str, cena, stacja in dane:
         punkty.append((data_str, cena))
-        if not stacja:
+        # Grupujemy po kluczu znormalizowanym, nie po dosłownej pisowni —
+        # inaczej 'Orlen' i 'orlen' to dwie osobne pozycje w rankingu.
+        klucz = klucz_stacji(stacja)
+        if not klucz:
             continue
-        wpis = wg_stacji.setdefault(stacja, {
+        wpis = wg_stacji.setdefault(klucz, {
             "nazwa": stacja, "suma_cen": 0.0, "liczba_tankowan": 0,
-            "ostatnia_cena": None, "ostatnia_data": None, "_ostatnia_data_obj": None
+            "ostatnia_cena": None, "ostatnia_data": None,
+            "_ostatnia_data_obj": None, "_warianty": {},
         })
+        wpis["_warianty"][stacja] = wpis["_warianty"].get(stacja, 0) + 1
         wpis["suma_cen"] += cena
         wpis["liczba_tankowan"] += 1
         if wpis["_ostatnia_data_obj"] is None or d >= wpis["_ostatnia_data_obj"]:
@@ -1234,7 +1305,9 @@ def pobierz_trend_cen_paliwa(auto_id):
     stacje = []
     for wpis in wg_stacji.values():
         wpis["srednia_cena"] = wpis["suma_cen"] / wpis["liczba_tankowan"]
-        del wpis["suma_cen"], wpis["_ostatnia_data_obj"]
+        # Do wyświetlenia bierzemy najczęściej używaną pisownię z grupy.
+        wpis["nazwa"] = max(wpis["_warianty"].items(), key=lambda kv: (kv[1], kv[0]))[0]
+        del wpis["suma_cen"], wpis["_ostatnia_data_obj"], wpis["_warianty"]
         stacje.append(wpis)
     stacje.sort(key=lambda s: s["srednia_cena"])
 
@@ -2050,9 +2123,25 @@ def dodaj_pakiet_wlasny(auto_id, nazwa, pozycje_lista):
             (auto_id, nazwa, ",".join(pozycje_lista))
         )
 
+def aktualizuj_pakiet_wlasny(pakiet_id, nazwa, pozycje_lista):
+    """Zmiana nazwy i/lub składu istniejącego własnego pakietu. Nie ruszamy
+    zdalny_hash — sync sam wykryje różnicę treści i wypchnie edycję."""
+    with polacz_baze() as conn:
+        conn.execute(
+            "UPDATE pakiety_serwisowe_wlasne SET nazwa=?, pozycje=? WHERE id=?",
+            (nazwa, ",".join(pozycje_lista), pakiet_id)
+        )
+
 def usun_pakiet_wlasny(pakiet_id):
     with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT zdalne_id FROM pakiety_serwisowe_wlasne WHERE id=?", (pakiet_id,))
+        w = c.fetchone()
+        zdalne = w[0] if w else None
         conn.execute("DELETE FROM pakiety_serwisowe_wlasne WHERE id=?", (pakiet_id,))
+    # Nagrobek POZA blokiem with — otwiera własne połączenie do tego samego pliku.
+    if zdalne:
+        zarejestruj_nagrobek("pakiety_serwisowe_wlasne", zdalne)
 
 def pobierz_uzyte_czesci_wizyty(wizyta_id):
     with polacz_baze() as conn:
@@ -2529,6 +2618,7 @@ def usun_auto_z_cofnieciem(auto_id):
         "zadania", "wizyty", "magazyn_czesci", "tankowania", "inne_koszty",
         "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
         "do_zrobienia", "historia", "tagi", "wizyta_czesci_magazynu",
+        "pakiety_serwisowe_wlasne",
     ]
     zdalne_id_do_usuniecia = []
     for tab in TABELE_SYNCHRONIZOWANE_AUTA:
@@ -2722,11 +2812,16 @@ def usun_wiele_zadan_z_cofnieciem(ids_list):
 KATEGORIE_EKSPORTU = {
     "tankowania": "⛽ Tankowania",
     "historia": "🔧 Historia serwisowa",
+    "zadania": "🧰 Podzespoły i interwały",
     "wizyty": "🛠️ Wizyty zbiorcze (warsztat)",
     "inne_koszty": "🎫 Inne koszty",
+    "wydatki_cykliczne": "🔁 Wydatki cykliczne",
     "magazyn_czesci": "📦 Magazyn części i płynów",
     "zestawy_opon": "🛞 Zestawy opon",
     "do_zrobienia": "✅ Lista Do zrobienia",
+    "warsztaty": "🏢 Baza warsztatów",
+    "odczyty_przebiegu": "📏 Odczyty licznika",
+    "tagi": "🏷️ Tagi",
 }
 
 FOLDER_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
@@ -2772,9 +2867,10 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     """
     Zbiera dane pojazdu do eksportu wg wybranych kategorii (klucze z KATEGORIE_EKSPORTU),
     opcjonalnie przycięte do zakresu [od_data, do_data] (obiekty date, oba mogą być None).
-    Magazyn, zestawy opon i lista Do zrobienia to "stany aktualne" — eksportują się zawsze
-    w całości, niezależnie od zakresu dat.
-    Zwraca {klucz_kategorii: (naglowki: list[str], wiersze: list[list])}.
+    Magazyn, zestawy opon, lista Do zrobienia, definicje podzespołów (zadania),
+    wydatki cykliczne, warsztaty i tagi to "stany aktualne" — eksportują się zawsze
+    w całości, niezależnie od zakresu dat. Zakresowi podlegają tylko tankowania,
+    historia, wizyty, inne koszty i odczyty przebiegu.
     """
     wynik = {}
     if not auto_id or not kategorie:
@@ -2874,6 +2970,63 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
                 for tyt, pr, koszt, term, wyk in c.fetchall()
             ]
             wynik["do_zrobienia"] = (["Tytuł", "Priorytet", "Szac. koszt", "Termin", "Wykonane"], wiersze)
+
+        if "zadania" in kategorie:
+            c.execute(
+                "SELECT nazwa, interwal_km, interwal_miesiace, data, przebieg, prog_km, prog_dni, dotyczy_opon "
+                "FROM zadania WHERE auto_id=? ORDER BY nazwa", (auto_id,)
+            )
+            dom_km, dom_dni = pobierz_prog_km(), pobierz_prog_dni()
+            wiersze = []
+            for nazwa, ik, im, data_o, prz_o, p_km, p_dni, opony in c.fetchall():
+                wiersze.append([
+                    nazwa or "",
+                    f"{int(ik)} km" if ik else "",
+                    f"{formatuj_liczba_eksport(im, 0)} mies." if im else "",
+                    data_o or "",
+                    int(prz_o or 0) if prz_o else "",
+                    f"{int(p_km)} km" if p_km else f"{dom_km} km (domyślny)",
+                    f"{int(p_dni)} dni" if p_dni else f"{dom_dni} dni (domyślny)",
+                    "Tak" if opony else "Nie",
+                ])
+            wynik["zadania"] = (
+                ["Podzespół", "Interwał km", "Interwał czasowy", "Ostatnia wymiana",
+                 "Przebieg ost. wymiany", "Próg (km)", "Próg (dni)", "Dotyczy opon"],
+                wiersze
+            )
+
+        if "wydatki_cykliczne" in kategorie:
+            c.execute(
+                "SELECT nazwa, kwota, okres_dni, nastepna_data FROM wydatki_cykliczne "
+                "WHERE auto_id=? ORDER BY nazwa", (auto_id,)
+            )
+            wiersze = [
+                [n or "", formatuj_liczba_eksport(kw), int(okr or 0), nd or ""]
+                for n, kw, okr, nd in c.fetchall()
+            ]
+            wynik["wydatki_cykliczne"] = (["Nazwa", "Kwota", "Co ile dni", "Następna płatność"], wiersze)
+
+        if "warsztaty" in kategorie:
+            c.execute(
+                "SELECT nazwa, telefon, adres, notatki FROM warsztaty WHERE auto_id=? ORDER BY nazwa",
+                (auto_id,)
+            )
+            wiersze = [[n or "", tel or "", adr or "", nt or ""] for n, tel, adr, nt in c.fetchall()]
+            wynik["warsztaty"] = (["Nazwa", "Telefon", "Adres", "Notatki"], wiersze)
+
+        if "odczyty_przebiegu" in kategorie:
+            c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
+            wiersze = [
+                [data, int(prz or 0)] for data, prz in c.fetchall()
+                if _data_w_zakresie(data, od_data, do_data)
+            ]
+            wiersze.sort(key=lambda w: parsuj_date(w[0]))
+            wynik["odczyty_przebiegu"] = (["Data", "Przebieg (km)"], wiersze)
+
+        if "tagi" in kategorie:
+            c.execute("SELECT nazwa, kolor FROM tagi WHERE auto_id=? ORDER BY nazwa", (auto_id,))
+            wiersze = [[n or "", k or ""] for n, k in c.fetchall()]
+            wynik["tagi"] = (["Nazwa", "Kolor"], wiersze)
 
     return wynik
 
