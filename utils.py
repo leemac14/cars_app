@@ -1,4 +1,5 @@
 import flet as ft
+import flet_charts as fc
 from datetime import datetime, date, timedelta, timezone
 import re
 import db
@@ -2327,6 +2328,89 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
         content=ft.Row([ft.Container(width=4, bgcolor=kolor_paska), kontener], spacing=0),
     )
     return karta, kontener
+
+def sparkline(wartosci, kolor=None, wysokosc=30, szerokosc=None, wypelnienie=True,
+              grubosc=2, punkty_koncowe=True):
+    """Mini-wykres liniowy bez osi, siatki i etykiet — „iskra” pokazująca sam
+    kształt trendu obok liczby (patrz kafelek „Śr. spalanie” w kokpicie).
+
+    `wartosci`: lista liczb w kolejności chronologicznej. Przy mniej niż 2
+    sensownych punktach zwraca None — wywołujący sam decyduje, co pokazać
+    zamiast wykresu. Skala Y jest dociskana do zakresu danych (z niewielkim
+    zapasem), bo w sparkline liczy się różnica między punktami, a nie odległość
+    od zera."""
+    liczby = []
+    for w in (wartosci or []):
+        try:
+            liczby.append(float(w))
+        except (TypeError, ValueError):
+            continue
+    if len(liczby) < 2:
+        return None
+
+    kolor = kolor or ft.Colors.PRIMARY
+    minimum, maksimum = min(liczby), max(liczby)
+    # Płaska seria (same identyczne wartości) dałaby zerową wysokość wykresu —
+    # wymuszamy wtedy minimalny zapas, żeby linia wylądowała pośrodku.
+    zapas = max((maksimum - minimum) * 0.20, abs(maksimum) * 0.02, 0.1)
+
+    def pusta_os():
+        # Każde gniazdo osi musi dostać WŁASNĄ instancję — jednej kontrolki Flet
+        # nie da się wpiąć w kilka miejsc drzewa naraz.
+        return fc.ChartAxis(show_labels=False, label_size=0, title_size=0)
+
+    return ft.Container(
+        height=wysokosc, width=szerokosc,
+        content=fc.LineChart(
+            data_series=[
+                fc.LineChartData(
+                    points=[fc.LineChartDataPoint(i, w) for i, w in enumerate(liczby)],
+                    stroke_width=grubosc,
+                    color=kolor,
+                    curved=True,
+                    rounded_stroke_cap=True,
+                    point=False,
+                    below_line_bgcolor=ft.Colors.with_opacity(0.15, kolor) if wypelnienie else None,
+                )
+            ],
+            left_axis=pusta_os(), right_axis=pusta_os(),
+            top_axis=pusta_os(), bottom_axis=pusta_os(),
+            min_x=0, max_x=len(liczby) - 1,
+            min_y=minimum - zapas, max_y=maksimum + zapas,
+            interactive=False,
+            expand=True,
+        ),
+    )
+
+
+def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
+    """Mały „chip” trendu: strzałka + procent zmiany. `wzrost_zly=True` znaczy,
+    że rosnąca wartość jest zła (koszty, spalanie) i dostaje kolor czerwony.
+    Zwraca ft.Row gotowy do wstawienia pod wartością na kafelku."""
+    try:
+        zmiana = float(zmiana_proc)
+    except (TypeError, ValueError):
+        return ft.Row([
+            ft.Icon(ft.Icons.TRENDING_FLAT, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text("Brak trendu", size=rozmiar, color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True),
+        ], spacing=4)
+
+    if zmiana > prog:
+        ikona = ft.Icons.TRENDING_UP
+        kolor = KOLOR_STATUS["critical"] if wzrost_zly else KOLOR_STATUS["ok"]
+        tekst = f"+{formatuj_liczba(zmiana, 0)}%"
+    elif zmiana < -prog:
+        ikona = ft.Icons.TRENDING_DOWN
+        kolor = KOLOR_STATUS["ok"] if wzrost_zly else KOLOR_STATUS["critical"]
+        tekst = f"{formatuj_liczba(zmiana, 0)}%"
+    else:
+        ikona, kolor, tekst = ft.Icons.TRENDING_FLAT, KOLOR_STATUS["neutral"], "Stabilnie"
+
+    return ft.Row([
+        ft.Icon(ikona, size=13, color=kolor),
+        ft.Text(tekst, size=rozmiar, color=kolor, no_wrap=True),
+    ], spacing=4)
+
 
 def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8):
     """Wspólny 'wiersz postępu': etykieta + wartość nad kolorowym ProgressBar.

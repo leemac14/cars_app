@@ -136,7 +136,9 @@ class UstawieniaView(ft.View):
             [
                 ft.Text(
                     "Wybierz, które szybkie statystyki mają się pokazywać na górze ekranu głównego "
-                    "(zakładka Serwis). Kolejność jest stała, ale możesz włączyć/wyłączyć dowolne pozycje.",
+                    "(zakładka Serwis). Kolejność ustawisz przeciąganiem — przytrzymaj kafelek na "
+                    "kokpicie albo dotknij ikony uchwytu na końcu karuzeli. Świeżo włączone pozycje "
+                    "dopisują się na końcu i nie ruszają Twojego układu.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
             ] + self.checkboxy_kokpitu,
@@ -186,8 +188,11 @@ class UstawieniaView(ft.View):
         self._page.dark_theme = ft.Theme(color_scheme_seed=nowy_kolor)
         self._page.update()
         # --------------------------------------------
-        wybrane_widgety = [chk.data for chk in self.checkboxy_kokpitu if chk.value]
-        db.zapisz_widgety_kokpitu(wybrane_widgety)
+        # Checkboxy niosą tylko ZESTAW włączonych widżetów; kolejność należy do
+        # kokpitu (użytkownik układa ją przeciąganiem), więc scalamy oba źródła
+        # zamiast nadpisywać układ kolejnością checkboxów.
+        zaznaczone = [chk.data for chk in self.checkboxy_kokpitu if chk.value]
+        db.zapisz_widgety_kokpitu(db.scal_widgety_kokpitu(zaznaczone))
 
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano ustawienia!")

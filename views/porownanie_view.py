@@ -1,4 +1,5 @@
 import flet as ft
+import flet_charts as fc
 from datetime import datetime
 import db
 import utils
@@ -68,6 +69,7 @@ class PorownanieView(ft.View):
             else:
                 elementy.append(self._buduj_karty_profili(dane_aut))
                 elementy.append(self._buduj_werdykt(dane_aut))
+                elementy.append(self._sekcja_radar(dane_aut))
                 elementy.append(self._sekcja_specyfikacja(dane_aut))
                 elementy.append(self._sekcja_przebieg(dane_aut))
                 elementy.append(self._sekcja_koszty(dane_aut))
@@ -300,6 +302,178 @@ class PorownanieView(ft.View):
             self._wiersz_tekstowy("Skrzynia", dane_aut, lambda d: d.get("skrzynia_biegow")),
         ], spacing=10)
         return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Specyfikacja techniczna", ft.Icons.SETTINGS, domyslnie_otwarte=True)
+
+    # ================= RADAR / SPIDER =================
+    def _wiek_lat(self, rok):
+        try:
+            wiek = datetime.now().year - int(rok)
+            return wiek if wiek >= 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def _osie_radaru(self):
+        """Definicje osi radaru: (etykieta, jednostka, funkcja wartości,
+        funkcja formatująca, czy_mniej_znaczy_lepiej).
+
+        Wartości są BEZWZGLĘDNE — w tabeli pod wykresem widać realne liczby w
+        swoich jednostkach. Sam wielokąt musi jednak dzielić jedną skalę
+        promienia, więc każdą oś skalujemy do jej WŁASNEGO maksimum wśród
+        porównywanych aut (100% promienia = najwyższa wartość na tej osi).
+        Bez tego oś „Kondycja” (0-100 pkt) zjadłaby oś „Koszt/km” (ok. 1 zł) i
+        wykres byłby nieczytelny."""
+        return [
+            ("Koszt / km", f"{utils.symbol_waluty()}/km",
+             lambda d: d.get("koszt_km"),
+             lambda v: f"{utils.formatuj_liczba(v, 2)} {utils.symbol_waluty()}",
+             True),
+            ("Spalanie", db.pobierz_jednostke_spalania(),
+             lambda d: d.get("spalanie"),
+             lambda v: utils.formatuj_spalanie(v),
+             True),
+            ("Kondycja", "pkt",
+             lambda d: d.get("kondycja"),
+             lambda v: f"{utils.formatuj_liczba(v, 0)}/100",
+             False),
+            ("Wiek", "lat",
+             lambda d: self._wiek_lat(d.get("rok_produkcji")),
+             lambda v: f"{utils.formatuj_liczba(v, 0)} lat",
+             True),
+        ]
+
+    def _sekcja_radar(self, dane_aut):
+        osie = self._osie_radaru()
+
+        # Oś bez ani jednej wartości nic nie wnosi — a fl_chart i tak wymaga
+        # min. 3 wierzchołków, więc przy zbyt ubogich danych rezygnujemy.
+        wartosci = {}   # etykieta osi -> {auto_id: wartosc}
+        aktywne = []
+        for etykieta, jednostka, pobierz, formatuj, mniej_lepiej in osie:
+            kolumna = {}
+            for d in dane_aut:
+                v = pobierz(d)
+                try:
+                    v = float(v) if v is not None else None
+                except (TypeError, ValueError):
+                    v = None
+                kolumna[d["auto_id"]] = v if (v is not None and v > 0) else None
+            if any(v is not None for v in kolumna.values()):
+                aktywne.append((etykieta, jednostka, formatuj, mniej_lepiej))
+                wartosci[etykieta] = kolumna
+
+        if len(aktywne) < 3:
+            return utils.karta_formularza(
+                [ft.Text(
+                    "Za mało danych na radar — potrzeba wartości w co najmniej 3 z 4 kategorii "
+                    "(koszt/km, spalanie, kondycja, wiek) dla porównywanych pojazdów.",
+                    size=12, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                )],
+                "Radar porównawczy", ft.Icons.RADAR
+            )
+
+        maksima = {
+            etykieta: max((v for v in wartosci[etykieta].values() if v is not None), default=0)
+            for etykieta, _, _, _ in aktywne
+        }
+
+        SKALA = 100.0
+        zestawy = []
+        for d in dane_aut:
+            punkty = []
+            for etykieta, _, _, _ in aktywne:
+                v = wartosci[etykieta].get(d["auto_id"])
+                maks = maksima[etykieta] or 0
+                # Brak danych rysujemy jako 0 (wierzchołek w środku) — tabela
+                # pod wykresem mówi wprost, że to „brak”, a nie zero.
+                udzial = (v / maks * SKALA) if (v is not None and maks > 0) else 0.0
+                punkty.append(fc.RadarDataSetEntry(value=round(udzial, 2)))
+
+            zestawy.append(fc.RadarDataSet(
+                entries=punkty,
+                fill_color=ft.Colors.with_opacity(0.16, d["kolor"]),
+                border_color=d["kolor"],
+                border_width=2,
+                entry_radius=3,
+            ))
+
+        kolor_siatki = ft.Colors.with_opacity(0.20, ft.Colors.ON_SURFACE)
+        tytuly = []
+        for etykieta, jednostka, formatuj, mniej_lepiej in aktywne:
+            strzalka = "↓" if mniej_lepiej else "↑"
+            tytuly.append(fc.RadarChartTitle(text=f"{etykieta} {strzalka}"))
+
+        wykres = fc.RadarChart(
+            data_sets=zestawy,
+            titles=tytuly,
+            title_text_style=ft.TextStyle(size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+            title_position_percentage_offset=0.12,
+            radar_shape=fc.RadarShape.POLYGON,
+            radar_bgcolor=ft.Colors.TRANSPARENT,
+            radar_border_side=ft.BorderSide(width=1, color=kolor_siatki),
+            grid_border_side=ft.BorderSide(width=1, color=kolor_siatki),
+            tick_border_side=ft.BorderSide(width=1, color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE)),
+            tick_count=4,
+            # Podziałki „w procentach lidera osi” tylko myliłyby przy wartościach
+            # bezwzględnych — chowamy je, liczby są w tabeli niżej.
+            ticks_text_style=ft.TextStyle(size=9, color=ft.Colors.TRANSPARENT),
+            interactive=False,
+            expand=True,
+        )
+
+        legenda = ft.Row(
+            [
+                ft.Row([
+                    ft.Container(width=10, height=10, border_radius=5, bgcolor=d["kolor"]),
+                    ft.Text(d["nazwa_wyswietlana"], size=11, weight="bold", color=d["kolor"], no_wrap=True),
+                ], spacing=5, tight=True)
+                for d in dane_aut
+            ],
+            wrap=True, spacing=12, run_spacing=6,
+        )
+
+        # Tabela wartości BEZWZGLĘDNYCH — to ona jest źródłem prawdy o liczbach,
+        # radar pokazuje wyłącznie kształt profilu pojazdu.
+        wiersze_tabeli = [self._naglowek_kolumn(dane_aut), ft.Divider(height=1)]
+        for etykieta, jednostka, formatuj, mniej_lepiej in aktywne:
+            kolumna = wartosci[etykieta]
+            dostepne = [v for v in kolumna.values() if v is not None]
+            najlepsza = (min(dostepne) if mniej_lepiej else max(dostepne)) if dostepne else None
+            wielu = len(set(dostepne)) > 1
+
+            def tekst(d, _k=kolumna, _f=formatuj):
+                v = _k.get(d["auto_id"])
+                return _f(v) if v is not None else "Brak"
+
+            def kolor(d, _k=kolumna, _n=najlepsza, _w=wielu):
+                v = _k.get(d["auto_id"])
+                if v is None:
+                    return ft.Colors.ON_SURFACE_VARIANT
+                return ft.Colors.GREEN_700 if (_w and _n is not None and v == _n) else ft.Colors.ON_SURFACE
+
+            strzalka = "↓" if mniej_lepiej else "↑"
+            wiersze_tabeli.append(
+                self._wiersz_tekstowy(f"{etykieta} {strzalka}", dane_aut, tekst, pobierz_kolor=kolor)
+            )
+
+        tabela = ft.Column(wiersze_tabeli, spacing=10)
+
+        opis = ft.Text(
+            "Wartości są bezwzględne (patrz tabela). Na wykresie każda oś ma własną skalę — "
+            "krawędź to najwyższa wartość danej osi wśród porównywanych aut, środek to zero. "
+            "↓ = mniej znaczy lepiej, ↑ = więcej znaczy lepiej, więc większy wielokąt NIE oznacza "
+            "automatycznie lepszego auta.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+        )
+
+        return utils.karta_formularza(
+            [
+                legenda,
+                ft.Container(height=270, padding=ft.Padding(10, 18, 10, 10), content=wykres),
+                opis,
+                ft.Divider(height=15),
+                ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS),
+            ],
+            "Radar porównawczy", ft.Icons.RADAR, domyslnie_otwarte=True
+        )
 
     def _wiek_tekst(self, rok):
         try:

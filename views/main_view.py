@@ -23,6 +23,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.oryginalny_appbar = appbar
         self.karty_ref = {}   # Przechowuje referencje do kontenerów kart, by je podświetlać
         self.uzyj_wirtualizacji = False  # True gdy w tej zakładce renderujemy przewijaną listę kart
+        self.kokpit_edycja = False       # True = kafelki kokpitu można przeciągać (patrz _buduj_kokpit)
+        self.kokpit_kontener = None      # kontener przełączany między karuzelą a trybem układania
+        self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
         # --------------------------------------
         navbar = ft.SafeArea(
             content=ft.NavigationBar(
@@ -121,6 +124,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         potrzebne_porownanie = {"koszt_km", "spalanie"} & set(wlaczone)
         dane_porownanie = db.pobierz_dane_do_porownania(self.state.auto_id) if potrzebne_porownanie else None
         dane_porownanie = dane_porownanie or {}
+
+        # Punkty do sparkline przy „Śr. spalanie” — ta sama metoda liczenia, co
+        # wykres trendu w Statystykach, tylko per odcinek między pełnymi bakami.
+        seria_spalania = db.pobierz_serie_spalania(self.state.auto_id, 12) if "spalanie" in wlaczone else []
 
         def idz_do_statystyk(podzakladka=0):
             def handler(e):
@@ -288,7 +295,41 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         def widget_spalanie():
             spalanie = dane_porownanie.get("spalanie")
             wartosc = utils.formatuj_spalanie(spalanie) if spalanie else "Za mało danych"
-            return kafel_wartosci(ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Śr. spalanie", wartosc, idz_do_zakladki(1))
+
+            wartosci_serii = [w for _, w in seria_spalania]
+            iskra = utils.sparkline(wartosci_serii, ft.Colors.TEAL_700, wysokosc=30)
+
+            if iskra is None:
+                # Poniżej 2 policzonych odcinków nie ma czego rysować — kafelek
+                # zostaje w wersji „gołej”, żeby nie udawać trendu z jednego punktu.
+                return kafel_wartosci(ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Śr. spalanie", wartosc, idz_do_zakladki(1))
+
+            pierwsza, ostatnia = wartosci_serii[0], wartosci_serii[-1]
+            zmiana = ((ostatnia - pierwsza) / pierwsza * 100) if pierwsza > 0 else None
+            stopka = ft.Row([
+                utils.znacznik_trendu(zmiana, wzrost_zly=True),
+                ft.Text(
+                    f"{len(wartosci_serii)} ost. odcinków",
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+                    text_align=ft.TextAlign.END,
+                ),
+            ], spacing=6)
+
+            return ft.Container(
+                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=idz_do_zakladki(1),
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.LOCAL_GAS_STATION, size=15, color=ft.Colors.TEAL_700),
+                        ft.Text("Śr. spalanie", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    iskra,
+                    stopka,
+                ], spacing=6),
+            )
 
         def widget_przebieg_dzienny():
             sredni = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
@@ -335,7 +376,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 lambda e: utils.przejdz(self._page, "/magazyn")
             )
 
-        budowniczy = {
+        self._kokpit_budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
             "wykres": widget_wykres,
@@ -346,11 +387,164 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             "kondycja": widget_kondycja,
         }
 
-        kafelki = [budowniczy[wid]() for wid in wlaczone if wid in budowniczy]
+        self.kokpit_kontener = ft.Container(content=self._zawartosc_kokpitu())
+        return self.kokpit_kontener
+
+    # ----- Przełączanie kokpitu: karuzela <-> układanie kafelków -----
+    def _zawartosc_kokpitu(self):
+        """Zawartość kontenera kokpitu zależna od trybu. Kolejność bierzemy za
+        każdym razem z bazy, więc po przeciągnięciu kafelka wystarczy odświeżyć
+        sam kontener — bez przebudowy całego ekranu i utraty pozycji scrolla."""
+        wlaczone = [w for w in db.pobierz_widgety_kokpitu() if w in self._kokpit_budowniczy]
+        if not wlaczone:
+            return ft.Container()
+        if self.kokpit_edycja:
+            return self._kokpit_ukladanie(wlaczone)
+        return self._kokpit_karuzela(wlaczone)
+
+    def _odswiez_kokpit(self):
+        if not self.kokpit_kontener:
+            return
+        self.kokpit_kontener.content = self._zawartosc_kokpitu()
+        try:
+            self.kokpit_kontener.update()
+        except Exception:
+            # Kontener jeszcze nie jest w drzewie strony (np. tuż po zbudowaniu
+            # widoku) — przy najbliższym renderze i tak pokaże aktualny stan.
+            pass
+
+    def _ustaw_tryb_ukladania(self, wlaczony):
+        self.kokpit_edycja = bool(wlaczony)
+        self._odswiez_kokpit()
+
+    def _kokpit_karuzela(self, wlaczone):
+        """Normalny tryb: pozioma karuzela kafelków. Długie przytrzymanie
+        dowolnego kafelka (albo przycisk „Ułóż”) wchodzi w tryb układania."""
+        kafelki = []
+        for wid in wlaczone:
+            kafel = self._kokpit_budowniczy[wid]()
+            # Wszystkie widżety zwracają ft.Container, więc uchwyt long-press
+            # dopinamy z zewnątrz zamiast powtarzać go w każdym budowniczym.
+            try:
+                kafel.on_long_press = lambda e: self._ustaw_tryb_ukladania(True)
+            except Exception:
+                pass
+            kafelki.append(kafel)
+
         if not kafelki:
             return ft.Container()
 
-        return ft.Row(kafelki, spacing=10, scroll=ft.ScrollMode.AUTO)
+        przycisk_ukladania = ft.Container(
+            width=44, height=44, border_radius=22,
+            bgcolor=utils.tlo_karty(self._page, poziom=1),
+            alignment=ft.Alignment.CENTER,
+            tooltip="Ułóż kafelki (możesz też przytrzymać kafelek)",
+            ink=True, on_click=lambda e: self._ustaw_tryb_ukladania(True),
+            content=ft.Icon(ft.Icons.DRAG_INDICATOR, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+        )
+
+        return ft.Row(
+            kafelki + [przycisk_ukladania],
+            spacing=10, scroll=ft.ScrollMode.AUTO,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
+    def _kokpit_ukladanie(self, wlaczone):
+        """Tryb układania: kafelki zamieniają się w przeciągalne „klocki”
+        (ft.ReorderableListView w poziomie). Skróconą formę wybrano celowo —
+        pełne kafelki mają różne szerokości i wysokości, więc podczas
+        przeciągania skakałyby, a klocki dają stabilny, czytelny cel."""
+        etykiety = db.KOKPIT_WIDGETY
+
+        klocki, numery = [], []
+        for i, wid in enumerate(wlaczone):
+            etykieta = str(etykiety.get(wid, wid))
+            # Etykiety w KOKPIT_WIDGETY zaczynają się od emoji — rozdzielamy je
+            # od tekstu, żeby ikona mogła być większa niż podpis.
+            czesci = etykieta.split(" ", 1)
+            emoji, podpis = (czesci[0], czesci[1]) if len(czesci) == 2 else ("🔹", etykieta)
+
+            numer = ft.Text(f"{i + 1}.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT)
+            numery.append(numer)
+
+            klocek = ft.Container(
+                width=150, padding=ft.Padding(12, 10, 12, 10),
+                border_radius=utils.RADIUS["md"],
+                bgcolor=utils.tlo_karty(self._page, poziom=2),
+                border=ft.Border.all(1, ft.Colors.with_opacity(0.25, ft.Colors.PRIMARY)),
+                content=ft.Row([
+                    ft.Text(emoji, size=18),
+                    ft.Column([
+                        numer,
+                        ft.Text(podpis, size=utils.FS["label"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ], spacing=0, expand=True, tight=True),
+                    ft.Icon(ft.Icons.DRAG_INDICATOR, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            )
+            # Cały klocek jest uchwytem — na telefonie celowanie w samą ikonkę
+            # uchwytu byłoby męczące.
+            klocki.append(ft.Container(
+                padding=ft.Padding.only(right=10),
+                content=ft.ReorderableDragHandle(content=klocek, mouse_cursor=ft.MouseCursor.GRAB),
+            ))
+
+        kolejnosc = list(wlaczone)
+
+        def przestaw(e):
+            """ReorderableListView NIE przestawia swoich `controls` sam — robimy
+            to my, tak samo jak listę ID i numerki na klockach. Przestawiamy
+            w miejscu (zamiast przebudowywać panel), bo ta lista właśnie
+            obsłużyła zdarzenie i podmiana jej pod sobą potrafi zerwać animację
+            upuszczenia."""
+            stary, nowy = e.old_index, e.new_index
+            if stary is None or nowy is None or stary == nowy:
+                return
+            if not (0 <= stary < len(kolejnosc)) or not (0 <= nowy < len(kolejnosc)):
+                return
+
+            kolejnosc.insert(nowy, kolejnosc.pop(stary))
+            lista.controls.insert(nowy, lista.controls.pop(stary))
+            numery.insert(nowy, numery.pop(stary))
+            for i, n in enumerate(numery):
+                n.value = f"{i + 1}."
+
+            db.zapisz_widgety_kokpitu(kolejnosc)
+            try:
+                lista.update()
+            except Exception:
+                pass
+
+        lista = ft.ReorderableListView(
+            controls=klocki,
+            horizontal=True,
+            show_default_drag_handles=False,
+            on_reorder=przestaw,
+            padding=0,
+        )
+
+        naglowek = ft.Row([
+            ft.Icon(ft.Icons.DRAG_INDICATOR, size=16, color=ft.Colors.PRIMARY),
+            ft.Text("Przeciągnij, aby ułożyć kafelki", size=utils.FS["label"], weight="bold", color=ft.Colors.PRIMARY, expand=True),
+            ft.TextButton(
+                "Gotowe", icon=ft.Icons.CHECK,
+                on_click=lambda e: self._ustaw_tryb_ukladania(False),
+            ),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        return ft.Container(
+            padding=ft.Padding(12, 10, 12, 12),
+            border_radius=utils.RADIUS["lg"],
+            bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY),
+            border=ft.Border.all(1, ft.Colors.with_opacity(0.25, ft.Colors.PRIMARY)),
+            content=ft.Column([
+                naglowek,
+                ft.Container(height=64, content=lista),
+                ft.Text(
+                    "Które kafelki są widoczne, wybierzesz w Ustawieniach → Kokpit ekranu głównego.",
+                    size=utils.FS["caption"], italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+            ], spacing=8),
+        )
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)

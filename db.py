@@ -629,17 +629,39 @@ KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
 
 def pobierz_widgety_kokpitu():
     """Zwraca listę ID widżetów kokpitu wybranych przez użytkownika (patrz
-    MainView._buduj_kokpit), w stałej kolejności zgodnej z KOKPIT_WIDGETY.
-    Domyślnie (brak zapisanego ustawienia) włączone są trzy podstawowe."""
+    MainView._buduj_kokpit) — W KOLEJNOŚCI, W JAKIEJ ZOSTAŁY ZAPISANE, bo tę
+    kolejność użytkownik ustawia sam, przeciągając kafelki w trybie edycji
+    kokpitu. Domyślnie (brak zapisanego ustawienia) włączone są trzy podstawowe."""
     zapisane = pobierz_ustawienie("kokpit_widgety")
     if zapisane is None:
         return list(KOKPIT_WIDGETY_DOMYSLNE)
-    wybrane = set(w for w in zapisane.split(",") if w in KOKPIT_WIDGETY)
-    return [w for w in KOKPIT_WIDGETY if w in wybrane]
+    kolejnosc, widziane = [], set()
+    for w in zapisane.split(","):
+        w = w.strip()
+        if w in KOKPIT_WIDGETY and w not in widziane:
+            widziane.add(w)
+            kolejnosc.append(w)
+    return kolejnosc
 
 def zapisz_widgety_kokpitu(lista_id):
-    poprawne = [w for w in lista_id if w in KOKPIT_WIDGETY]
+    """Zapisuje ZESTAW oraz KOLEJNOŚĆ widżetów kokpitu — lista wchodzi tu już
+    ułożona tak, jak ma wyglądać karuzela. Duplikaty i nieznane ID odpadają."""
+    poprawne, widziane = [], set()
+    for w in lista_id:
+        if w in KOKPIT_WIDGETY and w not in widziane:
+            widziane.add(w)
+            poprawne.append(w)
     zapisz_ustawienie("kokpit_widgety", ",".join(poprawne))
+
+def scal_widgety_kokpitu(zaznaczone):
+    """Łączy nowy ZESTAW włączonych widżetów (np. z checkboxów w Ustawieniach)
+    z już zapisaną KOLEJNOŚCIĄ: to, co użytkownik ułożył, zostaje na swoim
+    miejscu, a świeżo włączone pozycje dopisują się na końcu (w kolejności
+    KOKPIT_WIDGETY). Dzięki temu zaznaczenie checkboxa nie kasuje układu."""
+    zaznaczone = set(zaznaczone)
+    wynik = [w for w in pobierz_widgety_kokpitu() if w in zaznaczone]
+    wynik += [w for w in KOKPIT_WIDGETY if w in zaznaczone and w not in wynik]
+    return wynik
 
 def _sparsuj_datetime(tekst):
     """Parsuje string w formacie 'DD.MM.YYYY' lub 'DD.MM.YYYY HH:MM' na obiekt
@@ -1207,6 +1229,43 @@ def oblicz_kondycje_pojazdu(auto_id):
 
     return max(0, min(100, int(round(wynik))))
 
+def pobierz_serie_spalania(auto_id, limit=12):
+    """Spalanie liczone ODCINKAMI między kolejnymi tankowaniami „do pełna” —
+    dokładnie ta sama metoda, co wykres trendu w Statystykach, tylko bez
+    uśredniania po miesiącach (jeden punkt = jeden odcinek między pełnymi
+    bakami). Używane przez sparkline przy kafelku „Śr. spalanie” w kokpicie.
+    Zwraca listę (data_tankowania_konczacego_odcinek, l/100km) chronologicznie,
+    przyciętą do ostatnich `limit` punktów (limit=None → wszystkie)."""
+    if not auto_id:
+        return []
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT data, przebieg, litry, do_pelna FROM tankowania WHERE auto_id=?",
+            (auto_id,)
+        )
+        wiersze = c.fetchall()
+
+    # Sortujemy po dacie, a przy remisie po przebiegu — tak jak reszta aplikacji,
+    # żeby dwa tankowania tego samego dnia nie dały ujemnego dystansu.
+    tankowania = sorted(
+        ((parsuj_date(r[0]), r[0], int(r[1] or 0), float(r[2] or 0), bool(r[3])) for r in wiersze),
+        key=lambda t: (t[0], t[2])
+    )
+
+    pelne = [i for i, t in enumerate(tankowania) if t[4]]
+    seria = []
+    for a, b in zip(pelne, pelne[1:]):
+        dystans = tankowania[b][2] - tankowania[a][2]
+        litry = sum(tankowania[k][3] for k in range(a + 1, b + 1))
+        if dystans > 0 and litry > 0:
+            seria.append((tankowania[b][1], (litry / dystans) * 100))
+
+    if limit and len(seria) > limit:
+        return seria[-limit:]
+    return seria
+
 def pobierz_dane_do_porownania(auto_id):
     """Zbiorcze dane pojazdu (specyfikacja, koszty, przebieg, spalanie, serwis)
     wykorzystywane przez ekran porównania pojazdów. Zwraca None, jeśli auto nie istnieje."""
@@ -1261,6 +1320,9 @@ def pobierz_dane_do_porownania(auto_id):
 
     dane["aktualny_przebieg"] = pobierz_aktualny_przebieg(auto_id)
     dane["sredni_dzienny"] = oblicz_sredni_dzienny_przebieg(auto_id)
+    # Wskaźnik 0-100 (ten sam, co kafelek „Kondycja” w kokpicie) — jedna z osi
+    # radaru w porównaniu pojazdów.
+    dane["kondycja"] = oblicz_kondycje_pojazdu(auto_id)
 
     dystans = 0
     if len(tankowania) >= 2:
