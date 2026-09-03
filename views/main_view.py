@@ -109,8 +109,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         """Mini-dashboard nad listą podzespołów, złożony z widżetów wybranych przez
         użytkownika w Ustawieniach (patrz db.KOKPIT_WIDGETY / db.pobierz_widgety_kokpitu).
         Renderowany jako pozioma, przewijalna karuzela (ft.Row scroll=AUTO) z kafelkami
-        o stałej szerokości — zamiast układu kolumnowego z parowaniem "połówek"."""
-        wlaczone = db.pobierz_widgety_kokpitu()
+        o stałej szerokości — zamiast układu kolumnowego z parowaniem "połówek".
+
+        Układ jest WŁASNOŚCIĄ POJAZDU: auto służbowe może mieć inne kafelki niż
+        prywatne. Pojazd bez własnego układu dziedziczy wspólny (patrz
+        db.pobierz_widgety_kokpitu)."""
+        wlaczone = db.pobierz_widgety_kokpitu(self.state.auto_id)
         if not wlaczone:
             return ft.Container()
 
@@ -450,7 +454,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         """Zawartość kontenera kokpitu zależna od trybu. Kolejność bierzemy za
         każdym razem z bazy, więc po przeciągnięciu kafelka wystarczy odświeżyć
         sam kontener — bez przebudowy całego ekranu i utraty pozycji scrolla."""
-        wlaczone = [w for w in db.pobierz_widgety_kokpitu() if w in self._kokpit_budowniczy]
+        wlaczone = [w for w in db.pobierz_widgety_kokpitu(self.state.auto_id) if w in self._kokpit_budowniczy]
         if not wlaczone:
             return ft.Container()
         if self.kokpit_edycja:
@@ -562,7 +566,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             for i, n in enumerate(numery):
                 n.value = f"{i + 1}."
 
-            db.zapisz_widgety_kokpitu(kolejnosc)
+            # Przeciągnięcie kafelka układa kokpit TEGO auta — i tym samym
+            # odpina je od wspólnego układu.
+            db.zapisz_widgety_kokpitu(kolejnosc, self.state.auto_id)
             try:
                 lista.update()
             except Exception:
@@ -804,17 +810,22 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             )
             utils.otworz_dno(self._page, bs)
 
-        def kolor_daty(d_str):
+        def kolor_daty(d_str, klucz_terminu=None):
             """(kolor, tekst, ikona statusu). Emoji przed datą zastąpiła ikona —
             dzięki temu status terminu wygląda tak samo, jak wszystkie inne
-            oznaczenia w aplikacji i podąża za kolorem wiersza."""
+            oznaczenia w aplikacji i podąża za kolorem wiersza.
+
+            Pomarańczowy zapala się dokładnie wtedy, kiedy przychodzi
+            powiadomienie o tym terminie — czyli na progu USTAWIONYM DLA NIEGO
+            (Ustawienia → Progi powiadomień), a nie na sztywnych 30 dniach."""
             if not d_str:
                 return ft.Colors.ON_SURFACE_VARIANT, "Brak", ft.Icons.REMOVE
             try:
                 d_obj = datetime.strptime(str(d_str), "%d.%m.%Y").date()
                 roz = (d_obj - datetime.now().date()).days
+                prog = db.pobierz_prog_dni_dokumentu(klucz_terminu) if klucz_terminu else db.pobierz_prog_dni()
                 if roz < 0: return ft.Colors.RED_700, str(d_str), ft.Icons.WARNING
-                elif roz <= 30: return ft.Colors.ORANGE_700, str(d_str), ft.Icons.HOURGLASS_BOTTOM
+                elif roz <= prog: return ft.Colors.ORANGE_700, str(d_str), ft.Icons.HOURGLASS_BOTTOM
                 return ft.Colors.GREEN_700, str(d_str), ft.Icons.CHECK_CIRCLE
             except Exception:
                 return ft.Colors.ON_SURFACE_VARIANT, str(d_str), ft.Icons.EVENT
@@ -849,8 +860,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ft.Text(str(wartosc) if wartosc else "-", size=14, expand=True, color=ft.Colors.ON_SURFACE)
                 ])
 
-            def wiersz_termin(ikona, etykieta, data_str):
-                kolor, tekst, ikona_statusu = kolor_daty(data_str)
+            def wiersz_termin(ikona, etykieta, data_str, klucz_terminu=None):
+                kolor, tekst, ikona_statusu = kolor_daty(data_str, klucz_terminu)
                 return ft.Row([
                     ft.Icon(ikona, color=kolor, size=20),
                     ft.Text(f"{etykieta}:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT, width=110),
@@ -908,13 +919,13 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Divider(height=15),
                         ft.Row(utils.tytul_sekcji(ft.Icons.SHIELD, "Ważne terminy",
                                                   kolor=ft.Colors.ON_SURFACE_VARIANT, rozmiar=14), spacing=6),
-                        wiersz_termin(ft.Icons.SHIELD, "Polisa OC", w_info["oc_data"]),
-                        wiersz_termin(ft.Icons.FACT_CHECK, "Przegląd", w_info["przeglad_data"]),
-                        wiersz_termin(ft.Icons.SHIELD, "Polisa AC", w_info["ac_data"]),
-                        wiersz_termin(ft.Icons.SUPPORT_AGENT, "Assistance", w_info["assistance_data"]),
-                        wiersz_termin(ft.Icons.LOCAL_FIRE_DEPARTMENT, "Gaśnica", w_info["gasnica_data"]),
-                        wiersz_termin(ft.Icons.MEDICAL_SERVICES, "Apteczka", w_info["apteczka_data"]),
-                        wiersz_termin(ft.Icons.VERIFIED_USER, "Gwarancja", w_info["gwarancja_data"]),
+                        wiersz_termin(ft.Icons.SHIELD, "Polisa OC", w_info["oc_data"], "oc"),
+                        wiersz_termin(ft.Icons.FACT_CHECK, "Przegląd", w_info["przeglad_data"], "przeglad"),
+                        wiersz_termin(ft.Icons.SHIELD, "Polisa AC", w_info["ac_data"], "ac"),
+                        wiersz_termin(ft.Icons.SUPPORT_AGENT, "Assistance", w_info["assistance_data"], "assistance"),
+                        wiersz_termin(ft.Icons.LOCAL_FIRE_DEPARTMENT, "Gaśnica", w_info["gasnica_data"], "gasnica"),
+                        wiersz_termin(ft.Icons.MEDICAL_SERVICES, "Apteczka", w_info["apteczka_data"], "apteczka"),
+                        wiersz_termin(ft.Icons.VERIFIED_USER, "Gwarancja", w_info["gwarancja_data"], "gwarancja"),
                         wiersz_info(ft.Icons.SPEED, "Gwarancja do", f"{w_info['gwarancja_przebieg']} km" if w_info["gwarancja_przebieg"] else None),
 
                         ft.Divider(height=15),

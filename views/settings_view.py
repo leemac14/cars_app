@@ -13,7 +13,11 @@ class UstawieniaView(ft.View):
         prog_km_val = db.pobierz_prog_km()
         prog_dni_val = db.pobierz_prog_dni()
         moje_imie_val = db.pobierz_moje_imie()
-        widgety_wlaczone = set(db.pobierz_widgety_kokpitu())
+        # Kokpit ustawiamy dla AKTYWNEGO pojazdu. Auto bez własnego układu
+        # pokazuje tu wspólny — i dopiero zapis odpina je od niego.
+        self.kokpit_auto_id = state.auto_id
+        widgety_wlaczone = set(db.pobierz_widgety_kokpitu(self.kokpit_auto_id))
+        self.kokpit_wlasny = db.czy_kokpit_wlasny(self.kokpit_auto_id)
 
         self.e_waluta = ft.Dropdown(
             label="Waluta",
@@ -42,6 +46,29 @@ class UstawieniaView(ft.View):
             value=str(prog_km_val) if prog_km_val in db.PROGI_KM_OPCJE else str(db.PROGI_KM_OPCJE[2]),
             **utils.styl_dropdown()
         )
+
+        # Każdy termin ma własny dropdown z „Jak domyślny” na pierwszym miejscu.
+        # Pusty klucz = brak własnego progu, czyli obowiązuje ten z pola wyżej —
+        # dzięki temu nieruszone terminy zachowują się dokładnie jak przedtem.
+        def opis_progu(d):
+            if d == 30: return "1 miesiąc"
+            if d == 60: return "2 miesiące"
+            if d == 90: return "3 miesiące"
+            if d == 180: return "Pół roku"
+            if d == 365: return "Rok"
+            return f"{d} dni"
+
+        self.dropdowny_terminow = {}
+        for klucz, _kolumna, etykieta in db.TERMINY_DOKUMENTOW:
+            self.dropdowny_terminow[klucz] = ft.Dropdown(
+                label=etykieta,
+                options=(
+                    [ft.DropdownOption(key="", text="Jak domyślny (powyżej)")]
+                    + [ft.DropdownOption(key=str(d), text=opis_progu(d)) for d in db.PROGI_DNI_DOKUMENTU_OPCJE]
+                ),
+                value=db.pobierz_wlasny_prog_dni_dokumentu(klucz),
+                **utils.styl_dropdown()
+            )
 
         # Retencja kosza: 0 to świadomie "nigdy" — pojazdy leżą w koszu do skutku.
         opcje_kosza_tekst = {7: "7 dni", 30: "30 dni", 90: "90 dni", 0: "Nigdy — czyszczę ręcznie"}
@@ -141,7 +168,21 @@ class UstawieniaView(ft.View):
             "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza(
-            [self.e_prog_km, self.e_prog_dni, ft.Text("Ten sam próg dotyczy teraz też AC, Assistance, gaśnicy i apteczki.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)],
+            [
+                self.e_prog_km,
+                self.e_prog_dni,
+                ft.Text(
+                    "Próg dni powyżej obowiązuje podzespoły z interwałem czasowym oraz każdy termin, "
+                    "któremu nie ustawisz własnego wyprzedzenia poniżej.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+                ft.Divider(height=1),
+                ft.Text(
+                    "Wyprzedzenie osobno dla każdego terminu — o kończącym się OC zwykle chce się "
+                    "wiedzieć dużo wcześniej niż o dacie ważności apteczki.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+            ] + [self.dropdowny_terminow[k] for k, _, _ in db.TERMINY_DOKUMENTOW],
             "Progi powiadomień", ft.Icons.NOTIFICATIONS_ACTIVE, domyslnie_otwarte=True, page=page
         )
 
@@ -191,8 +232,34 @@ class UstawieniaView(ft.View):
 
         self._stan_poczatkowy = self._migawka_formularza()
 
+        naglowek_kokpitu = []
+        if self.kokpit_auto_id:
+            naglowek_kokpitu.append(ft.Container(
+                padding=ft.Padding(10, 8, 10, 8),
+                border_radius=utils.RADIUS["sm"],
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.DIRECTIONS_CAR, size=16, color=ft.Colors.PRIMARY),
+                    ft.Text(
+                        (f"Układ własny pojazdu „{state.auto_nazwa}”"
+                         if self.kokpit_wlasny else
+                         f"„{state.auto_nazwa}” korzysta ze wspólnego układu"),
+                        size=12, weight="bold", color=ft.Colors.PRIMARY, expand=True
+                    ),
+                ], spacing=6)
+            ))
+
+        # Odpięcie od wspólnego układu jest odwracalne — ten przycisk kasuje
+        # własny układ pojazdu, więc auto znów podąża za wspólnym.
+        self.btn_kokpit_wspolny = ft.TextButton(
+            "Wróć do wspólnego układu",
+            icon=ft.Icons.SETTINGS_BACKUP_RESTORE,
+            visible=bool(self.kokpit_auto_id) and self.kokpit_wlasny,
+            on_click=self._przywroc_kokpit_wspolny,
+        )
+
         k_kokpit = utils.karta_formularza(
-            [
+            naglowek_kokpitu + [
                 ft.Text(
                     "Wybierz, które szybkie statystyki mają się pokazywać na górze ekranu głównego "
                     "(zakładka Serwis). Kolejność ustawisz przeciąganiem — przytrzymaj kafelek na "
@@ -200,7 +267,12 @@ class UstawieniaView(ft.View):
                     "dopisują się na końcu i nie ruszają Twojego układu.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
-            ] + wiersze_kokpitu,
+                ft.Text(
+                    "Kokpit jest osobny dla każdego pojazdu. Dopóki nie zmienisz go przy konkretnym "
+                    "aucie, korzysta ono ze wspólnego układu i podąża za jego zmianami.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+            ] + wiersze_kokpitu + [self.btn_kokpit_wspolny],
             "Kokpit ekranu głównego", ft.Icons.DASHBOARD_CUSTOMIZE, domyslnie_otwarte=True, page=page
         )
 
@@ -224,9 +296,32 @@ class UstawieniaView(ft.View):
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
 
+    def _przywroc_kokpit_wspolny(self, e):
+        """Kasuje własny układ pojazdu i przeładowuje ekran, żeby checkboxy
+        pokazały to, co auto właśnie odziedziczyło ze wspólnego układu."""
+        def wykonaj():
+            db.przywroc_kokpit_wspolny(self.kokpit_auto_id)
+            utils.przejdz(self._page, "/ustawienia")
+            utils.pokaz_komunikat(
+                self._page,
+                f"„{self.state.auto_nazwa}” korzysta znów ze wspólnego kokpitu.",
+                ft.Colors.GREEN_700,
+            )
+
+        utils.potwierdz(
+            self._page,
+            "Wrócić do wspólnego układu?",
+            f"Własny kokpit pojazdu „{self.state.auto_nazwa}” zostanie skasowany, a auto "
+            "wróci do układu wspólnego dla całego garażu. Niezapisane zmiany w tym "
+            "formularzu przepadną.",
+            wykonaj,
+            tekst_potwierdzenia="Wróć do wspólnego",
+        )
+
     def _migawka_formularza(self):
         return (self.e_waluta.value, self.e_jednostka.value, self.e_jednostka_ev.value, self.e_prog_km.value, self.e_prog_dni.value,
                 self.e_dni_kosza.value, self.e_moje_imie.value, self.wybrany_kolor,
+                tuple(self.dropdowny_terminow[k].value for k, _, _ in db.TERMINY_DOKUMENTOW),
                 [chk.data for chk in self.checkboxy_kokpitu if chk.value])
 
     def _czy_zmieniono(self):
@@ -238,6 +333,8 @@ class UstawieniaView(ft.View):
         db.zapisz_ustawienie("jednostka_zuzycia_ev", self.e_jednostka_ev.value)
         db.zapisz_ustawienie("prog_km_powiadomien", self.e_prog_km.value)
         db.zapisz_ustawienie("prog_dni_powiadomien", self.e_prog_dni.value)
+        for klucz, _kolumna, _etykieta in db.TERMINY_DOKUMENTOW:
+            db.zapisz_prog_dni_dokumentu(klucz, self.dropdowny_terminow[klucz].value)
         db.zapisz_dni_kosza(self.e_dni_kosza.value)
         db.zapisz_moje_imie(self.e_moje_imie.value)
         
@@ -250,7 +347,10 @@ class UstawieniaView(ft.View):
         # kokpitu (użytkownik układa ją przeciąganiem), więc scalamy oba źródła
         # zamiast nadpisywać układ kolejnością checkboxów.
         zaznaczone = [chk.data for chk in self.checkboxy_kokpitu if chk.value]
-        db.zapisz_widgety_kokpitu(db.scal_widgety_kokpitu(zaznaczone))
+        # Zapis idzie na AKTYWNY pojazd — a przy braku pojazdów na układ wspólny.
+        db.zapisz_widgety_kokpitu(
+            db.scal_widgety_kokpitu(zaznaczone, self.kokpit_auto_id), self.kokpit_auto_id
+        )
 
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano ustawienia!")

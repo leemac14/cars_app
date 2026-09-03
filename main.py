@@ -60,6 +60,13 @@ def main(page: ft.Page):
     kolor_motywu_zastosowany = {"nazwa": kolor_ustawiony, "auto_id": None}
 
     app_state = AppState()
+    # Zakładkę odtwarzamy tu, raz — pojazdem zajmuje się db.zainicjuj_domyslne_auto,
+    # które i tak biegnie przy każdej nawigacji i samo sięga po zapamiętane auto.
+    app_state.zakladka = db.pobierz_ostatnia_zakladke()
+
+    # Ostatnio zapisana pozycja startowa — trzymana w pamięci, żeby nawigacja
+    # nie waliła w bazę UPDATE-em przy każdym przejściu między ekranami.
+    ostatnia_pozycja_zapisana = {"auto_id": None, "zakladka": None}
 
     # ---- EKSPORT / IMPORT (Z poziomu głównego modułu) ----
     def _skopiuj_baze(sciezka_zrodlowa, sciezka_docelowa):
@@ -398,6 +405,13 @@ def main(page: ft.Page):
             utils.zastosuj_motywy(page, kolor_biezacy)
             kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
             kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
+
+        # Zapamiętujemy, gdzie użytkownik jest, żeby następne uruchomienie
+        # otworzyło się dokładnie tu, a nie na pierwszym aucie i Serwisie.
+        if (app_state.auto_id, app_state.zakladka) != (ostatnia_pozycja_zapisana["auto_id"], ostatnia_pozycja_zapisana["zakladka"]):
+            db.zapamietaj_ostatnia_pozycje(app_state.auto_id, app_state.zakladka)
+            ostatnia_pozycja_zapisana["auto_id"] = app_state.auto_id
+            ostatnia_pozycja_zapisana["zakladka"] = app_state.zakladka
 
         trasa = page.route
         segmenty = [s for s in trasa.split("/") if s != ""]

@@ -205,6 +205,78 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         utils.potwierdz(self._page, "Usuwanie wpisów", f"Czy na pewno usunąć {ile} elementów z historii?", wykonaj)
 
 class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
+    def _zwroc_pozycje_na_liste(self, wizyta_id):
+        """Zdejmuje wybrane pozycje z wizyty i odkłada je z powrotem na listę
+        Do zrobienia. Koszt każdej wraca jako szacowany i jest odejmowany od
+        kosztu całkowitego wizyty — zostaje w niej tylko to, co zrobiono."""
+        pozycje = db.pobierz_pozycje_wizyty(wizyta_id)
+        if not pozycje:
+            utils.pokaz_komunikat(self._page, "Ta wizyta nie ma pozycji do zwrotu.", ft.Colors.ON_SURFACE_VARIANT)
+            return
+
+        checkboxy = [
+            ft.Checkbox(
+                label=(f"{p['nazwa']}  ·  {utils.formatuj_liczba(p['cena'])} {utils.symbol_waluty()}"
+                       if p["cena"] else p["nazwa"]),
+                value=False, data=p["id"],
+            )
+            for p in pozycje
+        ]
+        blad = ft.Text("", color=ft.Colors.RED_700, size=12, visible=False)
+
+        def wykonaj(e):
+            wybrane = [chk.data for chk in checkboxy if chk.value]
+            if not wybrane:
+                blad.value = "Zaznacz przynajmniej jedną pozycję."
+                blad.visible = True
+                self._page.update()
+                return
+
+            utils.zamknij_dialog(self._page, dlg)
+            wynik = db.zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, wybrane)
+            if not wynik:
+                utils.pokaz_komunikat(self._page, "Nie udało się zwrócić pozycji.", ft.Colors.RED_700)
+                return
+
+            # Po cofnięciu przebudowujemy przeliczenia podzespołów — zwrot
+            # zmienia daty ostatnich wymian tak samo, jak zmieniał je zapis wizyty.
+            oryginalne_cofnij = wynik["cofnij"]
+            def nowe_cofnij():
+                oryginalne_cofnij()
+                db.przelicz_wszystkie_zadania(self.state.auto_id)
+            wynik["cofnij"] = nowe_cofnij
+
+            utils.przejdz(self._page, "/wizyty")
+            ile = wynik["liczba"]
+            komunikat = (f"Zwrócono „{wynik['nazwy'][0]}” na listę Do zrobienia."
+                         if ile == 1 else f"Zwrócono {ile} pozycje na listę Do zrobienia.")
+            if wynik["kwota"]:
+                komunikat += f" Koszt wizyty pomniejszony o {utils.formatuj_liczba(wynik['kwota'])} {utils.symbol_waluty()}."
+            utils.pokaz_komunikat_cofnij(self._page, komunikat, wynik)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Zwrot na listę Do zrobienia", weight="bold"),
+            content=ft.Column([
+                ft.Text("Zaznacz pozycje, które wracają na listę — np. część zamówioną, "
+                        "ale jeszcze niezamontowaną."),
+                ft.Container(height=5),
+                ft.Column(checkboxy, tight=True, spacing=0),
+                blad,
+                ft.Text(
+                    "Zaznaczone pozycje znikną z tej wizyty, a ich koszt zostanie odjęty od "
+                    "kosztu całkowitego. Wrócą na listę z ceną jako szacowanym kosztem.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+            ], tight=True, scroll=ft.ScrollMode.AUTO),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
+                ft.TextButton("Zwróć", style=ft.ButtonStyle(color=ft.Colors.PRIMARY), on_click=wykonaj),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        utils.otworz_dialog(self._page, dlg)
+
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
@@ -324,6 +396,14 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie", "akcja": dodaj_zmien_zdj})
                 
             pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wizytę", "akcja": lambda: utils.przejdz(self._page, f"/wizyty/edytuj/{wid}")})
+            # Droga powrotna do "Zamień na wizytę" z listy Do zrobienia: część
+            # bywa zamówiona przy okazji wizyty, ale montowana dopiero później.
+            if db.pobierz_pozycje_wizyty(wid):
+                pozycje.append({
+                    "ikona": ft.Icons.ASSIGNMENT_RETURN,
+                    "tekst": "Zwróć pozycję na listę Do zrobienia",
+                    "akcja": lambda: self._zwroc_pozycje_na_liste(wid),
+                })
             pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wizytę", "akcja": usun_wizyte, "kolor": ft.Colors.RED})
 
             utils.pokaz_menu_kontekstowe(self._page, "Opcje wizyty", pozycje)

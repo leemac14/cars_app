@@ -82,6 +82,22 @@ DNI_KOSZA_DOMYSLNIE = 30
 PROGI_KM_OPCJE = [500, 1000, 1500, 2000, 3000, 5000]
 PROGI_DNI_OPCJE = [7, 14, 30, 60, 90]
 
+# Terminy dokumentów: (klucz ustawienia, kolumna w samochody, etykieta).
+# Każdy ma WŁASNY próg powiadomień — o kończącym się OC chce się wiedzieć
+# z innym wyprzedzeniem niż o dacie ważności apteczki. Brak własnego progu
+# (klucz nieustawiony) = obowiązuje wspólny prog_dni_powiadomien.
+TERMINY_DOKUMENTOW = [
+    ("oc",         "oc_data",         "Polisa OC"),
+    ("przeglad",   "przeglad_data",   "Przegląd techniczny"),
+    ("ac",         "ac_data",         "Polisa AC"),
+    ("assistance", "assistance_data", "Assistance"),
+    ("gasnica",    "gasnica_data",    "Gaśnica"),
+    ("apteczka",   "apteczka_data",   "Apteczka"),
+    ("gwarancja",  "gwarancja_data",  "Gwarancja producenta"),
+]
+KLUCZE_TERMINOW = {k for k, _, _ in TERMINY_DOKUMENTOW}
+PROGI_DNI_DOKUMENTU_OPCJE = [7, 14, 30, 60, 90, 180, 365]
+
 PRIORYTETY_DO_ZROBIENIA = ["Wysoki", "Średni", "Niski"]
 KOLEJNOSC_PRIORYTETU = {"Wysoki": 1, "Średni": 2, "Niski": 3}
 
@@ -491,6 +507,14 @@ def zapisz_ustawienie(klucz, wartosc):
             (klucz, wartosc)
         )
 
+def usun_ustawienie(klucz):
+    """Kasuje klucz, przez co ustawienie wraca do wartości domyślnej. Używane
+    tam, gdzie „brak wpisu” znaczy coś innego niż pusty string — np. próg dni
+    dla konkretnego terminu (wtedy obowiązuje globalny) albo układ kokpitu
+    pojazdu (wtedy dziedziczy wspólny)."""
+    with polacz_baze() as conn:
+        conn.execute("DELETE FROM ustawienia WHERE klucz=?", (klucz,))
+
 def pobierz_tryb_motywu():
     """Zwraca 'jasny' / 'ciemny' / 'system'. Jeśli nowy klucz nie był jeszcze
     zapisany, migruje w locie ze starego booleanowego 'tryb_ciemny'."""
@@ -598,6 +622,37 @@ def pobierz_prog_km():
 def pobierz_prog_dni():
     return int(pobierz_ustawienie("prog_dni_powiadomien", str(PROG_DNI_POWIADOMIEN)) or PROG_DNI_POWIADOMIEN)
 
+def pobierz_prog_dni_dokumentu(klucz):
+    """Próg powiadomień (w dniach) dla KONKRETNEGO terminu — OC, przeglądu,
+    apteczki itd. Brak własnego ustawienia oznacza „jak domyślny” i zwraca
+    wspólny prog_dni_powiadomien, więc nieruszane terminy zachowują się jak
+    przed rozbiciem progów."""
+    if klucz not in KLUCZE_TERMINOW:
+        return pobierz_prog_dni()
+    zapisane = pobierz_ustawienie(f"prog_dni_{klucz}")
+    if zapisane in (None, ""):
+        return pobierz_prog_dni()
+    try:
+        wartosc = int(zapisane)
+    except (TypeError, ValueError):
+        return pobierz_prog_dni()
+    return wartosc if wartosc > 0 else pobierz_prog_dni()
+
+def zapisz_prog_dni_dokumentu(klucz, wartosc):
+    """Pusta wartość KASUJE własny próg — termin wraca pod wspólny domyślny."""
+    if klucz not in KLUCZE_TERMINOW:
+        return
+    tekst = str(wartosc or "").strip()
+    if not tekst:
+        usun_ustawienie(f"prog_dni_{klucz}")
+        return
+    zapisz_ustawienie(f"prog_dni_{klucz}", tekst)
+
+def pobierz_wlasny_prog_dni_dokumentu(klucz):
+    """Surowa wartość do formularza Ustawień: "" gdy termin idzie za domyślnym."""
+    zapisane = pobierz_ustawienie(f"prog_dni_{klucz}")
+    return str(zapisane) if zapisane not in (None, "") else ""
+
 def pobierz_moje_imie():
     """Lokalna nazwa/imię tego użytkownika/urządzenia — dopisywana jako
     'dodane_przez' przy nowych wpisach kosztowych, żeby przy współdzielonym
@@ -699,14 +754,24 @@ KOKPIT_WIDGETY = {
 }
 KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
 
-def pobierz_widgety_kokpitu():
-    """Zwraca listę ID widżetów kokpitu wybranych przez użytkownika (patrz
-    MainView._buduj_kokpit) — W KOLEJNOŚCI, W JAKIEJ ZOSTAŁY ZAPISANE, bo tę
-    kolejność użytkownik ustawia sam, przeciągając kafelki w trybie edycji
-    kokpitu. Domyślnie (brak zapisanego ustawienia) włączone są trzy podstawowe."""
-    zapisane = pobierz_ustawienie("kokpit_widgety")
-    if zapisane is None:
-        return list(KOKPIT_WIDGETY_DOMYSLNE)
+# Kokpit ustawia się osobno dla każdego pojazdu — auto służbowe i prywatne
+# rzadko potrzebują tych samych kafelków. Klucz per auto to "kokpit_widgety_<id>";
+# dopóki go nie ma, pojazd DZIEDZICZY wspólny układ spod "kokpit_widgety".
+# Dzięki temu aktualizacja nie ruszyła nikomu kokpitu, a auto bez własnego
+# układu podąża za zmianami wspólnego.
+def _klucz_kokpitu(auto_id=None):
+    return f"kokpit_widgety_{int(auto_id)}" if auto_id else "kokpit_widgety"
+
+def czy_kokpit_wlasny(auto_id):
+    """Czy pojazd ma WŁASNY układ kokpitu, czy dziedziczy wspólny."""
+    return bool(auto_id) and pobierz_ustawienie(_klucz_kokpitu(auto_id)) is not None
+
+def przywroc_kokpit_wspolny(auto_id):
+    """Odpina pojazd od własnego układu — od tej chwili znowu dziedziczy wspólny."""
+    if auto_id:
+        usun_ustawienie(_klucz_kokpitu(auto_id))
+
+def _odczytaj_kolejnosc_kokpitu(zapisane):
     kolejnosc, widziane = [], set()
     for w in zapisane.split(","):
         w = w.strip()
@@ -715,25 +780,64 @@ def pobierz_widgety_kokpitu():
             kolejnosc.append(w)
     return kolejnosc
 
-def zapisz_widgety_kokpitu(lista_id):
+def pobierz_widgety_kokpitu(auto_id=None):
+    """Zwraca listę ID widżetów kokpitu wybranych przez użytkownika (patrz
+    MainView._buduj_kokpit) — W KOLEJNOŚCI, W JAKIEJ ZOSTAŁY ZAPISANE, bo tę
+    kolejność użytkownik ustawia sam, przeciągając kafelki w trybie edycji
+    kokpitu. Najpierw szuka układu WŁASNEGO dla pojazdu, potem wspólnego, a na
+    końcu wraca do trzech podstawowych widżetów."""
+    zapisane = pobierz_ustawienie(_klucz_kokpitu(auto_id)) if auto_id else None
+    if zapisane is None:
+        zapisane = pobierz_ustawienie("kokpit_widgety")
+    if zapisane is None:
+        return list(KOKPIT_WIDGETY_DOMYSLNE)
+    return _odczytaj_kolejnosc_kokpitu(zapisane)
+
+def zapisz_widgety_kokpitu(lista_id, auto_id=None):
     """Zapisuje ZESTAW oraz KOLEJNOŚĆ widżetów kokpitu — lista wchodzi tu już
-    ułożona tak, jak ma wyglądać karuzela. Duplikaty i nieznane ID odpadają."""
+    ułożona tak, jak ma wyglądać karuzela. Duplikaty i nieznane ID odpadają.
+    Z auto_id zapis odpina pojazd od wspólnego układu; bez niego zmienia układ
+    wspólny (i tym samym wszystkie auta, które nadal go dziedziczą)."""
     poprawne, widziane = [], set()
     for w in lista_id:
         if w in KOKPIT_WIDGETY and w not in widziane:
             widziane.add(w)
             poprawne.append(w)
-    zapisz_ustawienie("kokpit_widgety", ",".join(poprawne))
+    zapisz_ustawienie(_klucz_kokpitu(auto_id), ",".join(poprawne))
 
-def scal_widgety_kokpitu(zaznaczone):
+def scal_widgety_kokpitu(zaznaczone, auto_id=None):
     """Łączy nowy ZESTAW włączonych widżetów (np. z checkboxów w Ustawieniach)
     z już zapisaną KOLEJNOŚCIĄ: to, co użytkownik ułożył, zostaje na swoim
     miejscu, a świeżo włączone pozycje dopisują się na końcu (w kolejności
     KOKPIT_WIDGETY). Dzięki temu zaznaczenie checkboxa nie kasuje układu."""
     zaznaczone = set(zaznaczone)
-    wynik = [w for w in pobierz_widgety_kokpitu() if w in zaznaczone]
+    wynik = [w for w in pobierz_widgety_kokpitu(auto_id) if w in zaznaczone]
     wynik += [w for w in KOKPIT_WIDGETY if w in zaznaczone and w not in wynik]
     return wynik
+
+# Ustawienia przywiązane do KONKRETNEGO pojazdu — przenoszone razem z nim do
+# kosza i z powrotem (ID po przywróceniu może się zmienić, patrz
+# przywroc_auto_z_kosza), żeby nie zostawały w bazie jako sieroty.
+USTAWIENIA_PER_POJAZD = [_klucz_kokpitu]
+
+def _pobierz_ustawienia_pojazdu(auto_id):
+    dane = {}
+    for buduj_klucz in USTAWIENIA_PER_POJAZD:
+        klucz = buduj_klucz(auto_id)
+        wartosc = pobierz_ustawienie(klucz)
+        if wartosc is not None:
+            dane[buduj_klucz.__name__] = wartosc
+    return dane
+
+def _usun_ustawienia_pojazdu(auto_id):
+    for buduj_klucz in USTAWIENIA_PER_POJAZD:
+        usun_ustawienie(buduj_klucz(auto_id))
+
+def _przywroc_ustawienia_pojazdu(auto_id, dane):
+    for buduj_klucz in USTAWIENIA_PER_POJAZD:
+        wartosc = (dane or {}).get(buduj_klucz.__name__)
+        if wartosc is not None:
+            zapisz_ustawienie(buduj_klucz(auto_id), wartosc)
 
 def _sparsuj_datetime(tekst):
     """Parsuje string w formacie 'DD.MM.YYYY' lub 'DD.MM.YYYY HH:MM' na obiekt
@@ -814,6 +918,29 @@ def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
     zdarzenia.sort(key=lambda z: z[3], reverse=True)
     return zdarzenia[:limit]
 
+LICZBA_ZAKLADEK_GLOWNYCH = 4   # Serwis, Paliwo, Inne, Statystyki
+
+def zapamietaj_ostatnia_pozycje(auto_id, zakladka):
+    """Zapamiętuje, na czym użytkownik skończył — pojazd i zakładkę główną.
+    Wywoływane przy każdej nawigacji (patrz main.trasa_zmieniona), ale tylko
+    wtedy, gdy coś się faktycznie zmieniło."""
+    if auto_id:
+        zapisz_ustawienie("ostatni_pojazd", str(int(auto_id)))
+    zapisz_ustawienie("ostatnia_zakladka", str(int(zakladka or 0)))
+
+def pobierz_ostatnia_zakladke():
+    try:
+        z = int(pobierz_ustawienie("ostatnia_zakladka", "0") or 0)
+    except (TypeError, ValueError):
+        return 0
+    return z if 0 <= z < LICZBA_ZAKLADEK_GLOWNYCH else 0
+
+def pobierz_ostatni_pojazd():
+    try:
+        return int(pobierz_ustawienie("ostatni_pojazd", "") or 0) or None
+    except (TypeError, ValueError):
+        return None
+
 def zainicjuj_domyslne_auto(state):
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -828,6 +955,17 @@ def zainicjuj_domyslne_auto(state):
         if a_id == aktualne_id:
             state.auto_nazwa = str(a_nazwa)
             return
+    # Brak dopasowania to albo świeży start aplikacji, albo zniknięcie
+    # dotychczasowego auta. W pierwszym przypadku wracamy tam, gdzie użytkownik
+    # skończył ostatnim razem — pierwsze auto alfabetycznie zostaje dopiero
+    # awaryjnym wyborem, gdy zapamiętanego pojazdu już nie ma.
+    ostatni = pobierz_ostatni_pojazd()
+    if ostatni:
+        for a_id, a_nazwa in auta:
+            if a_id == ostatni:
+                state.auto_id = a_id
+                state.auto_nazwa = str(a_nazwa)
+                return
     state.auto_id = auta[0][0]
     state.auto_nazwa = str(auta[0][1])
 
@@ -1117,6 +1255,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
         return []
 
     if prog_km is None: prog_km = pobierz_prog_km()
+    prog_dni_wymuszony = prog_dni is not None
     if prog_dni is None: prog_dni = pobierz_prog_dni()
 
     wyniki = []
@@ -1167,30 +1306,27 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                     "status": status_zadania, "trasa": f"/zadanie/edytuj/{z['id']}",
                 })
 
+        kolumny_terminow = ", ".join(kol for _, kol, _ in TERMINY_DOKUMENTOW)
         c.execute(
-            "SELECT oc_data, przeglad_data, ac_data, assistance_data, gasnica_data, apteczka_data, "
-            "gwarancja_data, gwarancja_przebieg "
-            "FROM samochody WHERE id=?", (auto_id,)
+            f"SELECT {kolumny_terminow}, gwarancja_przebieg FROM samochody WHERE id=?",
+            (auto_id,)
         )
         w = c.fetchone()
         if w:
-            terminy_dokumentow = (
-                ("Polisa OC", w["oc_data"]),
-                ("Przegląd techniczny", w["przeglad_data"]),
-                ("Polisa AC", w["ac_data"]),
-                ("Assistance", w["assistance_data"]),
-                ("Gaśnica", w["gasnica_data"]),
-                ("Apteczka", w["apteczka_data"]),
-                ("Gwarancja producenta", w["gwarancja_data"]),
-            )
-            for etykieta, txt in terminy_dokumentow:
+            # Każdy termin ma własny próg wyprzedzenia (Ustawienia → „Progi
+            # powiadomień”); nieruszony termin dziedziczy wspólny prog_dni.
+            # prog_dni podany jawnie w wywołaniu nadal wygrywa ze wszystkim —
+            # służy do podglądu „co by było, gdyby” bez ruszania ustawień.
+            for klucz, kolumna, etykieta in TERMINY_DOKUMENTOW:
+                txt = w[kolumna]
                 if not txt:
                     continue
                 d_w = parsuj_date(txt)
                 if d_w == datetime.min.date():
                     continue
+                prog_terminu = prog_dni if prog_dni_wymuszony else pobierz_prog_dni_dokumentu(klucz)
                 zost_dni = (d_w - dzis).days
-                if zost_dni <= prog_dni:
+                if zost_dni <= prog_terminu:
                     s = "przeterminowane" if zost_dni < 0 else "pilne"
                     opis = f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni"
                     wyniki.append({
@@ -2348,6 +2484,155 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False):
 
     return wizyta_id, duplikaty, {"cofnij": cofnij, "finalizuj": lambda: None}
 
+def pobierz_pozycje_wizyty(wizyta_id):
+    """Pozycje wizyty nadające się do zwrotu na listę Do zrobienia — czyli wpisy
+    historii podpięte pod tę wizytę, razem z nazwą podzespołu i ceną."""
+    if not wizyta_id:
+        return []
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            "SELECT h.id, h.cena, h.zadanie_id, z.nazwa "
+            "FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
+            "WHERE h.wizyta_id=? ORDER BY z.nazwa",
+            (wizyta_id,)
+        )
+        return [
+            {"id": r["id"], "nazwa": str(r["nazwa"] or "Pozycja"),
+             "cena": float(r["cena"] or 0.0), "zadanie_id": r["zadanie_id"]}
+            for r in c.fetchall()
+        ]
+
+def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
+    """Zdejmuje wskazane pozycje z wizyty i odkłada je z powrotem na listę
+    Do zrobienia — droga powrotna do utworz_wizyte_z_do_zrobienia, potrzebna
+    gdy część została zamówiona, ale nie zamontowana przy tej samej okazji.
+
+    Cena pozycji wraca jako szacowany koszt i jest ODEJMOWANA od kosztu
+    całkowitego wizyty — w wizycie zostaje tylko to, co faktycznie zrobiono.
+    Zwraca słownik zgodny z utils.pokaz_komunikat_cofnij, wzbogacony o "liczba"
+    i "nazwy" zwróconych pozycji.
+    """
+    if not wizyta_id or not historia_ids:
+        return None
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        c.execute("SELECT auto_id, data, wykonawca, koszt_calkowity FROM wizyty WHERE id=?", (wizyta_id,))
+        wiz = c.fetchone()
+        if not wiz:
+            return None
+        auto_id = wiz["auto_id"]
+        koszt_przed = float(wiz["koszt_calkowity"] or 0.0)
+
+        c.execute("PRAGMA table_info(historia)")
+        kolumny_historii = [r["name"] for r in c.fetchall()]
+
+        placeholders = ",".join("?" for _ in historia_ids)
+        c.execute(
+            f"SELECT h.*, z.nazwa AS nazwa_zadania FROM historia h "
+            f"JOIN zadania z ON h.zadanie_id = z.id "
+            f"WHERE h.wizyta_id=? AND h.id IN ({placeholders})",
+            (wizyta_id, *historia_ids)
+        )
+        wiersze = c.fetchall()
+        if not wiersze:
+            return None
+
+        historia_dane = [{k: r[k] for k in kolumny_historii} for r in wiersze]
+        nazwy = [str(r["nazwa_zadania"] or "Pozycja") for r in wiersze]
+
+    suma_zwrocona = sum(float(d.get("cena") or 0.0) for d in historia_dane)
+    dzis = datetime.now().strftime("%d.%m.%Y")
+    opis_zrodla = f"Zwrócone z wizyty z {wiz['data']}"
+    if wiz["wykonawca"]:
+        opis_zrodla += f" ({wiz['wykonawca']})"
+
+    # Załączniki (paragony) zdejmowanych wpisów historii chowamy tak jak przy
+    # każdym innym usuwaniu z opcją cofnięcia — do_zrobienia nie ma kolumny na
+    # załącznik, więc plik czeka w folderze odroczonym na ewentualne cofnięcie.
+    sciezki_tymczasowe = []
+    folder_tmp = _upewnij_folder_odroczonych()
+    for d in historia_dane:
+        zal = d.get("zalacznik")
+        if zal and os.path.exists(zal):
+            tmp = os.path.join(folder_tmp, f"h_{uuid.uuid4().hex}_{os.path.basename(zal)}")
+            try:
+                shutil.move(zal, tmp)
+                sciezki_tymczasowe.append((tmp, zal))
+            except Exception:
+                pass
+
+    nowe_do_zrobienia_ids = []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        for d, nazwa in zip(historia_dane, nazwy):
+            c.execute(
+                "INSERT INTO do_zrobienia (auto_id, tytul, opis, priorytet, szacowany_koszt, "
+                "zadanie_id, wykonane, data_utworzenia) VALUES (?,?,?,?,?,?,0,?)",
+                (auto_id, nazwa, opis_zrodla, "Średni", float(d.get("cena") or 0.0),
+                 d.get("zadanie_id"), dzis)
+            )
+            nowe_do_zrobienia_ids.append(c.lastrowid)
+
+        c.execute(f"DELETE FROM historia WHERE id IN ({placeholders})", tuple(historia_ids))
+        c.execute(
+            "UPDATE wizyty SET koszt_calkowity = MAX(0, koszt_calkowity - ?) WHERE id=?",
+            (suma_zwrocona, wizyta_id)
+        )
+
+    zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
+    for zid in zdalne_id_historii:
+        zarejestruj_nagrobek("historia", zid)
+
+    przelicz_wszystkie_zadania(auto_id)
+
+    stan = {"cofniete": False, "sfinalizowane": False}
+
+    def cofnij():
+        if stan["cofniete"] or stan["sfinalizowane"]:
+            return
+        stan["cofniete"] = True
+
+        for zid in zdalne_id_historii:
+            usun_nagrobek(zid)
+        for tmp, oryg in sciezki_tymczasowe:
+            if os.path.exists(tmp):
+                try:
+                    shutil.move(tmp, oryg)
+                except Exception:
+                    pass
+
+        with polacz_baze() as conn:
+            if nowe_do_zrobienia_ids:
+                p_dz = ",".join("?" for _ in nowe_do_zrobienia_ids)
+                conn.execute(f"DELETE FROM do_zrobienia WHERE id IN ({p_dz})", tuple(nowe_do_zrobienia_ids))
+            nazwy_kol = ",".join(kolumny_historii)
+            znaki = ",".join("?" for _ in kolumny_historii)
+            for d in historia_dane:
+                conn.execute(f"INSERT INTO historia ({nazwy_kol}) VALUES ({znaki})",
+                             tuple(d[k] for k in kolumny_historii))
+            # Koszt całkowity wraca do wartości sprzed zwrotu, a nie przez
+            # dodanie sumy — MAX(0, ...) przy odejmowaniu mogło ją przyciąć.
+            conn.execute("UPDATE wizyty SET koszt_calkowity=? WHERE id=?", (koszt_przed, wizyta_id))
+        przelicz_wszystkie_zadania(auto_id)
+
+    def finalizuj():
+        if stan["cofniete"]:
+            return
+        stan["sfinalizowane"] = True
+        for tmp, _ in sciezki_tymczasowe:
+            usun_plik_zalacznika(tmp)
+
+    return {
+        "cofnij": cofnij, "finalizuj": finalizuj,
+        "liczba": len(historia_dane), "nazwy": nazwy,
+        "kwota": suma_zwrocona, "auto_id": auto_id,
+    }
+
 def pobierz_tagi(auto_id):
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -3096,10 +3381,17 @@ def usun_auto_do_kosza(auto_id):
         except Exception:
             pass
 
+    # Ustawienia przywiązane do tego auta (np. własny układ kokpitu) jadą razem
+    # z nim — inaczej zostałyby w bazie jako sieroty, a po przywróceniu pod nowym
+    # ID pojazd i tak by ich nie znalazł.
+    ustawienia_auta = _pobierz_ustawienia_pojazdu(auto_id)
+    _usun_ustawienia_pojazdu(auto_id)
+
     migawka = {
         "wersja": 1,
         "auto": {"kolumny": kol_auta, "wiersz": dane_auta},
         "tabele": tabele,
+        "ustawienia": ustawienia_auta,
     }
 
     with polacz_baze() as conn:
@@ -3312,6 +3604,8 @@ def przywroc_auto_z_kosza(kosz_id):
                     mapy[tab][stare_id] = c.lastrowid
 
         c.execute("DELETE FROM kosz_pojazdy WHERE id=?", (kosz_id,))
+
+    _przywroc_ustawienia_pojazdu(nowe_auto_id, migawka.get("ustawienia"))
 
     # Pojazd współdzielony wraca też do kolejki synchronizacji — przywrócenie
     # mogło zmienić lokalne ID, a serwer musi zobaczyć aktualny stan.
