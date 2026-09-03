@@ -11,7 +11,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
         wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "📈 Historia odczytów przebiegu", "/",
+            page, "Historia odczytów przebiegu", "/", ikona=ft.Icons.SHOW_CHART,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/przebieg"))] if wspolny_id else None
         )
         fab = utils.fab_animowany(ft.Icons.ADD, lambda e: self._dialog_odczytu())
@@ -116,9 +116,15 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                     ]
                     if dystans is not None:
                         if dystans >= 0:
-                            tresc.append(ft.Text(f"▲ {utils.formatuj_liczba(dystans, 0)} km od poprzedniego odczytu", size=12, color=ft.Colors.ON_SURFACE_VARIANT))
+                            tresc.append(ft.Row([
+                                ft.Icon(ft.Icons.ARROW_UPWARD, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(f"{utils.formatuj_liczba(dystans, 0)} km od poprzedniego odczytu", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ], spacing=4))
                         else:
-                            tresc.append(ft.Text(f"⚠️ Przebieg niższy o {utils.formatuj_liczba(abs(dystans), 0)} km — sprawdź wpis", size=12, color=ft.Colors.RED_700))
+                            tresc.append(ft.Row([
+                                ft.Icon(ft.Icons.WARNING, size=13, color=ft.Colors.RED_700),
+                                ft.Text(f"Przebieg niższy o {utils.formatuj_liczba(abs(dystans), 0)} km — sprawdź wpis", size=12, color=ft.Colors.RED_700, expand=True),
+                            ], spacing=4))
 
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc, spacing=4))
 

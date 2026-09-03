@@ -15,7 +15,7 @@ class PorownanieView(ft.View):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "⚖️ Porównanie pojazdów", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Porównanie pojazdów", "/", ikona=ft.Icons.BALANCE)
 
         with db.polacz_baze() as conn:
             c = conn.cursor()
@@ -181,19 +181,19 @@ class PorownanieView(ft.View):
         z_kosztem = [d for d in dane_aut if d.get("koszt_km") is not None]
         if z_kosztem:
             best = min(z_kosztem, key=lambda d: d["koszt_km"])
-            pozycje.append(("💰", "Najtańszy w eksploatacji", best, f"{utils.formatuj_liczba(best['koszt_km'], 2)} {utils.symbol_waluty()}/km"))
+            pozycje.append((ft.Icons.ACCOUNT_BALANCE_WALLET, "Najtańszy w eksploatacji", best, f"{utils.formatuj_liczba(best['koszt_km'], 2)} {utils.symbol_waluty()}/km"))
 
         ze_spalaniem = [d for d in dane_aut if d.get("spalanie")]
         if ze_spalaniem:
             best = min(ze_spalaniem, key=lambda d: d["spalanie"])
-            pozycje.append(("⛽", "Najniższe spalanie", best, utils.formatuj_spalanie(best["spalanie"])))
+            pozycje.append((ft.Icons.LOCAL_GAS_STATION, "Najniższe spalanie", best, utils.formatuj_spalanie(best["spalanie"])))
 
         najnizszy_prz = min(dane_aut, key=lambda d: d["aktualny_przebieg"] or 0)
-        pozycje.append(("🛣️", "Najniższy przebieg", najnizszy_prz, f"{utils.formatuj_liczba(najnizszy_prz['aktualny_przebieg'], 0)} km"))
+        pozycje.append((ft.Icons.ADD_ROAD, "Najniższy przebieg", najnizszy_prz, f"{utils.formatuj_liczba(najnizszy_prz['aktualny_przebieg'], 0)} km"))
 
         najspokojniejszy = min(dane_aut, key=lambda d: (d["przeterminowane"] * 10 + d["pilne"]))
         if najspokojniejszy["przeterminowane"] == 0 and najspokojniejszy["pilne"] == 0:
-            pozycje.append(("✅", "Brak zaległości serwisowych", najspokojniejszy, "Wszystko na czas"))
+            pozycje.append((ft.Icons.TASK_ALT, "Brak zaległości serwisowych", najspokojniejszy, "Wszystko na czas"))
 
         if not pozycje:
             return ft.Container()
@@ -202,7 +202,7 @@ class PorownanieView(ft.View):
         for ikona, etykieta, d, wartosc_tekst in pozycje:
             wiersze.append(
                 ft.Row([
-                    ft.Text(ikona, size=18),
+                    ft.Icon(ikona, size=20, color=d["kolor"]),
                     ft.Column([
                         ft.Text(etykieta, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text(f"{d['nazwa_wyswietlana']} • {wartosc_tekst}", size=14, weight="bold", color=d["kolor"])
@@ -235,8 +235,12 @@ class PorownanieView(ft.View):
             )
         return ft.Row(kolumny, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
-    def _wiersz_tekstowy(self, etykieta, dane_aut, pobierz_wartosc, pobierz_kolor=None):
-        kolumny = [ft.Container(ft.Text(etykieta, size=12, color=ft.Colors.ON_SURFACE_VARIANT), width=SZEROKOSC_ETYKIETY)]
+    def _wiersz_tekstowy(self, etykieta, dane_aut, pobierz_wartosc, pobierz_kolor=None, ikona=None):
+        podpis = ft.Text(etykieta, size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        tresc_etykiety = podpis if not ikona else ft.Row(
+            [ft.Icon(ikona, size=14, color=ft.Colors.ON_SURFACE_VARIANT), podpis], spacing=4, tight=True
+        )
+        kolumny = [ft.Container(tresc_etykiety, width=SZEROKOSC_ETYKIETY)]
         for d in dane_aut:
             wartosc = pobierz_wartosc(d)
             kolor = pobierz_kolor(d) if pobierz_kolor else ft.Colors.ON_SURFACE
@@ -275,7 +279,7 @@ class PorownanieView(ft.View):
 
             proporcja = (wartosc / maks) if maks > 0 else 0
             if wielu_wynikow and wartosc == najlepsza:
-                pasek_kolor, znacznik = ft.Colors.GREEN_700, " 👍"
+                pasek_kolor, znacznik = ft.Colors.GREEN_700, ""
             elif wielu_wynikow and wartosc == najgorsza:
                 pasek_kolor, znacznik = ft.Colors.RED_700, ""
             else:
@@ -511,9 +515,12 @@ class PorownanieView(ft.View):
         )
         tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),
-            self._wiersz_tekstowy("⛽ Paliwo", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_paliwo'], 0)} {utils.symbol_waluty()}"),
-            self._wiersz_tekstowy("🛠️ Serwis", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_serwis'], 0)} {utils.symbol_waluty()}"),
-            self._wiersz_tekstowy("🎫 Inne", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_inne'], 0)} {utils.symbol_waluty()}"),
+            self._wiersz_tekstowy("Paliwo", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_paliwo'], 0)} {utils.symbol_waluty()}",
+                                  ikona=utils.IKONY_KATEGORII_KOSZTOW["paliwo"]),
+            self._wiersz_tekstowy("Serwis", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_serwis'], 0)} {utils.symbol_waluty()}",
+                                  ikona=utils.IKONY_KATEGORII_KOSZTOW["serwis"]),
+            self._wiersz_tekstowy("Inne", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_inne'], 0)} {utils.symbol_waluty()}",
+                                  ikona=utils.IKONY_KATEGORII_KOSZTOW["inne"]),
         ], spacing=10)
         
         return utils.karta_formularza([pasek_calkowity, ft.Divider(height=15), pasek_km, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
@@ -582,10 +589,10 @@ class PorownanieView(ft.View):
             d_obj = datetime.strptime(str(data_str), "%d.%m.%Y").date()
             roz = (d_obj - datetime.now().date()).days
             if roz < 0:
-                return ft.Colors.RED_700, f"⚠️ {data_str}"
+                return ft.Colors.RED_700, str(data_str)
             elif roz <= 30:
-                return ft.Colors.ORANGE_700, f"⏳ {data_str}"
-            return ft.Colors.GREEN_700, f"✅ {data_str}"
+                return ft.Colors.ORANGE_700, str(data_str)
+            return ft.Colors.GREEN_700, str(data_str)
         except Exception:
             return ft.Colors.ON_SURFACE_VARIANT, str(data_str)
 

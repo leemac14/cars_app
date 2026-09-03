@@ -4,15 +4,19 @@ import sync
 import utils
 
 SEZONY = ["Letnie", "Zimowe", "Całoroczne"]
-IKONY_SEZONU = {"Letnie": "☀️", "Zimowe": "❄️", "Całoroczne": "🔄"}
+IKONY_SEZONU = {
+    "Letnie": ft.Icons.WB_SUNNY,
+    "Zimowe": ft.Icons.AC_UNIT,
+    "Całoroczne": ft.Icons.AUTORENEW,
+}
 
 IKONY_KATEGORII_MAGAZYNU = {
-    "Płyny eksploatacyjne": "🧴",
-    "Oleje i smary": "🛢️",
-    "Żarówki i bezpieczniki": "💡",
-    "Filtry": "💨",
-    "Akcesoria": "🧰",
-    "Inne": "📦",
+    "Płyny eksploatacyjne": ft.Icons.WATER_DROP,
+    "Oleje i smary": ft.Icons.OIL_BARREL,
+    "Żarówki i bezpieczniki": ft.Icons.LIGHTBULB,
+    "Filtry": ft.Icons.FILTER_ALT,
+    "Akcesoria": ft.Icons.HANDYMAN,
+    "Inne": ft.Icons.INVENTORY_2,
 }
 
 
@@ -35,7 +39,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "📦 Magazyn", "/",
+            page, "Magazyn", "/", ikona=ft.Icons.INVENTORY_2,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/magazyn"))] if wspolny_id else None
         )
 
@@ -55,7 +59,9 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             utils.przejdz(self._page, "/magazyn")
 
         elementy = [utils.segmented_control(
-            page, [("🛞 Opony", 0), ("🧰 Części i płyny", 1)], zakladka, zmien_zakladke
+            page,
+            [("Opony", 0, ft.Icons.TIRE_REPAIR), ("Części i płyny", 1, ft.Icons.HANDYMAN)],
+            zakladka, zmien_zakladke
         )]
 
         if zakladka == 0:
@@ -154,7 +160,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
     def _karta_zestawu(self, z):
         z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, zalacznik = z
-        ikona_sezonu = IKONY_SEZONU.get(sezon, "🛞")
+        ikona_sezonu = IKONY_SEZONU.get(sezon, ft.Icons.TIRE_REPAIR)
 
         if glebokosc is not None and str(glebokosc) != "":
             try:
@@ -203,7 +209,10 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             ft.Column([
                 ft.Row([
                     utils.wskaznik_zalacznika(self._page, zalacznik, "Zestaw opon") if zalacznik else ft.Container(),
-                    ft.Text(f"{ikona_sezonu} {sezon}", weight="bold", size=16, expand=True),
+                    ft.Row([
+                        ft.Icon(ikona_sezonu, size=17, color=ft.Colors.PRIMARY),
+                        ft.Text(str(sezon), weight="bold", size=16, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ], spacing=6, expand=True),
                     znacznik,
                 ], spacing=6),
                 ft.Text(podtytul, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -318,7 +327,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
     def _karta_czesci(self, cz):
         c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia = cz
-        ikona = IKONY_KATEGORII_MAGAZYNU.get(kategoria, "🔧")
+        ikona = IKONY_KATEGORII_MAGAZYNU.get(kategoria, ft.Icons.BUILD)
 
         try:
             ilosc_f = float(ilosc or 0)
@@ -353,7 +362,10 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         tresc = [
             ft.Row([
                 utils.wskaznik_zalacznika(self._page, zalacznik, "Część/płyn") if zalacznik else ft.Container(),
-                ft.Text(f"{ikona} {nazwa}", weight="bold", size=16, expand=True),
+                ft.Row([
+                    ft.Icon(ikona, size=17, color=ft.Colors.PRIMARY),
+                    ft.Text(str(nazwa), weight="bold", size=16, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6, expand=True),
                 znacznik,
             ], spacing=6),
             ft.Text(str(kategoria) if kategoria else "Bez kategorii", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -469,7 +481,7 @@ class FormularzOponyView(ft.View):
         k3 = utils.karta_formularza([self.e_dz, self.e_pz, self.e_cena, self.e_not], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
         k4 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
         
-        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "✅ Zapisz zestaw", self.zapisz, "/magazyn")]
+        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz zestaw", self.zapisz, "/magazyn")]
 
         super().__init__(
             route=f"/magazyn/opony/edytuj/{zestaw_id}" if zestaw_id else "/magazyn/opony/nowy",
@@ -621,7 +633,7 @@ class FormularzCzesciView(ft.View):
         k3 = utils.karta_formularza([self.e_cena, self.e_data, self.e_not], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
         k4 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
 
-        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "✅ Zapisz pozycję", self.zapisz, "/magazyn")]
+        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz pozycję", self.zapisz, "/magazyn")]
 
         super().__init__(
             route=f"/magazyn/czesci/edytuj/{czesc_id}" if czesc_id else "/magazyn/czesci/nowa",

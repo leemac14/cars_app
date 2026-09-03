@@ -37,7 +37,7 @@ class EksportView(ft.View):
         self.state = state
         self.cb_eksportuj = cb_eksportuj
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "📤 Eksport danych", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Eksport danych", "/", ikona=ft.Icons.IOS_SHARE)
 
         if not self.state.auto_id:
             super().__init__(
@@ -97,8 +97,15 @@ class EksportView(ft.View):
         pdf_dostepny = db.FPDF is not None
         self.e_format = ft.RadioGroup(
             content=ft.Row([
-                ft.Radio(value="csv", label="📄 CSV (arkusz kalkulacyjny)"),
-                ft.Radio(value="pdf", label="📕 PDF (czytelny raport)", disabled=not pdf_dostepny),
+                ft.Row([
+                    ft.Icon(ft.Icons.TABLE_CHART, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Radio(value="csv", label="CSV (arkusz kalkulacyjny)"),
+                ], spacing=4),
+                ft.Row([
+                    ft.Icon(ft.Icons.PICTURE_AS_PDF, size=18,
+                            color=ft.Colors.ON_SURFACE_VARIANT if pdf_dostepny else ft.Colors.with_opacity(0.4, ft.Colors.ON_SURFACE)),
+                    ft.Radio(value="pdf", label="PDF (czytelny raport)", disabled=not pdf_dostepny),
+                ], spacing=4),
             ], wrap=True, spacing=15),
             value="pdf" if pdf_dostepny else "csv"
         )
@@ -138,7 +145,7 @@ class EksportView(ft.View):
         )
 
         self.btn_eksportuj = ft.ElevatedButton(
-            "📤 Eksportuj",
+            "Eksportuj",
             on_click=self.eksportuj,
             bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15),
@@ -175,7 +182,7 @@ class EksportView(ft.View):
             od_d, do_d, opis_okresu = _okres_z_presetu(self.e_okres.value)
 
         self.btn_eksportuj.disabled = True
-        self.btn_eksportuj.text = "⏳ Przygotowywanie..."
+        self.btn_eksportuj.text = "Przygotowywanie..."
         self._page.update()
 
         self._page.run_task(
@@ -187,7 +194,7 @@ class EksportView(ft.View):
 
     def _po_zakonczeniu(self):
         self.btn_eksportuj.disabled = False
-        self.btn_eksportuj.text = "📤 Eksportuj"
+        self.btn_eksportuj.text = "Eksportuj"
         try:
             self._page.update()
         except Exception:

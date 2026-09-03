@@ -10,7 +10,7 @@ class WspoldzielenieView(ft.View):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "🤝 Współdzielenie pojazdu", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Współdzielenie pojazdu", "/", ikona=ft.Icons.GROUPS)
 
         wspolny_id, kod = (None, None)
         if self.state.auto_id:
@@ -38,14 +38,14 @@ class WspoldzielenieView(ft.View):
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                 ),
                     ft.Text("Synchronizują się teraz wszystkie dane pojazdu (dane pojazdu, tankowania, serwis, wizyty, magazyn, opony, koszty, warsztaty, wydatki cykliczne, odczyty przebiegu, tagi i lista Do zrobienia) — poza zdjęciami (profilowym, karoserii i załącznikami), które zawsze zostają lokalnie na każdym urządzeniu.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.OutlinedButton("📊 Zobacz podział kosztów", on_click=lambda e: utils.przejdz(self._page, "/podzial")),
+                ft.OutlinedButton("Zobacz podział kosztów", icon=ft.Icons.PIE_CHART, on_click=lambda e: utils.przejdz(self._page, "/podzial")),
                 ft.Text("Wskazówka: ustaw swoje imię w Ustawieniach, aby nowe wpisy były podpisywane Twoim imieniem.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
             ], "Status współdzielenia", ft.Icons.PEOPLE, domyslnie_otwarte=True))
 
             # 2. Ręczna synchronizacja
             elementy.append(utils.karta_formularza([
                 ft.Text("Kliknij, aby wysłać swoje nowe/zmienione dane i pobrać te od partnera.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.ElevatedButton("🔄 Synchronizuj teraz", on_click=self._synchronizuj, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+                ft.ElevatedButton("Synchronizuj teraz", icon=ft.Icons.SYNC, on_click=self._synchronizuj, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
                 ft.Container(height=10),
                 ft.Divider(height=1),
                 ft.Container(height=10),
@@ -55,7 +55,7 @@ class WspoldzielenieView(ft.View):
                     "już zostało zsynchronizowane, tędy się go nie cofnie — trzeba dodać wpis ponownie ręcznie.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
-                ft.OutlinedButton("♻️ Przywróć z chmury", on_click=self._przywroc)
+                ft.OutlinedButton("Przywróć z chmury", icon=ft.Icons.CLOUD_DOWNLOAD, on_click=self._przywroc)
             ], "Synchronizacja", ft.Icons.SYNC))
 
             # --- NOWE: 3. Zakończenie współdzielenia ---

@@ -8,7 +8,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "📸 Rejestr Karoserii", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Rejestr karoserii", "/", ikona=ft.Icons.PHOTO_CAMERA)
         
         self.tryb_zaznaczania = False
         self.zaznaczone_id = set()
@@ -343,7 +343,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
         k2 = utils.karta_formularza([self.e_strefa, self.e_typ, self.e_opis], tytul_k2, ft.Icons.INFO_OUTLINE)
         k3 = utils.karta_formularza([self.e_d, self.e_p], "Kontekst", ft.Icons.SPEED)
 
-        tekst_przycisku = "✅ Zapisz zdjęcie" if wpis_id else "✅ Zapisz zdjęcia"
+        tekst_przycisku = "Zapisz zdjęcie" if wpis_id else "Zapisz zdjęcia"
         elementy = [k1, k2, k3, utils.przyciski_akcji(page, tekst_przycisku, self.zapisz, "/karoseria")]
 
         super().__init__(

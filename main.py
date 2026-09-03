@@ -42,15 +42,16 @@ def main(page: ft.Page):
     db.init_db()
 
     kolor_ustawiony = db.pobierz_kolor_motywu()
-    kolor_seed = utils.MAPA_KOLOROW.get(kolor_ustawiony, ft.Colors.INDIGO)
-    
+
     MAPA_TRYBU_MOTYWU = {"jasny": ft.ThemeMode.LIGHT, "ciemny": ft.ThemeMode.DARK, "system": ft.ThemeMode.SYSTEM}
 
     def zastosuj_tryb_motywu():
         page.theme_mode = MAPA_TRYBU_MOTYWU.get(db.pobierz_tryb_motywu(), ft.ThemeMode.LIGHT)
 
-    page.theme = ft.Theme(color_scheme_seed=kolor_seed)
-    page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
+    # Motywy budujemy przez utils.zastosuj_motywy — tam mieszka też wariant
+    # „czysta czerń (OLED)”, więc nie trzeba go powtarzać w każdym z miejsc,
+    # w których przebudowujemy motyw.
+    utils.zastosuj_motywy(page, kolor_ustawiony)
     zastosuj_tryb_motywu()
 
     # Zapamiętujemy ostatnio zastosowany kolor motywu i auto, dla którego go
@@ -170,9 +171,10 @@ def main(page: ft.Page):
             db.zainicjuj_domyslne_auto(app_state)
             
             kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
-            kolor_seed = utils.MAPA_KOLOROW.get(kolor_biezacy, ft.Colors.INDIGO)
-            page.theme = ft.Theme(color_scheme_seed=kolor_seed)
-            page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
+            # Import podmienił całą bazę, więc razem z kolorem mógł się zmienić
+            # także przełącznik czystej czerni — czyścimy jego pamięć podręczną.
+            utils.odswiez_cache_czerni()
+            utils.zastosuj_motywy(page, kolor_biezacy)
             zastosuj_tryb_motywu()
             page.update()
             kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
@@ -367,6 +369,7 @@ def main(page: ft.Page):
         obecny = db.pobierz_tryb_motywu()
         nowy = db.KOLEJNOSC_TRYBOW_MOTYWU[(db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny) + 1) % 3]
         db.zapisz_tryb_motywu(nowy)
+        utils.zastosuj_motywy(page, db.pobierz_kolor_auta(app_state.auto_id))
         zastosuj_tryb_motywu()
         utils.przejdz(page, page.route)
 
@@ -380,9 +383,7 @@ def main(page: ft.Page):
         # kolor (db.pobierz_kolor_auta), z fallbackiem na globalny domyślny.
         kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
         if kolor_biezacy != kolor_motywu_zastosowany["nazwa"] or app_state.auto_id != kolor_motywu_zastosowany["auto_id"]:
-            kolor_seed = utils.MAPA_KOLOROW.get(kolor_biezacy, ft.Colors.INDIGO)
-            page.theme = ft.Theme(color_scheme_seed=kolor_seed)
-            page.dark_theme = ft.Theme(color_scheme_seed=kolor_seed)
+            utils.zastosuj_motywy(page, kolor_biezacy)
             kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
             kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
 

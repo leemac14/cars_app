@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 import shutil
 import uuid
 import time
@@ -26,17 +27,34 @@ BAZA_DANYCH = os.path.join(STORAGE_PATH, 'flota_zadania.db')
 FOLDER_ZALACZNIKI = os.path.join(STORAGE_PATH, "zalaczniki")
 FOLDER_ODROCZONE = os.path.join(STORAGE_PATH, "zalaczniki_odroczone")
 
+# Nazwy podzespołów zakładanych nowemu pojazdowi. Bez emoji — ikonę dokłada
+# interfejs, a sama nazwa trafia do bazy, do eksportu CSV/PDF i do wyszukiwarki,
+# gdzie emoji tylko przeszkadzało (nie da się go wpisać, psuje sortowanie i nie
+# ma glifu w czcionce raportu).
 DOMYSLNE_ZADANIA = [
-    "🛢️ Olej silnikowy i filtr", "💨 Filtr powietrza", "🌬️ Filtr kabinowy",
-    "⚙️ Pasek / Łańcuch rozrządu", "🛞 Wymiana opon / Kół", "🛑 Klocki hamulcowe", "💿 Tarcze hamulcowe"
+    "Olej silnikowy i filtr", "Filtr powietrza", "Filtr kabinowy",
+    "Pasek / Łańcuch rozrządu", "Wymiana opon / Kół", "Klocki hamulcowe", "Tarcze hamulcowe"
 ]
 
 PAKIETY_SERWISOWE = {
-    "Przegląd olejowy": ["🛢️ Olej silnikowy i filtr", "💨 Filtr powietrza", "🌬️ Filtr kabinowy"],
-    "Sezonowa wymiana opon": ["🛞 Wymiana opon / Kół"],
-    "Serwis hamulcowy (przód+tył)": ["🛑 Klocki hamulcowe", "💿 Tarcze hamulcowe"],
-    "Duży przegląd (rozrząd)": ["⚙️ Pasek / Łańcuch rozrządu", "🛢️ Olej silnikowy i filtr", "💨 Filtr powietrza"],
+    "Przegląd olejowy": ["Olej silnikowy i filtr", "Filtr powietrza", "Filtr kabinowy"],
+    "Sezonowa wymiana opon": ["Wymiana opon / Kół"],
+    "Serwis hamulcowy (przód+tył)": ["Klocki hamulcowe", "Tarcze hamulcowe"],
+    "Duży przegląd (rozrząd)": ["Pasek / Łańcuch rozrządu", "Olej silnikowy i filtr", "Filtr powietrza"],
 }
+
+# Podzespoły założone przez STARSZE wersje aplikacji mają emoji w nazwie
+# ("🛢️ Olej silnikowy i filtr"). Nie ruszamy tych rekordów — zamiast migracji
+# bazy porównujemy nazwy po normalizacji, dzięki czemu pakiety serwisowe
+# trafiają zarówno w stare, jak i w nowe wpisy.
+_WZORZEC_EMOJI = re.compile(
+    "[\U0001F000-\U0001FAFF\u2190-\u21FF\u2300-\u27BF\u2B00-\u2BFF\uFE0F\u200D]"
+)
+
+def bez_emoji(tekst):
+    """Nazwa oczyszczona z emoji i nadmiarowych spacji — do PORÓWNYWANIA nazw,
+    nigdy do zapisu (nie przepisujemy użytkownikowi jego własnych wpisów)."""
+    return re.sub(r"\s+", " ", _WZORZEC_EMOJI.sub("", str(tekst or ""))).strip()
 
 ROK_MIN = 1900
 PROG_KM_POWIADOMIEN = 1500      
@@ -456,6 +474,16 @@ def zapisz_tryb_motywu(tryb):
     if tryb in KOLEJNOSC_TRYBOW_MOTYWU:
         zapisz_ustawienie("tryb_motywu", tryb)
 
+def pobierz_czysta_czern():
+    """Czy tryb ciemny ma używać czystej czerni (#000000) zamiast ciemnych
+    szarości. Osobne ustawienie, a nie czwarty tryb motywu — dzięki temu działa
+    też wtedy, gdy tryb „system” sam przełączy telefon na ciemny. Na ekranach
+    OLED czarny piksel jest po prostu zgaszony, więc to realnie mniej prądu."""
+    return pobierz_ustawienie("czysta_czern", "0") == "1"
+
+def zapisz_czysta_czern(wlaczona):
+    zapisz_ustawienie("czysta_czern", "1" if wlaczona else "0")
+
 def pobierz_walute():
     w = pobierz_ustawienie("waluta", "PLN")
     return w if w in WALUTY else "PLN"
@@ -495,7 +523,8 @@ def etykiety_paliwa(elektryczny=False):
             "do_pelna": "Naładowano do pełna (wymagane do zużycia)",
             "cena_jednostkowa": "Cena/kWh",
             "zuzycie": "Średnie zużycie",
-            "naglowek_listy": "🔌 Historia ładowań",
+            "naglowek_listy": "Historia ładowań",
+            "ikona_listy": "ladowanie",
             "zdarzenie": "ładowanie",
             "suma_ilosci": "Naładowano",
             "brak_pelnych": "Wymaga 2x do pełna",
@@ -510,7 +539,8 @@ def etykiety_paliwa(elektryczny=False):
         "do_pelna": "Zatankowano do pełna (wymagane do spalania)",
         "cena_jednostkowa": "Cena/L",
         "zuzycie": "Średnie spalanie",
-        "naglowek_listy": "⛽ Historia Tankowań",
+        "naglowek_listy": "Historia tankowań",
+        "ikona_listy": "tankowanie",
         "zdarzenie": "tankowanie",
         "suma_ilosci": "Zatankowano",
         "brak_pelnych": "Wymaga 2x do pełna",
@@ -605,6 +635,17 @@ def liczba_oczekujacych_synchronizacji():
         c.execute("SELECT COUNT(*) FROM kolejka_sync")
         return int((c.fetchone() or [0])[0])
 
+def czy_auto_oczekuje_synchronizacji(auto_id):
+    """Czy KONKRETNY pojazd ma niewysłane zmiany czekające w kolejce. Używane
+    przez wskaźnik przy nazwie pojazdu na ekranie głównym — do tej pory ten stan
+    dało się zobaczyć dopiero po wejściu w ekran Współdzielenia."""
+    if not auto_id:
+        return False
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM kolejka_sync WHERE auto_id=?", (auto_id,))
+        return int((c.fetchone() or [0])[0]) > 0
+
 def opis_oczekujacej_synchronizacji():
     """Krótki tekst do wyświetlenia pod przyciskiem synchronizacji — albo pusty
     string, jeśli nic nie czeka w kolejce."""
@@ -615,15 +656,17 @@ def opis_oczekujacej_synchronizacji():
         return "1 pojazd czeka na wysłanie zmian"
     return f"{ile} pojazdy czekają na wysłanie zmian"
 
+# Same podpisy — ikony dobiera warstwa UI (utils.IKONY_KOKPITU), bo db.py
+# celowo nie zna Fleta (korzysta z niego też eksport PDF i synchronizacja).
 KOKPIT_WIDGETY = {
-    "koszt_miesiac": "💰 Koszt w tym miesiącu",
-    "termin": "⏰ Najbliższy termin",
-    "wykres": "📊 Wykres wydatków (6 mies.)",
-    "koszt_km": "🛣️ Koszt eksploatacji / km",
-    "spalanie": "⛽ Średnie spalanie",
-    "przebieg_dzienny": "📈 Średni przebieg dzienny",
-    "ostatnia_aktywnosc": "🕒 Ostatnia aktywność",
-    "kondycja": "❤️ Kondycja pojazdu",
+    "koszt_miesiac": "Koszt w tym miesiącu",
+    "termin": "Najbliższy termin",
+    "wykres": "Wykres wydatków (6 mies.)",
+    "koszt_km": "Koszt eksploatacji / km",
+    "spalanie": "Średnie spalanie",
+    "przebieg_dzienny": "Średni przebieg dzienny",
+    "ostatnia_aktywnosc": "Ostatnia aktywność",
+    "kondycja": "Kondycja pojazdu",
 }
 KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
 
@@ -682,7 +725,9 @@ def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
     wizyt i innych kosztów — dla widżetu 'Ostatnia aktywność' w kokpicie
     (patrz MainView._buduj_kokpit). Każde zdarzenie to krotka:
     (opis, kto, kiedy_tekst, kiedy_sort, ikona, trasa). Dodanie i edycja tego
-    samego wpisu mogą pojawić się jako dwa osobne zdarzenia."""
+    samego wpisu mogą pojawić się jako dwa osobne zdarzenia.
+    `ikona` to KLUCZ ("tankowanie" / "serwis" / "wizyta" / "inny_koszt"), który
+    warstwa UI tłumaczy na ft.Icons przez utils.IKONY_AKTYWNOSCI."""
     if not auto_id:
         return []
 
@@ -709,7 +754,7 @@ def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
         for r in c.fetchall():
             opis = "Tankowanie" + (f" • {r['stacja']}" if r["stacja"] else "")
             _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
-                   opis, "⛽", f"/tankowanie/edytuj/{r['id']}")
+                   opis, "tankowanie", f"/tankowanie/edytuj/{r['id']}")
 
         c.execute(
             "SELECT h.id, h.data, z.nazwa, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji "
@@ -718,7 +763,7 @@ def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
         )
         for r in c.fetchall():
             _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
-                   str(r["nazwa"]), "🔧", f"/wpis/edytuj/{r['id']}")
+                   str(r["nazwa"]), "serwis", f"/wpis/edytuj/{r['id']}")
 
         c.execute(
             "SELECT id, data, wykonawca, dodane_przez, zmodyfikowane_przez, data_modyfikacji "
@@ -727,7 +772,7 @@ def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
         for r in c.fetchall():
             opis = "Wizyta w warsztacie" + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
             _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
-                   opis, "🧾", f"/wizyty/edytuj/{r['id']}")
+                   opis, "wizyta", f"/wizyty/edytuj/{r['id']}")
 
         c.execute(
             "SELECT id, data, nazwa, dodane_przez, zmodyfikowane_przez, data_modyfikacji "
@@ -735,7 +780,7 @@ def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
         )
         for r in c.fetchall():
             _dodaj(r["data"], r["dodane_przez"], r["zmodyfikowane_przez"], r["data_modyfikacji"],
-                   str(r["nazwa"] or "Inny koszt"), "🎫", f"/inne/edytuj/{r['id']}")
+                   str(r["nazwa"] or "Inny koszt"), "inny_koszt", f"/inne/edytuj/{r['id']}")
 
     zdarzenia.sort(key=lambda z: z[3], reverse=True)
     return zdarzenia[:limit]
@@ -1264,6 +1309,102 @@ def pobierz_serie_spalania(auto_id, limit=12):
 
     if limit and len(seria) > limit:
         return seria[-limit:]
+    return seria
+
+def pobierz_serie_dziennego_przebiegu(auto_id, limit=12, min_dni=7):
+    """Średni przebieg dzienny w kolejnych odcinkach czasu — punkty do sparkline
+    przy kafelku „Śr. dzienny” w kokpicie. Odcinki sklejamy tak, aby każdy miał
+    co najmniej `min_dni` dni; bez tego dwa odczyty licznika z sąsiednich dni
+    dawałyby skok w rodzaju „400 km/dzień” i wykres pokazywałby szum zamiast
+    tempa jazdy. Zwraca [(data_konca_odcinka, km_na_dzien)] chronologicznie."""
+    if not auto_id:
+        return []
+
+    punkty = pobierz_historie_przebiegu(auto_id)
+    if len(punkty) < 2:
+        return []
+
+    seria = []
+    baza_data = parsuj_date(punkty[0][0])
+    baza_przebieg = punkty[0][1]
+
+    for data_str, przebieg in punkty[1:]:
+        d = parsuj_date(data_str)
+        dni = (d - baza_data).days
+        km = przebieg - baza_przebieg
+        if dni < min_dni:
+            continue                      # za krótki odcinek — zbieramy dalej
+        if km > 0:
+            seria.append((data_str, km / dni))
+        baza_data, baza_przebieg = d, przebieg
+
+    if limit and len(seria) > limit:
+        return seria[-limit:]
+    return seria
+
+def pobierz_przebieg_miesieczny(auto_id, liczba_miesiecy=6):
+    """Kilometry przejechane w kolejnych miesiącach — liczone z tych samych
+    źródeł, co pobierz_historie_przebiegu(). Zwraca [(rok, miesiac, km)] w tej
+    samej siatce miesięcy, co pobierz_koszty_miesieczne(), więc obie listy da
+    się zestawić pozycja w pozycję. Miesiąc bez odczytu dostaje km = 0."""
+    if not auto_id:
+        return []
+
+    punkty = pobierz_historie_przebiegu(auto_id)
+    if len(punkty) < 2:
+        return []
+
+    # Najwyższy stan licznika zanotowany w danym miesiącu.
+    wg_miesiaca = {}
+    for data_str, przebieg in punkty:
+        d = parsuj_date(data_str)
+        klucz = (d.year, d.month)
+        if klucz not in wg_miesiaca or przebieg > wg_miesiaca[klucz]:
+            wg_miesiaca[klucz] = przebieg
+
+    dzisiaj = datetime.now()
+    klucze = []
+    for i in range(liczba_miesiecy - 1, -1, -1):
+        m, y = dzisiaj.month - i, dzisiaj.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        klucze.append((y, m))
+
+    def stan_na_koniec(klucz):
+        """Ostatni znany stan licznika NIE PÓŹNIEJ niż koniec danego miesiąca —
+        dzięki temu miesiąc bez odczytu nie generuje ujemnego dystansu."""
+        wczesniejsze = [wg_miesiaca[k] for k in wg_miesiaca if k <= klucz]
+        return max(wczesniejsze) if wczesniejsze else None
+
+    wynik = []
+    for y, m in klucze:
+        poprz_m, poprz_y = (m - 1, y) if m > 1 else (12, y - 1)
+        koniec = stan_na_koniec((y, m))
+        poczatek = stan_na_koniec((poprz_y, poprz_m))
+        km = (koniec - poczatek) if (koniec is not None and poczatek is not None) else 0
+        wynik.append((y, m, max(0, km)))
+    return wynik
+
+def pobierz_serie_kosztu_km(auto_id, liczba_miesiecy=6):
+    """Koszt eksploatacji na kilometr w kolejnych miesiącach — punkty do
+    sparkline przy kafelku „Koszt / km”. Miesiące bez przejechanych kilometrów
+    są pomijane (dzielenie przez zero, a i tak nic nie mówią o koszcie jazdy).
+    Zwraca [(rok, miesiac, koszt_na_km)] chronologicznie."""
+    if not auto_id:
+        return []
+
+    koszty = pobierz_koszty_miesieczne(auto_id, liczba_miesiecy)
+    kilometry = pobierz_przebieg_miesieczny(auto_id, liczba_miesiecy)
+    if not koszty or not kilometry:
+        return []
+
+    km_wg_klucza = {(y, m): km for y, m, km in kilometry}
+    seria = []
+    for rok, mies, suma in koszty:
+        km = km_wg_klucza.get((rok, mies), 0)
+        if km > 0:
+            seria.append((rok, mies, suma / km))
     return seria
 
 def pobierz_dane_do_porownania(auto_id):
@@ -3041,19 +3182,22 @@ def usun_wiele_zadan_z_cofnieciem(ids_list):
 
 # ==================== EKSPORT DANYCH (CSV / PDF) ====================
 
+# Podpisy trafiają zarówno do checkboxów na ekranie eksportu, jak i do nagłówków
+# sekcji w PDF — a czcionka raportu (DejaVu) nie ma glifów emoji i rysowała w ich
+# miejscu puste prostokąty. Ikony dokłada UI z utils.IKONY_EKSPORTU.
 KATEGORIE_EKSPORTU = {
-    "tankowania": "⛽ Tankowania",
-    "historia": "🔧 Historia serwisowa",
-    "zadania": "🧰 Podzespoły i interwały",
-    "wizyty": "🛠️ Wizyty zbiorcze (warsztat)",
-    "inne_koszty": "🎫 Inne koszty",
-    "wydatki_cykliczne": "🔁 Wydatki cykliczne i przypomnienia",
-    "magazyn_czesci": "📦 Magazyn części i płynów",
-    "zestawy_opon": "🛞 Zestawy opon",
-    "do_zrobienia": "✅ Lista Do zrobienia",
-    "warsztaty": "🏢 Baza warsztatów",
-    "odczyty_przebiegu": "📏 Odczyty licznika",
-    "tagi": "🏷️ Tagi",
+    "tankowania": "Tankowania",
+    "historia": "Historia serwisowa",
+    "zadania": "Podzespoły i interwały",
+    "wizyty": "Wizyty zbiorcze (warsztat)",
+    "inne_koszty": "Inne koszty",
+    "wydatki_cykliczne": "Wydatki cykliczne i przypomnienia",
+    "magazyn_czesci": "Magazyn części i płynów",
+    "zestawy_opon": "Zestawy opon",
+    "do_zrobienia": "Lista Do zrobienia",
+    "warsztaty": "Baza warsztatów",
+    "odczyty_przebiegu": "Odczyty licznika",
+    "tagi": "Tagi",
 }
 
 FOLDER_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")

@@ -11,7 +11,7 @@ class PodzialKosztowView(ft.View):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "🤝 Podział kosztów", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Podział kosztów", "/", ikona=ft.Icons.HANDSHAKE)
 
         if not self.state.auto_id:
             super().__init__(
@@ -41,7 +41,7 @@ class PodzialKosztowView(ft.View):
             return
 
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "🤝 Podział kosztów", "/",
+            page, "Podział kosztów", "/", ikona=ft.Icons.HANDSHAKE,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, self.state.auto_id, "/podzial"))]
         )
 
@@ -108,11 +108,13 @@ class PodzialKosztowView(ft.View):
                     tekst_rozliczenia = f"Powinien(nna) dopłacić {utils.formatuj_liczba(abs(roznica))} {waluta}, by wyrównać."
                     kolor_rozliczenia = ft.Colors.ORANGE_700
 
-                bits = []
-                if d["paliwo"] > 0: bits.append(f"⛽ {utils.formatuj_liczba(d['paliwo'], 0)}")
-                if d["serwis"] > 0: bits.append(f"🛠️ {utils.formatuj_liczba(d['serwis'], 0)}")
-                if d["inne"] > 0: bits.append(f"🎫 {utils.formatuj_liczba(d['inne'], 0)}")
-                opis_kategorii = "  •  ".join(bits) if bits else "Brak wydatków"
+                pary_kategorii = [
+                    (utils.IKONY_KATEGORII_KOSZTOW["paliwo"], utils.formatuj_liczba(d["paliwo"], 0)) if d["paliwo"] > 0 else None,
+                    (utils.IKONY_KATEGORII_KOSZTOW["serwis"], utils.formatuj_liczba(d["serwis"], 0)) if d["serwis"] > 0 else None,
+                    (utils.IKONY_KATEGORII_KOSZTOW["inne"], utils.formatuj_liczba(d["inne"], 0)) if d["inne"] > 0 else None,
+                ]
+                opis_kategorii = utils.chipy_kwot(pary_kategorii) or ft.Text(
+                    "Brak wydatków", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
                 wyniki.append(ft.Card(
                     elevation=1,
@@ -126,7 +128,7 @@ class PodzialKosztowView(ft.View):
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                             ft.ProgressBar(value=max(0.03, proporcja), color=ft.Colors.PRIMARY,
                                            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=8, border_radius=4),
-                            ft.Text(opis_kategorii, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                            opis_kategorii,
                             ft.Text(
                                 f"Zatankował(a) {d['tankowania']}x • ok. {utils.formatuj_liczba(d['dystans_km'], 0)} km na liczniku"
                                 if d["tankowania"] else "Brak tankowań w tym miesiącu",

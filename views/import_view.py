@@ -14,7 +14,7 @@ class ImportCSVView(ft.View):
         self.dropdowny = {}
         self.gotowe = []
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "📥 Import tankowań (CSV)", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Import tankowań (CSV)", "/", ikona=ft.Icons.FILE_DOWNLOAD)
 
         if not self.state.auto_id:
             super().__init__(
@@ -34,7 +34,7 @@ class ImportCSVView(ft.View):
 
         self.t_plik = ft.Text("Nie wybrano jeszcze pliku.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self.btn_plik = ft.ElevatedButton(
-            "📂 Wybierz plik CSV",
+            "Wybierz plik CSV",
             on_click=lambda e: self._page.run_task(self._wybierz_plik),
             bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15),
@@ -45,7 +45,7 @@ class ImportCSVView(ft.View):
         self.kolumna_podgladu = ft.Column([], spacing=6, visible=False)
 
         self.btn_importuj = ft.ElevatedButton(
-            "✅ Importuj",
+            "Importuj",
             on_click=self._importuj,
             bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15),
@@ -176,7 +176,7 @@ class ImportCSVView(ft.View):
         self.kolumna_podgladu.visible = True
         self.btn_importuj.visible = True
         self.btn_importuj.disabled = not self.gotowe
-        self.btn_importuj.text = f"✅ Importuj {len(self.gotowe)} wpisów" if self.gotowe else "✅ Importuj"
+        self.btn_importuj.text = f"Importuj {len(self.gotowe)} wpisów" if self.gotowe else "Importuj"
         self._page.update()
 
     def _importuj(self, e):

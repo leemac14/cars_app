@@ -254,7 +254,7 @@ class FormularzAutoView(ft.View):
         k6 = utils.karta_formularza([self.e_ac, self.e_asy, self.e_gas, self.e_apt, self.e_gw, self.e_gwp], "Dodatkowe polisy, gwarancja i BHP", ft.Icons.SHIELD)
         k4 = utils.karta_formularza([self.e_not], "Uwagi", ft.Icons.NOTES)
         
-        elementy = [k0, k1, kk, k2, k3, k5, k6, k4, utils.przyciski_akcji(page, "✅ Zapisz pojazd", self.zapisz, "/")]
+        elementy = [k0, k1, kk, k2, k3, k5, k6, k4, utils.przyciski_akcji(page, "Zapisz pojazd", self.zapisz, "/")]
         super().__init__(route=f"/auto/edytuj/{auto_id}" if auto_id else "/auto/nowy", padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO)
 
     async def rozkoduj_vin(self, e):
@@ -638,7 +638,7 @@ class FormularzTankowanieView(ft.View):
         )
         k3 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
 
-        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "✅ Zapisz tankowanie", self.zapisz, "/")]
+        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz tankowanie", self.zapisz, "/")]
 
         super().__init__(
             route=f"/tankowanie/edytuj/{t_id}" if t_id else "/tankowanie/nowe",
@@ -741,7 +741,7 @@ class FormularzInneView(ft.View):
             "Szczegóły wydatku", ft.Icons.RECEIPT_LONG, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
-        elementy = [k1, k2, utils.przyciski_akcji(page, "✅ Zapisz koszt", self.zapisz, "/")]
+        elementy = [k1, k2, utils.przyciski_akcji(page, "Zapisz koszt", self.zapisz, "/")]
 
         super().__init__(
             route=f"/inne/edytuj/{i_id}" if i_id else "/inne/nowy",
@@ -805,7 +805,7 @@ class FormularzZadanieView(ft.View):
 
         self.e_n = ft.TextField(label="Nazwa (np. Olej silnikowy, Tarcze przód)", value=stara_nazwa, **utils.styl_pola(page=page))
         self.c_dotyczy_opon = ft.Checkbox(
-            label="🛞 Podzespół dotyczy opon / kół (pokaże wybór sezonu przy wpisach)",
+            label="Podzespół dotyczy opon / kół (pokaże wybór sezonu przy wpisach)",
             value=dotyczy_opon_val
         )
 
@@ -838,7 +838,7 @@ class FormularzZadanieView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja podzespołu" if z_id else "Nowy podzespół", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza([self.e_n, self.c_dotyczy_opon, self.c_dodaj_wymiane], "Śledzony podzespół", ft.Icons.HANDYMAN, domyslnie_otwarte=True, page=page)
-        elementy = [k1, self.karta_wymiany, utils.przyciski_akcji(page, "✅ Zapisz podzespół", self.zapisz, "/")]
+        elementy = [k1, self.karta_wymiany, utils.przyciski_akcji(page, "Zapisz podzespół", self.zapisz, "/")]
 
         super().__init__(
             route=f"/zadanie/edytuj/{z_id}" if z_id else "/zadanie/nowy",
@@ -967,7 +967,7 @@ class FormularzInterwalView(ft.View):
 
         btn_czysc = ft.OutlinedButton("Wyczyść przypomnienia", on_click=self.usun_interwal, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15), width=float("inf"))
 
-        elementy = [k1, k2, btn_czysc, utils.przyciski_akcji(page, "✅ Zapisz interwał", self.zapisz, "/")]
+        elementy = [k1, k2, btn_czysc, utils.przyciski_akcji(page, "Zapisz interwał", self.zapisz, "/")]
 
         super().__init__(
             route=f"/interwal/{z_id}",
@@ -1087,7 +1087,7 @@ class FormularzWpisView(ft.View):
         k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / faktura)", ft.Icons.ATTACH_FILE)  # <-- NOWE
         
-        elementy = [k1, k2, utils.przyciski_akcji(page, "✅ Zapisz wpis", self.zapisz, self.trasa_powrotu)]
+        elementy = [k1, k2, utils.przyciski_akcji(page, "Zapisz wpis", self.zapisz, self.trasa_powrotu)]
 
         super().__init__(
             route=f"/wpis/edytuj/{h_id}" if h_id else f"/wpis/nowy/{self.z_id}",
@@ -1262,7 +1262,7 @@ class FormularzWizytyView(ft.View):
             )
             elementy.append(k3)
 
-        elementy.append(utils.przyciski_akcji(page, "✅ Zapisz wizytę", self.zapisz, "/wizyty"))
+        elementy.append(utils.przyciski_akcji(page, "Zapisz wizytę", self.zapisz, "/wizyty"))
 
         super().__init__(
             route=f"/wizyty/edytuj/{w_id}" if w_id else "/wizyty/nowa",
@@ -1350,10 +1350,16 @@ class FormularzWizytyView(ft.View):
         # częścią nowego — inaczej przełączanie między pakietami zostawiało
         # "resztki" zaznaczeń z wcześniejszego wyboru.
         poprzednie = getattr(self, "_ostatni_pakiet_pozycje", [])
+        # Podzespoły założone starszą wersją aplikacji mają emoji w nazwie
+        # ("🛢️ Olej silnikowy i filtr"), a definicje pakietów już nie — dlatego
+        # porównujemy nazwy po normalizacji (db.bez_emoji), a nie znak w znak.
+        cel = {db.bez_emoji(x) for x in pozycje_pakietu}
+        poprzednie_norm = {db.bez_emoji(x) for x in poprzednie}
         for chk in self.chk_czesci:
-            if chk.label in pozycje_pakietu:
+            nazwa_norm = db.bez_emoji(chk.label)
+            if nazwa_norm in cel:
                 chk.value = True
-            elif chk.label in poprzednie:
+            elif nazwa_norm in poprzednie_norm:
                 chk.value = False
 
         # WAŻNE: jedna zbiorcza aktualizacja całej kolumny zamiast osobnego
@@ -1364,7 +1370,7 @@ class FormularzWizytyView(ft.View):
         self._ostatni_pakiet_pozycje = list(pozycje_pakietu)
         self._odswiez_widocznosc_opon()
 
-        dopasowane = sum(1 for chk in self.chk_czesci if chk.label in pozycje_pakietu)
+        dopasowane = sum(1 for chk in self.chk_czesci if db.bez_emoji(chk.label) in cel)
         if dopasowane:
             utils.pokaz_komunikat(self._page, f"Zastosowano pakiet „{nazwa_pakietu}” ({dopasowane}/{len(pozycje_pakietu)} pozycji).")
         else:

@@ -19,7 +19,7 @@ class TimelineView(ft.View):
 
         wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "🗓️ Dziennik życia auta", "/",
+            page, "Dziennik życia auta", "/", ikona=ft.Icons.CALENDAR_MONTH,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/timeline"))] if wspolny_id else None
         )
         elementy = []

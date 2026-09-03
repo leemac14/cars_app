@@ -21,7 +21,7 @@ class SzukajView(ft.View):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "🔎 Szukaj we wszystkim", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Szukaj we wszystkim", "/", ikona=ft.Icons.SEARCH)
 
         if not self.state.auto_id:
             super().__init__(

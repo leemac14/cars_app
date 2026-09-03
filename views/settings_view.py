@@ -80,10 +80,7 @@ class UstawieniaView(ft.View):
 
         def zmien_kolor(nazwa):
             self.wybrany_kolor = nazwa
-            
-            nowy_kolor_hex = utils.MAPA_KOLOROW.get(nazwa, ft.Colors.INDIGO)
-            self._page.theme = ft.Theme(color_scheme_seed=nowy_kolor_hex)
-            self._page.dark_theme = ft.Theme(color_scheme_seed=nowy_kolor_hex)
+            utils.zastosuj_motywy(self._page, nazwa)
             self._page.update()
             
             odswiez_palete(aktualizuj=True)
@@ -98,15 +95,44 @@ class UstawieniaView(ft.View):
         ], spacing=8)
         # -----------------------
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "⚙️ Ustawienia aplikacji", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+        # --- CZYSTA CZERŃ (OLED) ---
+        # Przełącznik zapisuje się od razu, tak samo jak przełączanie
+        # jasny/ciemny z menu ⋮ — efekt widać natychmiast, więc trzymanie go
+        # w "niezapisanych zmianach" formularza tylko myliłoby.
+        def przelacz_czern(e):
+            db.zapisz_czysta_czern(bool(self.e_czysta_czern.value))
+            utils.odswiez_cache_czerni()
+            utils.zastosuj_motywy(self._page, self.wybrany_kolor)
+            self._page.update()
+
+        self.e_czysta_czern = ft.Switch(
+            label="Czysta czerń (OLED)",
+            value=db.pobierz_czysta_czern(),
+            on_change=przelacz_czern,
+        )
+
+        czern_sekcja = ft.Column([
+            self.e_czysta_czern,
+            ft.Text(
+                "W trybie ciemnym zamienia ciemne szarości na czystą czerń. Na ekranach OLED "
+                "czarny piksel jest po prostu zgaszony, więc obraz ma większy kontrast i mniej "
+                "zużywa baterię. Działa też wtedy, gdy tryb „systemowy” sam przełączy telefon na ciemny.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+        ], spacing=4)
+
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "Ustawienia aplikacji", "/", on_save=self.zapisz,
+            czy_zmieniono=self._czy_zmieniono, ikona=ft.Icons.SETTINGS
+        )
 
         k1 = utils.karta_formularza(
-            [self.e_waluta, self.e_jednostka, paleta_sekcja],
-            "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True
+            [self.e_waluta, self.e_jednostka, paleta_sekcja, ft.Divider(height=1), czern_sekcja],
+            "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza(
             [self.e_prog_km, self.e_prog_dni, ft.Text("Ten sam próg dotyczy teraz też AC, Assistance, gaśnicy i apteczki.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)],
-            "Progi powiadomień", ft.Icons.NOTIFICATIONS_ACTIVE, domyslnie_otwarte=True
+            "Progi powiadomień", ft.Icons.NOTIFICATIONS_ACTIVE, domyslnie_otwarte=True, page=page
         )
 
         self.e_moje_imie = ft.TextField(
@@ -122,12 +148,21 @@ class UstawieniaView(ft.View):
                 "tak inni domownicy widzą, kto co dodał, a ekran „Podział kosztów” wie, kogo do czego przypisać.",
                 size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
             )],
-            "Twoja atrybucja przy współdzieleniu", ft.Icons.PERSON, domyslnie_otwarte=True
+            "Twoja atrybucja przy współdzieleniu", ft.Icons.PERSON, domyslnie_otwarte=True, page=page
         )
 
+        # Checkbox nie przyjmuje ikony, więc doklejamy ją obok — dzięki temu lista
+        # w Ustawieniach używa dokładnie tych samych oznaczeń, co kafelki kokpitu.
         self.checkboxy_kokpitu = [
             ft.Checkbox(label=etykieta, value=(klucz in widgety_wlaczone), data=klucz)
             for klucz, etykieta in db.KOKPIT_WIDGETY.items()
+        ]
+        wiersze_kokpitu = [
+            ft.Row([
+                ft.Icon(utils.ikona_z_mapy(utils.IKONY_KOKPITU, chk.data), size=18, color=ft.Colors.PRIMARY),
+                chk,
+            ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            for chk in self.checkboxy_kokpitu
         ]
 
         self._stan_poczatkowy = self._migawka_formularza()
@@ -141,8 +176,8 @@ class UstawieniaView(ft.View):
                     "dopisują się na końcu i nie ruszają Twojego układu.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
-            ] + self.checkboxy_kokpitu,
-            "Kokpit ekranu głównego", ft.Icons.DASHBOARD_CUSTOMIZE, domyslnie_otwarte=True
+            ] + wiersze_kokpitu,
+            "Kokpit ekranu głównego", ft.Icons.DASHBOARD_CUSTOMIZE, domyslnie_otwarte=True, page=page
         )
 
         info = ft.Container(
@@ -158,7 +193,7 @@ class UstawieniaView(ft.View):
             ], spacing=8)
         )
 
-        elementy = [k1, k2, k3, k_kokpit, info, utils.przyciski_akcji(page, "✅ Zapisz ustawienia", self.zapisz, "/")]
+        elementy = [k1, k2, k3, k_kokpit, info, utils.przyciski_akcji(page, "Zapisz ustawienia", self.zapisz, "/")]
 
         super().__init__(
             route="/ustawienia",
@@ -182,10 +217,7 @@ class UstawieniaView(ft.View):
         
         # --- Zapis i odświeżenie wybranego koloru ---
         db.zapisz_ustawienie("kolor_motywu", self.wybrany_kolor)
-        
-        nowy_kolor = utils.MAPA_KOLOROW.get(self.wybrany_kolor, ft.Colors.INDIGO)
-        self._page.theme = ft.Theme(color_scheme_seed=nowy_kolor)
-        self._page.dark_theme = ft.Theme(color_scheme_seed=nowy_kolor)
+        utils.zastosuj_motywy(self._page, self.wybrany_kolor)
         self._page.update()
         # --------------------------------------------
         # Checkboxy niosą tylko ZESTAW włączonych widżetów; kolejność należy do

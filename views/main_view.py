@@ -128,6 +128,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         # Punkty do sparkline przy „Śr. spalanie” — ta sama metoda liczenia, co
         # wykres trendu w Statystykach, tylko per odcinek między pełnymi bakami.
         seria_spalania = db.pobierz_serie_spalania(self.state.auto_id, 12) if "spalanie" in wlaczone else []
+        # Iskra przy pozostałych kafelkach liczbowych — kokpit ma wtedy jeden,
+        # spójny język: liczba mówi „ile”, iskra mówi „w którą stronę”.
+        seria_przebiegu = db.pobierz_serie_dziennego_przebiegu(self.state.auto_id, 12) if "przebieg_dzienny" in wlaczone else []
+        seria_koszt_km = db.pobierz_serie_kosztu_km(self.state.auto_id, 6) if "koszt_km" in wlaczone else []
 
         def idz_do_statystyk(podzakladka=0):
             def handler(e):
@@ -154,6 +158,44 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ], spacing=6),
                     ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
+            )
+
+        def kafel_z_iskra(ikona, kolor_ikony, etykieta, wartosc, seria, on_click,
+                          wzrost_zly=True, podpis_stopki=None):
+            """Kafelek liczbowy wzbogacony o mini-wykres i chip trendu — dokładnie
+            ten sam układ, który sprawdził się przy „Śr. spalanie”. Przy mniej niż
+            dwóch punktach nie ma czego rysować, więc wracamy do wersji „gołej”,
+            zamiast udawać trend z jednego pomiaru."""
+            iskra = utils.sparkline(seria, kolor_ikony, wysokosc=30)
+            if iskra is None:
+                return kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click)
+
+            pierwsza, ostatnia = seria[0], seria[-1]
+            zmiana = ((ostatnia - pierwsza) / pierwsza * 100) if pierwsza > 0 else None
+
+            stopka = ft.Row([
+                utils.znacznik_trendu(zmiana, wzrost_zly=wzrost_zly),
+                ft.Text(
+                    podpis_stopki or f"{len(seria)} ost. pomiarów",
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+                    text_align=ft.TextAlign.END,
+                ),
+            ], spacing=6)
+
+            return ft.Container(
+                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=on_click,
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=kolor_ikony),
+                        ft.Text(etykieta, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    iskra,
+                    stopka,
+                ], spacing=6),
             )
 
         def widget_koszt_miesiac():
@@ -195,21 +237,32 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     t_ikona, t_kolor = ft.Icons.INFO_OUTLINE, ft.Colors.ON_SURFACE_VARIANT
                     t_tekst = "Brak danych"
 
+            # Iskra z sum miesięcznych: sześć słupków z kafelka „Wydatki 6 mies.”
+            # w formie linii, żeby kwota od razu miała tło historyczne.
+            iskra_mc = utils.sparkline([s for _, _, s in dane_mc], ft.Colors.PRIMARY, wysokosc=28)
+
+            zawartosc = [
+                ft.Row([
+                    ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=15, color=ft.Colors.PRIMARY),
+                    ft.Text("Koszt w mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                ], spacing=6),
+                ft.Text(f"{utils.formatuj_liczba(koszt_biezacy)} {utils.symbol_waluty()}", size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+            ]
+            if iskra_mc is not None:
+                zawartosc.append(iskra_mc)
+            zawartosc.append(
+                ft.Row([
+                    ft.Icon(t_ikona, size=13, color=t_kolor),
+                    ft.Text(t_tekst, size=utils.FS["caption"], color=t_kolor, no_wrap=True),
+                ], spacing=4)
+            )
+
             return ft.Container(
-                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
+                width=SZER_KAFLA + (60 if iskra_mc is not None else 0),
+                padding=15, border_radius=utils.RADIUS["lg"],
                 bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
                 ink=True, on_click=idz_do_statystyk(0),
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=15, color=ft.Colors.PRIMARY),
-                        ft.Text("Koszt w mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
-                    ], spacing=6),
-                    ft.Text(f"{utils.formatuj_liczba(koszt_biezacy)} {utils.symbol_waluty()}", size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                    ft.Row([
-                        ft.Icon(t_ikona, size=13, color=t_kolor),
-                        ft.Text(t_tekst, size=utils.FS["caption"], color=t_kolor, no_wrap=True),
-                    ], spacing=4),
-                ], spacing=4),
+                content=ft.Column(zawartosc, spacing=6),
             )
 
         def widget_termin():
@@ -242,7 +295,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Icon(ft.Icons.EVENT_AVAILABLE, size=15, color=ft.Colors.GREEN_700),
                         ft.Text("Termin", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text("Na czas 🎉", size=utils.FS["title"], weight="bold", color=ft.Colors.GREEN_700),
+                    ft.Text("Na czas", size=utils.FS["title"], weight="bold", color=ft.Colors.GREEN_700),
                     ft.Text("Brak terminów", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                 ], spacing=4)
                 on_klik = None
@@ -290,52 +343,35 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         def widget_koszt_km():
             koszt_km = dane_porownanie.get("koszt_km")
             wartosc = f"{utils.formatuj_liczba(koszt_km, 2)} {utils.symbol_waluty()}/km" if koszt_km else "Brak danych"
-            return kafel_wartosci(ft.Icons.ADD_ROAD, ft.Colors.PURPLE_700, "Koszt / km", wartosc, idz_do_statystyk(0))
+            # Liczba jest z całego życia auta, iskra pokazuje ostatnie miesiące —
+            # dopiero razem widać, czy jazda ostatnio drożeje, czy tanieje.
+            return kafel_z_iskra(
+                ft.Icons.ADD_ROAD, ft.Colors.PURPLE_700, "Koszt / km", wartosc,
+                [v for _, _, v in seria_koszt_km], idz_do_statystyk(0),
+                wzrost_zly=True, podpis_stopki=f"{len(seria_koszt_km)} ost. mies.",
+            )
 
         def widget_spalanie():
             spalanie = dane_porownanie.get("spalanie")
             wartosc = utils.formatuj_spalanie(spalanie) if spalanie else "Za mało danych"
-
             wartosci_serii = [w for _, w in seria_spalania]
-            iskra = utils.sparkline(wartosci_serii, ft.Colors.TEAL_700, wysokosc=30)
-
-            if iskra is None:
-                # Poniżej 2 policzonych odcinków nie ma czego rysować — kafelek
-                # zostaje w wersji „gołej”, żeby nie udawać trendu z jednego punktu.
-                return kafel_wartosci(ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Śr. spalanie", wartosc, idz_do_zakladki(1))
-
-            pierwsza, ostatnia = wartosci_serii[0], wartosci_serii[-1]
-            zmiana = ((ostatnia - pierwsza) / pierwsza * 100) if pierwsza > 0 else None
-            stopka = ft.Row([
-                utils.znacznik_trendu(zmiana, wzrost_zly=True),
-                ft.Text(
-                    f"{len(wartosci_serii)} ost. odcinków",
-                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
-                    text_align=ft.TextAlign.END,
-                ),
-            ], spacing=6)
-
-            return ft.Container(
-                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
-                ink=True, on_click=idz_do_zakladki(1),
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.LOCAL_GAS_STATION, size=15, color=ft.Colors.TEAL_700),
-                        ft.Text("Śr. spalanie", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
-                    ], spacing=6),
-                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                    iskra,
-                    stopka,
-                ], spacing=6),
+            return kafel_z_iskra(
+                ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Śr. spalanie", wartosc,
+                wartosci_serii, idz_do_zakladki(1),
+                wzrost_zly=True, podpis_stopki=f"{len(wartosci_serii)} ost. odcinków",
             )
 
         def widget_przebieg_dzienny():
             sredni = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
             wartosc = f"{utils.formatuj_liczba(sredni, 1)} km/dzień" if sredni else "Brak danych"
-            return kafel_wartosci(ft.Icons.TIMELAPSE, ft.Colors.BLUE_GREY_700, "Śr. dzienny", wartosc,
-                                   lambda e: utils.przejdz(self._page, "/przebieg"))
+            wartosci_serii = [w for _, w in seria_przebiegu]
+            # Więcej kilometrów to nie „gorzej” — stąd wzrost_zly=False, inaczej
+            # aktywniejszy miesiąc dostawałby czerwoną strzałkę jak rosnący koszt.
+            return kafel_z_iskra(
+                ft.Icons.TIMELAPSE, ft.Colors.BLUE_GREY_700, "Śr. dzienny", wartosc,
+                wartosci_serii, lambda e: utils.przejdz(self._page, "/przebieg"),
+                wzrost_zly=False, podpis_stopki=f"{len(wartosci_serii)} ost. odcinków",
+            )
 
         def widget_ostatnia_aktywnosc():
             zdarzenia = db.pobierz_ostatnia_aktywnosc(self.state.auto_id, limit=3)
@@ -346,7 +382,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             for opis, kto, kiedy_tekst, _, ikona, trasa in zdarzenia:
                 wiersze.append(
                     ft.Row([
-                        ft.Text(ikona, size=13),
+                        ft.Icon(utils.ikona_z_mapy(utils.IKONY_AKTYWNOSCI, ikona), size=15,
+                                color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Column([
                             ft.Text(opis, size=11, weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                             ft.Text(f"{kto} • {kiedy_tekst}", size=10, color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
@@ -369,11 +406,29 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         def widget_kondycja():
             kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
-            kolor_kond, ikona_kond, etykieta_kond = utils.wskaznik_kondycji(kondycja)
-            wartosc = f"{kondycja}/100" if kondycja is not None else "Brak danych"
-            return kafel_wartosci(
-                ikona_kond, kolor_kond, "Kondycja", wartosc,
-                lambda e: utils.przejdz(self._page, "/magazyn")
+            _, _, etykieta_kond = utils.wskaznik_kondycji(kondycja)
+            kolor_gauge = utils.kolor_kondycji_plynny(kondycja)
+
+            # Zamiast samego „82/100”: pierścień wypełniony proporcjonalnie do
+            # wyniku i płynnie barwiony od czerwieni do zieleni. Ocena jest wtedy
+            # czytelna z odległości, bez czytania liczby — a liczba i tak zostaje
+            # w środku dla tych, którzy chcą dokładną wartość.
+            return ft.Container(
+                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=lambda e: utils.przejdz(self._page, "/magazyn"),
+                tooltip=f"Kondycja pojazdu: {etykieta_kond}",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.MONITOR_HEART, size=15, color=kolor_gauge),
+                        ft.Text("Kondycja", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Row([utils.gauge_kondycji(kondycja, rozmiar=76, grubosc=8)],
+                           alignment=ft.MainAxisAlignment.CENTER),
+                    ft.Text(etykieta_kond, size=utils.FS["caption"], color=kolor_gauge,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                            text_align=ft.TextAlign.CENTER),
+                ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             )
 
         self._kokpit_budowniczy = {
@@ -458,11 +513,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         klocki, numery = [], []
         for i, wid in enumerate(wlaczone):
-            etykieta = str(etykiety.get(wid, wid))
-            # Etykiety w KOKPIT_WIDGETY zaczynają się od emoji — rozdzielamy je
-            # od tekstu, żeby ikona mogła być większa niż podpis.
-            czesci = etykieta.split(" ", 1)
-            emoji, podpis = (czesci[0], czesci[1]) if len(czesci) == 2 else ("🔹", etykieta)
+            podpis = str(etykiety.get(wid, wid))
+            # Etykiety w KOKPIT_WIDGETY to już sam tekst — ikonę dobieramy z tego
+            # samego rejestru, z którego korzystają kafelki kokpitu i Ustawienia.
+            ikona_klocka = utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid)
 
             numer = ft.Text(f"{i + 1}.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT)
             numery.append(numer)
@@ -473,7 +527,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 bgcolor=utils.tlo_karty(self._page, poziom=2),
                 border=ft.Border.all(1, ft.Colors.with_opacity(0.25, ft.Colors.PRIMARY)),
                 content=ft.Row([
-                    ft.Text(emoji, size=18),
+                    ft.Icon(ikona_klocka, size=18, color=ft.Colors.PRIMARY),
                     ft.Column([
                         numer,
                         ft.Text(podpis, size=utils.FS["label"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
@@ -657,15 +711,19 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             utils.otworz_dno(self._page, bs)
 
         def kolor_daty(d_str):
-            if not d_str: return ft.Colors.ON_SURFACE_VARIANT, "Brak"
+            """(kolor, tekst, ikona statusu). Emoji przed datą zastąpiła ikona —
+            dzięki temu status terminu wygląda tak samo, jak wszystkie inne
+            oznaczenia w aplikacji i podąża za kolorem wiersza."""
+            if not d_str:
+                return ft.Colors.ON_SURFACE_VARIANT, "Brak", ft.Icons.REMOVE
             try:
                 d_obj = datetime.strptime(str(d_str), "%d.%m.%Y").date()
                 roz = (d_obj - datetime.now().date()).days
-                if roz < 0: return ft.Colors.RED_700, f"⚠️ {d_str}"
-                elif roz <= 30: return ft.Colors.ORANGE_700, f"⏳ {d_str}"
-                return ft.Colors.GREEN_700, f"✅ {d_str}"
+                if roz < 0: return ft.Colors.RED_700, str(d_str), ft.Icons.WARNING
+                elif roz <= 30: return ft.Colors.ORANGE_700, str(d_str), ft.Icons.HOURGLASS_BOTTOM
+                return ft.Colors.GREEN_700, str(d_str), ft.Icons.CHECK_CIRCLE
             except Exception:
-                return ft.Colors.ON_SURFACE_VARIANT, str(d_str)
+                return ft.Colors.ON_SURFACE_VARIANT, str(d_str), ft.Icons.EVENT
 
         kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
         kolor_kond, ikona_kond, etykieta_kond = utils.wskaznik_kondycji(kondycja)
@@ -698,12 +756,13 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ])
 
             def wiersz_termin(ikona, etykieta, data_str):
-                kolor, tekst = kolor_daty(data_str)
+                kolor, tekst, ikona_statusu = kolor_daty(data_str)
                 return ft.Row([
                     ft.Icon(ikona, color=kolor, size=20),
                     ft.Text(f"{etykieta}:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT, width=110),
+                    ft.Icon(ikona_statusu, color=kolor, size=15),
                     ft.Text(tekst, size=14, weight="bold", color=kolor, expand=True)
-                ])
+                ], spacing=6)
 
             def polacz_wartosci(*wartosci):
                 czesci = [str(x) for x in wartosci if x]
@@ -753,7 +812,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         wiersz_info(ft.Icons.BOLT, "Moc silnika", moc_tekst),
 
                         ft.Divider(height=15),
-                        ft.Text("🛡️ Ważne terminy", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Row(utils.tytul_sekcji(ft.Icons.SHIELD, "Ważne terminy",
+                                                  kolor=ft.Colors.ON_SURFACE_VARIANT, rozmiar=14), spacing=6),
                         wiersz_termin(ft.Icons.SHIELD, "Polisa OC", w_info["oc_data"]),
                         wiersz_termin(ft.Icons.FACT_CHECK, "Przegląd", w_info["przeglad_data"]),
                         wiersz_termin(ft.Icons.SHIELD, "Polisa AC", w_info["ac_data"]),
@@ -764,7 +824,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         wiersz_info(ft.Icons.SPEED, "Gwarancja do", f"{w_info['gwarancja_przebieg']} km" if w_info["gwarancja_przebieg"] else None),
 
                         ft.Divider(height=15),
-                        ft.Text("🛒 Ściągawka do sklepu", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Row(utils.tytul_sekcji(ft.Icons.SHOPPING_CART, "Ściągawka do sklepu",
+                                                  kolor=ft.Colors.ON_SURFACE_VARIANT, rozmiar=14), spacing=6),
                         wiersz_info(ft.Icons.WATER_DROP, "Wycieraczki", wycieraczki_tekst),
                         wiersz_info(ft.Icons.AIR, "Ciśnienie opon", cisnienie_tekst),
                         wiersz_info(ft.Icons.OPACITY, "Olej silnikowy", olej_tekst),
@@ -820,7 +881,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ),
                     pole_przebiegu,
                     ft.Container(height=5),
-                    ft.TextButton("📈 Przejdź do historii odczytów", on_click=zobacz_historie)
+                    ft.TextButton("Przejdź do historii odczytów", icon=ft.Icons.SHOW_CHART, on_click=zobacz_historie)
                 ], tight=True, spacing=10),
                 actions=[
                     ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
@@ -850,6 +911,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         # NOWE: wartość i kolor identyczne jak w bottom-sheecie (pokaz_info_auta) —
         # tylko teraz widoczne od razu, bez klikania w "Info".
         wartosc_pierscienia = (max(0, min(100, kondycja)) / 100) if kondycja is not None else 0.0
+        # Ten sam płynny kolor, co na kołowym wskaźniku w kokpicie — pierścień
+        # przy awatarze i kafelek „Kondycja” nie mogą pokazywać dwóch różnych barw
+        # dla tej samej liczby.
+        kolor_pierscienia = utils.kolor_kondycji_plynny(kondycja)
         awatar = ft.Container(
             width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA,
             tooltip=f"Kondycja: {kondycja if kondycja is not None else '-'}/100 ({etykieta_kond})",
@@ -857,24 +922,29 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             content=ft.Stack([
                 ft.ProgressRing(
                     value=wartosc_pierscienia, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA,
-                    stroke_width=4, color=kolor_kond,
+                    stroke_width=4, color=kolor_pierscienia, stroke_cap=ft.StrokeCap.ROUND,
                     bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
                 ),
                 ft.Container(tresc_awatara, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA, alignment=ft.Alignment.CENTER),
             ], width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA),
         )
 
-        tytulowy_wiersz = ft.Container(
-            content=ft.Row([
-                ft.Text(
-                    str(self.state.auto_nazwa), size=16, weight="bold", color=ft.Colors.PRIMARY,
-                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
-                ),
-                ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=18)
-            ], spacing=0, tight=True),
-            on_click=pokaz_wybor_aut,
-            tooltip="Dotknij, aby wybrać z listy",
-        )
+        tytulowy_wiersz = ft.Row([
+            ft.Container(
+                content=ft.Row([
+                    ft.Text(
+                        str(self.state.auto_nazwa), size=16, weight="bold", color=ft.Colors.PRIMARY,
+                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                    ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=18)
+                ], spacing=0, tight=True),
+                on_click=pokaz_wybor_aut,
+                tooltip="Dotknij, aby wybrać z listy",
+            ),
+            # Chmurka pojawia się tylko przy niewysłanych zmianach tego pojazdu —
+            # wcześniej trzeba było wejść w ekran Współdzielenia, żeby to zobaczyć.
+            utils.wskaznik_synchronizacji(self._page, self.state.auto_id),
+        ], spacing=0, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         wiersz_rejestracja = ft.Row([
             ft.Icon(ft.Icons.BADGE, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -1048,7 +1118,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             ]
         )
 
-        naglowek_serwis = [ft.Text("🛠️ Serwis", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        naglowek_serwis = utils.tytul_sekcji(ft.Icons.BUILD_CIRCLE, "Serwis")
         if wspolny_id:
             naglowek_serwis.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
         naglowek_serwis.append(menu_nawigacji)
@@ -1236,7 +1306,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
         elektryczny = db.czy_pojazd_elektryczny(self.state.auto_id)
         etykiety = db.etykiety_paliwa(elektryczny)
-        naglowek_bits = [ft.Text(etykiety["naglowek_listy"], size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        naglowek_bits = utils.tytul_sekcji(
+            utils.ikona_z_mapy(utils.IKONY_AKTYWNOSCI, etykiety.get("ikona_listy", "tankowanie")),
+            etykiety["naglowek_listy"],
+        )
         if wspolny_id:
             naglowek_bits.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
         self.elementy.append(ft.Row(naglowek_bits, vertical_alignment=ft.CrossAxisAlignment.CENTER))
@@ -1393,7 +1466,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
     def buduj_inne(self):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-        naglowek_inne = [ft.Text("🎫 Inne Koszty", size=20, weight="bold", color=ft.Colors.PRIMARY, expand=True)]
+        naglowek_inne = utils.tytul_sekcji(ft.Icons.RECEIPT_LONG, "Inne koszty")
         if wspolny_id:
             naglowek_inne.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
         self.elementy.append(ft.Row(naglowek_inne, vertical_alignment=ft.CrossAxisAlignment.CENTER))
@@ -1589,7 +1662,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             elektryczny = db.czy_pojazd_elektryczny(self.state.auto_id)
             etykiety = db.etykiety_paliwa(elektryczny)
             self.elementy.extend([
-                ft.Text("📊 Podsumowanie Kosztów", size=20, weight="bold", color=ft.Colors.PRIMARY),
+                ft.Row(utils.tytul_sekcji(ft.Icons.PIE_CHART, "Podsumowanie kosztów"), spacing=8),
                 kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)}  {utils.symbol_waluty()}", ft.Colors.RED_700),
                 ft.Row([
                     kafel(ft.Icons.LOCAL_GAS_STATION, "Na paliwo", f"{utils.formatuj_liczba(pal)}  {utils.symbol_waluty()}", ft.Colors.BLUE_700, expand=1),
@@ -1599,7 +1672,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),
                     kafel(ft.Icons.ADD_ROAD, "Koszt 1 km", f"{utils.formatuj_liczba(koszt_km)}  {utils.symbol_waluty()}/km", ft.Colors.PURPLE_700, expand=1),
                 ], spacing=10),
-                ft.Text("📈 Wskaźniki i Paliwo", size=20, weight="bold", color=ft.Colors.PRIMARY),
+                ft.Row(utils.tytul_sekcji(ft.Icons.INSIGHTS, "Wskaźniki i paliwo"), spacing=8),
                 ft.Row([
                     kafel(ft.Icons.SPEED, etykiety["zuzycie"], utils.formatuj_spalanie(spalanie, elektryczny=elektryczny) if spalanie > 0 else etykiety["brak_pelnych"], ft.Colors.TEAL_700, expand=1),
                     kafel(ft.Icons.ROUTE, "Zanotowany dystans", f"{utils.formatuj_liczba(dystans, 0)} km", ft.Colors.INDIGO_700, expand=1),
@@ -1619,7 +1692,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 return ft.Column([
                     ft.Row([
                         ft.Row([
-                            ft.Text(ikona, size=14),
+                            ft.Icon(ikona, size=15, color=kolor),
                             ft.Text(tytul, weight="bold", size=13, color=ft.Colors.ON_SURFACE)
                         ], spacing=6),
                         ft.Text(
@@ -1640,9 +1713,9 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
                 **utils.powierzchnia_karty(self._page, "md"),
                 content=ft.Column([
-                    segment_procentowy("⛽", "Paliwo", pal, proc_pal, ft.Colors.BLUE_700),
-                    segment_procentowy("🛠️", "Serwis", serw, proc_ser, ft.Colors.ORANGE_700),
-                    segment_procentowy("🎫", "Inne", inn, proc_inn, ft.Colors.GREEN_700),
+                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["paliwo"], "Paliwo", pal, proc_pal, ft.Colors.BLUE_700),
+                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["serwis"], "Serwis", serw, proc_ser, ft.Colors.ORANGE_700),
+                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["inne"], "Inne", inn, proc_inn, ft.Colors.GREEN_700),
                 ], spacing=12)
             )
 
@@ -1773,23 +1846,27 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 pierwsza_wart, ostatnia_wart = wartosci_spalania[0], wartosci_spalania[-1]
                 zmiana_proc = ((ostatnia_wart - pierwsza_wart) / pierwsza_wart * 100) if pierwsza_wart > 0 else 0
 
+                def chip_trendu(ikona, tekst, kolor, tlo=True):
+                    return ft.Container(
+                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
+                        bgcolor=ft.Colors.with_opacity(0.15, kolor) if tlo else None,
+                        content=ft.Row([
+                            ft.Icon(ikona, size=14, color=kolor),
+                            ft.Text(tekst, size=12, weight="bold", color=kolor),
+                        ], spacing=5, tight=True),
+                    )
+
                 if zmiana_proc > 5:
-                    znacznik_trendu = ft.Container(
-                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
-                        bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.RED_700),
-                        content=ft.Text(f"📈 Rośnie o {utils.formatuj_liczba(zmiana_proc, 0)}%", size=12, weight="bold", color=ft.Colors.RED_700)
-                    )
+                    znacznik_trendu = chip_trendu(
+                        ft.Icons.TRENDING_UP,
+                        f"Rośnie o {utils.formatuj_liczba(zmiana_proc, 0)}%", ft.Colors.RED_700)
                 elif zmiana_proc < -5:
-                    znacznik_trendu = ft.Container(
-                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
-                        bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.GREEN_700),
-                        content=ft.Text(f"📉 Spada o {utils.formatuj_liczba(abs(zmiana_proc), 0)}%", size=12, weight="bold", color=ft.Colors.GREEN_700)
-                    )
+                    znacznik_trendu = chip_trendu(
+                        ft.Icons.TRENDING_DOWN,
+                        f"Spada o {utils.formatuj_liczba(abs(zmiana_proc), 0)}%", ft.Colors.GREEN_700)
                 else:
-                    znacznik_trendu = ft.Container(
-                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
-                        content=ft.Text("➖ Stabilne", size=12, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT)
-                    )
+                    znacznik_trendu = chip_trendu(
+                        ft.Icons.TRENDING_FLAT, "Stabilne", ft.Colors.ON_SURFACE_VARIANT, tlo=False)
 
                 krok_etykiet = 1 if len(punkty_spalania) <= 6 else 2
                 etykiety_osi = []
@@ -2020,18 +2097,20 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
             def karta_okresu(w):
                 _, etykieta, _, pal_w, serw_w, inn_w, razem_w, litry_w, sr_cena_w, _ = w
-                bits = []
-                if pal_w > 0: bits.append(f"⛽ {utils.formatuj_liczba(pal_w, 0)}")
-                if serw_w > 0: bits.append(f"🛠️ {utils.formatuj_liczba(serw_w, 0)}")
-                if inn_w > 0: bits.append(f"🎫 {utils.formatuj_liczba(inn_w, 0)}")
-                opis = "  •  ".join(bits) if bits else "Brak wydatków"
+                pary = [
+                    (utils.IKONY_KATEGORII_KOSZTOW["paliwo"], utils.formatuj_liczba(pal_w, 0)) if pal_w > 0 else None,
+                    (utils.IKONY_KATEGORII_KOSZTOW["serwis"], utils.formatuj_liczba(serw_w, 0)) if serw_w > 0 else None,
+                    (utils.IKONY_KATEGORII_KOSZTOW["inne"], utils.formatuj_liczba(inn_w, 0)) if inn_w > 0 else None,
+                ]
+                opis = utils.chipy_kwot(pary) or ft.Text(
+                    "Brak wydatków", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
 
                 tresc = [
                     ft.Row([
                         ft.Text(etykieta, weight="bold", size=16, expand=True),
                         ft.Text(f"{utils.formatuj_liczba(razem_w)}  {utils.symbol_waluty()}", weight="bold", size=16, color=ft.Colors.RED_700)
                     ]),
-                    ft.Text(opis, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    opis,
                 ]
                 if litry_w > 0:
                     tresc.append(ft.Text(

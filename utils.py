@@ -2,6 +2,7 @@ import flet as ft
 import flet_charts as fc
 from datetime import datetime, date, timedelta, timezone
 import re
+import colorsys
 import db
 import os
 import asyncio
@@ -53,6 +54,58 @@ KOLOR_STATUS = {
     "neutral": ft.Colors.ON_SURFACE_VARIANT,
 }
 
+# ============== JEDNA RODZINA IKON (Material) ==============
+# W interfejsie nie używamy emoji — wyłącznie ft.Icons, żeby oznaczenia miały
+# jeden ciężar, jedną grubość kreski i podążały za kolorem motywu (emoji zawsze
+# zostaje w swojej palecie i w trybie ciemnym „krzyczy”). Warstwa danych (db.py)
+# nie zna Fleta, więc zwraca KLUCZE, a poniższe mapy tłumaczą je na ikony.
+
+IKONY_KOKPITU = {
+    "koszt_miesiac": ft.Icons.ACCOUNT_BALANCE_WALLET,
+    "termin": ft.Icons.EVENT,
+    "wykres": ft.Icons.BAR_CHART,
+    "koszt_km": ft.Icons.ADD_ROAD,
+    "spalanie": ft.Icons.LOCAL_GAS_STATION,
+    "przebieg_dzienny": ft.Icons.TIMELAPSE,
+    "ostatnia_aktywnosc": ft.Icons.HISTORY,
+    "kondycja": ft.Icons.MONITOR_HEART,
+}
+
+IKONY_AKTYWNOSCI = {
+    "tankowanie": ft.Icons.LOCAL_GAS_STATION,
+    "ladowanie": ft.Icons.EV_STATION,
+    "serwis": ft.Icons.BUILD,
+    "wizyta": ft.Icons.HOME_REPAIR_SERVICE,
+    "inny_koszt": ft.Icons.RECEIPT_LONG,
+}
+
+IKONY_EKSPORTU = {
+    "tankowania": ft.Icons.LOCAL_GAS_STATION,
+    "historia": ft.Icons.BUILD,
+    "zadania": ft.Icons.HANDYMAN,
+    "wizyty": ft.Icons.HOME_REPAIR_SERVICE,
+    "inne_koszty": ft.Icons.RECEIPT_LONG,
+    "wydatki_cykliczne": ft.Icons.AUTORENEW,
+    "magazyn_czesci": ft.Icons.INVENTORY_2,
+    "zestawy_opon": ft.Icons.TIRE_REPAIR,
+    "do_zrobienia": ft.Icons.CHECKLIST,
+    "warsztaty": ft.Icons.BUSINESS,
+    "odczyty_przebiegu": ft.Icons.STRAIGHTEN,
+    "tagi": ft.Icons.LABEL,
+}
+
+# Trzy „wiadra” kosztów — ten sam zestaw ikon na wykresach, w podziale kosztów
+# i w porównaniu pojazdów, żeby paliwo zawsze wyglądało tak samo.
+IKONY_KATEGORII_KOSZTOW = {
+    "paliwo": ft.Icons.LOCAL_GAS_STATION,
+    "serwis": ft.Icons.BUILD,
+    "inne": ft.Icons.RECEIPT_LONG,
+}
+
+def ikona_z_mapy(mapa, klucz, domyslna=ft.Icons.CIRCLE_OUTLINED):
+    """Bezpieczne wyszukanie ikony po kluczu z warstwy danych."""
+    return mapa.get(str(klucz or ""), domyslna)
+
 
 def _czy_ciemny(page: ft.Page = None) -> bool:
     if page is None:
@@ -66,9 +119,86 @@ def _czy_ciemny(page: ft.Page = None) -> bool:
     except Exception:
         return False
 
+# Ustawienie czytane jest przy KAŻDEJ karcie na ekranie (tlo_karty), więc
+# trzymamy je w pamięci zamiast odpytywać SQLite kilkadziesiąt razy na render.
+# Unieważnia je zapis w Ustawieniach — patrz odswiez_cache_czerni().
+_CACHE_CZERNI = {"wartosc": None}
+
+
+def odswiez_cache_czerni():
+    """Wołane po zapisaniu przełącznika „czysta czerń”, żeby kolejny render
+    wziął nową wartość z bazy."""
+    _CACHE_CZERNI["wartosc"] = None
+
+
+def czy_czysta_czern(page: ft.Page = None) -> bool:
+    """True, gdy jesteśmy w trybie ciemnym ORAZ użytkownik włączył w Ustawieniach
+    wariant „czysta czerń (OLED)”. Sam przełącznik nie wystarczy — w trybie
+    jasnym (albo systemowym, który akurat jest jasny) czerń nic nie zmienia."""
+    if _CACHE_CZERNI["wartosc"] is None:
+        try:
+            _CACHE_CZERNI["wartosc"] = db.pobierz_czysta_czern()
+        except Exception:
+            _CACHE_CZERNI["wartosc"] = False
+    return _czy_ciemny(page) and _CACHE_CZERNI["wartosc"]
+
+
+# Drabinka powierzchni dla wariantu OLED. Materiał 3 rozróżnia elementy
+# jasnością tła; przy czystej czerni ta drabinka startuje od #000000 i rośnie
+# ledwie kilkoma stopniami szarości, żeby dialogi i menu nadal dało się odróżnić
+# od tła, ale ekran pozostał w praktyce zgaszony.
+POWIERZCHNIE_OLED = {
+    "surface": "#000000",
+    "surface_dim": "#000000",
+    "surface_bright": "#1A1A1A",
+    "surface_container_lowest": "#000000",
+    "surface_container_low": "#0A0A0A",
+    "surface_container": "#101010",
+    "surface_container_high": "#161616",
+    "surface_container_highest": "#1E1E1E",
+}
+
+
+def zbuduj_motyw_ciemny(kolor_seed):
+    """Motyw ciemny dla zadanego koloru wiodącego. Przy włączonej „czystej
+    czerni” podmieniamy wszystkie powierzchnie na czarne — reszta schematu
+    (kolor wiodący, akcenty, kolory tekstu) nadal pochodzi z ziarna, więc
+    aplikacja wygląda tak samo, tylko na czarnym tle."""
+    if not db.pobierz_czysta_czern():
+        return ft.Theme(color_scheme_seed=kolor_seed)
+
+    return ft.Theme(
+        color_scheme_seed=kolor_seed,
+        color_scheme=ft.ColorScheme(**POWIERZCHNIE_OLED),
+        scaffold_bgcolor=POWIERZCHNIE_OLED["surface"],
+        card_bgcolor=POWIERZCHNIE_OLED["surface"],
+        canvas_color=POWIERZCHNIE_OLED["surface"],
+    )
+
+
+def zastosuj_motywy(page: ft.Page, nazwa_koloru):
+    """Jedno miejsce ustawiające page.theme i page.dark_theme — wcześniej ta sama
+    para przypisań powtarzała się w main.py (start, import bazy, zmiana pojazdu)
+    i w Ustawieniach, przez co wariant OLED trzeba by dokładać w czterech
+    miejscach. Zwraca użyte ziarno koloru."""
+    kolor_seed = MAPA_KOLOROW.get(nazwa_koloru, ft.Colors.INDIGO)
+    page.theme = ft.Theme(color_scheme_seed=kolor_seed)
+    page.dark_theme = zbuduj_motyw_ciemny(kolor_seed)
+    return kolor_seed
+
 def tlo_karty(page: ft.Page = None, poziom=1):
     """Automatycznie dobiera przezroczystość koloru ON_SURFACE.
-    W trybie ciemnym podwaja opacity dla zachowania kontrastu."""
+    W trybie ciemnym podwaja opacity dla zachowania kontrastu.
+    W wariancie czystej czerni schodzimy z powrotem do delikatnych wartości —
+    na czarnym tle nawet 6% bieli to już wyraźnie widoczna powierzchnia, a cały
+    sens trybu OLED polega na tym, żeby jak najwięcej pikseli zostało zgaszonych."""
+    if czy_czysta_czern(page):
+        return {
+            1: ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
+            2: ft.Colors.with_opacity(0.09, ft.Colors.ON_SURFACE),
+            3: ft.Colors.with_opacity(0.14, ft.Colors.ON_SURFACE),
+        }.get(poziom, ft.Colors.TRANSPARENT)
+
     ciemny = _czy_ciemny(page)
     mnoznik = 2.0 if ciemny else 1.0
 
@@ -109,15 +239,29 @@ def cien_karty(page: ft.Page = None, poziom="md"):
     return warstwy.get(poziom, warstwy["md"])
 
 
+def obramowanie_karty(page: ft.Page = None):
+    """Delikatna ramka używana WYŁĄCZNIE w wariancie czystej czerni. Bez cienia
+    (tryb ciemny) i bez rozjaśnionego tła (tryb OLED) karta nie miałaby żadnej
+    krawędzi — hairline 1px na 12% ON_SURFACE wystarczy, żeby oko zobaczyło
+    granicę, a piksele nadal pozostają praktycznie czarne."""
+    if not czy_czysta_czern(page):
+        return None
+    return ft.Border.all(1, ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE))
+
+
 def powierzchnia_karty(page: ft.Page = None, cien="md"):
     """Gotowy zestaw {bgcolor, shadow} do rozpakowania (**) w Containerze
     karty/formularza. Jasny motyw: niemal przezroczyste tło + miękki cień
     (cień 'unosi' kartę). Ciemny motyw: cień wyłączony, więc tło podbijamy
     o jeden poziom mocniej (poziom=2), żeby granica karty była widoczna
-    bez cienia — dokładnie tak, jak prosisz w pkt. 1."""
+    bez cienia. Wariant OLED: tło zostaje minimalne, a rolę krawędzi przejmuje
+    cienka ramka (patrz obramowanie_karty)."""
+    if czy_czysta_czern(page):
+        return {"bgcolor": tlo_karty(page, poziom=1), "shadow": None,
+                "border": obramowanie_karty(page)}
     if _czy_ciemny(page):
-        return {"bgcolor": tlo_karty(page, poziom=2), "shadow": None}
-    return {"bgcolor": tlo_karty(page, poziom=1), "shadow": cien_karty(page, cien)}
+        return {"bgcolor": tlo_karty(page, poziom=2), "shadow": None, "border": None}
+    return {"bgcolor": tlo_karty(page, poziom=1), "shadow": cien_karty(page, cien), "border": None}
 
 def parsuj_int(wartosc, domyslna=0):
     if wartosc is None: return domyslna
@@ -753,13 +897,32 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             przejdz(page, trasa)
         return handler
 
-    def zaplac_cykliczny(wydatek_id, czy_koszt=True):
+    def zaplac_cykliczny(wydatek_id, czy_koszt=True, kafelek=None):
         def handler(e):
             db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
             komunikat = "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
-            pokaz_komunikat(page, komunikat)
-            przejdz(page, page.route)  # odświeża dzwonek/badge w tle; panel zostaje otwarty
-            odswiez()
+
+            def dokoncz():
+                pokaz_komunikat(page, komunikat)
+                przejdz(page, page.route)  # odświeża dzwonek/badge w tle; panel zostaje otwarty
+                odswiez()
+
+            if kafelek is None:
+                dokoncz()
+                return
+
+            # Przycisk zamienia się w ptaszka, który „wskakuje” na swoje miejsce,
+            # i dopiero po tej chwili lista się przebudowuje — inaczej wiersz
+            # znikał w tej samej klatce, w której użytkownik go dotknął.
+            kafelek.trailing = znacznik_wykonania(
+                page,
+                "Zapłacone" if czy_koszt else "Wykonano",
+                po_zakonczeniu=dokoncz,
+            )
+            try:
+                page.update()
+            except Exception:
+                pass
         return handler
 
     def odswiez():
@@ -775,7 +938,10 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         if not powiadomienia:
             pozycje.append(ft.Container(
                 padding=ft.Padding.symmetric(vertical=20),
-                content=ft.Text("Brak zbliżających się terminów 🎉", italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+                content=ft.Row([
+                    ft.Icon(ft.Icons.TASK_ALT, size=18, color=KOLOR_STATUS["ok"]),
+                    ft.Text("Brak zbliżających się terminów", italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
+                ], spacing=8)
             ))
         else:
             for p in powiadomienia:
@@ -783,15 +949,17 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 ikona = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
                 if p["typ"] == "cykliczny":
                     czy_koszt_p = p.get("czy_koszt", True)
-                    pozycje.append(ft.ListTile(
+                    kafelek = ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=ft.Text(p["tytul"], weight="bold"),
                         subtitle=ft.Text(p["opis"], color=kolor, size=13),
-                        trailing=ft.TextButton(
-                            "Zapłacone" if czy_koszt_p else "Wykonano",
-                            on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p)
-                        ),
-                    ))
+                    )
+                    kafelek.trailing = ft.TextButton(
+                        "Zapłacone" if czy_koszt_p else "Wykonano",
+                        icon=ft.Icons.CHECK,
+                        on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p, kafelek),
+                    )
+                    pozycje.append(kafelek)
                 else:
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
@@ -865,7 +1033,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
                 ))
 
         pozycje.append(ft.Divider(height=1))
-        pozycje.append(ft.TextButton("➕ Dodaj wydatek / przypomnienie", on_click=lambda e: formularz(None)))
+        pozycje.append(ft.TextButton("Dodaj wydatek / przypomnienie", icon=ft.Icons.ADD, on_click=lambda e: formularz(None)))
 
         bs.content = ft.Container(
             padding=20, bgcolor=ft.Colors.SURFACE,
@@ -1023,7 +1191,9 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         ]
     )
 
-def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, akcje_dodatkowe=None, czy_zmieniono=None):
+def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, akcje_dodatkowe=None, czy_zmieniono=None, ikona=None):
+    """`ikona` zastąpiła emoji doklejane wcześniej do tytułu ekranu — ikona
+    Material dziedziczy kolor motywu i ma ten sam ciężar, co reszta oznaczeń."""
     def wroc(e):
         if czy_zmieniono and czy_zmieniono():
             def wykonaj(e2):
@@ -1075,8 +1245,14 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
     if akcje_dodatkowe:
         actions.extend(akcje_dodatkowe)
 
+    etykieta = ft.Text(tytul, weight="bold", size=18, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)
+    tytul_kontrolka = etykieta if not ikona else ft.Row([
+        ft.Icon(ikona, size=20, color=ft.Colors.PRIMARY),
+        etykieta,
+    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
+
     return ft.AppBar(
-        title=ft.Text(tytul, weight="bold", size=18),
+        title=tytul_kontrolka,
         center_title=False,
         bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY),
         leading=ft.IconButton(
@@ -1323,6 +1499,7 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False,
         return ft.Container(
             padding=SPACING["lg"], border_radius=RADIUS["lg"],
             bgcolor=powierzchnia["bgcolor"], shadow=powierzchnia["shadow"],
+            border=powierzchnia["border"],
             content=ft.Column(zawartosc, spacing=SPACING["md"])
         )
 
@@ -1355,12 +1532,14 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False,
     return ft.Container(
         border_radius=RADIUS["lg"],
         bgcolor=powierzchnia["bgcolor"], shadow=powierzchnia["shadow"],
+        border=powierzchnia["border"],
         content=ft.Column([naglowek, cialo], spacing=0)
     )
 
-def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj):
+def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj, ikona_zapisu=ft.Icons.CHECK):
     btn_zapisz = ft.ElevatedButton(
-        tekst_zapisu, 
+        tekst_zapisu,
+        icon=ikona_zapisu,
         on_click=on_zapisz, 
         bgcolor=ft.Colors.PRIMARY, 
         color=ft.Colors.ON_PRIMARY, 
@@ -1368,7 +1547,8 @@ def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj):
         width=float("inf")
     )
     btn_anuluj = ft.OutlinedButton(
-        "Anuluj", 
+        "Anuluj",
+        icon=ft.Icons.CLOSE,
         on_click=lambda e: przejdz(page, trasa_anuluj), 
         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]), padding=15),
         width=float("inf")
@@ -1745,8 +1925,8 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
 
     wiersz_glowne = ft.Row([e_dropdown, e_recznie, btn_zmien_tryb], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
 
-    btn_dzwon = ft.OutlinedButton("📞 Zadzwoń", visible=False)
-    btn_nawiguj = ft.OutlinedButton("🧭 Nawiguj", visible=False)
+    btn_dzwon = ft.OutlinedButton("Zadzwoń", icon=ft.Icons.PHONE, visible=False)
+    btn_nawiguj = ft.OutlinedButton("Nawiguj", icon=ft.Icons.NAVIGATION, visible=False)
     wiersz_akcji = ft.Row([btn_dzwon, btn_nawiguj], spacing=8, visible=False)
 
     async def zadzwon(e):
@@ -2056,10 +2236,10 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
 
     wiersz = ft.Row([ramka_podgladu, tekst_nazwy, btn_usun], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
     etykieta_przycisku = (
-        "📎 Dodaj / zmień załącznik (zdjęcie, PDF)" if tylko_zdjecie
-        else "📎 Dodaj / zmień załącznik (możesz zaznaczyć kilka zdjęć naraz)"
+        "Dodaj / zmień załącznik (zdjęcie, PDF)" if tylko_zdjecie
+        else "Dodaj / zmień załącznik (możesz zaznaczyć kilka zdjęć naraz)"
     )
-    btn_wybierz = ft.TextButton(etykieta_przycisku, on_click=wybierz)
+    btn_wybierz = ft.TextButton(etykieta_przycisku, icon=ft.Icons.ATTACH_FILE, on_click=wybierz)
 
     kontener = ft.Column([wiersz, btn_wybierz], spacing=8)
 
@@ -2144,7 +2324,7 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
         except Exception as ex:
             pokaz_komunikat(page, f"Błąd wczytywania plików: {ex}", ft.Colors.RED_700)
 
-    btn_dodaj = ft.TextButton("📷 Wybierz zdjęcia (można zaznaczyć od razu kilka)", on_click=wybierz)
+    btn_dodaj = ft.TextButton("Wybierz zdjęcia (można zaznaczyć od razu kilka)", icon=ft.Icons.PHOTO_CAMERA, on_click=wybierz)
     kontener = ft.Column([btn_dodaj, licznik, lista_podgladow], spacing=8)
     return kontener, lambda: list(stan["pliki"])
 
@@ -2240,6 +2420,175 @@ def wskaznik_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik"):
         on_click=lambda e: pokaz_podglad_zalacznika(page, sciezka_wzgledna, tytul),
     )
 
+def _mieszaj_kolory(kolor_a, kolor_b, udzial):
+    """Interpolacja dwóch kolorów RGB przez przestrzeń HSV. Mieszanie wprost na
+    kanałach RGB prowadzi w połowie drogi z pomarańczy do zieleni przez brudną
+    oliwkę (kanał czerwony spada, zielony jeszcze nie urósł) — w HSV kręcimy
+    odcieniem, więc każdy punkt skali zostaje nasycony."""
+    udzial = max(0.0, min(1.0, udzial))
+    h1, s1, v1 = colorsys.rgb_to_hsv(*[k / 255 for k in kolor_a])
+    h2, s2, v2 = colorsys.rgb_to_hsv(*[k / 255 for k in kolor_b])
+    h = h1 + (h2 - h1) * udzial
+    s = s1 + (s2 - s1) * udzial
+    v = v1 + (v2 - v1) * udzial
+    return tuple(int(round(k * 255)) for k in colorsys.hsv_to_rgb(h, s, v))
+
+
+# Punkty kontrolne skali kondycji (odcienie Material 700).
+_SKALA_KONDYCJI = [
+    (0, (211, 47, 47)),     # RED_700    — wymaga pilnej reakcji
+    (50, (245, 124, 0)),    # ORANGE_700 — wymaga uwagi
+    (100, (46, 125, 50)),   # GREEN_700  — bardzo dobra
+]
+
+
+def kolor_kondycji_plynny(wynik):
+    """Kolor wskaźnika kondycji jako PŁYNNE przejście czerwień → bursztyn →
+    zieleń, zamiast trzech skokowych progów. Na kołowym wskaźniku widać dzięki
+    temu różnicę między 79 a 81 punktami — przy progach obie wartości wyglądały
+    identycznie po jednej i drugiej stronie granicy."""
+    if wynik is None:
+        return ft.Colors.ON_SURFACE_VARIANT
+    try:
+        w = max(0.0, min(100.0, float(wynik)))
+    except (TypeError, ValueError):
+        return ft.Colors.ON_SURFACE_VARIANT
+
+    for (x0, c0), (x1, c1) in zip(_SKALA_KONDYCJI, _SKALA_KONDYCJI[1:]):
+        if w <= x1:
+            r, g, b = _mieszaj_kolory(c0, c1, (w - x0) / (x1 - x0))
+            return f"#{r:02X}{g:02X}{b:02X}"
+    r, g, b = _SKALA_KONDYCJI[-1][1]
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=True):
+    """Kołowy wskaźnik kondycji (0-100) — pierścień wypełniony proporcjonalnie do
+    wyniku, w kolorze płynnie przechodzącym od czerwieni do zieleni, z liczbą
+    w środku. Zastępuje sam tekst „82/100”: wypełnienie i barwa niosą ocenę,
+    więc kafelek da się odczytać jednym spojrzeniem, bez czytania liczby."""
+    kolor = kolor_kondycji_plynny(wynik)
+    rozmiar_liczby = rozmiar_liczby or max(14, int(rozmiar * 0.30))
+
+    try:
+        czysty = max(0, min(100, int(round(float(wynik))))) if wynik is not None else None
+    except (TypeError, ValueError):
+        czysty = None
+
+    srodek = [
+        ft.Text(
+            str(czysty) if czysty is not None else "—",
+            size=rozmiar_liczby, weight="bold", color=kolor, no_wrap=True,
+        )
+    ]
+    if pokaz_max and czysty is not None:
+        srodek.append(ft.Text("/100", size=max(8, int(rozmiar_liczby * 0.42)),
+                              color=ft.Colors.ON_SURFACE_VARIANT))
+
+    return ft.Stack([
+        ft.ProgressRing(
+            value=(czysty / 100) if czysty is not None else 0.0,
+            width=rozmiar, height=rozmiar, stroke_width=grubosc,
+            color=kolor, stroke_cap=ft.StrokeCap.ROUND,
+            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+        ),
+        ft.Container(
+            width=rozmiar, height=rozmiar, alignment=ft.Alignment.CENTER,
+            content=ft.Column(srodek, spacing=0, tight=True,
+                              horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        ),
+    ], width=rozmiar, height=rozmiar)
+
+
+def tytul_sekcji(ikona, tekst, kolor=None, rozmiar=20):
+    """Ikona + tytuł sekcji jako gotowa PARA kontrolek do wstawienia w ft.Row.
+    Zwraca listę, bo nagłówki sekcji doklejają sobie z prawej filtry, liczniki
+    i przyciski akcji."""
+    kolor = kolor or ft.Colors.PRIMARY
+    return [
+        ft.Icon(ikona, size=rozmiar, color=kolor),
+        ft.Text(tekst, size=rozmiar, weight="bold", color=kolor, expand=True),
+    ]
+
+
+def chipy_kwot(pary, rozmiar=12, kolor=None, odstep=8):
+    """Wiersz „ikona + kwota” dla kilku kategorii naraz — zamiennik dawnych
+    sklejek typu "⛽ 320 • 🛠️ 140". Każda para to (ikona, tekst); puste pary
+    (None) są pomijane. Zwraca None, jeśli nie ma czego pokazać."""
+    kolor = kolor or ft.Colors.ON_SURFACE_VARIANT
+    kontrolki = []
+    for para in pary:
+        if not para:
+            continue
+        ikona, tekst = para
+        kontrolki.append(ft.Row([
+            ft.Icon(ikona, size=rozmiar + 1, color=kolor),
+            ft.Text(str(tekst), size=rozmiar, color=kolor, no_wrap=True),
+        ], spacing=3, tight=True))
+    if not kontrolki:
+        return None
+    return ft.Row(kontrolki, spacing=odstep, tight=True, wrap=True)
+
+
+def wskaznik_synchronizacji(page: ft.Page, auto_id, rozmiar=15):
+    """Mała chmurka przy nazwie pojazdu, widoczna TYLKO wtedy, gdy ten pojazd ma
+    w kolejce niewysłane zmiany. Wcześniej ten stan dało się zobaczyć dopiero po
+    wejściu w ekran Współdzielenia — teraz jest widoczny od razu na starcie,
+    a dotknięcie prowadzi prosto tam, gdzie można to naprawić."""
+    try:
+        oczekuje = db.czy_auto_oczekuje_synchronizacji(auto_id)
+    except Exception:
+        oczekuje = False
+    if not oczekuje:
+        # Zerowy kontener zamiast None — dzięki temu wywołujący może wstawić go
+        # w Row bez sprawdzania i układ nie skacze przy przełączaniu pojazdów.
+        return ft.Container(width=0, height=0)
+
+    return ft.Container(
+        padding=ft.Padding.only(left=4),
+        tooltip="Są zmiany niewysłane do chmury — dotknij, aby zsynchronizować",
+        on_click=lambda e: przejdz(page, "/wspoldzielenie"),
+        content=ft.Icon(ft.Icons.CLOUD_UPLOAD_OUTLINED, size=rozmiar, color=KOLOR_STATUS["warning"]),
+    )
+
+
+def znacznik_wykonania(page: ft.Page, tekst="Gotowe", po_zakonczeniu=None, pauza=0.7):
+    """Krótki „moment satysfakcji” wstawiany W MIEJSCE przycisku po oznaczeniu
+    czegoś jako załatwione: ptaszek wskakuje ze skalą i przygasza się w miejsce
+    napisu. Po `pauza` sekundach woła `po_zakonczeniu` (zwykle odświeżenie
+    listy), więc animacja zdąży się pokazać, zanim wiersz zniknie."""
+    pudelko = ft.Container(
+        padding=ft.Padding.symmetric(horizontal=8, vertical=4),
+        scale=0.5, opacity=0.0,
+        animate_scale=ft.Animation(280, ft.AnimationCurve.EASE_OUT_BACK),
+        animate_opacity=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+        content=ft.Row([
+            ft.Icon(ft.Icons.CHECK_CIRCLE, size=18, color=KOLOR_STATUS["ok"]),
+            ft.Text(tekst, size=FS["label"], weight="bold", color=KOLOR_STATUS["ok"], no_wrap=True),
+        ], spacing=5, tight=True),
+    )
+
+    async def _odegraj():
+        # Jedna klatka zwłoki: gdyby stan docelowy ustawić od razu, Flet wysłałby
+        # do klienta wyłącznie wartość końcową i animacja nie miałaby z czego wyjść.
+        await asyncio.sleep(0.03)
+        pudelko.scale = 1.0
+        pudelko.opacity = 1.0
+        try:
+            page.update()
+        except Exception:
+            pass
+        if po_zakonczeniu:
+            await asyncio.sleep(pauza)
+            try:
+                po_zakonczeniu()
+            except Exception:
+                pass
+
+    page.run_task(_odegraj)
+    return pudelko
+
+
 def wskaznik_kondycji(wynik):
     """Zwraca (kolor, ikona, etykieta) dla wskaźnika kondycji pojazdu (0-100)."""
     if wynik is None:
@@ -2318,6 +2667,7 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
         karta = ft.Container(
             border_radius=RADIUS["lg"],
             shadow=powierzchnia["shadow"],
+            border=powierzchnia["border"],
             content=kontener,
         )
         return karta, kontener
@@ -2325,6 +2675,7 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
     karta = ft.Container(
         border_radius=RADIUS["lg"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
         shadow=powierzchnia["shadow"],
+        border=powierzchnia["border"],
         content=ft.Row([ft.Container(width=4, bgcolor=kolor_paska), kontener], spacing=0),
     )
     return karta, kontener
@@ -2577,10 +2928,20 @@ def z_odswiezaniem(page: ft.Page, kontrolki: list, funkcja_odswiez=None):
 def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
     """Animowany zamiennik powtarzanego wzorca 'btn_zakladki' — segmenty
     przełączają się płynną animacją koloru i skali zamiast twardego przeskoku.
-    opcje: lista (etykieta, indeks). on_zmiana(nowy_idx) wywoływane po kliknięciu."""
+    opcje: lista (etykieta, indeks) albo (etykieta, indeks, ikona) — ikona jest
+    opcjonalna i pojawia się przed podpisem. on_zmiana(nowy_idx) wywoływane po
+    kliknięciu."""
     segmenty = []
-    for etykieta, idx in opcje:
+    for opcja in opcje:
+        etykieta, idx = opcja[0], opcja[1]
+        ikona = opcja[2] if len(opcja) > 2 else None
         aktywny = (idx == aktywny_idx)
+        kolor_tresci = ft.Colors.ON_PRIMARY if aktywny else ft.Colors.ON_SURFACE_VARIANT
+        podpis = ft.Text(etykieta, size=FS["label"], weight="bold", color=kolor_tresci)
+        tresc = podpis if not ikona else ft.Row(
+            [ft.Icon(ikona, size=16, color=kolor_tresci), podpis],
+            spacing=6, tight=True, alignment=ft.MainAxisAlignment.CENTER,
+        )
         segmenty.append(
             ft.Container(
                 expand=True, height=36, alignment=ft.Alignment.CENTER,
@@ -2590,10 +2951,7 @@ def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
                 animate_scale=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
                 scale=1.0 if aktywny else 0.96,
                 on_click=lambda e, i=idx: on_zmiana(i),
-                content=ft.Text(
-                    etykieta, size=FS["label"], weight="bold",
-                    color=ft.Colors.ON_PRIMARY if aktywny else ft.Colors.ON_SURFACE_VARIANT,
-                ),
+                content=tresc,
             )
         )
     return ft.Container(

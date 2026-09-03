@@ -7,7 +7,7 @@ class KalkulatorTrasyView(ft.View):
         self._page = page
         self.state = state
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "🗺️ Kalkulator Podróży", "/")
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Kalkulator podróży", "/", ikona=ft.Icons.MAP)
 
         if not self.state.auto_id:
             super().__init__(

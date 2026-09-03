@@ -11,7 +11,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
 
         wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "📝 Do zrobienia", "/",
+            page, "Do zrobienia", "/", ikona=ft.Icons.CHECKLIST,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/do-zrobienia"))] if wspolny_id else None
         )
         fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"))
@@ -139,7 +139,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         if opis:
             podtytul_bits.append(str(opis))
         if zadanie_nazwa:
-            podtytul_bits.append(f"🔗 {zadanie_nazwa}")
+            podtytul_bits.append(f"Podzespół: {zadanie_nazwa}")
 
         stopka_bits = []
         if koszt:
@@ -331,7 +331,7 @@ class FormularzDoZrobieniaView(ft.View):
         k2 = utils.karta_formularza([self.e_koszt, self.e_termin], "Koszt i termin", ft.Icons.EVENT)
         k3 = utils.karta_formularza([self.e_zadanie], "Powiązanie z podzespołem", ft.Icons.LINK)
 
-        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "✅ Zapisz pozycję", self.zapisz, "/do-zrobienia")]
+        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz pozycję", self.zapisz, "/do-zrobienia")]
 
         super().__init__(
             route=f"/do-zrobienia/edytuj/{pozycja_id}" if pozycja_id else "/do-zrobienia/nowe",
