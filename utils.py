@@ -819,25 +819,36 @@ def usun_auto(page: ft.Page, state):
     auto_id = state.auto_id
 
     def wykonaj():
-        # Użycie nowej funkcji archiwizującej
-        wynik = db.usun_auto_z_cofnieciem(auto_id)
-        
+        # Pojazd trafia do kosza — nic nie jest kasowane z dysku.
+        wynik = db.usun_auto_do_kosza(auto_id)
+
         if wynik:
             oryg_cofnij = wynik["cofnij"]
             def nowe_cofnij():
                 oryg_cofnij()
-                # Po ewentualnym cofnięciu przywracamy aktywny pojazd w interfejsie
-                state.auto_id = auto_id
-                state.auto_nazwa = nazwa
+                # Przywrócenie mogło nadać pojazdowi nowe ID (gdyby stare zdążył
+                # zająć inny wpis), więc bierzemy to, które faktycznie wróciło.
+                nowe_id = wynik.get("przywrocone_id")
+                if nowe_id:
+                    state.auto_id = nowe_id
+                    db.zainicjuj_domyslne_auto(state)
                 przejdz(page, "/")
             wynik["cofnij"] = nowe_cofnij
 
         state.auto_id = None
         db.zainicjuj_domyslne_auto(state)
         przejdz(page, "/")
-        pokaz_komunikat_cofnij(page, f"Usunięto pojazd „{nazwa}” wraz z historią.", wynik)
-        
-    potwierdz(page, "Usunąć pojazd?", f"Czy na pewno chcesz usunąć „{nazwa}”? Zostanie usunięta cała historia serwisowa oraz fizyczne pliki zdjęć.", wykonaj)
+        pokaz_komunikat_cofnij(page, f"Pojazd „{nazwa}” przeniesiony do kosza.", wynik)
+
+    dni = db.pobierz_dni_kosza()
+    okres = f"przez {dni} dni" if dni else "bez limitu czasu"
+    potwierdz(
+        page, "Usunąć pojazd?",
+        f"„{nazwa}” trafi do kosza wraz z całą historią serwisową i zdjęciami. "
+        f"Będzie tam czekał {okres} — do tego czasu przywrócisz go jednym kliknięciem.",
+        wykonaj,
+        tekst_potwierdzenia="Przenieś do kosza",
+    )
 
 def _sygnatura_powiadomien(powiadomienia):
     return frozenset((p["typ"], p["tytul"], p["status"]) for p in powiadomienia)
@@ -1129,6 +1140,16 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.ADD, color=ft.Colors.GREEN, size=20), ft.Text("Dodaj nowy pojazd")]), on_click=lambda e: przejdz(page, "/auto/nowy")))
     if state.auto_id:
         pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=20), ft.Text("Usuń pojazd")]), on_click=lambda e: usun_auto(page, state)))
+    # Licznik przy "Koszu" jest jedynym sygnałem, że coś tam zalega — bez niego
+    # usunięty pojazd czekałby na wygaśnięcie retencji zupełnie niezauważony.
+    w_koszu = db.liczba_w_koszu()
+    pozycje.append(ft.PopupMenuItem(
+        content=ft.Row([
+            ft.Icon(ft.Icons.DELETE_SWEEP, color=ft.Colors.ORANGE if w_koszu else ft.Colors.GREY, size=20),
+            ft.Text(f"Kosz ({w_koszu})" if w_koszu else "Kosz")
+        ]),
+        on_click=lambda e: przejdz(page, "/kosz")
+    ))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.COMPARE_ARROWS, color=ft.Colors.TEAL, size=20), ft.Text("Porównaj pojazdy")]), on_click=lambda e: przejdz(page, "/porownanie")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.PEOPLE, color=ft.Colors.TEAL, size=20), ft.Text("Współdziel pojazd")]), on_click=lambda e: przejdz(page, "/wspoldzielenie")))
     pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.CALCULATE, color=ft.Colors.TEAL, size=20), ft.Text("Podział kosztów")]), on_click=lambda e: przejdz(page, "/podzial")))

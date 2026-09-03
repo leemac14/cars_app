@@ -43,6 +43,16 @@ class UstawieniaView(ft.View):
             **utils.styl_dropdown()
         )
 
+        # Retencja kosza: 0 to świadomie "nigdy" — pojazdy leżą w koszu do skutku.
+        opcje_kosza_tekst = {7: "7 dni", 30: "30 dni", 90: "90 dni", 0: "Nigdy — czyszczę ręcznie"}
+        dni_kosza_val = db.pobierz_dni_kosza()
+        self.e_dni_kosza = ft.Dropdown(
+            label="Trzymaj usunięte pojazdy w koszu przez",
+            options=[ft.DropdownOption(key=str(d), text=opcje_kosza_tekst.get(d, f"{d} dni")) for d in db.DNI_KOSZA_OPCJE],
+            value=str(dni_kosza_val),
+            **utils.styl_dropdown()
+        )
+
         opcje_dni_tekst = {7: "7 dni", 14: "14 dni", 30: "1 miesiąc", 60: "60 dni", 90: "90 dni"}
         self.e_prog_dni = ft.Dropdown(
             label="Powiadamiaj o dokumentach i terminach na tyle dni przed",
@@ -165,6 +175,20 @@ class UstawieniaView(ft.View):
             for chk in self.checkboxy_kokpitu
         ]
 
+        k_kosz = utils.karta_formularza(
+            [
+                self.e_dni_kosza,
+                ft.Text(
+                    "Usunięty pojazd nie znika od razu — trafia do kosza razem z historią, "
+                    "tankowaniami i zdjęciami, skąd wraca jednym kliknięciem. Kosz otworzysz "
+                    "z menu ⋮ na ekranie głównym. Po upływie tego czasu pozycje kasują się "
+                    "same przy starcie aplikacji; przy ustawieniu „Nigdy” czyścisz kosz sam.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+            ],
+            "Kosz na usunięte pojazdy", ft.Icons.DELETE_SWEEP, domyslnie_otwarte=True, page=page
+        )
+
         self._stan_poczatkowy = self._migawka_formularza()
 
         k_kokpit = utils.karta_formularza(
@@ -193,7 +217,7 @@ class UstawieniaView(ft.View):
             ], spacing=8)
         )
 
-        elementy = [k1, k2, k3, k_kokpit, info, utils.przyciski_akcji(page, "Zapisz ustawienia", self.zapisz, "/")]
+        elementy = [k1, k2, k3, k_kokpit, k_kosz, info, utils.przyciski_akcji(page, "Zapisz ustawienia", self.zapisz, "/")]
 
         super().__init__(
             route="/ustawienia",
@@ -202,7 +226,8 @@ class UstawieniaView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_waluta.value, self.e_jednostka.value, self.e_jednostka_ev.value, self.e_prog_km.value, self.e_prog_dni.value,
-                self.e_moje_imie.value, self.wybrany_kolor, [chk.data for chk in self.checkboxy_kokpitu if chk.value])
+                self.e_dni_kosza.value, self.e_moje_imie.value, self.wybrany_kolor,
+                [chk.data for chk in self.checkboxy_kokpitu if chk.value])
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -213,6 +238,7 @@ class UstawieniaView(ft.View):
         db.zapisz_ustawienie("jednostka_zuzycia_ev", self.e_jednostka_ev.value)
         db.zapisz_ustawienie("prog_km_powiadomien", self.e_prog_km.value)
         db.zapisz_ustawienie("prog_dni_powiadomien", self.e_prog_dni.value)
+        db.zapisz_dni_kosza(self.e_dni_kosza.value)
         db.zapisz_moje_imie(self.e_moje_imie.value)
         
         # --- Zapis i odświeżenie wybranego koloru ---

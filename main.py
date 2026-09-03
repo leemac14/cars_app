@@ -31,6 +31,7 @@ from views.wspoldzielenie_view import WspoldzielenieView
 from views.timeline_view import TimelineView
 from views.search_view import SzukajView
 from views.podzial_view import PodzialKosztowView
+from views.kosz_view import KoszView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -71,10 +72,15 @@ def main(page: ft.Page):
             cel.close()
             zrodlo.close()
 
+    # Foldery pakowane do kopii zapasowej. FOLDER_KOSZ jest tu obowiązkowo: baza
+    # niesie migawki pojazdów z kosza, więc bez jego zdjęć import odtworzyłby
+    # kosz z pustymi odsyłaczami do plików.
+    FOLDERY_KOPII = (db.FOLDER_ZALACZNIKI, db.FOLDER_KOSZ)
+
     def _przygotuj_zip_eksportu():
-        """Buduje archiwum ZIP w pamięci: spójna kopia bazy (przez SQLite backup) + folder załączników."""
+        """Buduje archiwum ZIP w pamięci: spójna kopia bazy (przez SQLite backup)
+        + folder załączników + folder kosza."""
         bufor = io.BytesIO()
-        nazwa_folderu_zal = os.path.basename(db.FOLDER_ZALACZNIKI)
         with tempfile.TemporaryDirectory() as tmp:
             tmp_baza = os.path.join(tmp, os.path.basename(db.BAZA_DANYCH))
             if os.path.exists(db.BAZA_DANYCH):
@@ -82,11 +88,14 @@ def main(page: ft.Page):
             with zipfile.ZipFile(bufor, "w", zipfile.ZIP_DEFLATED) as zf:
                 if os.path.exists(tmp_baza):
                     zf.write(tmp_baza, arcname=os.path.basename(db.BAZA_DANYCH))
-                if os.path.isdir(db.FOLDER_ZALACZNIKI):
-                    for korzen, _, pliki in os.walk(db.FOLDER_ZALACZNIKI):
+                for folder in FOLDERY_KOPII:
+                    if not os.path.isdir(folder):
+                        continue
+                    nazwa_folderu = os.path.basename(folder)
+                    for korzen, _, pliki in os.walk(folder):
                         for nazwa_pliku in pliki:
                             pelna_sciezka = os.path.join(korzen, nazwa_pliku)
-                            arcname = os.path.join(nazwa_folderu_zal, os.path.relpath(pelna_sciezka, db.FOLDER_ZALACZNIKI))
+                            arcname = os.path.join(nazwa_folderu, os.path.relpath(pelna_sciezka, folder))
                             zf.write(pelna_sciezka, arcname=arcname)
         bufor.seek(0)
         return bufor.read()
@@ -114,31 +123,32 @@ def main(page: ft.Page):
                 zf.extractall(tmp)
                 shutil.copyfile(os.path.join(tmp, nazwa_bazy), db.BAZA_DANYCH)
 
-                if os.path.isdir(db.FOLDER_ZALACZNIKI):
-                    shutil.rmtree(db.FOLDER_ZALACZNIKI, ignore_errors=True)
+                for folder in FOLDERY_KOPII:
+                    if os.path.isdir(folder):
+                        shutil.rmtree(folder, ignore_errors=True)
+                    folder_tmp = os.path.join(tmp, os.path.basename(folder))
+                    if os.path.isdir(folder_tmp):
+                        shutil.copytree(folder_tmp, folder)
 
-                nazwa_folderu_zal = os.path.basename(db.FOLDER_ZALACZNIKI)
-                folder_tmp = os.path.join(tmp, nazwa_folderu_zal)
-                if os.path.isdir(folder_tmp):
-                    shutil.copytree(folder_tmp, db.FOLDER_ZALACZNIKI)
-
-        os.makedirs(db.FOLDER_ZALACZNIKI, exist_ok=True)
+        for folder in FOLDERY_KOPII:
+            os.makedirs(folder, exist_ok=True)
 
     def wykonaj_import(sciezka_zrodlowa):
         import sqlite3
         baza_bak = db.BAZA_DANYCH + ".bak"
-        folder_bak = db.FOLDER_ZALACZNIKI + "_bak"
         kopia_zrobiona = False
 
         def przywroc_kopie_bezpieczenstwa():
-            """Cofa bazę i załączniki do stanu sprzed nieudanego importu."""
+            """Cofa bazę, załączniki i kosz do stanu sprzed nieudanego importu."""
             try:
                 if os.path.exists(baza_bak):
                     shutil.copyfile(baza_bak, db.BAZA_DANYCH)
-                if os.path.isdir(folder_bak):
-                    if os.path.isdir(db.FOLDER_ZALACZNIKI):
-                        shutil.rmtree(db.FOLDER_ZALACZNIKI, ignore_errors=True)
-                    shutil.copytree(folder_bak, db.FOLDER_ZALACZNIKI)
+                for folder in FOLDERY_KOPII:
+                    zapasowy = folder + "_bak"
+                    if os.path.isdir(zapasowy):
+                        if os.path.isdir(folder):
+                            shutil.rmtree(folder, ignore_errors=True)
+                        shutil.copytree(zapasowy, folder)
                 db.init_db()
                 app_state.auto_id = None
                 db.zainicjuj_domyslne_auto(app_state)
@@ -152,9 +162,11 @@ def main(page: ft.Page):
 
             if os.path.exists(db.BAZA_DANYCH):
                 shutil.copyfile(db.BAZA_DANYCH, baza_bak)
-            if os.path.isdir(db.FOLDER_ZALACZNIKI):
-                shutil.rmtree(folder_bak, ignore_errors=True)
-                shutil.copytree(db.FOLDER_ZALACZNIKI, folder_bak)
+            for folder in FOLDERY_KOPII:
+                if os.path.isdir(folder):
+                    zapasowy = folder + "_bak"
+                    shutil.rmtree(zapasowy, ignore_errors=True)
+                    shutil.copytree(folder, zapasowy)
             kopia_zrobiona = True
 
             if sciezka_zrodlowa.lower().endswith(".zip"):
@@ -457,6 +469,8 @@ def main(page: ft.Page):
                 page.views.append(FormularzZdjecieKaroseriiView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "ustawienia":
             page.views.append(UstawieniaView(page, app_state))
+        elif segmenty[0] == "kosz":
+            page.views.append(KoszView(page, app_state))
         elif segmenty[0] == "porownanie":
             page.views.append(PorownanieView(page, app_state))
         elif segmenty[0] == "wspoldzielenie":
