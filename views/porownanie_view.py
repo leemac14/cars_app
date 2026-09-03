@@ -9,6 +9,44 @@ MAKS_AUT = 4
 SZEROKOSC_ETYKIETY = 90
 SZEROKOSC_KOLUMNY = 100
 
+BRAK_PIATEJ_OSI = "Brak (4 osie)"
+
+# Piąta, OPCJONALNA oś radaru porównawczego (patrz PorownanieView._osie_radaru
+# i ._selektor_piatej_osi) — do wyboru obok stałej czwórki (koszt/km,
+# spalanie, kondycja, wiek). Klucz słownika to jednocześnie etykieta widoczna
+# w dropdownie ORAZ wartość zapamiętywana w state.porownanie_piata_os (ten sam
+# wzorzec co BRAK_ZMIAN w body_view.py). Wartość to krotka w kształcie
+# zgodnym z _osie_radaru(), bez samej etykiety: (jednostka, funkcja wartości,
+# funkcja formatująca, czy_mniej_znaczy_lepiej, czy_zero_jest_realna_wartoscia).
+# Korzysta WYŁĄCZNIE z pól już liczonych przez db.pobierz_dane_do_porownania()
+# — żadnych nowych zapytań do bazy.
+OSIE_OPCJONALNE_RADARU = {
+    "Otwarte usterki": (
+        "szt.",
+        lambda d: d.get("do_zrobienia_aktywne"),
+        lambda v: f"{utils.formatuj_liczba(v, 0)} szt.",
+        True, True,
+    ),
+    "Zaległości serwisowe": (
+        "szt.",
+        lambda d: (d.get("przeterminowane") or 0) + (d.get("pilne") or 0),
+        lambda v: f"{utils.formatuj_liczba(v, 0)} szt.",
+        True, True,
+    ),
+    "Niski stan magazynu": (
+        "poz.",
+        lambda d: d.get("magazyn_niski_stan"),
+        lambda v: f"{utils.formatuj_liczba(v, 0)} poz.",
+        True, True,
+    ),
+    "Wizyty w warsztacie": (
+        "szt.",
+        lambda d: d.get("liczba_wizyt"),
+        lambda v: f"{utils.formatuj_liczba(v, 0)} szt.",
+        True, True,
+    ),
+}
+
 
 class PorownanieView(ft.View):
     def __init__(self, page: ft.Page, state):
@@ -317,41 +355,92 @@ class PorownanieView(ft.View):
 
     def _osie_radaru(self):
         """Definicje osi radaru: (etykieta, jednostka, funkcja wartości,
-        funkcja formatująca, czy_mniej_znaczy_lepiej).
+        funkcja formatująca, czy_mniej_znaczy_lepiej, czy_zero_jest_realna_wartoscia).
 
         Wartości są BEZWZGLĘDNE — w tabeli pod wykresem widać realne liczby w
         swoich jednostkach. Sam wielokąt musi jednak dzielić jedną skalę
         promienia, więc każdą oś skalujemy do jej WŁASNEGO maksimum wśród
         porównywanych aut (100% promienia = najwyższa wartość na tej osi).
         Bez tego oś „Kondycja” (0-100 pkt) zjadłaby oś „Koszt/km” (ok. 1 zł) i
-        wykres byłby nieczytelny."""
-        return [
+        wykres byłby nieczytelny.
+
+        Ostatni element (czy_zero_jest_realna_wartoscia) mówi, czy wynik 0 na
+        danej osi to prawdziwa, dobra wartość (np. „0 otwartych usterek” —
+        wynik, który MUSI się pokazać), czy raczej brak danych (spalanie
+        0 l/100km po prostu nie zostało jeszcze policzone). Stała czwórka ma
+        tu False — zero zmian w jej dotychczasowym zachowaniu. Opcjonalna
+        piąta oś (wybierana w _selektor_piatej_osi, patrz
+        OSIE_OPCJONALNE_RADARU) dokłada się na końcu listy, jeśli użytkownik
+        ją włączył."""
+        stale = [
             ("Koszt / km", f"{utils.symbol_waluty()}/km",
              lambda d: d.get("koszt_km"),
              lambda v: f"{utils.formatuj_liczba(v, 2)} {utils.symbol_waluty()}",
-             True),
+             True, False),
             ("Spalanie", db.pobierz_jednostke_spalania(),
              lambda d: d.get("spalanie"),
              lambda v: utils.formatuj_spalanie(v),
-             True),
+             True, False),
             ("Kondycja", "pkt",
              lambda d: d.get("kondycja"),
              lambda v: f"{utils.formatuj_liczba(v, 0)}/100",
-             False),
+             False, False),
             ("Wiek", "lat",
              lambda d: self._wiek_lat(d.get("rok_produkcji")),
              lambda v: f"{utils.formatuj_liczba(v, 0)} lat",
-             True),
+             True, False),
         ]
+
+        wybor_piatej_osi = self.state.porownanie_piata_os
+        if wybor_piatej_osi in OSIE_OPCJONALNE_RADARU:
+            jednostka, pobierz, formatuj, mniej_lepiej, zero_ok = OSIE_OPCJONALNE_RADARU[wybor_piatej_osi]
+            stale.append((wybor_piatej_osi, jednostka, pobierz, formatuj, mniej_lepiej, zero_ok))
+
+        return stale
+
+    def _selektor_piatej_osi(self):
+        """Dropdown wyboru opcjonalnej piątej osi radaru."""
+        if self.state.porownanie_piata_os not in OSIE_OPCJONALNE_RADARU:
+            self.state.porownanie_piata_os = None
+
+        def zmien(e):
+            # Bezpieczny odczyt wartości (niektóre wersje Flet przekazują ją w e.data)
+            wybor = e.control.value if e.control.value is not None else getattr(e, "data", None)
+            print(f"[DEBUG RADAR] Wybrano z dropdowna: {repr(wybor)}")
+
+            self.state.porownanie_piata_os = None if wybor in (BRAK_PIATEJ_OSI, None, "") else wybor
+            print(f"[DEBUG RADAR] Stan porownanie_piata_os: {repr(self.state.porownanie_piata_os)}")
+
+            # Wymuszenie odświeżenia widoku w Flet (reset route przed go)
+            self._page.route = ""
+            utils.przejdz(self._page, "/porownanie")
+
+        dropdown = ft.Dropdown(
+            label="Piąta oś (opcjonalnie)",
+            options=[ft.dropdown.Option(BRAK_PIATEJ_OSI)] + [ft.dropdown.Option(nazwa) for nazwa in OSIE_OPCJONALNE_RADARU],
+            value=self.state.porownanie_piata_os or BRAK_PIATEJ_OSI,
+            **utils.styl_dropdown(page=self._page)
+        )
+
+        # Podpinamy pod oba potencjalne zdarzenia Flet
+        dropdown.on_select = zmien
+        dropdown.on_change = zmien
+
+        return dropdown
 
     def _sekcja_radar(self, dane_aut):
         osie = self._osie_radaru()
+        selektor = self._selektor_piatej_osi()
 
         # Oś bez ani jednej wartości nic nie wnosi — a fl_chart i tak wymaga
         # min. 3 wierzchołków, więc przy zbyt ubogich danych rezygnujemy.
+        # zero_ok NIE jest jednakowy dla wszystkich osi: stała czwórka nadal
+        # traktuje 0 jak brak danych (jak dotychczas), ale opcjonalna piąta
+        # oś (np. „0 otwartych usterek” — najlepszy możliwy wynik) zgłasza
+        # zero_ok=True, żeby taki wynik się nie zgubił.
         wartosci = {}   # etykieta osi -> {auto_id: wartosc}
         aktywne = []
-        for etykieta, jednostka, pobierz, formatuj, mniej_lepiej in osie:
+        for etykieta, jednostka, pobierz, formatuj, mniej_lepiej, zero_ok in osie:
             kolumna = {}
             for d in dane_aut:
                 v = pobierz(d)
@@ -359,19 +448,23 @@ class PorownanieView(ft.View):
                     v = float(v) if v is not None else None
                 except (TypeError, ValueError):
                     v = None
-                kolumna[d["auto_id"]] = v if (v is not None and v > 0) else None
+                akceptowalna = v is not None and (v > 0 or (zero_ok and v == 0))
+                kolumna[d["auto_id"]] = v if akceptowalna else None
             if any(v is not None for v in kolumna.values()):
                 aktywne.append((etykieta, jednostka, formatuj, mniej_lepiej))
                 wartosci[etykieta] = kolumna
 
         if len(aktywne) < 3:
             return utils.karta_formularza(
-                [ft.Text(
-                    "Za mało danych na radar — potrzeba wartości w co najmniej 3 z 4 kategorii "
-                    "(koszt/km, spalanie, kondycja, wiek) dla porównywanych pojazdów.",
-                    size=12, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
-                )],
-                "Radar porównawczy", ft.Icons.RADAR
+                [
+                    selektor,
+                    ft.Text(
+                        f"Za mało danych na radar — potrzeba wartości w co najmniej 3 z {len(osie)} "
+                        "wybranych kategorii dla porównywanych pojazdów.",
+                        size=12, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                    ),
+                ],
+                "Radar porównawczy", ft.Icons.RADAR, domyslnie_otwarte=True
             )
 
         maksima = {
@@ -470,6 +563,7 @@ class PorownanieView(ft.View):
 
         return utils.karta_formularza(
             [
+                selektor,
                 legenda,
                 ft.Container(height=270, padding=ft.Padding(10, 18, 10, 10), content=wykres),
                 opis,

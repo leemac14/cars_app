@@ -17,6 +17,7 @@ class AppState:
         self.powiadomienia_widziane = {}   # zamiast pojedynczej sygnatury
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
         self.porownanie_wybrane = []
+        self.porownanie_piata_os = None  # klucz opcjonalnej 5. osi radaru porównania (None = wyłączona, patrz porownanie_view.OSIE_OPCJONALNE_RADARU)
 
         # --- SORTOWANIE ---
         # Klucz = nazwa listy, wartość = (pole, malejaco).
