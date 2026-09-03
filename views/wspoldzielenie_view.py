@@ -43,7 +43,30 @@ class WspoldzielenieView(ft.View):
             ], "Status współdzielenia", ft.Icons.PEOPLE, domyslnie_otwarte=True))
 
             # 2. Ręczna synchronizacja
-            elementy.append(utils.karta_formularza([
+            # Pełny opis stanu synchronizacji mieszka teraz TUTAJ, a nie pod
+            # przyciskiem w nagłówkach zakładek — tam rozpychał wiersz, w którym
+            # obok stoją inne akcje, i został skrócony do samego czasu z kropką.
+            zalegle = db.opis_oczekujacej_synchronizacji()
+            status_sync = [
+                ft.Row([
+                    ft.Icon(ft.Icons.SCHEDULE, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(utils.tekst_ostatniej_synchronizacji(krotki=False).split(" • ")[0],
+                            size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            ]
+            if zalegle:
+                status_sync.append(ft.Container(
+                    padding=ft.Padding(10, 8, 10, 8),
+                    border_radius=utils.RADIUS["sm"],
+                    bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ORANGE_700),
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.CLOUD_UPLOAD, size=16, color=ft.Colors.ORANGE_800),
+                        ft.Text(f"{zalegle} — wyślą się przy najbliższej udanej synchronizacji.",
+                                size=12, color=ft.Colors.ORANGE_800, expand=True),
+                    ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ))
+
+            elementy.append(utils.karta_formularza(status_sync + [
                 ft.Text("Kliknij, aby wysłać swoje nowe/zmienione dane i pobrać te od partnera.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.ElevatedButton("Synchronizuj teraz", icon=ft.Icons.SYNC, on_click=self._synchronizuj, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
                 ft.Container(height=10),

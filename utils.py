@@ -376,35 +376,52 @@ def ukryj_ladowanie(page: ft.Page, dlg):
     if dlg is not None:
         zamknij_dialog(page, dlg)
 
-def tekst_ostatniej_synchronizacji():
-    """Zwraca czytelny, względny opis czasu ostatniej udanej synchronizacji
-    (np. '4 min temu'), zapisywanej lokalnie przez sync.synchronizuj_wszystko,
-    plus dopisek o zaległych zmianach w kolejce offline (patrz db.kolejka_sync).
-    Nigdy nie synchronizowano -> 'Nigdy nie synchronizowano'."""
+def _moment_ostatniej_synchronizacji():
     zapis = db.pobierz_ustawienie("ostatnia_synchronizacja")
     if not zapis:
-        return "Nigdy nie synchronizowano"
+        return None
     try:
-        moment = datetime.strptime(zapis, "%d.%m.%Y %H:%M")
+        return datetime.strptime(zapis, "%d.%m.%Y %H:%M")
     except ValueError:
-        return "Nigdy nie synchronizowano"
+        return None
 
-    roznica = datetime.now() - moment
-    sekundy = max(0, roznica.total_seconds())
+def tekst_ostatniej_synchronizacji(krotki=True):
+    """Względny opis czasu ostatniej udanej synchronizacji (zapisywanej lokalnie
+    przez sync.synchronizuj_wszystko).
+
+    Domyślnie forma KRÓTKA — sam czas, bez słowa „Zsynchronizowano” (przycisk
+    tuż nad etykietą i tak mówi, o co chodzi) i bez dopisku o kolejce offline.
+    Ten dopisek potrafił urosnąć do „Zsynchronizowano 15.08.2026 14:32 • 3
+    pojazdy czekają na wysłanie zmian” i rozpychał wiersz nagłówka, w którym
+    obok stoją inne przyciski; zaległości pokazuje teraz kropka na przycisku
+    (patrz przycisk_synchronizacji). Forma pełna została do tooltipów.
+    """
+    moment = _moment_ostatniej_synchronizacji()
+    if not moment:
+        return "Nigdy" if krotki else "Nigdy nie synchronizowano"
+
+    sekundy = max(0, (datetime.now() - moment).total_seconds())
+    dzis = datetime.now().date()
 
     if sekundy < 60:
-        podstawa = "Zsynchronizowano przed chwilą"
+        czas = "przed chwilą"
     elif sekundy < 3600:
-        podstawa = f"Zsynchronizowano {int(sekundy // 60)} min temu"
-    elif moment.date() == datetime.now().date():
-        podstawa = f"Zsynchronizowano {int(sekundy // 3600)} godz. temu"
-    elif moment.date() == (datetime.now().date() - timedelta(days=1)):
-        podstawa = f"Zsynchronizowano wczoraj o {moment.strftime('%H:%M')}"
+        czas = f"{int(sekundy // 60)} min temu"
+    elif moment.date() == dzis:
+        czas = f"{int(sekundy // 3600)} godz. temu"
+    elif moment.date() == (dzis - timedelta(days=1)):
+        czas = f"wczoraj {moment.strftime('%H:%M')}"
+    elif moment.year == dzis.year:
+        czas = moment.strftime("%d.%m")
     else:
-        podstawa = f"Zsynchronizowano {moment.strftime('%d.%m.%Y %H:%M')}"
+        czas = moment.strftime("%d.%m.%y")
 
+    if krotki:
+        return czas
+
+    pelny = f"Zsynchronizowano {czas}"
     zalegle = db.opis_oczekujacej_synchronizacji()
-    return f"{podstawa} • {zalegle}" if zalegle else podstawa
+    return f"{pelny} • {zalegle}" if zalegle else pelny
 
 def wypchnij_w_tle(page: ft.Page, auto_id, powod="zapis"):
     """Zastępuje dawne `try: ... except Exception: pass` przy auto-synchronizacji
@@ -499,7 +516,32 @@ def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", p
     (zwykle cienki wrapper na sync.synchronizuj_wszystko, patrz też
     funkcja_szybkiej_synchronizacji) — sam odpowiada za komunikaty o sukcesie/błędzie.
     pokaz_czas: dokleja pod przyciskiem małą etykietę 'Zsynchronizowano X temu'."""
-    etykieta_czasu = ft.Text(tekst_ostatniej_synchronizacji(), size=10, color=ft.Colors.ON_SURFACE_VARIANT)
+    # Szerokość CAŁEGO bloku jest z góry ograniczona: przycisk z podpisem stoi
+    # w tym samym wierszu co tytuł sekcji i inne akcje, więc rozciągliwy tekst
+    # potrafił zepchnąć sąsiadów poza ekran.
+    SZEROKOSC = 132
+
+    def _opis_tooltipa():
+        # Forma pełna sama dokleja informację o kolejce offline, jeśli coś w niej
+        # jest — to tutaj, a nie pod przyciskiem, jest na nią miejsce.
+        return f"Synchronizuj z partnerem\n{tekst_ostatniej_synchronizacji(krotki=False)}"
+
+    etykieta_czasu = ft.Text(
+        tekst_ostatniej_synchronizacji(), size=10, color=ft.Colors.ON_SURFACE_VARIANT,
+        no_wrap=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+        text_align=ft.TextAlign.CENTER,
+    )
+    # Kropka zamiast zdania „3 pojazdy czekają na wysłanie zmian” — ta sama
+    # informacja, zero wpływu na szerokość. Szczegóły siedzą w tooltipie.
+    kropka_zalegle = ft.Container(
+        width=7, height=7, border_radius=RADIUS["pill"], bgcolor=ft.Colors.ORANGE_700,
+        visible=bool(db.opis_oczekujacej_synchronizacji()),
+    )
+
+    def _odswiez_opisy():
+        etykieta_czasu.value = tekst_ostatniej_synchronizacji()
+        kropka_zalegle.visible = bool(db.opis_oczekujacej_synchronizacji())
+        przycisk.tooltip = _opis_tooltipa()
 
     def _klik(e):
         async def _zrob():
@@ -508,7 +550,7 @@ def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", p
                 await funkcja_sync()
             finally:
                 ukryj_ladowanie(page, dlg)
-                etykieta_czasu.value = tekst_ostatniej_synchronizacji()
+                _odswiez_opisy()
                 try:
                     page.update()
                 except Exception:
@@ -517,23 +559,30 @@ def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", p
 
     przycisk = ft.Container(
         height=36,
-        padding=ft.Padding(14, 0, 14, 0),
+        padding=ft.Padding(12, 0, 12, 0),
         border_radius=RADIUS["pill"],
         bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.PRIMARY),
         ink=True,
         alignment=ft.Alignment.CENTER,
-        tooltip="Synchronizuj z partnerem",
+        tooltip=_opis_tooltipa(),
         on_click=_klik,
         content=ft.Row([
             ft.Icon(ft.Icons.SYNC, size=16, color=ft.Colors.PRIMARY),
-            ft.Text(tekst, size=12, weight="bold", color=ft.Colors.PRIMARY),
+            ft.Text(tekst, size=12, weight="bold", color=ft.Colors.PRIMARY, no_wrap=True),
+            kropka_zalegle,
         ], spacing=6, tight=True)
     )
 
     if not pokaz_czas:
         return przycisk
 
-    return ft.Column([przycisk, etykieta_czasu], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
+    return ft.Container(
+        width=SZEROKOSC,
+        content=ft.Column(
+            [przycisk, etykieta_czasu],
+            spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True
+        ),
+    )
 
 def otworz_dno(page: ft.Page, bottom_sheet):
     """Automatycznie zabezpiecza dolne menu przed zasłonięciem przez przyciski systemowe telefonu."""
@@ -599,6 +648,109 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
         )
 
     bs.content.content = ft.Column(elementy_menu, tight=True)
+    otworz_dno(page, bs)
+
+def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str = None):
+    """Menu z pozycjami POGRUPOWANYMI w rozwijane sekcje (BottomSheet).
+
+    Płaskie menu z kilkunastoma pozycjami zmusza do czytania wszystkiego, żeby
+    znaleźć jedną rzecz — a przy okazji stawia obok siebie sąsiadów, którzy nic
+    wspólnego nie mają (kalkulator trasy i dziennik pojazdu). Tu widać kilka
+    nagłówków; szczegóły pokazują się dopiero po rozwinięciu sekcji.
+
+    grupy: lista słowników
+        {"tytul": str, "ikona": ikona Material, "otwarta": bool,
+         "pozycje": [{"ikona", "tekst", "opis", "akcja", "kolor", "odznaka"}]}
+    Grupa bez pozycji jest pomijana, więc wołający może budować listę warunkowo
+    (np. sekcja współdzielenia tylko dla pojazdu udostępnionego).
+    """
+    bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
+
+    def opakuj_akcje(akcja_docelowa):
+        async def wrapper(e):
+            zamknij_dno(page, bs)
+            if akcja_docelowa:
+                wynik = akcja_docelowa()
+                import asyncio
+                if asyncio.iscoroutine(wynik):
+                    await wynik
+        return wrapper
+
+    def zbuduj_pozycje(poz):
+        kolor = poz.get("kolor") or ft.Colors.ON_SURFACE
+        opis = poz.get("opis")
+        odznaka = poz.get("odznaka")
+
+        tytul_wiersza = [ft.Text(poz.get("tekst", ""), size=FS["body"], color=kolor, weight="w500")]
+        if odznaka:
+            tytul_wiersza.append(ft.Container(
+                padding=ft.Padding(7, 1, 7, 1),
+                border_radius=RADIUS["pill"],
+                bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.ORANGE_700),
+                content=ft.Text(str(odznaka), size=10, weight="bold", color=ft.Colors.ORANGE_800),
+            ))
+
+        tresc = [ft.Row(tytul_wiersza, spacing=6, tight=True)]
+        if opis:
+            tresc.append(ft.Text(opis, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+
+        return ft.Container(
+            padding=ft.Padding(10, 10, 10, 10),
+            border_radius=RADIUS["sm"],
+            ink=True,
+            on_click=opakuj_akcje(poz.get("akcja")),
+            content=ft.Row([
+                ft.Icon(poz.get("ikona"), size=20, color=poz.get("kolor") or ft.Colors.PRIMARY),
+                ft.Column(tresc, spacing=1, tight=True, expand=True),
+            ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
+    sekcje = []
+    for grupa in grupy:
+        pozycje = [p for p in (grupa.get("pozycje") or []) if p]
+        if not pozycje:
+            continue
+
+        cialo = ft.Container(
+            padding=ft.Padding(0, 0, 0, 6),
+            visible=bool(grupa.get("otwarta")),
+            content=ft.Column([zbuduj_pozycje(p) for p in pozycje], spacing=2, tight=True),
+        )
+        strzalka = ft.Icon(
+            ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN,
+            size=20, color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
+        def przelacz(e, cialo=cialo, strzalka=strzalka):
+            cialo.visible = not cialo.visible
+            strzalka.name = ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        naglowek = ft.Container(
+            padding=ft.Padding(10, 12, 10, 12),
+            border_radius=RADIUS["sm"],
+            ink=True,
+            on_click=przelacz,
+            content=ft.Row([
+                ft.Icon(grupa.get("ikona"), size=20, color=ft.Colors.PRIMARY),
+                ft.Text(grupa.get("tytul", ""), size=FS["body"], weight="bold", expand=True),
+                ft.Text(str(len(pozycje)), size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                strzalka,
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+        sekcje.append(ft.Column([naglowek, cialo], spacing=0, tight=True))
+
+    naglowek_menu = [ft.Text(tytul, weight="bold", size=18, color=ft.Colors.PRIMARY)]
+    if podtytul:
+        naglowek_menu.append(ft.Text(podtytul, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+
+    bs.content.content = ft.Column(
+        [ft.Column(naglowek_menu, spacing=0, tight=True), ft.Divider(height=12)] + sekcje,
+        tight=True, spacing=0,
+    )
     otworz_dno(page, bs)
 
 def potwierdz(page: ft.Page, tytul, tresc, po_potwierdzeniu, tekst_potwierdzenia="Usuń"):
@@ -1135,44 +1287,104 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
     otworz_dno(page, bs)
 
 def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
-    pozycje = []
-    
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.ADD, color=ft.Colors.GREEN, size=20), ft.Text("Dodaj nowy pojazd")]), on_click=lambda e: przejdz(page, "/auto/nowy")))
-    if state.auto_id:
-        pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=20), ft.Text("Usuń pojazd")]), on_click=lambda e: usun_auto(page, state)))
-    # Licznik przy "Koszu" jest jedynym sygnałem, że coś tam zalega — bez niego
-    # usunięty pojazd czekałby na wygaśnięcie retencji zupełnie niezauważony.
-    w_koszu = db.liczba_w_koszu()
-    pozycje.append(ft.PopupMenuItem(
-        content=ft.Row([
-            ft.Icon(ft.Icons.DELETE_SWEEP, color=ft.Colors.ORANGE if w_koszu else ft.Colors.GREY, size=20),
-            ft.Text(f"Kosz ({w_koszu})" if w_koszu else "Kosz")
-        ]),
-        on_click=lambda e: przejdz(page, "/kosz")
-    ))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.COMPARE_ARROWS, color=ft.Colors.TEAL, size=20), ft.Text("Porównaj pojazdy")]), on_click=lambda e: przejdz(page, "/porownanie")))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.PEOPLE, color=ft.Colors.TEAL, size=20), ft.Text("Współdziel pojazd")]), on_click=lambda e: przejdz(page, "/wspoldzielenie")))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.CALCULATE, color=ft.Colors.TEAL, size=20), ft.Text("Podział kosztów")]), on_click=lambda e: przejdz(page, "/podzial")))
-    
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.MAP, color=ft.Colors.PURPLE, size=20), ft.Text("Kalkulator podróży")]), on_click=lambda e: przejdz(page, "/kalkulator")))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.TIMELINE, color=ft.Colors.INDIGO, size=20), ft.Text("Dziennik życia auta")]), on_click=lambda e: przejdz(page, "/timeline")))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.INDIGO, size=20), ft.Text("Wydatki cykliczne i przypomnienia")]), on_click=lambda e: pokaz_panel_wydatkow_cyklicznych(page, state)))
+    """Pasek górny ekranu głównego. Menu ⋮ nie jest już płaską listą kilkunastu
+    pozycji (w której kalkulator trasy sąsiadował z dziennikiem pojazdu, a import
+    bazy z eksportem CSV) — otwiera panel z rozwijanymi sekcjami pogrupowanymi
+    po tym, CO SIĘ ROBI: garaż, współdzielenie, narzędzia, dane, aplikacja."""
 
-    pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.UPLOAD_FILE, color=ft.Colors.BLUE, size=20), ft.Text("Eksportuj bazę")]), on_click=cb_export))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.SUMMARIZE, color=ft.Colors.TEAL, size=20), ft.Text("Eksport danych (CSV/PDF)")]), on_click=lambda e: przejdz(page, "/eksport")))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.INPUT, color=ft.Colors.TEAL, size=20), ft.Text("Import tankowań (CSV)")]), on_click=lambda e: przejdz(page, "/import")))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.DOWNLOAD, color=ft.Colors.ORANGE, size=20), ft.Text("Importuj bazę")]), on_click=cb_import))
-
-    pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(ft.Icons.SETTINGS, color=ft.Colors.GREY, size=20), ft.Text("Ustawienia")]), on_click=lambda e: przejdz(page, "/ustawienia")))
-    
     IKONY_TRYBU_MOTYWU = {"jasny": ft.Icons.LIGHT_MODE, "ciemny": ft.Icons.DARK_MODE, "system": ft.Icons.BRIGHTNESS_AUTO}
-    ETYKIETY_TRYBU_MOTYWU = {"jasny": "Tryb jasny", "ciemny": "Tryb ciemny", "system": "Tryb systemowy"}
-    obecny_tryb = db.pobierz_tryb_motywu()
-    nastepny_tryb = db.KOLEJNOSC_TRYBOW_MOTYWU[(db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny_tryb) + 1) % 3]
-    pozycje.append(ft.PopupMenuItem(content=ft.Divider(height=1)))
-    pozycje.append(ft.PopupMenuItem(content=ft.Row([ft.Icon(IKONY_TRYBU_MOTYWU[nastepny_tryb], color=ft.Colors.YELLOW, size=20), ft.Text(ETYKIETY_TRYBU_MOTYWU[nastepny_tryb])]), on_click=cb_theme))
+    ETYKIETY_TRYBU_MOTYWU = {"jasny": "Przełącz na tryb jasny", "ciemny": "Przełącz na tryb ciemny", "system": "Przełącz na tryb systemowy"}
+    OPISY_TRYBU_MOTYWU = {
+        "jasny": "Zawsze jasne tło",
+        "ciemny": "Zawsze ciemne tło",
+        "system": "Podąża za ustawieniem telefonu",
+    }
+
+    def otworz_menu(e):
+        obecny_tryb = db.pobierz_tryb_motywu()
+        nastepny_tryb = db.KOLEJNOSC_TRYBOW_MOTYWU[(db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny_tryb) + 1) % 3]
+        w_koszu = db.liczba_w_koszu()
+
+        pojazdy = [
+            {"ikona": ft.Icons.ADD_CIRCLE_OUTLINE, "kolor": ft.Colors.GREEN_700,
+             "tekst": "Dodaj nowy pojazd", "opis": "Nowe auto w garażu",
+             "akcja": lambda: przejdz(page, "/auto/nowy")},
+        ]
+        if state.auto_id:
+            pojazdy.append(
+                {"ikona": ft.Icons.DELETE_OUTLINE, "kolor": ft.Colors.RED_700,
+                 "tekst": "Usuń pojazd", "opis": f"„{state.auto_nazwa}” trafi do kosza",
+                 "akcja": lambda: usun_auto(page, state)}
+            )
+        pojazdy.append(
+            {"ikona": ft.Icons.DELETE_SWEEP, "tekst": "Kosz",
+             "opis": "Przywróć usunięty pojazd z historią i zdjęciami",
+             "odznaka": w_koszu or None,
+             "akcja": lambda: przejdz(page, "/kosz")}
+        )
+        pojazdy.append(
+            {"ikona": ft.Icons.COMPARE_ARROWS, "tekst": "Porównaj pojazdy",
+             "opis": "Koszty i spalanie obok siebie",
+             "akcja": lambda: przejdz(page, "/porownanie")}
+        )
+
+        wspoldzielenie = [
+            {"ikona": ft.Icons.PEOPLE, "tekst": "Współdziel pojazd",
+             "opis": "Zaproś domownika i synchronizuj dane",
+             "akcja": lambda: przejdz(page, "/wspoldzielenie")},
+            {"ikona": ft.Icons.CALCULATE, "tekst": "Podział kosztów",
+             "opis": "Kto ile wydał na wspólne auto",
+             "akcja": lambda: przejdz(page, "/podzial")},
+        ]
+
+        narzedzia = [
+            {"ikona": ft.Icons.MAP, "tekst": "Kalkulator podróży",
+             "opis": "Policz koszt trasy przed wyjazdem",
+             "akcja": lambda: przejdz(page, "/kalkulator")},
+            {"ikona": ft.Icons.TIMELINE, "tekst": "Dziennik życia auta",
+             "opis": "Oś czasu wszystkich zdarzeń",
+             "akcja": lambda: przejdz(page, "/timeline")},
+            {"ikona": ft.Icons.AUTORENEW, "tekst": "Wydatki cykliczne i przypomnienia",
+             "opis": "Raty, abonamenty, powtarzalne czynności",
+             "akcja": lambda: pokaz_panel_wydatkow_cyklicznych(page, state)},
+        ]
+
+        dane = [
+            {"ikona": ft.Icons.BACKUP, "tekst": "Kopia zapasowa bazy",
+             "opis": "Zapisz całą bazę razem ze zdjęciami",
+             "akcja": lambda: cb_export(None)},
+            {"ikona": ft.Icons.SETTINGS_BACKUP_RESTORE, "kolor": ft.Colors.ORANGE_800,
+             "tekst": "Wczytaj kopię bazy", "opis": "Podmienia WSZYSTKIE dane w aplikacji",
+             "akcja": lambda: cb_import(None)},
+            {"ikona": ft.Icons.SUMMARIZE, "tekst": "Eksport danych (CSV/PDF)",
+             "opis": "Raport z wybranego okresu do wysłania",
+             "akcja": lambda: przejdz(page, "/eksport")},
+            {"ikona": ft.Icons.INPUT, "tekst": "Import tankowań (CSV)",
+             "opis": "Wciągnij historię z innej aplikacji",
+             "akcja": lambda: przejdz(page, "/import")},
+        ]
+
+        aplikacja = [
+            {"ikona": ft.Icons.SETTINGS, "tekst": "Ustawienia",
+             "opis": "Waluta, progi powiadomień, kokpit, kosz",
+             "akcja": lambda: przejdz(page, "/ustawienia")},
+            {"ikona": IKONY_TRYBU_MOTYWU[nastepny_tryb], "tekst": ETYKIETY_TRYBU_MOTYWU[nastepny_tryb],
+             "opis": OPISY_TRYBU_MOTYWU[nastepny_tryb],
+             "akcja": lambda: cb_theme(None)},
+        ]
+
+        pokaz_menu_grupowane(
+            page, "Menu główne",
+            [
+                # Garaż otwarty od razu — to po niego sięga się najczęściej.
+                {"tytul": "Pojazdy", "ikona": ft.Icons.GARAGE, "otwarta": True, "pozycje": pojazdy},
+                {"tytul": "Współdzielenie", "ikona": ft.Icons.GROUPS, "pozycje": wspoldzielenie},
+                {"tytul": "Narzędzia", "ikona": ft.Icons.HANDYMAN, "pozycje": narzedzia},
+                {"tytul": "Dane i kopie", "ikona": ft.Icons.FOLDER_COPY, "pozycje": dane},
+                {"tytul": "Aplikacja", "ikona": ft.Icons.TUNE, "pozycje": aplikacja},
+            ],
+            podtytul=state.auto_nazwa if state.auto_id else "Brak pojazdów",
+        )
 
     nowoczesny_naglowek = ft.Row([
         ft.Container(
@@ -1201,13 +1413,14 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
                 style=ft.ButtonStyle(padding=0),
             ),
             przycisk_dzwonka(page, state),
-            ft.PopupMenuButton(
-                content=ft.Container(
-                    width=36, height=36, alignment=ft.Alignment.CENTER,
-                    content=ft.Icon(ft.Icons.MORE_VERT, size=20, color=ft.Colors.ON_SURFACE_VARIANT),
-                ),
+            ft.IconButton(
+                icon=ft.Icons.MORE_VERT,
+                icon_size=20,
+                icon_color=ft.Colors.ON_SURFACE_VARIANT,
                 tooltip="Menu główne",
-                items=pozycje
+                on_click=otworz_menu,
+                width=36, height=36,
+                style=ft.ButtonStyle(padding=0),
             ),
         ]
     )
