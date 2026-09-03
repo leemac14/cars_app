@@ -651,7 +651,10 @@ class FormularzCzesciView(ft.View):
         for pole in (self.e_nazwa, self.e_ilosc, self.e_cena, self.e_prog):
             pole.error_text = None
 
-        nazwa = (self.e_nazwa.value or "").strip()
+        # Wpisanie innego wariantu zapisu ("filtr Oleju ") nie zakłada nowej
+        # pozycji — nazwa wraca w pisowni tej, która już jest w magazynie.
+        # Ten sam mechanizm, co przy podpowiadaniu stacji paliw.
+        nazwa = db.dopasuj_istniejaca_nazwe(self.state.auto_id, "magazyn_czesci", self.e_nazwa.value)
         bledy = []
         if not nazwa:
             bledy.append((self.e_nazwa, "Podaj nazwę"))

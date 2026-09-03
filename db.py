@@ -456,6 +456,18 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS kosz_pojazdy (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT NOT NULL, data_usuniecia TEXT NOT NULL, migawka TEXT NOT NULL, pliki TEXT, liczba_wpisow INTEGER NOT NULL DEFAULT 0, rozmiar_plikow INTEGER NOT NULL DEFAULT 0, schemat_wersja INTEGER);
             CREATE INDEX IF NOT EXISTS idx_kosz_data ON kosz_pojazdy(data_usuniecia);
+            """,
+            # Wersja 30: zużycie części z magazynu przy POJEDYNCZYM wpisie
+            # serwisowym, a nie tylko przy wizycie zbiorczej. Osobna tabela,
+            # bo wizyta_czesci_magazynu.wizyta_id jest NOT NULL i dowiązane do
+            # tabeli wizyt — wpis poza wizytą nie ma czego tam wskazać.
+            # Struktura celowo lustrzana (ilosc_uzyta + kolumny synchronizacji),
+            # więc cała obsługa w sync.py i w koszu jest tym samym kodem.
+            """
+            CREATE TABLE IF NOT EXISTS historia_czesci_magazynu (id INTEGER PRIMARY KEY AUTOINCREMENT, historia_id INTEGER NOT NULL, magazyn_id INTEGER NOT NULL, ilosc_uzyta REAL NOT NULL DEFAULT 1, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (historia_id) REFERENCES historia(id) ON DELETE CASCADE, FOREIGN KEY (magazyn_id) REFERENCES magazyn_czesci(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_historia_czesci_historia ON historia_czesci_magazynu(historia_id);
+            CREATE INDEX IF NOT EXISTS idx_historia_czesci_magazyn ON historia_czesci_magazynu(magazyn_id);
+            CREATE INDEX IF NOT EXISTS idx_historia_czesci_zdalne ON historia_czesci_magazynu(zdalne_id);
             """
         ]
 
@@ -1739,6 +1751,225 @@ def klucz_stacji(nazwa):
     return tekst.strip(" .,;:-")
 
 
+# ============================================================================
+#  NORMALIZACJA NAZW
+# ============================================================================
+# Ten sam mechanizm, co klucz_stacji dla stacji paliw, tylko zastosowany szerzej:
+# „Filtr oleju”, „filtr Oleju” i „filtr oleju ” to jedna nazwa, a nie trzy
+# osobne pozycje w magazynie, w tagach, wśród warsztatów i podzespołów.
+# Klucz służy WYŁĄCZNIE do porównywania — w bazie zostaje pisownia użytkownika.
+
+# Nazwy porównujemy po zdjęciu emoji: podzespoły założone starszymi wersjami
+# aplikacji mają je w nazwie („🛢️ Olej silnikowy i filtr”), a te same wpisy
+# dodane dziś już nie.
+def klucz_nazwy(tekst):
+    """Klucz porównawczy nazwy: bez emoji, bez wielkości liter, ze scalonymi
+    białymi znakami i bez interpunkcji na brzegach."""
+    czysty = bez_emoji(tekst)
+    return " ".join(czysty.split()).lower().strip(" .,;:-_/")
+
+
+def normalizuj_nazwe(tekst):
+    """Pisownia gotowa do ZAPISU: scalone spacje i obcięte brzegi. Nie zmienia
+    wielkości liter ani treści — użytkownik ma prawo do swojej pisowni, chodzi
+    tylko o to, żeby „filtr oleju ” i „filtr  oleju” nie były różnymi wpisami."""
+    return " ".join(str(tekst or "").split()).strip()
+
+
+# Gdzie normalizacja obowiązuje: tabela -> (kolumna z nazwą, etykieta dla UI).
+# Kolejność steruje kolejnością sekcji w narzędziu scalania duplikatów.
+POLA_NAZW_DO_NORMALIZACJI = [
+    ("magazyn_czesci", "nazwa", "Części i płyny w magazynie"),
+    ("tagi", "nazwa", "Tagi (kategorie kosztów)"),
+    ("warsztaty", "nazwa", "Warsztaty"),
+    ("zadania", "nazwa", "Podzespoły"),
+]
+
+
+def dopasuj_istniejaca_nazwe(auto_id, tabela, nazwa):
+    """Jeśli podana nazwa to tylko inny wariant zapisu czegoś, co już istnieje
+    dla tego pojazdu, zwraca ISTNIEJĄCĄ pisownię — dokładnie tak, jak
+    dopasuj_do_slownika robi to dla stacji paliw. W przeciwnym razie zwraca
+    nazwę po samej normalizacji białych znaków."""
+    kolumna = next((k for t, k, _ in POLA_NAZW_DO_NORMALIZACJI if t == tabela), None)
+    czysta = normalizuj_nazwe(nazwa)
+    if not czysta or not auto_id or not kolumna:
+        return czysta
+
+    klucz = klucz_nazwy(czysta)
+    if not klucz:
+        return czysta
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT {kolumna} FROM {tabela} WHERE auto_id=?", (auto_id,))
+        for (istniejaca,) in c.fetchall():
+            if klucz_nazwy(istniejaca) == klucz:
+                return str(istniejaca)
+    return czysta
+
+
+def znajdz_duplikaty_nazw(auto_id):
+    """Grupy nazw, które po normalizacji są tym samym, a w bazie siedzą jako
+    osobne wiersze. Zwraca listę słowników gotowych do pokazania w Ustawieniach:
+    {tabela, etykieta, klucz, kanoniczna, warianty:[(id, nazwa, ile_uzyc)]}.
+    Kanoniczna to wariant użyty najczęściej — przy remisie ten o najniższym ID
+    (czyli najstarszy), żeby wynik był powtarzalny."""
+    if not auto_id:
+        return []
+
+    # Ile razy dana pozycja jest faktycznie używana — po tym wybieramy zwycięzcę
+    # scalania i to pokazujemy użytkownikowi przy każdym wariancie.
+    zapytania_uzyc = {
+        "magazyn_czesci": (
+            "SELECT magazyn_id, COUNT(*) FROM ("
+            " SELECT magazyn_id FROM wizyta_czesci_magazynu"
+            " UNION ALL SELECT magazyn_id FROM historia_czesci_magazynu"
+            ") GROUP BY magazyn_id"
+        ),
+        "zadania": "SELECT zadanie_id, COUNT(*) FROM historia GROUP BY zadanie_id",
+    }
+
+    grupy = []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        for tabela, kolumna, etykieta in POLA_NAZW_DO_NORMALIZACJI:
+            uzycia = {}
+            if tabela in zapytania_uzyc:
+                c.execute(zapytania_uzyc[tabela])
+                uzycia = {r[0]: int(r[1] or 0) for r in c.fetchall()}
+
+            c.execute(f"SELECT id, {kolumna} FROM {tabela} WHERE auto_id=? ORDER BY id", (auto_id,))
+            wiersze = c.fetchall()
+
+            wg_klucza = {}
+            for wiersz_id, nazwa in wiersze:
+                klucz = klucz_nazwy(nazwa)
+                if not klucz:
+                    continue
+                wg_klucza.setdefault(klucz, []).append(
+                    (wiersz_id, str(nazwa or ""), uzycia.get(wiersz_id, 0))
+                )
+
+            for klucz, warianty in wg_klucza.items():
+                if len(warianty) < 2:
+                    continue
+                kanoniczny = max(warianty, key=lambda w: (w[2], -w[0]))
+                grupy.append({
+                    "tabela": tabela,
+                    "kolumna": kolumna,
+                    "etykieta": etykieta,
+                    "klucz": klucz,
+                    "kanoniczna": kanoniczny,
+                    "warianty": sorted(warianty, key=lambda w: (-w[2], w[0])),
+                })
+    return grupy
+
+
+# Dokąd przepisać powiązania przy scalaniu: tabela nazw -> [(tabela, kolumna)].
+PRZEPIECIA_PRZY_SCALANIU = {
+    "magazyn_czesci": [("wizyta_czesci_magazynu", "magazyn_id"), ("historia_czesci_magazynu", "magazyn_id")],
+    "zadania": [("historia", "zadanie_id"), ("do_zrobienia", "zadanie_id")],
+    "warsztaty": [],
+    "tagi": [],
+}
+
+
+def scal_duplikaty_nazw(auto_id, tabela, id_docelowy, ids_zrodlowe):
+    """Zlewa warianty w jeden wpis: przepina powiązania na wpis docelowy,
+    a same duplikaty kasuje. Zwraca liczbę scalonych pozycji.
+
+    Magazyn ma dodatkowo stan ilościowy — sztuki z duplikatów DOLICZAMY do
+    pozycji docelowej, bo fizycznie leżą w tym samym pudełku, tylko były
+    zapisane pod dwiema pisowniami. Tagi i warsztaty żyją w polach tekstowych
+    innych tabel, więc tam podmieniamy nazwę zamiast ID."""
+    ids_zrodlowe = [i for i in (ids_zrodlowe or []) if i and i != id_docelowy]
+    if not auto_id or not tabela or not id_docelowy or not ids_zrodlowe:
+        return 0
+
+    kolumna = next((k for t, k, _ in POLA_NAZW_DO_NORMALIZACJI if t == tabela), None)
+    if not kolumna:
+        return 0
+
+    placeholders = ",".join("?" for _ in ids_zrodlowe)
+    zdalne_do_nagrobka = []
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT {kolumna} FROM {tabela} WHERE id=?", (id_docelowy,))
+        w = c.fetchone()
+        if not w:
+            return 0
+        nazwa_docelowa = str(w[0] or "")
+
+        c.execute(f"SELECT id, {kolumna}, zdalne_id FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_zrodlowe))
+        znikajace = c.fetchall()
+        zdalne_do_nagrobka = [r[2] for r in znikajace if r[2]]
+
+        if tabela == "magazyn_czesci":
+            c.execute(
+                f"SELECT COALESCE(SUM(ilosc), 0) FROM magazyn_czesci WHERE id IN ({placeholders})",
+                tuple(ids_zrodlowe)
+            )
+            suma = float((c.fetchone() or [0])[0] or 0)
+            if suma:
+                c.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (suma, id_docelowy))
+
+        for tab_powiazana, kol_powiazana in PRZEPIECIA_PRZY_SCALANIU.get(tabela, []):
+            c.execute(
+                f"UPDATE {tab_powiazana} SET {kol_powiazana}=? WHERE {kol_powiazana} IN ({placeholders})",
+                (id_docelowy, *ids_zrodlowe)
+            )
+
+        # Tagi i warsztaty są w innych tabelach zapisane NAZWĄ, nie kluczem obcym.
+        if tabela == "tagi":
+            for _, stara_nazwa, _ in znikajace:
+                _podmien_tag_w_tekstach(c, auto_id, stara_nazwa, nazwa_docelowa)
+        elif tabela == "warsztaty":
+            for _, stara_nazwa, _ in znikajace:
+                for tab in ("wizyty", "historia"):
+                    if tab == "historia":
+                        c.execute(
+                            "UPDATE historia SET wykonawca=? WHERE wykonawca=? AND zadanie_id IN "
+                            "(SELECT id FROM zadania WHERE auto_id=?)",
+                            (nazwa_docelowa, stara_nazwa, auto_id)
+                        )
+                    else:
+                        c.execute(
+                            "UPDATE wizyty SET wykonawca=? WHERE wykonawca=? AND auto_id=?",
+                            (nazwa_docelowa, stara_nazwa, auto_id)
+                        )
+
+        c.execute(f"DELETE FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_zrodlowe))
+
+    for zid in zdalne_do_nagrobka:
+        zarejestruj_nagrobek(tabela, zid)
+
+    if tabela == "zadania":
+        przelicz_wszystkie_zadania(auto_id)
+
+    return len(ids_zrodlowe)
+
+
+def _podmien_tag_w_tekstach(c, auto_id, stara_nazwa, nowa_nazwa):
+    """Tagi trzymane są jako lista rozdzielona przecinkami w kolumnie 'tagi'.
+    Podmieniamy element listy, nie fragment tekstu — inaczej tag „UB” zjadłby
+    kawałek nazwy „UBEZPIECZENIE”."""
+    for tabela in ("tankowania", "wizyty", "inne_koszty"):
+        c.execute(f"SELECT id, tagi FROM {tabela} WHERE auto_id=? AND tagi IS NOT NULL AND tagi <> ''", (auto_id,))
+        for wiersz_id, tekst in c.fetchall():
+            elementy = [t.strip() for t in str(tekst or "").split(",") if t.strip()]
+            zmienione, widziane = [], set()
+            for element in elementy:
+                docelowy = nowa_nazwa if element == stara_nazwa else element
+                if docelowy not in widziane:
+                    widziane.add(docelowy)
+                    zmienione.append(docelowy)
+            nowy_tekst = ", ".join(zmienione)
+            if nowy_tekst != tekst:
+                c.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowy_tekst, wiersz_id))
+
+
 def pobierz_stacje_paliw(auto_id):
     """Słownik stacji budowany w locie z dotychczasowych tankowań pojazdu — bez
     osobnej tabeli, bo dane już są w 'tankowania'. Warianty zapisu tej samej
@@ -2258,11 +2489,18 @@ def usun_z_cofnieciem(tabela, rekord_id):
             except Exception:
                 sciezka_tymczasowa = None
 
+    # Wpis serwisowy może mieć podpięte części z magazynu — oddajemy je na stan,
+    # zanim CASCADE skasuje powiązania (patrz _zdejmij_powiazania_czesci_wpisow).
+    czesci_wpisu = _zdejmij_powiazania_czesci_wpisow([rekord_id]) if tabela == "historia" else []
+
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id=?", (rekord_id,))
 
     if zdalny_id_usuniety:
         zarejestruj_nagrobek(tabela, zdalny_id_usuniety)
+    for w in czesci_wpisu:
+        if w.get("zdalne_id"):
+            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"])
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -2273,6 +2511,9 @@ def usun_z_cofnieciem(tabela, rekord_id):
 
         if zdalny_id_usuniety:
             usun_nagrobek(zdalny_id_usuniety)
+        for w in czesci_wpisu:
+            if w.get("zdalne_id"):
+                usun_nagrobek(w["zdalne_id"])
 
         if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
             try:
@@ -2286,7 +2527,10 @@ def usun_z_cofnieciem(tabela, rekord_id):
         nazwy = ",".join(kolumny_bez_id)
 
         with polacz_baze() as conn:
-            conn.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders})", wartosci)
+            kursor = conn.cursor()
+            kursor.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders})", wartosci)
+            nowe_id = kursor.lastrowid
+        _przywroc_powiazania_czesci_wpisow(czesci_wpisu, {rekord_id: nowe_id})
 
     def finalizuj_usuniecie():
         """Wywołać po upłynięciu okna na cofnięcie — kasuje fizycznie odłożony plik."""
@@ -2333,11 +2577,18 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
                 except Exception:
                     pass
 
+    # Jak przy usuwaniu pojedynczego wpisu — części wracają na stan magazynu,
+    # zamiast zniknąć cicho razem z powiązaniem skasowanym przez CASCADE.
+    czesci_wpisow = _zdejmij_powiazania_czesci_wpisow(ids_list) if tabela == "historia" else []
+
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_list))
 
     for zid in zdalne_id_usuniete:
         zarejestruj_nagrobek(tabela, zid)
+    for w in czesci_wpisow:
+        if w.get("zdalne_id"):
+            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"])
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -2348,6 +2599,9 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
 
         for zid in zdalne_id_usuniete:
             usun_nagrobek(zid)
+        for w in czesci_wpisow:
+            if w.get("zdalne_id"):
+                usun_nagrobek(w["zdalne_id"])
 
         for tmp, oryg in sciezki_tymczasowe:
             if os.path.exists(tmp):
@@ -2360,10 +2614,15 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
         placeholders_ins = ",".join("?" for _ in kolumny_bez_id)
         nazwy = ",".join(kolumny_bez_id)
 
+        mapa_id = {}
         with polacz_baze() as conn:
+            kursor = conn.cursor()
             for dane in dane_lista:
                 wartosci = tuple(dane[k] for k in kolumny_bez_id)
-                conn.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders_ins})", wartosci)
+                kursor.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders_ins})", wartosci)
+                if dane.get("id") is not None:
+                    mapa_id[dane["id"]] = kursor.lastrowid
+        _przywroc_powiazania_czesci_wpisow(czesci_wpisow, mapa_id)
 
     def finalizuj_usuniecie():
         if stan["cofniete"]:
@@ -2437,8 +2696,11 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False):
         for tytul, koszt, zadanie_id in pozycje:
             czy_opony = False
             if not zadanie_id and utworz_podzespoly:
-                cur.execute("SELECT id, nazwa, dotyczy_opon FROM zadania WHERE auto_id=? AND LOWER(nazwa)=LOWER(?)", (auto_id, tytul.strip()))
-                istniejacy = cur.fetchone()
+                # Dopasowanie po klucz_nazwy, więc „Filtr oleju” z listy trafia
+                # w istniejący „🛢️ filtr oleju” zamiast zakładać drugi podzespół.
+                klucz_tytulu = klucz_nazwy(tytul)
+                cur.execute("SELECT id, nazwa, dotyczy_opon FROM zadania WHERE auto_id=?", (auto_id,))
+                istniejacy = next((r for r in cur.fetchall() if klucz_nazwy(r["nazwa"]) == klucz_tytulu), None)
 
                 if istniejacy:
                     zadanie_id = istniejacy["id"]
@@ -2566,6 +2828,9 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
             except Exception:
                 pass
 
+    # Zwracana pozycja znika z historii, więc jej części wracają na stan magazynu.
+    czesci_wpisow = _zdejmij_powiazania_czesci_wpisow([d["id"] for d in historia_dane])
+
     nowe_do_zrobienia_ids = []
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -2587,6 +2852,9 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
     zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
     for zid in zdalne_id_historii:
         zarejestruj_nagrobek("historia", zid)
+    for w in czesci_wpisow:
+        if w.get("zdalne_id"):
+            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"])
 
     przelicz_wszystkie_zadania(auto_id)
 
@@ -2599,6 +2867,9 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
 
         for zid in zdalne_id_historii:
             usun_nagrobek(zid)
+        for w in czesci_wpisow:
+            if w.get("zdalne_id"):
+                usun_nagrobek(w["zdalne_id"])
         for tmp, oryg in sciezki_tymczasowe:
             if os.path.exists(tmp):
                 try:
@@ -2618,6 +2889,8 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
             # Koszt całkowity wraca do wartości sprzed zwrotu, a nie przez
             # dodanie sumy — MAX(0, ...) przy odejmowaniu mogło ją przyciąć.
             conn.execute("UPDATE wizyty SET koszt_calkowity=? WHERE id=?", (koszt_przed, wizyta_id))
+        # Wpisy historii wracają tu z oryginalnymi ID (kolumny_historii zawierają id)
+        _przywroc_powiazania_czesci_wpisow(czesci_wpisow)
         przelicz_wszystkie_zadania(auto_id)
 
     def finalizuj():
@@ -2640,11 +2913,18 @@ def pobierz_tagi(auto_id):
         return c.fetchall()
 
 def dodaj_tag(auto_id, nazwa, kolor):
+    """Dopasowanie po klucz_nazwy, nie po LOWER(nazwa) — dzięki temu „Filtr oleju”,
+    „filtr Oleju” i „filtr  oleju ” trafiają w ten sam tag, a nie zakładają trzech."""
+    nazwa = normalizuj_nazwe(nazwa)
+    if not nazwa:
+        return None
+    klucz = klucz_nazwy(nazwa)
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT id FROM tagi WHERE auto_id=? AND LOWER(nazwa)=LOWER(?)", (auto_id, nazwa))
-        w = c.fetchone()
-        if w: return w[0]
+        c.execute("SELECT id, nazwa FROM tagi WHERE auto_id=?", (auto_id,))
+        for tag_id, istniejaca in c.fetchall():
+            if klucz_nazwy(istniejaca) == klucz:
+                return tag_id
         c.execute("INSERT INTO tagi (auto_id, nazwa, kolor) VALUES (?, ?, ?)", (auto_id, nazwa, kolor))
         return c.lastrowid
 
@@ -2699,16 +2979,21 @@ def pobierz_warsztaty(auto_id):
         return c.fetchall()
 
 def dodaj_warsztat(auto_id, nazwa, telefon=None, adres=None, notatki=None):
-    """Dodaje warsztat per pojazd. Jeśli warsztat o tej samej nazwie (bez
-    uwzględniania wielkości liter i białych znaków na brzegach) już istnieje,
+    """Dodaje warsztat per pojazd. Jeśli warsztat o tej samej nazwie (po
+    normalizacji: bez wielkości liter, emoji i nadmiarowych spacji) już istnieje,
     zwraca jego id zamiast tworzyć duplikat — analogicznie do dodaj_tag()."""
-    nazwa = (nazwa or "").strip()
+    nazwa = normalizuj_nazwe(nazwa)
+    if not nazwa:
+        return None
+    klucz = klucz_nazwy(nazwa)
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT id FROM warsztaty WHERE auto_id=? AND LOWER(nazwa)=LOWER(?)", (auto_id, nazwa))
-        w = c.fetchone()
-        if w:
-            return w[0]
+        # Porównanie po klucz_nazwy zamiast LOWER(nazwa): łapie też spację na
+        # końcu i podwójną w środku, na których stare porównanie się wykładało.
+        c.execute("SELECT id, nazwa FROM warsztaty WHERE auto_id=?", (auto_id,))
+        for w_id, istniejaca in c.fetchall():
+            if klucz_nazwy(istniejaca) == klucz:
+                return w_id
         c.execute(
             "INSERT INTO warsztaty (auto_id, nazwa, telefon, adres, notatki) VALUES (?,?,?,?,?)",
             (auto_id, nazwa, telefon or None, adres or None, notatki or None)
@@ -2834,29 +3119,42 @@ def usun_pakiet_wlasny(pakiet_id):
     if zdalne:
         zarejestruj_nagrobek("pakiety_serwisowe_wlasne", zdalne)
 
-def pobierz_uzyte_czesci_wizyty(wizyta_id):
+# Zużycie części z magazynu ma dwa nośniki: wizytę zbiorczą i pojedynczy wpis
+# serwisowy. Tabele są lustrzane, więc cała logika (pobranie, oddanie na stan,
+# potrącenie) siedzi w jednym rdzeniu sparametryzowanym nazwą tabeli i kolumną
+# wiążącą — zamiast dwóch kopii, które z czasem by się rozjechały.
+POWIAZANIA_MAGAZYNU = {
+    "wizyty": ("wizyta_czesci_magazynu", "wizyta_id"),
+    "historia": ("historia_czesci_magazynu", "historia_id"),
+}
+
+def _pobierz_uzyte_czesci(zrodlo, rekord_id):
+    tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
+    if not rekord_id:
+        return []
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT magazyn_id, ilosc_uzyta FROM wizyta_czesci_magazynu WHERE wizyta_id=?", (wizyta_id,))
+        c.execute(f"SELECT magazyn_id, ilosc_uzyta FROM {tabela} WHERE {kolumna}=?", (rekord_id,))
         return c.fetchall()
 
-def przywroc_czesci_wizyty(wizyta_id, conn=None):
-    """Oddaje do magazynu wykorzystane wcześniej części i usuwa powiązania
-    wizyta_czesci_magazynu. Zwraca listę zdalne_id usuniętych powiązań —
-    WYWOŁUJĄCY musi je zarejestrować jako nagrobki (zarejestruj_nagrobek)
-    DOPIERO PO zamknięciu/commicie bieżącej transakcji (conn). Rejestracja
-    w środku otwartej transakcji otworzyłaby drugie połączenie do tego
-    samego pliku SQLite i mogłaby zakleszczyć bazę."""
+def _przywroc_czesci(zrodlo, rekord_id, conn=None):
+    """Oddaje do magazynu wykorzystane wcześniej części i usuwa powiązania.
+    Zwraca listę zdalne_id usuniętych powiązań — WYWOŁUJĄCY musi je
+    zarejestrować jako nagrobki (zarejestruj_nagrobek) DOPIERO PO
+    zamknięciu/commicie bieżącej transakcji (conn). Rejestracja w środku
+    otwartej transakcji otworzyłaby drugie połączenie do tego samego pliku
+    SQLite i mogłaby zakleszczyć bazę."""
+    tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
     usuniete_zdalne_id = []
 
     def _wykonaj(c):
         cur = c.cursor()
-        cur.execute("SELECT magazyn_id, ilosc_uzyta, zdalne_id FROM wizyta_czesci_magazynu WHERE wizyta_id=?", (wizyta_id,))
+        cur.execute(f"SELECT magazyn_id, ilosc_uzyta, zdalne_id FROM {tabela} WHERE {kolumna}=?", (rekord_id,))
         for magazyn_id, ilosc, zdalne_id in cur.fetchall():
             cur.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (ilosc, magazyn_id))
             if zdalne_id:
                 usuniete_zdalne_id.append(zdalne_id)
-        cur.execute("DELETE FROM wizyta_czesci_magazynu WHERE wizyta_id=?", (wizyta_id,))
+        cur.execute(f"DELETE FROM {tabela} WHERE {kolumna}=?", (rekord_id,))
 
     if conn is not None:
         _wykonaj(conn)
@@ -2866,17 +3164,19 @@ def przywroc_czesci_wizyty(wizyta_id, conn=None):
 
     return usuniete_zdalne_id
 
-def rozlicz_czesci_z_magazynu(wizyta_id, uzyte, conn=None):
+def _rozlicz_czesci(zrodlo, rekord_id, uzyte, conn=None):
+    tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
     if not uzyte:
         return
+
     def _wykonaj(c):
         cur = c.cursor()
         for magazyn_id, ilosc in uzyte:
             if not ilosc or ilosc <= 0:
                 continue
             cur.execute(
-                "INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta) VALUES (?,?,?)",
-                (wizyta_id, magazyn_id, ilosc)
+                f"INSERT INTO {tabela} ({kolumna}, magazyn_id, ilosc_uzyta) VALUES (?,?,?)",
+                (rekord_id, magazyn_id, ilosc)
             )
             cur.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?", (ilosc, magazyn_id))
 
@@ -2886,9 +3186,92 @@ def rozlicz_czesci_z_magazynu(wizyta_id, uzyte, conn=None):
         with polacz_baze() as conn_local:
             _wykonaj(conn_local)
 
+# --- Wizyta zbiorcza (nazwy zachowane, bo używa ich formularz wizyty) ---
+def pobierz_uzyte_czesci_wizyty(wizyta_id):
+    return _pobierz_uzyte_czesci("wizyty", wizyta_id)
+
+def przywroc_czesci_wizyty(wizyta_id, conn=None):
+    return _przywroc_czesci("wizyty", wizyta_id, conn)
+
+def rozlicz_czesci_z_magazynu(wizyta_id, uzyte, conn=None):
+    return _rozlicz_czesci("wizyty", wizyta_id, uzyte, conn)
+
+# --- Pojedynczy wpis serwisowy (poza wizytą) ---
+def pobierz_uzyte_czesci_wpisu(historia_id):
+    return _pobierz_uzyte_czesci("historia", historia_id)
+
+def przywroc_czesci_wpisu(historia_id, conn=None):
+    return _przywroc_czesci("historia", historia_id, conn)
+
+def rozlicz_czesci_z_magazynu_wpisu(historia_id, uzyte, conn=None):
+    return _rozlicz_czesci("historia", historia_id, uzyte, conn)
+
+def _zdejmij_powiazania_czesci_wpisow(historia_ids):
+    """Przed skasowaniem wpisów serwisowych oddaje ich części na stan magazynu
+    i zwraca zdjęte wiersze powiązań. CASCADE i tak skasowałby te powiązania —
+    ale zrobiłby to CICHO, zostawiając sztuki „zużyte” w nieistniejącym już
+    wpisie. Zwrócone wiersze pozwalają odtworzyć stan przy cofnięciu."""
+    if not historia_ids:
+        return []
+    placeholders = ",".join("?" for _ in historia_ids)
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(historia_czesci_magazynu)")
+        kolumny = [r["name"] for r in c.fetchall()]
+        c.execute(
+            f"SELECT * FROM historia_czesci_magazynu WHERE historia_id IN ({placeholders})",
+            tuple(historia_ids)
+        )
+        wiersze = [{k: w[k] for k in kolumny} for w in c.fetchall()]
+        if wiersze:
+            for w in wiersze:
+                c.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?",
+                          (w["ilosc_uzyta"], w["magazyn_id"]))
+            c.execute(
+                f"DELETE FROM historia_czesci_magazynu WHERE historia_id IN ({placeholders})",
+                tuple(historia_ids)
+            )
+    return wiersze
+
+def _przywroc_powiazania_czesci_wpisow(wiersze, mapa_historia=None):
+    """Odwrotność _zdejmij_...: wstawia powiązania z powrotem (z oryginalnymi ID,
+    o ile wolne) i ponownie potrąca sztuki ze stanu magazynu.
+
+    mapa_historia przemapowuje historia_id: ścieżki cofania wstawiają wpis
+    serwisowy BEZ oryginalnego id (patrz kolumny_bez_id), więc po przywróceniu
+    zwykle ma on nowe ID i powiązanie wskazywałoby w próżnię."""
+    if not wiersze:
+        return
+    mapa_historia = mapa_historia or {}
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        for w in wiersze:
+            dane = dict(w)
+            dane["historia_id"] = mapa_historia.get(dane.get("historia_id"), dane.get("historia_id"))
+            c.execute("SELECT 1 FROM historia WHERE id=?", (dane["historia_id"],))
+            if c.fetchone() is None:
+                # Wpis nie wrócił (albo wrócił pod nieznanym ID) — powiązania nie
+                # da się odtworzyć, a sztuki zostały już oddane na stan magazynu.
+                continue
+            stare_id = dane.get("id")
+            if stare_id is not None:
+                c.execute("SELECT 1 FROM historia_czesci_magazynu WHERE id=?", (stare_id,))
+                if c.fetchone() is not None:
+                    dane.pop("id", None)
+            nazwy = list(dane.keys())
+            c.execute(
+                f"INSERT INTO historia_czesci_magazynu ({','.join(nazwy)}) "
+                f"VALUES ({','.join('?' * len(nazwy))})",
+                tuple(dane[k] for k in nazwy)
+            )
+            c.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?",
+                      (dane["ilosc_uzyta"], dane["magazyn_id"]))
+
 def usun_czesc_magazynu_z_cofnieciem(czesc_id):
-    """Usuwa pozycję magazynową wraz z powiązanymi wpisami zużycia w wizytach
-    (wizyta_czesci_magazynu), które SQLite skasowałoby cicho przez CASCADE.
+    """Usuwa pozycję magazynową wraz z powiązanymi wpisami zużycia — zarówno
+    w wizytach (wizyta_czesci_magazynu), jak i w pojedynczych wpisach serwisowych
+    (historia_czesci_magazynu) — które SQLite skasowałoby cicho przez CASCADE.
     Zachowuje oryginalne ID pozycji."""
     if not czesc_id:
         return None
@@ -2909,6 +3292,11 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
         kol_w = [r["name"] for r in c.fetchall()]
         c.execute("SELECT * FROM wizyta_czesci_magazynu WHERE magazyn_id=?", (czesc_id,))
         uzycia_dane = [{k: r[k] for k in kol_w} for r in c.fetchall()]
+
+        c.execute("PRAGMA table_info(historia_czesci_magazynu)")
+        kol_hw = [r["name"] for r in c.fetchall()]
+        c.execute("SELECT * FROM historia_czesci_magazynu WHERE magazyn_id=?", (czesc_id,))
+        uzycia_wpisow = [{k: r[k] for k in kol_hw} for r in c.fetchall()]
 
     sciezka_tymczasowa = None
     oryginalna = dane_czesc.get("zalacznik")
@@ -2931,6 +3319,10 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
     for zid in zdalne_id_uzycia:
         zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
 
+    zdalne_id_uzycia_wpisow = [d.get("zdalne_id") for d in uzycia_wpisow if d.get("zdalne_id")]
+    for zid in zdalne_id_uzycia_wpisow:
+        zarejestruj_nagrobek("historia_czesci_magazynu", zid)
+
     stan = {"cofniete": False, "trwale_usuniete": False}
 
     def cofnij():
@@ -2940,7 +3332,7 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
 
         if zdalny_id_czesci:
             usun_nagrobek(zdalny_id_czesci)
-        for zid in zdalne_id_uzycia:
+        for zid in zdalne_id_uzycia + zdalne_id_uzycia_wpisow:
             usun_nagrobek(zid)
         
         if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
@@ -2956,6 +3348,10 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
                 n_w, p_w = ",".join(kol_w), ",".join("?" for _ in kol_w)
                 for d in uzycia_dane:
                     conn.execute(f"INSERT INTO wizyta_czesci_magazynu ({n_w}) VALUES ({p_w})", tuple(d[k] for k in kol_w))
+            if uzycia_wpisow:
+                n_hw, p_hw = ",".join(kol_hw), ",".join("?" for _ in kol_hw)
+                for d in uzycia_wpisow:
+                    conn.execute(f"INSERT INTO historia_czesci_magazynu ({n_hw}) VALUES ({p_hw})", tuple(d[k] for k in kol_hw))
 
     def finalizuj_usuniecie():
         if stan["cofniete"]:
@@ -3248,15 +3644,20 @@ KOSZ_TABELE_POTOMNE = [
     "zadania", "wizyty", "magazyn_czesci", "tagi", "tankowania",
     "inne_koszty", "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
     "warsztaty", "wydatki_cykliczne", "pakiety_serwisowe_wlasne",
-    "do_zrobienia", "historia", "wizyta_czesci_magazynu",
+    "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
 ]
 
 # Tabele bez kolumny auto_id — z pojazdem związane wyłącznie pośrednio.
-KOSZ_TABELE_BEZ_AUTO_ID = {"historia", "wizyta_czesci_magazynu"}
+KOSZ_TABELE_BEZ_AUTO_ID = {"historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu"}
 
 KOSZ_ZAPYTANIA_POSREDNIE = {
     "historia": "SELECT h.* FROM historia h JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id=?",
     "wizyta_czesci_magazynu": "SELECT wcm.* FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON wcm.wizyta_id = w.id WHERE w.auto_id=?",
+    "historia_czesci_magazynu": (
+        "SELECT hcm.* FROM historia_czesci_magazynu hcm "
+        "JOIN historia h ON hcm.historia_id = h.id "
+        "JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id=?"
+    ),
 }
 
 # Odwołania do przemapowania, gdy przywracany rekord NIE odzyska oryginalnego ID
@@ -3266,6 +3667,7 @@ KOSZ_KLUCZE_OBCE = {
     "do_zrobienia": {"zadanie_id": "zadania"},
     "historia": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
     "wizyta_czesci_magazynu": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"},
+    "historia_czesci_magazynu": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"},
 }
 
 # Tabele, których zdalne odpowiedniki trzeba oznaczyć jako usunięte na serwerze.
@@ -3275,7 +3677,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
     "zadania", "wizyty", "magazyn_czesci", "tankowania", "inne_koszty",
     "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
     "do_zrobienia", "historia", "tagi", "wizyta_czesci_magazynu",
-    "pakiety_serwisowe_wlasne",
+    "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
 ]
 
 # Tabele liczone do "ile wpisów przepadnie" pokazywanego przy pozycji kosza.
@@ -3781,7 +4183,12 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
             except Exception:
                 pass
 
-    # 5. Usunięcie zadania (SQLite CASCADE automatycznie wyczyści powiązaną historię)
+    # 5. Części z magazynu użyte w tych wpisach wracają na stan — CASCADE
+    # skasowałby powiązania po cichu, zostawiając sztuki „zużyte” w nieistniejącym
+    # już podzespole.
+    czesci_wpisow = _zdejmij_powiazania_czesci_wpisow([d["id"] for d in historia_dane])
+
+    # 6. Usunięcie zadania (SQLite CASCADE automatycznie wyczyści powiązaną historię)
     with polacz_baze() as conn:
         conn.execute("DELETE FROM zadania WHERE id=?", (zadanie_id,))
 
@@ -3791,6 +4198,9 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
         zarejestruj_nagrobek("zadania", zdalny_id_zadania)
     for zid in zdalne_id_historii:
         zarejestruj_nagrobek("historia", zid)
+    for w in czesci_wpisow:
+        if w.get("zdalne_id"):
+            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"])
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -3803,6 +4213,9 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
             usun_nagrobek(zdalny_id_zadania)
         for zid in zdalne_id_historii:
             usun_nagrobek(zid)
+        for w in czesci_wpisow:
+            if w.get("zdalne_id"):
+                usun_nagrobek(w["zdalne_id"])
 
         # Przywrócenie plików na dysk
         for tmp, oryg in sciezki_tymczasowe:
@@ -3833,6 +4246,10 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
                     f"UPDATE do_zrobienia SET zadanie_id=? WHERE id IN ({placeholders})",
                     (zadanie_id, *do_zrobienia_ids)
                 )
+
+        # 4. Wpisy historii wróciły z ORYGINALNYMI ID, więc powiązania z magazynem
+        # wstawiamy bez przemapowania; sztuki znów schodzą ze stanu.
+        _przywroc_powiazania_czesci_wpisow(czesci_wpisow)
 
     def finalizuj_usuniecie():
         if stan["cofniete"]:

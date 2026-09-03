@@ -146,6 +146,7 @@ KONFIGURACJA_SYNC = [
     {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
     {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "data_zakupu", "notatki", "prog_ostrzezenia"], "fk": {}},
     {"tabela": "wizyta_czesci_magazynu", "kolumny": ["ilosc_uzyta"], "fk": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"}},
+    {"tabela": "historia_czesci_magazynu", "kolumny": ["ilosc_uzyta"], "fk": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
@@ -154,6 +155,55 @@ KONFIGURACJA_SYNC = [
     {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},
 ]
+
+# Tabele bez własnej kolumny auto_id — do pojazdu dowiązane wyłącznie pośrednio,
+# przez JOIN. Wcześniej każdy taki przypadek był osobnym if/elif powtórzonym
+# w pięciu miejscach tego pliku; teraz jest jednym opisem, więc dołożenie kolejnej
+# tabeli pośredniej to jeden wpis, a nie pięć łatek.
+TABELE_POSREDNIE = {
+    "historia": {
+        "alias": "h",
+        "join": "JOIN zadania z ON h.zadanie_id = z.id",
+        "warunek": "z.auto_id=?",
+        "reset_where": "zadanie_id IN (SELECT id FROM zadania WHERE auto_id=?)",
+    },
+    "wizyta_czesci_magazynu": {
+        "alias": "wcm",
+        "join": "JOIN wizyty w ON wcm.wizyta_id = w.id",
+        "warunek": "w.auto_id=?",
+        "reset_where": "wizyta_id IN (SELECT id FROM wizyty WHERE auto_id=?)",
+    },
+    "historia_czesci_magazynu": {
+        "alias": "hcm",
+        "join": "JOIN historia h ON hcm.historia_id = h.id JOIN zadania z ON h.zadanie_id = z.id",
+        "warunek": "z.auto_id=?",
+        "reset_where": (
+            "historia_id IN (SELECT h.id FROM historia h "
+            "JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id=?)"
+        ),
+    },
+}
+
+def _zapytanie_tabeli(tabela, pola="*", warunek_dodatkowy=None):
+    """Buduje SELECT ograniczony do jednego pojazdu — dla tabel z auto_id wprost,
+    dla pośrednich przez zdefiniowany JOIN. `pola` podaje się bez aliasu
+    (np. "id, zdalne_id"); alias jest doklejany automatycznie."""
+    opis = TABELE_POSREDNIE.get(tabela)
+    if not opis:
+        zapytanie = f"SELECT {pola} FROM {tabela} WHERE auto_id=?"
+        if warunek_dodatkowy:
+            zapytanie += f" AND {warunek_dodatkowy}"
+        return zapytanie
+
+    alias = opis["alias"]
+    if pola.strip() == "*":
+        wybor = f"{alias}.*"
+    else:
+        wybor = ", ".join(f"{alias}.{p.strip()}" for p in pola.split(","))
+    zapytanie = f"SELECT {wybor} FROM {tabela} {alias} {opis['join']} WHERE {opis['warunek']}"
+    if warunek_dodatkowy:
+        zapytanie += f" AND {alias}.{warunek_dodatkowy}"
+    return zapytanie
 
 def _hash_zawartosci(dane: dict) -> str:
     kanoniczny = json.dumps(dane, sort_keys=True, default=str, ensure_ascii=True)
@@ -185,6 +235,7 @@ ETYKIETY_TABEL_SYNC = {
     "zadania": "Podzespół",
     "magazyn_czesci": "Pozycja magazynu",
     "wizyta_czesci_magazynu": "Zużycie części",
+    "historia_czesci_magazynu": "Zużycie części przy wpisie",
     "zestawy_opon": "Zestaw opon",
     "inne_koszty": "Inny koszt",
     "warsztaty": "Warsztat",
@@ -269,18 +320,7 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
             dane[f"{pole_fk}_zdalne"] = zdalne_fk
         return dane
 
-    if tabela == "historia":
-        zapytanie_nowe = (
-            "SELECT h.* FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
-            "WHERE z.auto_id=? AND h.zdalne_id IS NULL"
-        )
-    elif tabela == "wizyta_czesci_magazynu":
-        zapytanie_nowe = (
-            "SELECT wcm.* FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON wcm.wizyta_id = w.id "
-            "WHERE w.auto_id=? AND wcm.zdalne_id IS NULL"
-        )
-    else:
-        zapytanie_nowe = f"SELECT * FROM {tabela} WHERE auto_id=? AND zdalne_id IS NULL"
+    zapytanie_nowe = _zapytanie_tabeli(tabela, "*", "zdalne_id IS NULL")
 
     with db.polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
@@ -299,18 +339,7 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
             conn.execute(f"UPDATE {tabela} SET zdalne_id=?, zdalny_hash=? WHERE id=?", (nowe_zdalne_id, nowy_hash, wiersz["id"]))
         wyslano += 1
 
-    if tabela == "historia":
-        zapytanie_istniejace = (
-            "SELECT h.* FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
-            "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
-        )
-    elif tabela == "wizyta_czesci_magazynu":
-        zapytanie_istniejace = (
-            "SELECT wcm.* FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON wcm.wizyta_id = w.id "
-            "WHERE w.auto_id=? AND wcm.zdalne_id IS NOT NULL"
-        )
-    else:
-        zapytanie_istniejace = f"SELECT * FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
+    zapytanie_istniejace = _zapytanie_tabeli(tabela, "*", "zdalne_id IS NOT NULL")
 
     with db.polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
@@ -350,20 +379,7 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
     fk = konfig["fk"]
     pobrano = 0
 
-    if tabela == "historia":
-        zapytanie_znane = (
-            "SELECT h.id, h.zdalne_id, h.zdalny_hash FROM historia h "
-            "JOIN zadania z ON h.zadanie_id = z.id "
-            "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
-        )
-    elif tabela == "wizyta_czesci_magazynu":
-        zapytanie_znane = (
-            "SELECT wcm.id, wcm.zdalne_id, wcm.zdalny_hash FROM wizyta_czesci_magazynu wcm "
-            "JOIN wizyty w ON wcm.wizyta_id = w.id "
-            "WHERE w.auto_id=? AND wcm.zdalne_id IS NOT NULL"
-        )
-    else:
-        zapytanie_znane = f"SELECT id, zdalne_id, zdalny_hash FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
+    zapytanie_znane = _zapytanie_tabeli(tabela, "id, zdalne_id, zdalny_hash", "zdalne_id IS NOT NULL")
 
     with db.polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
@@ -416,7 +432,7 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
                         continue
             # -------------------------------------------------------------------------
             
-            if tabela not in ("historia", "wizyta_czesci_magazynu"):
+            if tabela not in TABELE_POSREDNIE:
                 wartosci["auto_id"] = auto_id
             wartosci["zdalne_id"] = zdalne_id
             wartosci["zdalny_hash"] = nowy_hash
@@ -490,18 +506,7 @@ def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
     fk = konfig["fk"]
     przywrocono = 0
 
-    if tabela == "historia":
-        zapytanie_znane = (
-            "SELECT h.zdalne_id FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
-            "WHERE z.auto_id=? AND h.zdalne_id IS NOT NULL"
-        )
-    elif tabela == "wizyta_czesci_magazynu":
-        zapytanie_znane = (
-            "SELECT wcm.zdalne_id FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON wcm.wizyta_id = w.id "
-            "WHERE w.auto_id=? AND wcm.zdalne_id IS NOT NULL"
-        )
-    else:
-        zapytanie_znane = f"SELECT zdalne_id FROM {tabela} WHERE auto_id=? AND zdalne_id IS NOT NULL"
+    zapytanie_znane = _zapytanie_tabeli(tabela, "zdalne_id", "zdalne_id IS NOT NULL")
 
     with db.polacz_baze() as conn:
         c = conn.cursor()
@@ -530,7 +535,7 @@ def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
                     lokalny_fk = w[0] if w else None
             wartosci[pole_fk] = lokalny_fk
 
-        if tabela not in ("historia", "wizyta_czesci_magazynu"):
+        if tabela not in TABELE_POSREDNIE:
             wartosci["auto_id"] = auto_id
         wartosci["zdalne_id"] = zdalne_id
         wartosci["zdalny_hash"] = nowy_hash
@@ -601,20 +606,12 @@ def odlacz_wspoldzielenie(auto_id):
         )
         for konfig in KONFIGURACJA_SYNC:
             tabela = konfig["tabela"]
-            if tabela == "historia":
-                conn.execute(
-                    "UPDATE historia SET zdalne_id=NULL, zdalny_hash=NULL "
-                    "WHERE zadanie_id IN (SELECT id FROM zadania WHERE auto_id=?)",
-                    (auto_id,)
-                )
-            elif tabela == "wizyta_czesci_magazynu":
-                conn.execute(
-                    "UPDATE wizyta_czesci_magazynu SET zdalne_id=NULL, zdalny_hash=NULL "
-                    "WHERE wizyta_id IN (SELECT id FROM wizyty WHERE auto_id=?)",
-                    (auto_id,)
-                )
-            else:
-                conn.execute(f"UPDATE {tabela} SET zdalne_id=NULL, zdalny_hash=NULL WHERE auto_id=?", (auto_id,))
+            opis_posredni = TABELE_POSREDNIE.get(tabela)
+            warunek = opis_posredni["reset_where"] if opis_posredni else "auto_id=?"
+            conn.execute(
+                f"UPDATE {tabela} SET zdalne_id=NULL, zdalny_hash=NULL WHERE {warunek}",
+                (auto_id,)
+            )
 
 def synchronizuj_w_tle(auto_id, powod="zapis"):
     """Cicha synchronizacja po zapisie formularza. NIE rzuca wyjątków, ale — w

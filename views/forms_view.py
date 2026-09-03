@@ -855,7 +855,7 @@ class FormularzZadanieView(ft.View):
     def zapisz(self, e):
         self.e_p.error_text = None
         self.e_c.error_text = None
-        nazwa = (self.e_n.value or "").strip()
+        nazwa = db.normalizuj_nazwe(self.e_n.value)
         if not nazwa: return utils.pokaz_bledy_formularza(self._page, [(self.e_n, "Podaj nazwę")])
 
         dotyczy_opon = 1 if self.c_dotyczy_opon.value else 0
@@ -878,8 +878,11 @@ class FormularzZadanieView(ft.View):
 
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT id FROM zadania WHERE auto_id=? AND LOWER(nazwa)=LOWER(?) AND id!=?", (self.state.auto_id, nazwa, self.z_id or 0))
-            if c.fetchone():
+            # Porównanie po klucz_nazwy zamiast LOWER(nazwa): duplikat wykryjemy
+            # też wtedy, gdy różni je emoji, spacja na końcu albo podwójna w środku.
+            klucz_nowej = db.klucz_nazwy(nazwa)
+            c.execute("SELECT id, nazwa FROM zadania WHERE auto_id=? AND id!=?", (self.state.auto_id, self.z_id or 0))
+            if any(db.klucz_nazwy(istniejaca) == klucz_nowej for _, istniejaca in c.fetchall()):
                 db.anuluj_nowy_zalacznik(przygotowany)
                 return utils.pokaz_bledy_formularza(self._page, [(self.e_n, "Taka nazwa już istnieje")])
             
@@ -1082,12 +1085,69 @@ class FormularzWpisView(ft.View):
         )
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)  # <-- NOWE
 
+        # Magazyn części — dokładnie ta sama mechanika, co przy wizycie zbiorczej.
+        # Wcześniej stan magazynu schodził tylko przy wizycie, więc wymiana oleju
+        # zapisana jako pojedynczy wpis zostawiała butelkę „na stanie” w nieskończoność.
+        poprzednio_uzyte = dict(db.pobierz_uzyte_czesci_wpisu(h_id)) if h_id else {}
+        with db.polacz_baze() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id, nazwa, ilosc, jednostka FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa", (self.state.auto_id,))
+            wszystkie_czesci_magazynu = c.fetchall()
+
+        self.magazyn_kontrolki = []
+        wiersze_magazynu = []
+        for m_id, m_nazwa, m_ilosc, m_jedn in wszystkie_czesci_magazynu:
+            juz_uzyto = float(poprzednio_uzyte.get(m_id, 0) or 0)
+            # Przy edycji doliczamy to, co ten wpis już zdjął ze stanu — inaczej
+            # własna, wcześniej zapisana ilość wyglądałaby na niedostępną.
+            dostepna = float(m_ilosc or 0) + juz_uzyto
+            if dostepna <= 0:
+                continue
+
+            zaznaczone = m_id in poprzednio_uzyte
+            pole_ilosc = ft.TextField(
+                value=utils.formatuj_liczba(juz_uzyto, 2) if zaznaczone else "1",
+                width=90, visible=zaznaczone,
+                keyboard_type=ft.KeyboardType.NUMBER,
+                **utils.styl_pola(page=page)
+            )
+
+            def _przelacz(e, pole=pole_ilosc):
+                pole.visible = e.control.value
+                pole.update()
+
+            chk = ft.Checkbox(
+                label=f"{m_nazwa} (dost.: {utils.formatuj_liczba(dostepna, 2)} {m_jedn or 'szt'})",
+                value=zaznaczone, data=m_id, on_change=_przelacz
+            )
+
+            self.magazyn_kontrolki.append((chk, pole_ilosc, {"id": m_id, "dostepna": dostepna}))
+            wiersze_magazynu.append(ft.Row([chk, pole_ilosc], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER))
+
+        self.magazyn_lista_kontener = ft.Column(wiersze_magazynu, spacing=8, visible=bool(poprzednio_uzyte))
+
+        def _przelacz_magazyn(e):
+            self.magazyn_lista_kontener.visible = e.control.value
+            self.magazyn_lista_kontener.update()
+
+        self.c_uzyj_magazynu = ft.Checkbox(
+            label="Wykorzystaj własne części z magazynu",
+            value=bool(poprzednio_uzyte),
+            on_change=_przelacz_magazyn
+        )
+
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"{'Edycja' if h_id else 'Nowa wymiana'}: {nazwa}", self.trasa_powrotu, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / faktura)", ft.Icons.ATTACH_FILE)  # <-- NOWE
-        
-        elementy = [k1, k2, utils.przyciski_akcji(page, "Zapisz wpis", self.zapisz, self.trasa_powrotu)]
+
+        elementy = [k1, k2]
+        if self.magazyn_kontrolki:
+            elementy.append(utils.karta_formularza(
+                [self.c_uzyj_magazynu, self.magazyn_lista_kontener],
+                "Magazyn części", ft.Icons.INVENTORY_2
+            ))
+        elementy.append(utils.przyciski_akcji(page, "Zapisz wpis", self.zapisz, self.trasa_powrotu))
 
         super().__init__(
             route=f"/wpis/edytuj/{h_id}" if h_id else f"/wpis/nowy/{self.z_id}",
@@ -1095,7 +1155,11 @@ class FormularzWpisView(ft.View):
         )
 
     def _migawka_formularza(self):
-        return (self.e_d.value, self.e_p.value, self.e_c.value, self.get_wykonawca(), self.e_kat.value)
+        return (
+            self.e_d.value, self.e_p.value, self.e_c.value, self.get_wykonawca(), self.e_kat.value,
+            self.c_uzyj_magazynu.value,
+            tuple((chk.value, pole.value) for chk, pole, _ in self.magazyn_kontrolki),
+        )
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -1106,7 +1170,23 @@ class FormularzWpisView(ft.View):
         bledy = []
         if not (self.e_p.value or "").strip() or prz < 0: bledy.append((self.e_p, "Błędny przebieg"))
         if kos < 0: bledy.append((self.e_c, "Błędny koszt"))
-        if bledy: return utils.pokaz_bledy_formularza(self._page, bledy)
+
+        nowe_uzyte = []
+        for chk, pole_ilosc, poz in self.magazyn_kontrolki:
+            pole_ilosc.error_text = None
+            if self.c_uzyj_magazynu.value and chk.value:
+                ilosc = utils.parsuj_float(pole_ilosc.value, None)
+                if ilosc is None or ilosc <= 0 or ilosc > poz["dostepna"] + 1e-9:
+                    pole_ilosc.error_text = f"Maks. {utils.formatuj_liczba(poz['dostepna'], 2)}"
+                else:
+                    nowe_uzyte.append((poz["id"], ilosc))
+        blad_magazynu = any(pole.error_text for _, pole, _ in self.magazyn_kontrolki)
+
+        if bledy or blad_magazynu:
+            self._page.update()
+            if bledy:
+                return utils.pokaz_bledy_formularza(self._page, bledy)
+            return utils.pokaz_komunikat(self._page, "Sprawdź ilości wykorzystanych części z magazynu.", ft.Colors.RED_700)
 
         # Pobieramy wykonawcę i jeśli wpisano z palca nową nazwę, zapisujemy ją do bazy
         wyk = self.get_wykonawca() or "Warsztat"
@@ -1121,12 +1201,29 @@ class FormularzWpisView(ft.View):
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
 
+        zdalne_id_czesci_do_nagrobka = []
         with db.polacz_baze() as conn:
-            if self.h_id: 
+            if self.h_id:
                 conn.execute("UPDATE historia SET data=?, przebieg=?, cena=?, wykonawca=?, kategoria=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
-            else: 
-                conn.execute("INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie()))
+                historia_id = self.h_id
+                # Edycja: najpierw oddajemy do magazynu to, co ten wpis zdjął
+                # poprzednio, a dopiero potem potrącamy nowy zestaw. Inaczej
+                # zmiana ilości z 2 na 1 zdjęłaby ze stanu kolejną sztukę.
+                zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wpisu(historia_id, conn=conn)
+            else:
+                kursor = conn.cursor()
+                kursor.execute("INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie()))
+                historia_id = kursor.lastrowid
+
+            db.rozlicz_czesci_z_magazynu_wpisu(historia_id, nowe_uzyte, conn=conn)
+
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+
+        # Nagrobki rejestrujemy PO commicie transakcji powyżej — zarejestruj_nagrobek
+        # otwiera własne połączenie do SQLite i w środku otwartej transakcji
+        # mogłoby zakleszczyć bazę (ten sam powód, co w formularzu wizyty).
+        for zid in zdalne_id_czesci_do_nagrobka:
+            db.zarejestruj_nagrobek("historia_czesci_magazynu", zid)
 
         db.aktualizuj_najnowszy_wpis(self.z_id)
         utils.przejdz(self._page, self.trasa_powrotu)
