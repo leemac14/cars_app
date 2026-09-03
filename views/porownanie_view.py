@@ -406,10 +406,8 @@ class PorownanieView(ft.View):
         def zmien(e):
             # Bezpieczny odczyt wartości (niektóre wersje Flet przekazują ją w e.data)
             wybor = e.control.value if e.control.value is not None else getattr(e, "data", None)
-            print(f"[DEBUG RADAR] Wybrano z dropdowna: {repr(wybor)}")
 
             self.state.porownanie_piata_os = None if wybor in (BRAK_PIATEJ_OSI, None, "") else wybor
-            print(f"[DEBUG RADAR] Stan porownanie_piata_os: {repr(self.state.porownanie_piata_os)}")
 
             # Wymuszenie odświeżenia widoku w Flet (reset route przed go)
             self._page.route = ""
