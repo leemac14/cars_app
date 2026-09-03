@@ -17,6 +17,12 @@ IKONY_WYSZUKIWANIA = {
 
 
 class SzukajView(ft.View):
+    PODPOWIEDZ_STARTOWA = (
+        "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
+        "inne koszty, warsztaty, wydatki cykliczne i listę Do zrobienia bieżącego pojazdu. "
+        "Sama liczba szuka po kwocie."
+    )
+
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
@@ -37,7 +43,7 @@ class SzukajView(ft.View):
             return
 
         self.pole_wyszukiwarki = ft.TextField(
-            hint_text="Szukaj (stacja, część, warsztat, opis, data)...",
+            hint_text="Szukaj (stacja, część, warsztat, opis, data, kwota)...",
             prefix_icon=ft.Icons.SEARCH,
             autofocus=True,
             on_change=utils.z_opoznieniem(self._page, self._wyszukaj),
@@ -45,8 +51,7 @@ class SzukajView(ft.View):
         )
 
         self.tekst_pomocniczy = ft.Text(
-            "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
-            "inne koszty, warsztaty, wydatki cykliczne i listę Do zrobienia bieżącego pojazdu.",
+            self.PODPOWIEDZ_STARTOWA,
             size=13, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER
         )
         self.kontener_pomocniczy = ft.Container(
@@ -55,11 +60,33 @@ class SzukajView(ft.View):
             alignment=ft.Alignment.CENTER,
         )
 
+        # Składnia kwotowa jest odkrywalna tylko wtedy, gdy się o niej powie —
+        # sam „>1000” nikomu nie przyjdzie do głowy w polu opisanym „Szukaj”.
+        self.podpowiedz_kwot = ft.Container(
+            padding=ft.Padding(12, 10, 12, 10),
+            border_radius=utils.RADIUS["sm"],
+            bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY),
+            content=ft.Row([
+                ft.Icon(ft.Icons.PAYMENTS, size=16, color=ft.Colors.PRIMARY),
+                ft.Text(
+                    "Szukanie po kwocie: 450 (±2%) · >1000 · <50 · 200-500",
+                    size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                ),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
+        # Pasek pokazywany dopiero wtedy, gdy zapytanie ZOSTAŁO rozpoznane jako
+        # kwota — inaczej nie wiadomo, czemu „450” nie znalazło daty z 450.
+        self.pasek_trybu_kwoty = ft.Container(visible=False)
+
         self.lista_wynikow = ft.ListView(
             spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False
         )
 
-        elementy = [self.pole_wyszukiwarki, self.kontener_pomocniczy, self.lista_wynikow]
+        elementy = [
+            self.pole_wyszukiwarki, self.podpowiedz_kwot, self.pasek_trybu_kwoty,
+            self.kontener_pomocniczy, self.lista_wynikow,
+        ]
 
         super().__init__(
             route="/szukaj", padding=15, spacing=15, appbar=appbar,
@@ -103,19 +130,38 @@ class SzukajView(ft.View):
         zapytanie = (self.pole_wyszukiwarki.value or "").strip()
         self.lista_wynikow.controls.clear()
 
-        if len(zapytanie) < 2:
-            self.tekst_pomocniczy.value = (
-                "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
-                "inne koszty, warsztaty, wydatki cykliczne i listę Do zrobienia bieżącego pojazdu."
-            )
+        zakres = db.parsuj_zapytanie_kwotowe(zapytanie)
+        # Jednoznakowe zapytanie kwotowe („5”) ma sens, więc próg 2 znaków
+        # obowiązuje tylko zwykły tekst.
+        if not zakres and len(zapytanie) < 2:
+            self.tekst_pomocniczy.value = self.PODPOWIEDZ_STARTOWA
             self.kontener_pomocniczy.visible = True
+            self.pasek_trybu_kwoty.visible = False
             self.update()
             return
+
+        if zakres:
+            self.pasek_trybu_kwoty.content = ft.Row([
+                ft.Icon(ft.Icons.FILTER_ALT, size=16, color=ft.Colors.PRIMARY),
+                ft.Text(f"Szukam po kwocie: {zakres[2]} {utils.symbol_waluty()}",
+                        size=12, weight="bold", color=ft.Colors.PRIMARY, expand=True),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            self.pasek_trybu_kwoty.padding = ft.Padding(12, 10, 12, 10)
+            self.pasek_trybu_kwoty.border_radius = utils.RADIUS["sm"]
+            self.pasek_trybu_kwoty.bgcolor = ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY)
+            self.pasek_trybu_kwoty.visible = True
+            self.podpowiedz_kwot.visible = False
+        else:
+            self.pasek_trybu_kwoty.visible = False
+            self.podpowiedz_kwot.visible = True
 
         wyniki = db.globalne_wyszukiwanie(self.state.auto_id, zapytanie)
 
         if not wyniki:
-            self.tekst_pomocniczy.value = f"Brak wyników dla „{zapytanie}”."
+            self.tekst_pomocniczy.value = (
+                f"Brak wpisów pasujących do zapytania „{zapytanie}”."
+                if zakres else f"Brak wyników dla „{zapytanie}”."
+            )
             self.kontener_pomocniczy.visible = True
         else:
             self.kontener_pomocniczy.visible = False

@@ -132,6 +132,7 @@ class FormularzAutoView(ft.View):
         n_val, r_val, v_val, ro_val, oc_val, pt_val = "", "", "", "", "", ""
         m_val, mod_val, gen_val = "", "", ""
         poj_val, moc_val, pal_val, skrz_val, not_val = "", "", "Benzyna", "Manualna", ""
+        nadw_val = ""
         wp_val, wt_val, cp_val, ct_val = "", "", "", ""
         ot_val, op_val, akum_val, zm_val, zd_val = "", "", "", "", ""
         ac_val, asy_val, gas_val, apt_val = "", "", "", ""
@@ -149,7 +150,7 @@ class FormularzAutoView(ft.View):
                     "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                     "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                     "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, zdjecie_glowne, "
-                    "marka, model, generacja, kolor_motywu "
+                    "marka, model, generacja, kolor_motywu, nadwozie "
                     "FROM samochody WHERE id=?", 
                     (auto_id,)
                 )
@@ -159,6 +160,7 @@ class FormularzAutoView(ft.View):
                     oc_val, pt_val = str(w["oc_data"] or ""), str(w["przeglad_data"] or "")
                     poj_val, moc_val = str(w["pojemnosc_silnika"] or ""), str(w["moc_silnika"] or "")
                     pal_val, skrz_val, not_val = str(w["typ_paliwa"] or "Benzyna"), str(w["skrzynia_biegow"] or "Manualna"), str(w["notatki"] or "")
+                    nadw_val = str(w["nadwozie"] or "")
                     wp_val, wt_val = str(w["wycieraczki_przod"] or ""), str(w["wycieraczki_tyl"] or "")
                     cp_val, ct_val = str(w["cisnienie_przod"] or ""), str(w["cisnienie_tyl"] or "")
                     ot_val, op_val = str(w["olej_typ"] or ""), str(w["olej_pojemnosc"] or "")
@@ -213,6 +215,40 @@ class FormularzAutoView(ft.View):
         self.e_moc = ft.TextField(label="Moc silnika (KM)", value=moc_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_pal = ft.Dropdown(label="Typ paliwa", options=[ft.DropdownOption(key=x, text=x) for x in db.TYPY_PALIWA], value=pal_val, **utils.styl_dropdown())
         self.e_skrz = ft.Dropdown(label="Skrzynia biegów", options=[ft.DropdownOption(key=x, text=x) for x in ["Manualna", "Automatyczna"]], value=skrz_val, **utils.styl_dropdown())
+        # Nadwozie służy przede wszystkim ODZNACE w selektorze pojazdów: sylwetka
+        # w kolorze auta pozwala rozpoznać je bez czytania nazwy. Puste = ogólna
+        # ikona samochodu, więc pole jest w pełni opcjonalne.
+        self.podglad_odznaki = ft.Row(spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        def odswiez_podglad_odznaki(e=None):
+            """Odznaka jest po to, żeby rozpoznać auto na liście — więc pokazujemy
+            od razu, jak będzie wyglądać, zamiast kazać wracać do selektora."""
+            wybrane = self.e_nadwozie.value or None
+            self.podglad_odznaki.controls = [
+                utils.odznaka_pojazdu(
+                    {"nadwozie": wybrane, "kolor_motywu": self.get_kolor()},
+                    rozmiar=40,
+                ),
+                ft.Text(
+                    "Tak pojazd będzie oznaczony na liście wyboru"
+                    + ("" if wybrane else " (bez typu nadwozia — ogólna ikona)"),
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                ),
+            ]
+            try:
+                self.podglad_odznaki.update()
+            except Exception:
+                pass
+
+        self.e_nadwozie = ft.Dropdown(
+            label="Typ nadwozia",
+            options=[ft.DropdownOption(key="", text="— nie podano —")]
+                    + [ft.DropdownOption(key=x, text=x) for x in db.TYPY_NADWOZIA],
+            value=nadw_val if nadw_val in db.TYPY_NADWOZIA else "",
+            on_select=odswiez_podglad_odznaki,
+            **utils.styl_dropdown()
+        )
+        odswiez_podglad_odznaki()
         self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
 
         self.e_wp = ft.TextField(label="Wycieraczki (przód)", value=wp_val, hint_text="np. 60cm", **utils.styl_pola(page=page))
@@ -248,7 +284,10 @@ class FormularzAutoView(ft.View):
             [ft.Text("Ten kolor będzie używany w całym interfejsie, gdy ten pojazd jest aktywny.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT), self.k_kolor],
             "Kolor interfejsu dla tego pojazdu", ft.Icons.PALETTE
         )
-        k2 = utils.karta_formularza([self.e_pal, self.e_skrz, self.e_poj, self.e_moc], "Specyfikacja techniczna", ft.Icons.SETTINGS)
+        k2 = utils.karta_formularza(
+            [self.e_pal, self.e_skrz, self.e_nadwozie, self.podglad_odznaki, self.e_poj, self.e_moc],
+            "Specyfikacja techniczna", ft.Icons.SETTINGS
+        )
         k3 = utils.karta_formularza([self.e_oc, self.e_pt], "Ważne daty", ft.Icons.CALENDAR_MONTH)
         k5 = utils.karta_formularza([wiersz_wycieraczki, wiersz_cisnienie, wiersz_olej, self.e_akum, wiersz_zarowki], "Ściągawka do sklepu", ft.Icons.SHOPPING_CART)
         k6 = utils.karta_formularza([self.e_ac, self.e_asy, self.e_gas, self.e_apt, self.e_gw, self.e_gwp], "Dodatkowe polisy, gwarancja i BHP", ft.Icons.SHIELD)
@@ -384,7 +423,7 @@ class FormularzAutoView(ft.View):
             self.e_marka.value, self.e_model.value, self.e_generacja.value,
             self.e_rej.value, self.e_rok.value, self.e_vin.value, self.e_przebieg.value,
             self.e_oc.value, self.e_pt.value, self.e_poj.value, self.e_moc.value,
-            self.e_pal.value, self.e_skrz.value, self.e_not.value,
+            self.e_pal.value, self.e_skrz.value, self.e_nadwozie.value, self.e_not.value,
             self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
             self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
             self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value,
@@ -459,13 +498,13 @@ class FormularzAutoView(ft.View):
                         "wycieraczki_przod=?, wycieraczki_tyl=?, cisnienie_przod=?, cisnienie_tyl=?, "
                         "olej_typ=?, olej_pojemnosc=?, akumulator=?, zarowki_mijania=?, zarowki_drogowe=?, "
                         "ac_data=?, assistance_data=?, gasnica_data=?, apteczka_data=?, gwarancja_data=?, gwarancja_przebieg=?, "
-                        "zdjecie_glowne=?, marka=?, model=?, generacja=?, kolor_motywu=? WHERE id=?", 
+                        "zdjecie_glowne=?, marka=?, model=?, generacja=?, kolor_motywu=?, nadwozie=? WHERE id=?", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value, 
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
-                         nowe_zdj, marka, model, generacja, nowy_kolor, self.auto_id)
+                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None), self.auto_id)
                     )
                     if self.state.auto_id == self.auto_id:
                         self.state.auto_nazwa = n
@@ -477,14 +516,14 @@ class FormularzAutoView(ft.View):
                         "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                         "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                         "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, "
-                        "zdjecie_glowne, marka, model, generacja, kolor_motywu) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                        "zdjecie_glowne, marka, model, generacja, kolor_motywu, nadwozie) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value,
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
-                         nowe_zdj, marka, model, generacja, nowy_kolor)
+                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None))
                     )
                     n_id = cur.lastrowid
                     for dz in db.DOMYSLNE_ZADANIA:
@@ -1239,20 +1278,37 @@ class FormularzWizytyView(ft.View):
         self.zalacznik_val = None
         tagi_val = ""
         kat_val = "Letnie"
-        if w_id:
+
+        # Duplikat wizyty: ten sam wzorzec, co przy tankowaniu, wpisie i koszcie —
+        # źródło zużywamy jednorazowo, żeby powrót do formularza nie skopiował
+        # wizyty po raz drugi.
+        duplikuj_id = getattr(state, "duplikuj_zrodlo_wizyta", None) if not w_id else None
+        state.duplikuj_zrodlo_wizyta = None
+        zrodlo_id = w_id or duplikuj_id
+
+        if zrodlo_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi FROM wizyty WHERE id=?", (w_id,))
+                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi FROM wizyty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
                     d_val, p_val, wyk_val, kosz_val, not_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), str(w[3] or ""), str(w[4] or "")
                     self.zalacznik_val = w[5]
                     tagi_val = str(w[6] or "")
-                c.execute("SELECT zadanie_id, kategoria FROM historia WHERE wizyta_id=?", (w_id,))
+                c.execute("SELECT zadanie_id, kategoria FROM historia WHERE wizyta_id=?", (zrodlo_id,))
                 dane_h = c.fetchall()
                 podpiete = {r[0] for r in dane_h}
                 for r in dane_h:
                     if r[1]: kat_val = str(r[1])
+
+        if duplikuj_id:
+            # Data i przebieg opisują TAMTĄ wizytę, a paragon należy do niej —
+            # kopiujemy wzorzec naprawy, nie zdarzenie. Zużycie magazynu również
+            # nie jest przenoszone: stan mógł się zmienić, a ciche potrącenie
+            # sztuk przy zapisie byłoby niespodzianką.
+            d_val = datetime.now().strftime("%d.%m.%Y")
+            p_val = str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
+            self.zalacznik_val = None
 
         self.e_d = utils.pole_daty(page, "Data odebrania z warsztatu", d_val)
         self.e_p = ft.TextField(label="Przebieg podczas wizyty (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
@@ -1351,6 +1407,24 @@ class FormularzWizytyView(ft.View):
         self.kolumna_czesci = ft.Column(self.chk_czesci, spacing=2)
         k2 = utils.karta_formularza([self.btn_pakiety, self.kolumna_czesci, self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
         elementy = [k1, k1b, k2]
+
+        if duplikuj_id:
+            # Bez tego nie wiadomo, czemu lista części jest już odklikana, a pole
+            # magazynu puste — a to akurat najłatwiej przeoczyć przy zapisie.
+            elementy.insert(0, ft.Container(
+                padding=ft.Padding(12, 10, 12, 10),
+                border_radius=utils.RADIUS["sm"],
+                bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.CONTENT_COPY, size=16, color=ft.Colors.PRIMARY),
+                    ft.Text(
+                        "Duplikat wizyty: przeniesiono warsztat, koszt, notatki, tagi i zaznaczone "
+                        "podzespoły. Data i przebieg są dzisiejsze, a zużycie z magazynu zaznacz "
+                        "ponownie — stan mógł się zmienić.",
+                        size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                    ),
+                ], spacing=8),
+            ))
 
         if self.magazyn_kontrolki:
             k3 = utils.karta_formularza(

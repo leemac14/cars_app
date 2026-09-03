@@ -339,12 +339,23 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         filtr_wyk_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "wizyty_wyk", wizyty_lista, 3, "Warsztat")
         filtr_tag_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "wizyty_tag", wizyty_lista, 6, "Tagi")
 
-        elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_wyk_ui, filtr_tag_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+        # Kolumna 8 zapytania to w.dodane_przez — filtr autorstwa pokazujemy
+        # tylko przy pojeździe współdzielonym, tak jak na osi czasu i listach
+        # tankowań oraz innych kosztów.
+        filtry_ui = [sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_wyk_ui, filtr_tag_ui]
+        if wspolny_id:
+            filtry_ui.append(
+                utils.przycisk_filtrowania_autora(self._page, self.state, "wizyty_autor", wizyty_lista, 8)
+            )
+
+        elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
 
         wizyty_lista = utils.filtruj_po_roku(wizyty_lista, self.state, "wizyty_rok", 1)
         wizyty_lista = utils.filtruj_po_miesiacu(wizyty_lista, self.state, "wizyty_mc", 1)
         wizyty_lista = utils.filtruj_po_kategorii(wizyty_lista, self.state, "wizyty_wyk", 3)
         wizyty_lista = utils.filtruj_po_kategorii(wizyty_lista, self.state, "wizyty_tag", 6)
+        if wspolny_id:
+            wizyty_lista = utils.filtruj_po_autorze(wizyty_lista, self.state, "wizyty_autor", 8)
         utils.posortuj_liste(wizyty_lista, self.state, "wizyty", opcje_sort)
 
         # --- 1. DODAJ TEN BLOK KODU (WYSZUKIWARKA) ---
@@ -396,6 +407,14 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie", "akcja": dodaj_zmien_zdj})
                 
             pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wizytę", "akcja": lambda: utils.przejdz(self._page, f"/wizyty/edytuj/{wid}")})
+            pozycje.append({
+                "ikona": ft.Icons.CONTENT_COPY,
+                "tekst": "Duplikuj wizytę",
+                "akcja": lambda: (
+                    setattr(self.state, "duplikuj_zrodlo_wizyta", wid),
+                    utils.przejdz(self._page, "/wizyty/nowa"),
+                ),
+            })
             # Droga powrotna do "Zamień na wizytę" z listy Do zrobienia: część
             # bywa zamówiona przy okazji wizyty, ale montowana dopiero później.
             if db.pobierz_pozycje_wizyty(wid):

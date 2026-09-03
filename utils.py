@@ -1088,6 +1088,121 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 pass
         return handler
 
+    def odloz(powiadomienie, dni):
+        """Wycisza JEDNO powiadomienie na wybraną liczbę dni. Nie oznacza niczego
+        jako wykonane i nie rusza terminu — po prostu znika z listy do czasu."""
+        db.odloz_powiadomienie(state.auto_id, powiadomienie.get("klucz"), dni, powiadomienie.get("tytul"))
+        pokaz_komunikat(page, f"Odłożono „{powiadomienie['tytul']}” na {dni} dni.")
+        przejdz(page, page.route)   # odświeża licznik przy dzwonku w tle
+        odswiez()
+
+    def okno_wlasnej_liczby_dni(powiadomienie):
+        e_dni = ft.TextField(label="Za ile dni przypomnieć?", value="14",
+                             keyboard_type=ft.KeyboardType.NUMBER, **styl_pola())
+
+        def zapisz(e):
+            dni = parsuj_int(e_dni.value, 0)
+            if dni < 1:
+                e_dni.error_text = "Podaj liczbę dni (min. 1)"
+                e_dni.update()
+                return
+            zamknij_dialog(page, dlg)
+            odloz(powiadomienie, dni)
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Odłóż przypomnienie", weight="bold"),
+            content=ft.Column([
+                ft.Text(powiadomienie["tytul"], weight="bold"),
+                ft.Text("Wróci na listę po tylu dniach. Termin i status pozostają bez zmian.",
+                        size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                e_dni,
+            ], tight=True, spacing=10),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
+                ft.ElevatedButton("Odłóż", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+            ],
+        )
+        otworz_dialog(page, dlg)
+
+    def przycisk_odlozenia(powiadomienie):
+        if not powiadomienie.get("klucz"):
+            return None
+        pozycje_menu = [
+            ft.PopupMenuItem(
+                content=ft.Row([ft.Icon(ft.Icons.SNOOZE, size=16, color=ft.Colors.PRIMARY),
+                                ft.Text(f"Za {d} dni")], spacing=6),
+                on_click=lambda e, dni=d, p=powiadomienie: odloz(p, dni),
+            )
+            for d in db.DNI_ODLOZENIA_OPCJE
+        ]
+        pozycje_menu.append(ft.PopupMenuItem(
+            content=ft.Row([ft.Icon(ft.Icons.EDIT_CALENDAR, size=16, color=ft.Colors.PRIMARY),
+                            ft.Text("Własna liczba dni")], spacing=6),
+            on_click=lambda e, p=powiadomienie: okno_wlasnej_liczby_dni(p),
+        ))
+        return ft.PopupMenuButton(
+            items=pozycje_menu,
+            tooltip="Odłóż to przypomnienie",
+            content=ft.Container(
+                width=36, height=36, alignment=ft.Alignment.CENTER,
+                content=ft.Icon(ft.Icons.SNOOZE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+            ),
+        )
+
+    def sekcja_odlozonych():
+        odlozone = db.pobierz_odlozone_powiadomienia(state.auto_id)
+        if not odlozone:
+            return []
+
+        wiersze = ft.Column([], spacing=0, tight=True, visible=False)
+        strzalka = ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, size=20, color=ft.Colors.ON_SURFACE_VARIANT)
+
+        for o in odlozone:
+            podtytul = f"Wróci {o['data_tekst']}"
+            if o["dni_do_powrotu"] == 0:
+                podtytul = "Wróci jutro"
+            elif o["dni_do_powrotu"] == 1:
+                podtytul = "Wróci za 1 dzień"
+            elif o["dni_do_powrotu"] > 1:
+                podtytul = f"Wróci za {o['dni_do_powrotu']} dni ({o['data_tekst']})"
+            if not o["nadal_aktualne"]:
+                podtytul += " • powód już nieaktualny"
+
+            wiersze.controls.append(ft.ListTile(
+                leading=ft.Icon(ft.Icons.SNOOZE, color=ft.Colors.ON_SURFACE_VARIANT),
+                title=ft.Text(o["tytul"], color=ft.Colors.ON_SURFACE_VARIANT),
+                subtitle=ft.Text(podtytul, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                trailing=ft.TextButton(
+                    "Przywróć",
+                    on_click=lambda e, k=o["klucz"]: (
+                        db.przywroc_powiadomienie(state.auto_id, k),
+                        przejdz(page, page.route),
+                        odswiez(),
+                    ),
+                ),
+            ))
+
+        def przelacz(e):
+            wiersze.visible = not wiersze.visible
+            strzalka.name = ft.Icons.KEYBOARD_ARROW_UP if wiersze.visible else ft.Icons.KEYBOARD_ARROW_DOWN
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        naglowek = ft.Container(
+            padding=ft.Padding(12, 10, 12, 10),
+            border_radius=RADIUS["sm"],
+            ink=True, on_click=przelacz,
+            content=ft.Row([
+                ft.Icon(ft.Icons.SNOOZE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(f"Odkładane ({len(odlozone)})", weight="bold",
+                        color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                strzalka,
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+        return [ft.Divider(height=8), naglowek, wiersze]
+
     def odswiez():
         powiadomienia = db.pobierz_powiadomienia(state.auto_id)
         pozycje = [
@@ -1117,19 +1232,28 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         title=ft.Text(p["tytul"], weight="bold"),
                         subtitle=ft.Text(p["opis"], color=kolor, size=13),
                     )
-                    kafelek.trailing = ft.TextButton(
+                    akcje = [ft.TextButton(
                         "Zapłacone" if czy_koszt_p else "Wykonano",
                         icon=ft.Icons.CHECK,
                         on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p, kafelek),
-                    )
+                    )]
+                    drzemka = przycisk_odlozenia(p)
+                    if drzemka:
+                        akcje.append(drzemka)
+                    kafelek.trailing = ft.Row(akcje, spacing=0, tight=True)
                     pozycje.append(kafelek)
                 else:
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=ft.Text(p["tytul"], weight="bold"),
                         subtitle=ft.Text(p["opis"], color=kolor, size=13),
+                        trailing=przycisk_odlozenia(p),
                         on_click=idz_do(p["trasa"]),
                     ))
+
+        # Odłożone trzymamy w zwijanej sekcji na dole: nie zaśmiecają listy,
+        # ale nie znikają bez śladu — widać datę powrotu i można ją cofnąć.
+        pozycje.extend(sekcja_odlozonych())
 
         bs.content = ft.Container(
             padding=20,
@@ -1359,8 +1483,8 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
             {"ikona": ft.Icons.SUMMARIZE, "tekst": "Eksport danych (CSV/PDF)",
              "opis": "Raport z wybranego okresu do wysłania",
              "akcja": lambda: przejdz(page, "/eksport")},
-            {"ikona": ft.Icons.INPUT, "tekst": "Import tankowań (CSV)",
-             "opis": "Wciągnij historię z innej aplikacji",
+            {"ikona": ft.Icons.INPUT, "tekst": "Import z pliku CSV",
+             "opis": "Tankowania, inne koszty albo odczyty licznika z arkusza",
              "akcja": lambda: przejdz(page, "/import")},
         ]
 
@@ -1580,6 +1704,64 @@ def przycisk_filtrowania_kategoria(page: ft.Page, state, klucz_stanu, lista_dany
         page, state, klucz_stanu, opcje, etykieta,
         ft.Icons.LABEL_ROUNDED, ft.Icons.LABEL_OUTLINE
     )
+
+
+# Filtr autorstwa przy pojazdach współdzielonych: „kto to dodał”. Wpisy sprzed
+# wprowadzenia kolumny dodane_przez (i te bez autora, jak odczyty licznika)
+# lądują pod wspólną etykietą — inaczej filtr udawałby, że ich nie ma.
+FILTR_AUTOR_MOJE = "Tylko moje"
+FILTR_AUTOR_BEZ = "Bez autora"
+
+
+def _autor_rekordu(rekord, pole):
+    try:
+        return " ".join(str(rekord[pole] or "").split())
+    except Exception:
+        return ""
+
+
+def przycisk_filtrowania_autora(page: ft.Page, state, klucz_stanu, lista_danych, pole):
+    """Filtr „Autor” obok Typ/Rok/Miesiąc. Opcje: Wszystko · Tylko moje ·
+    każda osoba, która cokolwiek dodała. Przy dwóch domownikach działa jak
+    przełącznik „tylko moje”, przy trzech od razu widać też konkretną osobę."""
+    moje = db.pobierz_moje_imie()
+    autorzy, sa_bez_autora = set(), False
+    for w in lista_danych:
+        autor = _autor_rekordu(w, pole)
+        if autor:
+            autorzy.add(autor)
+        else:
+            sa_bez_autora = True
+
+    opcje = ["Wszystko", FILTR_AUTOR_MOJE]
+    opcje += sorted(a for a in autorzy if a != moje)
+    if sa_bez_autora:
+        opcje.append(FILTR_AUTOR_BEZ)
+
+    return _zbuduj_popup_filtra(
+        page, state, klucz_stanu, opcje, "Autor",
+        ft.Icons.PERSON, ft.Icons.PERSON_OUTLINE
+    )
+
+
+def filtruj_po_autorze(lista_danych, state, klucz_stanu, pole):
+    filtr = state.filtry.get(klucz_stanu, "Wszystko")
+    if filtr == "Wszystko":
+        return lista_danych
+
+    moje = db.pobierz_moje_imie()
+    wynik = []
+    for w in lista_danych:
+        autor = _autor_rekordu(w, pole)
+        if filtr == FILTR_AUTOR_MOJE:
+            pasuje = bool(autor) and autor == moje
+        elif filtr == FILTR_AUTOR_BEZ:
+            pasuje = not autor
+        else:
+            pasuje = autor == filtr
+        if pasuje:
+            wynik.append(w)
+    return wynik
 
 
 def przycisk_filtrowania_miesiac(page: ft.Page, state, klucz_stanu, lista_danych, index_daty):
@@ -2823,6 +3005,57 @@ def znacznik_wykonania(page: ft.Page, tekst="Gotowe", po_zakonczeniu=None, pauza
     return pudelko
 
 
+# Sylwetki nadwozia. Material nie ma osobnej ikony dla każdego typu, więc
+# dobieramy najbliższe kształtem — chodzi o odróżnienie aut od siebie, nie
+# o katalog techniczny.
+IKONY_NADWOZIA = {
+    "Hatchback": ft.Icons.DIRECTIONS_CAR,
+    "Sedan": ft.Icons.TIME_TO_LEAVE,
+    "Kombi": ft.Icons.DIRECTIONS_CAR_FILLED,
+    "SUV / Crossover": ft.Icons.CAR_RENTAL,
+    "Van / Minivan": ft.Icons.AIRPORT_SHUTTLE,
+    "Coupe": ft.Icons.SPORTS_SCORE,
+    "Kabriolet": ft.Icons.NO_CRASH,
+    "Pickup": ft.Icons.LOCAL_SHIPPING,
+    "Dostawczy": ft.Icons.LOCAL_SHIPPING,
+}
+
+
+def ikona_nadwozia(nadwozie):
+    return ikona_z_mapy(IKONY_NADWOZIA, nadwozie, ft.Icons.DIRECTIONS_CAR)
+
+
+def odznaka_pojazdu(auto, rozmiar=40, kolor_nazwa=None):
+    """Krążek z sylwetką nadwozia w kolorze przypisanym do TEGO pojazdu.
+
+    Do tej pory każde auto w selektorze wyglądało identycznie i rozróżniało się
+    je dopiero po przeczytaniu nazwy. Sylwetka plus własny kolor dają rozpoznanie
+    jednym spojrzeniem, a gdy typ nadwozia nie jest uzupełniony, zostaje ogólna
+    ikona samochodu — czyli dokładnie to, co było.
+
+    `auto` to wiersz/słownik z kolumnami 'nadwozie' i (opcjonalnie) 'kolor_motywu'.
+    """
+    def pole(nazwa):
+        try:
+            return auto[nazwa]
+        except Exception:
+            return None
+
+    nadwozie = pole("nadwozie")
+    kolor = MAPA_KOLOROW.get(kolor_nazwa or pole("kolor_motywu") or "", None)
+    if kolor is None:
+        kolor = ft.Colors.PRIMARY
+
+    return ft.Container(
+        width=rozmiar, height=rozmiar, border_radius=rozmiar // 2,
+        bgcolor=ft.Colors.with_opacity(0.16, kolor),
+        border=ft.Border.all(2, ft.Colors.with_opacity(0.45, kolor)),
+        alignment=ft.Alignment.CENTER,
+        tooltip=str(nadwozie) if nadwozie else None,
+        content=ft.Icon(ikona_nadwozia(nadwozie), size=int(rozmiar * 0.5), color=kolor),
+    )
+
+
 def wskaznik_kondycji(wynik):
     """Zwraca (kolor, ikona, etykieta) dla wskaźnika kondycji pojazdu (0-100)."""
     if wynik is None:
@@ -2832,6 +3065,112 @@ def wskaznik_kondycji(wynik):
     if wynik >= 50:
         return ft.Colors.ORANGE_700, ft.Icons.FAVORITE_BORDER, "Wymaga uwagi"
     return ft.Colors.RED_700, ft.Icons.HEART_BROKEN, "Wymaga pilnej reakcji"
+
+def pokaz_panel_kondycji(page: ft.Page, state):
+    """Rozpiska tego, co obniża kondycję pojazdu. Sam wynik 0-100 nie mówi, CO
+    poprawić — tu każdy minus ma powód, liczbę punktów i prowadzi tam, gdzie da
+    się z nim coś zrobić."""
+    rozbicie = db.pobierz_rozbicie_kondycji(state.auto_id)
+    wynik = rozbicie["wynik"]
+    powody = rozbicie["powody"]
+    kolor, ikona, etykieta = wskaznik_kondycji(wynik)
+
+    bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
+
+    def idz_do(trasa):
+        def handler(e):
+            zamknij_dno(page, bs)
+            przejdz(page, trasa)
+        return handler
+
+    naglowek = ft.Row([
+        ft.Icon(ikona, size=26, color=kolor),
+        ft.Column([
+            ft.Text("Kondycja pojazdu", weight="bold", size=18, color=ft.Colors.PRIMARY),
+            ft.Text(f"{wynik if wynik is not None else '-'}/100 · {etykieta}",
+                    size=FS["label"], weight="bold", color=kolor),
+        ], spacing=0, tight=True, expand=True),
+    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    # Pasek wyniku: 100 punktów startowych, z których odjęto to, co niżej.
+    pasek = ft.Container(
+        height=8, border_radius=RADIUS["pill"],
+        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+        content=ft.Row([
+            ft.Container(
+                expand=max(1, wynik or 0), height=8,
+                border_radius=RADIUS["pill"],
+                bgcolor=kolor_kondycji_plynny(wynik) if wynik is not None else ft.Colors.ON_SURFACE_VARIANT,
+            ),
+            ft.Container(expand=max(1, 100 - (wynik or 0))),
+        ], spacing=0),
+    )
+
+    zawartosc = [naglowek, ft.Container(height=4), pasek, ft.Divider(height=14)]
+
+    if not powody:
+        zawartosc.append(ft.Container(
+            padding=ft.Padding(12, 18, 12, 18),
+            alignment=ft.Alignment.CENTER,
+            content=ft.Column([
+                ft.Icon(ft.Icons.TASK_ALT, size=40, color=KOLOR_STATUS["ok"]),
+                ft.Text("Nic nie obniża kondycji", weight="bold"),
+                ft.Text("Żaden podzespół nie jest przeterminowany, a bieżnik zamontowanych "
+                        "opon mieści się w normie.",
+                        size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                        text_align=ft.TextAlign.CENTER),
+            ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        ))
+    else:
+        suma = sum(p["punkty"] for p in powody)
+        zawartosc.append(ft.Text(
+            f"Odjęto łącznie {suma} pkt · {len(powody)} "
+            + ("powód" if len(powody) == 1 else "powody" if len(powody) < 5 else "powodów"),
+            size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+        ))
+
+        IKONY_POWODU = {"podzespol": ft.Icons.HANDYMAN, "opony": ft.Icons.TIRE_REPAIR}
+        for p in powody:
+            # Największe minusy pierwsze (sortuje db), więc czerwień u góry to
+            # jednocześnie „zajmij się tym najpierw”.
+            kolor_kary = ft.Colors.RED_700 if p["punkty"] >= 15 else ft.Colors.ORANGE_800
+            tresc = [ft.Text(p["opis"], size=FS["label"], weight="bold")]
+            if p["szczegol"]:
+                tresc.append(ft.Text(p["szczegol"], size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+
+            powierzchnia = powierzchnia_karty(page, "sm")
+            zawartosc.append(ft.Container(
+                padding=ft.Padding(12, 12, 12, 12),
+                border_radius=RADIUS["md"],
+                bgcolor=powierzchnia["bgcolor"],
+                border=powierzchnia["border"],
+                ink=bool(p["trasa"]),
+                on_click=idz_do(p["trasa"]) if p["trasa"] else None,
+                content=ft.Row([
+                    ft.Container(
+                        padding=ft.Padding(8, 4, 8, 4),
+                        border_radius=RADIUS["sm"],
+                        bgcolor=ft.Colors.with_opacity(0.14, kolor_kary),
+                        content=ft.Text(f"−{p['punkty']} pkt", size=FS["caption"],
+                                        weight="bold", color=kolor_kary),
+                    ),
+                    ft.Icon(ikona_z_mapy(IKONY_POWODU, p["typ"], ft.Icons.WARNING_AMBER),
+                            size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Column(tresc, spacing=1, tight=True, expand=True),
+                    ft.Icon(ft.Icons.CHEVRON_RIGHT, size=18,
+                            color=ft.Colors.ON_SURFACE_VARIANT, visible=bool(p["trasa"])),
+                ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ))
+
+        zawartosc.append(ft.Text(
+            "Kondycja liczy tylko stan techniczny: podzespoły z przekroczonym interwałem "
+            "i bieżnik zamontowanych opon. Dokumenty, magazyn i wydatki cykliczne jej nie ruszają.",
+            size=FS["caption"], italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+        ))
+
+    bs.content.content = ft.Column(zawartosc, tight=True, spacing=8)
+    otworz_dno(page, bs)
+
 
 async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, stara_sciezka, po_zapisie_callback):
     obsluzone = {"wartosc": False}

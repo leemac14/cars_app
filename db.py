@@ -70,6 +70,13 @@ WALUTY = ["PLN", "EUR", "USD", "GBP", "CZK"]
 JEDNOSTKI_SPALANIA = ["l/100km", "km/l", "mpg"]
 JEDNOSTKI_ZUZYCIA_EV = ["kWh/100km", "km/kWh"]
 
+# Sylwetki nadwozia do odznaki pojazdu w selektorze. Ikony dobiera warstwa UI
+# (utils.IKONY_NADWOZIA), bo db.py celowo nie zna Fleta.
+TYPY_NADWOZIA = [
+    "Hatchback", "Sedan", "Kombi", "SUV / Crossover",
+    "Van / Minivan", "Coupe", "Kabriolet", "Pickup", "Dostawczy",
+]
+
 TYPY_PALIWA = ["Benzyna", "Diesel", "LPG", "Hybryda", "Elektryczny"]
 TYPY_PALIWA_ELEKTRYCZNE = {"Elektryczny"}
 
@@ -468,6 +475,25 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_historia_czesci_historia ON historia_czesci_magazynu(historia_id);
             CREATE INDEX IF NOT EXISTS idx_historia_czesci_magazyn ON historia_czesci_magazynu(magazyn_id);
             CREATE INDEX IF NOT EXISTS idx_historia_czesci_zdalne ON historia_czesci_magazynu(zdalne_id);
+            """,
+            # Wersja 31: odkładanie („drzemka”) pojedynczego powiadomienia.
+            # „Wiem o przeglądzie, zrobię go za dwa tygodnie” — wyciszenie JEDNEGO
+            # przypomnienia bez oznaczania czegokolwiek jako wykonane. Klucz to
+            # stabilny identyfikator powiadomienia (patrz _klucz_powiadomienia),
+            # a nie treść, bo opis zmienia się z każdym dniem („Zostało 12 dni”).
+            # Świadomie NIE synchronizujemy tej tabeli ani nie zabieramy jej do
+            # kosza: drzemka jest krótkotrwała, osobista i dotyczy tego urządzenia.
+            """
+            CREATE TABLE IF NOT EXISTS wyciszone_powiadomienia (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, klucz TEXT NOT NULL, do_dnia TEXT NOT NULL, tytul TEXT, utworzono TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_wyciszone_klucz ON wyciszone_powiadomienia(auto_id, klucz);
+            """,
+            # Wersja 32: typ nadwozia. Do tej pory każdy pojazd w selektorze
+            # wyglądał identycznie (ta sama ikona samochodu), więc przy kilku
+            # autach w garażu rozróżniało się je dopiero po przeczytaniu nazwy.
+            # Sylwetka nadwozia na krążku w kolorze przypisanym do auta daje
+            # rozpoznanie jednym spojrzeniem. Puste = ogólna ikona, jak dotąd.
+            """
+            ALTER TABLE samochody ADD COLUMN nadwozie TEXT;
             """
         ]
 
@@ -1262,7 +1288,12 @@ def przelicz_wszystkie_zadania(auto_id):
         for r in c.fetchall():
             aktualizuj_najnowszy_wpis(r[0])
 
-def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
+def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=True):
+    """Każde powiadomienie niesie 'klucz' — stabilny identyfikator (typ + ID
+    źródła), po którym rozpoznajemy je między odświeżeniami. Treść się do tego
+    nie nadaje, bo opis zmienia się z każdym dniem („Zostało 12 dni”).
+    pomin_wyciszone=False zwraca komplet, łącznie z odłożonymi — potrzebne
+    panelowi powiadomień do sekcji „Odkładane”."""
     if not auto_id:
         return []
 
@@ -1316,6 +1347,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                 wyniki.append({
                     "typ": "podzespol", "tytul": z["nazwa"], "opis": " • ".join(powody),
                     "status": status_zadania, "trasa": f"/zadanie/edytuj/{z['id']}",
+                    "klucz": f"podzespol:{z['id']}",
                 })
 
         kolumny_terminow = ", ".join(kol for _, kol, _ in TERMINY_DOKUMENTOW)
@@ -1344,6 +1376,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                     wyniki.append({
                         "typ": "dokument", "tytul": etykieta, "opis": opis,
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
+                        "klucz": f"dokument:{klucz}",
                     })
 
             # Gwarancja ma dwa niezależne limity — datę i przebieg. Kilometry
@@ -1358,6 +1391,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                     wyniki.append({
                         "typ": "dokument", "tytul": "Gwarancja (limit km)", "opis": opis,
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
+                        "klucz": "dokument:gwarancja_km",
                     })
         # Wydatki cykliczne (raty, abonamenty, ubezpieczenia ratalne) — termin
         # liczy się jak dla dokumentów, ale akcją jest "Zapłacone", nie przejście
@@ -1385,13 +1419,14 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                     "typ": "cykliczny", "tytul": wc["nazwa"], "opis": opis,
                     "status": s, "trasa": None, "wydatek_id": wc["id"],
                     "czy_koszt": bool(wc["czy_koszt"]),
+                    "klucz": f"cykliczny:{wc['id']}",
                 })
 
         # Niski stan magazynu (części i płyny) — indywidualny próg per pozycja,
         # z fallbackiem na wspólną wartość domyślną dla starszych wpisów bez własnego progu.
         import utils
         c.execute(
-            "SELECT nazwa, ilosc, jednostka, prog_ostrzezenia FROM magazyn_czesci WHERE auto_id=?",
+            "SELECT id, nazwa, ilosc, jednostka, prog_ostrzezenia FROM magazyn_czesci WHERE auto_id=?",
             (auto_id,)
         )
         for m in c.fetchall():
@@ -1405,51 +1440,223 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None):
                 wyniki.append({
                     "typ": "magazyn", "tytul": m["nazwa"], "opis": opis,
                     "status": s, "trasa": "/magazyn",
+                    "klucz": f"magazyn:{m['id']}",
                 })
 
     kolejnosc = {"przeterminowane": 0, "pilne": 1}
-    
+
     wyniki.sort(key=lambda w: kolejnosc.get(w["status"], 2))
+
+    if pomin_wyciszone:
+        wyciszone = pobierz_wyciszone_klucze(auto_id)
+        wyniki = [w for w in wyniki if w.get("klucz") not in wyciszone]
     return wyniki
 
-def oblicz_kondycje_pojazdu(auto_id):
-    """Wskaźnik kondycji pojazdu 0-100 (100 = wzorowo). Odejmuje punkty za
-    przeterminowane/pilne podzespoły i płytki bieżnik aktualnie zamontowanych opon.
-    Celowo NIE uwzględnia stanu magazynu, dokumentów (OC/przegląd)
-    ani wydatków cyklicznych."""
-    if not auto_id:
-        return None
+# ============================================================================
+#  ODKŁADANIE POWIADOMIEŃ („drzemka”)
+# ============================================================================
+# „Wiem o przeglądzie, zrobię go za dwa tygodnie” — wyciszenie JEDNEGO
+# przypomnienia na wybraną liczbę dni, bez oznaczania czegokolwiek jako wykonane
+# i bez ruszania samego terminu. Po upływie dni powiadomienie wraca samo.
 
-    wynik = 100
-    for p in pobierz_powiadomienia(auto_id):
-        # Ignorujemy wszystko co nie jest bezpośrednio powiązane z podzespołami auta
-        if p["typ"] != "podzespol":
-            continue
-            
-        if p["status"] == "przeterminowane":
-            wynik -= 15
-        elif p["status"] == "pilne":
-            wynik -= 8
+DNI_ODLOZENIA_OPCJE = [3, 7, 14, 30]
+
+
+def odloz_powiadomienie(auto_id, klucz, dni, tytul=None):
+    """Wycisza powiadomienie o danym kluczu na `dni` dni. Ponowne odłożenie tego
+    samego powiadomienia nadpisuje termin (stąd UNIQUE na auto_id+klucz)."""
+    if not auto_id or not klucz:
+        return None
+    try:
+        dni = max(1, int(dni))
+    except (TypeError, ValueError):
+        dni = 7
+    do_dnia = (datetime.now().date() + timedelta(days=dni)).strftime("%Y-%m-%d")
+    with polacz_baze() as conn:
+        conn.execute(
+            "INSERT INTO wyciszone_powiadomienia (auto_id, klucz, do_dnia, tytul, utworzono) "
+            "VALUES (?,?,?,?,?) "
+            "ON CONFLICT(auto_id, klucz) DO UPDATE SET do_dnia=excluded.do_dnia, "
+            "tytul=excluded.tytul, utworzono=excluded.utworzono",
+            (auto_id, klucz, do_dnia, tytul, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+    return do_dnia
+
+
+def przywroc_powiadomienie(auto_id, klucz):
+    """Zdejmuje drzemkę — powiadomienie wraca na listę od razu."""
+    if not auto_id or not klucz:
+        return
+    with polacz_baze() as conn:
+        conn.execute("DELETE FROM wyciszone_powiadomienia WHERE auto_id=? AND klucz=?", (auto_id, klucz))
+
+
+def _posprzataj_wygasle_wyciszenia(conn, auto_id):
+    """Kasuje drzemki, których termin już minął — dzięki temu tabela nie rośnie,
+    a powiadomienie wraca bez żadnej dodatkowej logiki."""
+    conn.execute(
+        "DELETE FROM wyciszone_powiadomienia WHERE auto_id=? AND do_dnia <= ?",
+        (auto_id, datetime.now().date().strftime("%Y-%m-%d"))
+    )
+
+
+def pobierz_wyciszone_klucze(auto_id):
+    """Zbiór kluczy powiadomień AKTUALNIE odłożonych (drzemka jeszcze trwa)."""
+    if not auto_id:
+        return set()
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        try:
+            _posprzataj_wygasle_wyciszenia(conn, auto_id)
+            c.execute("SELECT klucz FROM wyciszone_powiadomienia WHERE auto_id=?", (auto_id,))
+        except sqlite3.OperationalError:
+            return set()
+        return {r[0] for r in c.fetchall()}
+
+
+def pobierz_odlozone_powiadomienia(auto_id):
+    """Lista odłożonych powiadomień do sekcji „Odkładane” w panelu:
+    [{klucz, tytul, do_dnia, data_tekst, dni_do_powrotu}] posortowana po dacie
+    powrotu. Tytuł bierzemy z żywego powiadomienia, jeśli nadal istnieje —
+    a z zapamiętanego, gdy powód wyciszenia zdążył sam zniknąć."""
+    if not auto_id:
+        return []
 
     with polacz_baze() as conn:
         c = conn.cursor()
+        try:
+            _posprzataj_wygasle_wyciszenia(conn, auto_id)
+            c.execute(
+                "SELECT klucz, do_dnia, tytul FROM wyciszone_powiadomienia "
+                "WHERE auto_id=? ORDER BY do_dnia",
+                (auto_id,)
+            )
+        except sqlite3.OperationalError:
+            return []
+        wiersze = c.fetchall()
+
+    if not wiersze:
+        return []
+
+    zywe = {p.get("klucz"): p for p in pobierz_powiadomienia(auto_id, pomin_wyciszone=False)}
+    dzis = datetime.now().date()
+    pozycje = []
+    for klucz, do_dnia, tytul in wiersze:
+        try:
+            data_obj = datetime.strptime(str(do_dnia), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            continue
+        zrodlo = zywe.get(klucz)
+        pozycje.append({
+            "klucz": klucz,
+            "tytul": (zrodlo or {}).get("tytul") or tytul or "Powiadomienie",
+            "opis": (zrodlo or {}).get("opis") or "",
+            "status": (zrodlo or {}).get("status"),
+            "trasa": (zrodlo or {}).get("trasa"),
+            "do_dnia": do_dnia,
+            "data_tekst": data_obj.strftime("%d.%m.%Y"),
+            "dni_do_powrotu": max(0, (data_obj - dzis).days),
+            "nadal_aktualne": zrodlo is not None,
+        })
+    return pozycje
+
+
+# Ile punktów kondycji kosztuje każdy powód. Trzymane w jednym miejscu, bo te
+# same wartości pokazuje teraz rozpiska („−15 pkt: przegląd przeterminowany”).
+KARY_KONDYCJI = {
+    "podzespol_przeterminowany": 15,
+    "podzespol_pilny": 8,
+    "bieznik_krytyczny": 20,   # poniżej 1,6 mm — minimum prawne
+    "bieznik_niski": 10,       # poniżej 3 mm — zalecana wymiana
+}
+
+
+def pobierz_rozbicie_kondycji(auto_id):
+    """Kondycja pojazdu wraz z ROZPISKĄ tego, co ją obniżyło. Sam wynik 0-100 nic
+    nie podpowiada; lista powodów mówi wprost, co poprawić najpierw.
+
+    Zwraca {"wynik": int|None, "powody": [{opis, szczegol, punkty, trasa, typ}]}
+    posortowaną malejąco po odjętych punktach. Celowo NIE uwzględnia stanu
+    magazynu, dokumentów (OC/przegląd) ani wydatków cyklicznych — kondycja
+    dotyczy stanu technicznego auta, nie papierologii.
+
+    Powiadomienia bierzemy z pomin_wyciszone=False: odłożenie przypomnienia
+    („zrobię za dwa tygodnie”) nie naprawia auta, więc nie może podbijać wyniku.
+    """
+    if not auto_id:
+        return {"wynik": None, "powody": []}
+
+    wynik = 100
+    powody = []
+
+    for p in pobierz_powiadomienia(auto_id, pomin_wyciszone=False):
+        # Ignorujemy wszystko, co nie jest bezpośrednio powiązane z podzespołami auta
+        if p["typ"] != "podzespol":
+            continue
+
+        if p["status"] == "przeterminowane":
+            kara = KARY_KONDYCJI["podzespol_przeterminowany"]
+            etykieta = "przeterminowany"
+        elif p["status"] == "pilne":
+            kara = KARY_KONDYCJI["podzespol_pilny"]
+            etykieta = "termin się zbliża"
+        else:
+            continue
+
+        wynik -= kara
+        powody.append({
+            "typ": "podzespol",
+            "opis": f"{p['tytul']} — {etykieta}",
+            "szczegol": p.get("opis") or "",
+            "punkty": kara,
+            "trasa": p.get("trasa"),
+        })
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
         c.execute(
-            "SELECT glebokosc_bieznika FROM zestawy_opon WHERE auto_id=? AND zamontowane=1",
+            "SELECT sezon, rozmiar, glebokosc_bieznika FROM zestawy_opon "
+            "WHERE auto_id=? AND zamontowane=1",
             (auto_id,)
         )
-        for (gl,) in c.fetchall():
+        for r in c.fetchall():
+            gl = r["glebokosc_bieznika"]
             if gl is None or str(gl).strip() == "":
                 continue
             try:
                 g = float(gl)
             except (TypeError, ValueError):
                 continue
-            if g < 1.6:
-                wynik -= 20
-            elif g < 3.0:
-                wynik -= 10
 
-    return max(0, min(100, int(round(wynik))))
+            if g < 1.6:
+                kara = KARY_KONDYCJI["bieznik_krytyczny"]
+                etykieta = "bieżnik poniżej minimum prawnego (1,6 mm)"
+            elif g < 3.0:
+                kara = KARY_KONDYCJI["bieznik_niski"]
+                etykieta = "bieżnik poniżej 3 mm — zalecana wymiana"
+            else:
+                continue
+
+            wynik -= kara
+            nazwa_opon = f"Opony {r['sezon']}" if r["sezon"] else "Zamontowane opony"
+            powody.append({
+                "typ": "opony",
+                "opis": f"{nazwa_opon} — {etykieta}",
+                "szczegol": f"{formatuj_liczba_eksport(g, 1)} mm"
+                            + (f" • {r['rozmiar']}" if r["rozmiar"] else ""),
+                "punkty": kara,
+                "trasa": "/magazyn",
+            })
+
+    powody.sort(key=lambda p: -p["punkty"])
+    return {"wynik": max(0, min(100, int(round(wynik)))), "powody": powody}
+
+
+def oblicz_kondycje_pojazdu(auto_id):
+    """Sam wskaźnik 0-100 (100 = wzorowo) — cienkie opakowanie na
+    pobierz_rozbicie_kondycji, dla miejsc, którym wystarczy liczba."""
+    return pobierz_rozbicie_kondycji(auto_id)["wynik"]
 
 def pobierz_serie_spalania(auto_id, limit=12):
     """Spalanie liczone ODCINKAMI między kolejnymi tankowaniami „do pełna” —
@@ -2137,6 +2344,168 @@ def pobierz_podzial_kosztow(auto_id, rok, miesiac):
     wynik.sort(key=lambda w: w["razem"], reverse=True)
     return wynik
 
+# Zapytanie kwotowe rozpoznajemy WPROST w polu wyszukiwarki — bez dodatkowych
+# kontrolek, tak jak „>1000” czy „200-500” pisze się w arkuszu kalkulacyjnym.
+# Sam tekst dalej działa jak dotąd; kwota to tylko dodatkowa ścieżka.
+_WZORZEC_ZAKRESU = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(?:-|–|—|\.\.|do)\s*(\d+(?:[.,]\d+)?)$")
+_WZORZEC_POROWNANIA = re.compile(r"^(>=|<=|>|<|od|do)\s*(\d+(?:[.,]\d+)?)$", re.IGNORECASE)
+_WZORZEC_LICZBY = re.compile(r"^(\d+(?:[.,]\d+)?)$")
+
+# Tolerancja dla „szukam kwoty około tyle”: paragon rzadko pamięta się co do
+# grosza, więc samo „450” łapie 441–459 zamiast wyłącznie równych 450.
+TOLERANCJA_KWOTY = 0.02
+
+
+def _na_liczbe(tekst):
+    try:
+        return float(str(tekst).replace("\xa0", "").replace(" ", "").replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def parsuj_zapytanie_kwotowe(zapytanie):
+    """Rozpoznaje zapytanie o kwotę i zwraca (min, max, opis) albo None.
+
+    Obsługiwane formy: „450” (±2%), „>1000”, „>=1000”, „<50”, „<=50”,
+    „200-500” (też z półpauzą, „..” i słowem „do”), „od 200”, „do 500”.
+    """
+    tekst = " ".join(str(zapytanie or "").split())
+    if not tekst:
+        return None
+
+    dopasowanie = _WZORZEC_ZAKRESU.match(tekst)
+    if dopasowanie:
+        a, b = _na_liczbe(dopasowanie.group(1)), _na_liczbe(dopasowanie.group(2))
+        if a is None or b is None:
+            return None
+        dolna, gorna = min(a, b), max(a, b)
+        return (dolna, gorna, f"kwota od {formatuj_liczba_eksport(dolna, 2)} do {formatuj_liczba_eksport(gorna, 2)}")
+
+    dopasowanie = _WZORZEC_POROWNANIA.match(tekst)
+    if dopasowanie:
+        operator = dopasowanie.group(1).lower()
+        wartosc = _na_liczbe(dopasowanie.group(2))
+        if wartosc is None:
+            return None
+        if operator in (">", ">=", "od"):
+            return (wartosc, None, f"kwota od {formatuj_liczba_eksport(wartosc, 2)}")
+        return (None, wartosc, f"kwota do {formatuj_liczba_eksport(wartosc, 2)}")
+
+    dopasowanie = _WZORZEC_LICZBY.match(tekst)
+    if dopasowanie:
+        wartosc = _na_liczbe(dopasowanie.group(1))
+        if wartosc is None:
+            return None
+        margines = max(wartosc * TOLERANCJA_KWOTY, 0.5)
+        return (wartosc - margines, wartosc + margines,
+                f"kwota około {formatuj_liczba_eksport(wartosc, 2)}")
+
+    return None
+
+
+def _w_zakresie(wartosc, dolna, gorna):
+    if wartosc is None:
+        return False
+    try:
+        wartosc = float(wartosc)
+    except (TypeError, ValueError):
+        return False
+    if dolna is not None and wartosc < dolna - 1e-9:
+        return False
+    if gorna is not None and wartosc > gorna + 1e-9:
+        return False
+    return True
+
+
+def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
+    """Przeszukuje WSZYSTKIE kwoty pojazdu: tankowania, wpisy serwisowe, wizyty,
+    inne koszty, ceny w magazynie i oponach, szacunki z listy Do zrobienia oraz
+    wydatki cykliczne. Zwraca ten sam kształt wyników, co globalne_wyszukiwanie."""
+    if not auto_id or (dolna is None and gorna is None):
+        return []
+
+    waluta = pobierz_walute()
+    wyniki = []
+
+    def dodaj(typ, tytul, kwota, opis, data, trasa, **extra):
+        if not _w_zakresie(kwota, dolna, gorna):
+            return
+        pelny_opis = f"{formatuj_liczba_eksport(kwota, 2)} {waluta}"
+        if opis:
+            pelny_opis += f" • {opis}"
+        wpis = {"typ": typ, "tytul": tytul, "opis": pelny_opis, "data": data or "", "trasa": trasa}
+        wpis.update(extra)
+        wyniki.append(wpis)
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        c.execute("SELECT id, data, kwota, litry, stacja FROM tankowania WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            opis = f"{formatuj_liczba_eksport(r['litry'], 1)} L"
+            if r["stacja"]:
+                opis += f" • {r['stacja']}"
+            dodaj("Tankowanie", r["stacja"] or "Tankowanie", r["kwota"], opis,
+                  r["data"], f"/tankowanie/edytuj/{r['id']}")
+
+        c.execute(
+            "SELECT h.id, h.data, h.cena, h.wykonawca, z.nazwa FROM historia h "
+            "JOIN zadania z ON h.zadanie_id=z.id WHERE z.auto_id=? AND h.wizyta_id IS NULL",
+            (auto_id,)
+        )
+        for r in c.fetchall():
+            dodaj("Serwis", str(r["nazwa"]), r["cena"], r["wykonawca"] or "",
+                  r["data"], f"/wpis/edytuj/{r['id']}")
+
+        c.execute(
+            "SELECT w.id, w.data, w.koszt_calkowity, w.wykonawca, "
+            "GROUP_CONCAT(z.nazwa, ', ') AS czesci FROM wizyty w "
+            "LEFT JOIN historia h ON h.wizyta_id=w.id LEFT JOIN zadania z ON h.zadanie_id=z.id "
+            "WHERE w.auto_id=? GROUP BY w.id",
+            (auto_id,)
+        )
+        for r in c.fetchall():
+            opis = str(r["czesci"] or "Brak podpiętych części")
+            if r["wykonawca"]:
+                opis += f" • {r['wykonawca']}"
+            dodaj("Wizyta zbiorcza", "Wizyta w warsztacie", r["koszt_calkowity"], opis,
+                  r["data"], f"/wizyty/edytuj/{r['id']}")
+
+        c.execute("SELECT id, data, nazwa, kwota, kategoria, tagi FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            dodaj("Inny koszt", str(r["nazwa"] or "Koszt"), r["kwota"],
+                  str(r["kategoria"] or r["tagi"] or ""), r["data"], f"/inne/edytuj/{r['id']}")
+
+        c.execute("SELECT id, nazwa, cena, ilosc, jednostka FROM magazyn_czesci WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            dodaj("Magazyn", str(r["nazwa"]), r["cena"],
+                  f"{formatuj_liczba_eksport(r['ilosc'], 2)} {r['jednostka'] or 'szt'}", "", "/magazyn")
+
+        c.execute("SELECT id, sezon, rozmiar, marka_model, cena, data_zakupu FROM zestawy_opon WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            opis = str(r["rozmiar"] or "")
+            if r["marka_model"]:
+                opis += f" • {r['marka_model']}" if opis else str(r["marka_model"])
+            dodaj("Opony", f"Zestaw: {r['sezon']}", r["cena"], opis, r["data_zakupu"], "/magazyn")
+
+        c.execute("SELECT id, tytul, szacowany_koszt, termin, priorytet FROM do_zrobienia WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            dodaj("Do zrobienia", str(r["tytul"]), r["szacowany_koszt"],
+                  f"szacunek • {r['priorytet'] or 'bez priorytetu'}",
+                  r["termin"], f"/do-zrobienia/edytuj/{r['id']}")
+
+        c.execute("SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt FROM wydatki_cykliczne WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            if not r["czy_koszt"]:
+                continue
+            dodaj("Wydatek cykliczny", str(r["nazwa"]), r["kwota"],
+                  f"co {int(r['okres_dni'] or 0)} dni", r["nastepna_data"], "__wydatki_cykliczne__")
+
+    wyniki.sort(key=lambda w: parsuj_date(w["data"]), reverse=True)
+    return wyniki
+
+
 def globalne_wyszukiwanie(auto_id, zapytanie):
     """Przeszukuje jednocześnie tankowania, historię serwisową, wizyty zbiorcze,
     inne koszty oraz listę Do zrobienia BIEŻĄCEGO pojazdu. Używane przez widok
@@ -2146,6 +2515,13 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
     po dacie (nierozpoznane daty lądują na końcu)."""
     if not auto_id or not zapytanie or not zapytanie.strip():
         return []
+
+    # Zapytanie wyglądające na kwotę („450”, „>1000”, „200-500”) idzie zupełnie
+    # inną ścieżką: porównujemy liczby, a nie tekst. Bez tego „450” trafiało
+    # tylko tam, gdzie ten ciąg przypadkiem był w dacie albo nazwie.
+    zakres = parsuj_zapytanie_kwotowe(zapytanie)
+    if zakres:
+        return wyszukiwanie_po_kwocie(auto_id, zakres[0], zakres[1])
 
     q = f"%{zapytanie.strip()}%"
     wyniki = []
@@ -2314,7 +2690,10 @@ def pobierz_dane_timeline(auto_id):
     karoserii, odczyty przebiegu) — używana przez widok /timeline ("dziennik
     życia auta"). Wpisy historii powiązane z wizytą zbiorczą są pomijane
     (reprezentuje je already sama wizyta), analogicznie do eksportu danych.
-    Zwraca listę krotek: (id_timeline, typ, data, tytul, opis, kwota, zalacznik, trasa)."""
+    Zwraca listę krotek: (id_timeline, typ, data, tytul, opis, kwota, zalacznik,
+    trasa, dodane_przez). Ostatnie pole zasila filtr autorstwa przy pojeździe
+    współdzielonym; zdjęcia karoserii i odczyty licznika nie mają tej kolumny,
+    więc trafia tam None."""
     if not auto_id:
         return []
 
@@ -2325,7 +2704,7 @@ def pobierz_dane_timeline(auto_id):
         c = conn.cursor()
 
         c.execute(
-            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, zalacznik "
+            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, zalacznik, dodane_przez "
             "FROM tankowania WHERE auto_id=?", (auto_id,)
         )
         for r in c.fetchall():
@@ -2334,11 +2713,12 @@ def pobierz_dane_timeline(auto_id):
             zdarzenia.append((
                 f"tankowanie_{r['id']}", "Tankowanie", r["data"],
                 "Tankowanie" + (" (do pełna)" if r["do_pelna"] else ""), opis,
-                float(r["kwota"] or 0), r["zalacznik"], f"/tankowanie/edytuj/{r['id']}"
+                float(r["kwota"] or 0), r["zalacznik"], f"/tankowanie/edytuj/{r['id']}",
+                r["dodane_przez"],
             ))
 
         c.execute(
-            "SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, z.nazwa, h.zalacznik "
+            "SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, z.nazwa, h.zalacznik, h.dodane_przez "
             "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
         )
@@ -2347,11 +2727,12 @@ def pobierz_dane_timeline(auto_id):
             zdarzenia.append((
                 f"historia_{r['id']}", "Serwis", r["data"],
                 str(r["nazwa"]), opis,
-                float(r["cena"] or 0), r["zalacznik"], f"/wpis/edytuj/{r['id']}"
+                float(r["cena"] or 0), r["zalacznik"], f"/wpis/edytuj/{r['id']}",
+                r["dodane_przez"],
             ))
 
         c.execute(
-            "SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, "
+            "SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.dodane_przez, "
             "GROUP_CONCAT(z.nazwa, ', ') as czesci "
             "FROM wizyty w LEFT JOIN historia h ON h.wizyta_id=w.id LEFT JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE w.auto_id=? GROUP BY w.id", (auto_id,)
@@ -2361,15 +2742,17 @@ def pobierz_dane_timeline(auto_id):
             zdarzenia.append((
                 f"wizyta_{r['id']}", "Wizyta zbiorcza", r["data"],
                 "Wizyta w warsztacie", opis,
-                float(r["koszt_calkowity"] or 0), r["zalacznik"], f"/wizyty/edytuj/{r['id']}"
+                float(r["koszt_calkowity"] or 0), r["zalacznik"], f"/wizyty/edytuj/{r['id']}",
+                r["dodane_przez"],
             ))
 
-        c.execute("SELECT id, data, nazwa, kategoria, kwota, zalacznik FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, data, nazwa, kategoria, kwota, zalacznik, dodane_przez FROM inne_koszty WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             zdarzenia.append((
                 f"inne_{r['id']}", "Inny koszt", r["data"],
                 str(r["nazwa"] or "Koszt"), str(r["kategoria"] or ""),
-                float(r["kwota"] or 0), r["zalacznik"], f"/inne/edytuj/{r['id']}"
+                float(r["kwota"] or 0), r["zalacznik"], f"/inne/edytuj/{r['id']}",
+                r["dodane_przez"],
             ))
 
         c.execute("SELECT id, data, strefa, typ_porownania, opis, zalacznik FROM zdjecia_karoserii WHERE auto_id=?", (auto_id,))
@@ -2378,7 +2761,7 @@ def pobierz_dane_timeline(auto_id):
             zdarzenia.append((
                 f"zdjecie_{r['id']}", "Zdjęcie karoserii", r["data"],
                 f"Zdjęcie: {r['strefa']}", opis,
-                None, r["zalacznik"], f"/karoseria/edytuj/{r['id']}"
+                None, r["zalacznik"], f"/karoseria/edytuj/{r['id']}", None,
             ))
 
         c.execute("SELECT id, data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
@@ -2386,7 +2769,7 @@ def pobierz_dane_timeline(auto_id):
             zdarzenia.append((
                 f"odczyt_{r['id']}", "Odczyt przebiegu", r["data"],
                 "Odczyt licznika", f"{int(r['przebieg'] or 0)} km",
-                None, None, "/przebieg"
+                None, None, "/przebieg", None,
             ))
 
     return zdarzenia
@@ -5188,3 +5571,219 @@ def zaimportuj_tankowania(auto_id, gotowe):
                  g["kwota"], g["do_pelna"], g["stacja"] or None, kto)
             )
     return len(gotowe)
+
+
+# ==================== IMPORT CSV — POZOSTAŁE TYPY ====================
+# Ten sam mechanizm, co dla tankowań (wczytanie pliku, dopasowanie kolumn,
+# walidacja, deduplikacja), tylko sparametryzowany typem wpisu. Dzięki temu
+# dołożenie kolejnego typu to jeden wpis w TYPY_IMPORTU, a nie kopia widoku.
+
+POLA_IMPORTU_INNYCH_KOSZTOW = {
+    "data": ("Data", True),
+    "nazwa": ("Opis / nazwa", True),
+    "kwota": ("Kwota", True),
+    "tagi": ("Tagi / kategoria", False),
+}
+
+POLA_IMPORTU_ODCZYTOW = {
+    "data": ("Data", True),
+    "przebieg": ("Stan licznika (km)", True),
+}
+
+_ALIASY_IMPORTU_INNYCH = {
+    "data": ["data", "date", "dzien", "dzień", "datum", "data wydatku"],
+    "nazwa": ["nazwa", "opis", "description", "tytul", "tytuł", "name", "usluga", "usługa", "pozycja", "co"],
+    "kwota": ["kwota", "koszt", "cena", "cost", "total", "price", "wartosc", "wartość", "suma"],
+    "tagi": ["tagi", "tag", "kategoria", "category", "typ", "rodzaj", "grupa"],
+}
+
+_ALIASY_IMPORTU_ODCZYTOW = {
+    "data": ["data", "date", "dzien", "dzień", "datum", "data odczytu"],
+    "przebieg": ["przebieg", "licznik", "odometer", "odo", "mileage", "km", "stan licznika", "przebieg (km)"],
+}
+
+
+def _dopasuj_kolumny(naglowki, pola, aliasy):
+    """Automatyczne zgadywanie, która kolumna pliku odpowiada któremu polu.
+    Najpierw szukamy trafień DOKŁADNYCH, dopiero potem częściowych — inaczej
+    „data odczytu” potrafiła zająć kolumnę przeznaczoną na „data”."""
+    znormalizowane = [_normalizuj_naglowek(h) for h in naglowki]
+    mapowanie = {pole: None for pole in pola}
+    zajete = set()
+
+    for pole in pola:
+        lista_aliasow = aliasy.get(pole, [])
+        for dokladne in (True, False):
+            for i, h in enumerate(znormalizowane):
+                if i in zajete or not h:
+                    continue
+                trafienie = (h in lista_aliasow) if dokladne else any(a in h for a in lista_aliasow)
+                if trafienie:
+                    mapowanie[pole] = i
+                    zajete.add(i)
+                    break
+            if mapowanie[pole] is not None:
+                break
+    return mapowanie
+
+
+def _wartosc_z_wiersza(wiersz, mapowanie, pole):
+    idx = mapowanie.get(pole)
+    if idx is None or idx >= len(wiersz):
+        return ""
+    return wiersz[idx]
+
+
+def dopasuj_kolumny_innych_kosztow(naglowki):
+    return _dopasuj_kolumny(naglowki, POLA_IMPORTU_INNYCH_KOSZTOW, _ALIASY_IMPORTU_INNYCH)
+
+
+def dopasuj_kolumny_odczytow(naglowki):
+    return _dopasuj_kolumny(naglowki, POLA_IMPORTU_ODCZYTOW, _ALIASY_IMPORTU_ODCZYTOW)
+
+
+def przygotuj_import_innych_kosztow(auto_id, naglowki, wiersze, mapowanie):
+    """Waliduje wiersze i odsiewa duplikaty względem tego, co już jest w bazie
+    (ta sama data + nazwa + kwota). Nic nie zapisuje."""
+    gotowe, bledy = [], []
+    duplikaty = 0
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT data, nazwa, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        istniejace = {
+            (str(d or ""), klucz_nazwy(n), round(float(k or 0), 2))
+            for d, n, k in c.fetchall()
+        }
+
+    for nr, wiersz in enumerate(wiersze, start=2):
+        data_txt = _parsuj_date_csv(_wartosc_z_wiersza(wiersz, mapowanie, "data"))
+        if not data_txt:
+            bledy.append((nr, "nieczytelna albo pusta data"))
+            continue
+
+        nazwa = normalizuj_nazwe(_wartosc_z_wiersza(wiersz, mapowanie, "nazwa"))
+        if not nazwa:
+            bledy.append((nr, "brak opisu / nazwy wydatku"))
+            continue
+
+        kwota = _parsuj_liczbe_csv(_wartosc_z_wiersza(wiersz, mapowanie, "kwota"))
+        if kwota is None or kwota <= 0:
+            bledy.append((nr, "brak lub zerowa kwota"))
+            continue
+
+        klucz = (data_txt, klucz_nazwy(nazwa), round(kwota, 2))
+        if klucz in istniejace:
+            duplikaty += 1
+            continue
+        istniejace.add(klucz)
+
+        gotowe.append({
+            "data": data_txt,
+            "nazwa": nazwa,
+            "kwota": float(kwota),
+            "tagi": normalizuj_nazwe(_wartosc_z_wiersza(wiersz, mapowanie, "tagi")),
+        })
+
+    gotowe.sort(key=lambda g: (parsuj_date(g["data"]), g["nazwa"]))
+    return {"gotowe": gotowe, "duplikaty": duplikaty, "bledy": bledy}
+
+
+def zaimportuj_inne_koszty(auto_id, gotowe):
+    if not auto_id or not gotowe:
+        return 0
+    kto = pobierz_moje_imie()
+    with polacz_baze() as conn:
+        for g in gotowe:
+            conn.execute(
+                "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, dodane_przez) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (auto_id, g["data"], "", g["nazwa"], g["kwota"], g["tagi"] or None, kto)
+            )
+    return len(gotowe)
+
+
+def przygotuj_import_odczytow(auto_id, naglowki, wiersze, mapowanie):
+    """Odczyty licznika: duplikatem jest ta sama data + ten sam przebieg.
+    Dodatkowo odsiewamy wiersze z przebiegiem <= 0, bo taki odczyt nic nie wnosi,
+    a psuje wyliczenia średniego dziennego przebiegu."""
+    gotowe, bledy = [], []
+    duplikaty = 0
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
+        istniejace = {(str(d or ""), int(p or 0)) for d, p in c.fetchall()}
+
+    for nr, wiersz in enumerate(wiersze, start=2):
+        data_txt = _parsuj_date_csv(_wartosc_z_wiersza(wiersz, mapowanie, "data"))
+        if not data_txt:
+            bledy.append((nr, "nieczytelna albo pusta data"))
+            continue
+
+        przebieg = _parsuj_liczbe_csv(_wartosc_z_wiersza(wiersz, mapowanie, "przebieg"))
+        if przebieg is None or przebieg <= 0:
+            bledy.append((nr, "brak lub zerowy stan licznika"))
+            continue
+
+        klucz = (data_txt, int(przebieg))
+        if klucz in istniejace:
+            duplikaty += 1
+            continue
+        istniejace.add(klucz)
+
+        gotowe.append({"data": data_txt, "przebieg": int(przebieg)})
+
+    gotowe.sort(key=lambda g: (parsuj_date(g["data"]), g["przebieg"]))
+    return {"gotowe": gotowe, "duplikaty": duplikaty, "bledy": bledy}
+
+
+def zaimportuj_odczyty(auto_id, gotowe):
+    if not auto_id or not gotowe:
+        return 0
+    with polacz_baze() as conn:
+        for g in gotowe:
+            conn.execute(
+                "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)",
+                (auto_id, g["data"], g["przebieg"])
+            )
+    return len(gotowe)
+
+
+# Rejestr typów importu: opisuje wszystko, czego potrzebuje widok /import.
+# `podglad` buduje jednolinijkowy opis gotowego wpisu do sekcji podglądu.
+TYPY_IMPORTU = {
+    "tankowania": {
+        "etykieta": "Tankowania",
+        "opis": "Data, licznik, litry/kWh i kwota — historia z innej aplikacji tankowań.",
+        "pola": POLA_IMPORTU_TANKOWAN,
+        "dopasuj": dopasuj_kolumny_tankowan,
+        "przygotuj": przygotuj_import_tankowan,
+        "zapisz": zaimportuj_tankowania,
+        "podglad": lambda g, jednostka: (
+            f"{g['data']} • {g['przebieg']} km • {g['litry']:.2f} {jednostka} • {g['kwota']:.2f}"
+            + (f" • {g['stacja']}" if g.get("stacja") else "")
+        ),
+    },
+    "inne_koszty": {
+        "etykieta": "Inne koszty",
+        "opis": "Ubezpieczenie, myjnia, autostrady, raty — data, opis i kwota.",
+        "pola": POLA_IMPORTU_INNYCH_KOSZTOW,
+        "dopasuj": dopasuj_kolumny_innych_kosztow,
+        "przygotuj": przygotuj_import_innych_kosztow,
+        "zapisz": zaimportuj_inne_koszty,
+        "podglad": lambda g, jednostka: (
+            f"{g['data']} • {g['nazwa']} • {g['kwota']:.2f}"
+            + (f" • {g['tagi']}" if g.get("tagi") else "")
+        ),
+    },
+    "odczyty": {
+        "etykieta": "Odczyty licznika",
+        "opis": "Sam stan licznika w czasie — przydatne, gdy tankowania prowadzisz gdzie indziej.",
+        "pola": POLA_IMPORTU_ODCZYTOW,
+        "dopasuj": dopasuj_kolumny_odczytow,
+        "przygotuj": przygotuj_import_odczytow,
+        "zapisz": zaimportuj_odczyty,
+        "podglad": lambda g, jednostka: f"{g['data']} • {g['przebieg']} km",
+    },
+}

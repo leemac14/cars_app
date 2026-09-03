@@ -14,7 +14,7 @@ class ImportCSVView(ft.View):
         self.dropdowny = {}
         self.gotowe = []
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Import tankowań (CSV)", "/", ikona=ft.Icons.FILE_DOWNLOAD)
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Import z pliku CSV", "/", ikona=ft.Icons.FILE_DOWNLOAD)
 
         if not self.state.auto_id:
             super().__init__(
@@ -31,6 +31,21 @@ class ImportCSVView(ft.View):
 
         self.elektryczny = db.czy_pojazd_elektryczny(self.state.auto_id)
         self.etykiety = db.etykiety_paliwa(self.elektryczny)
+
+        # Import obsługuje kilka rodzajów wpisów; różnią się tylko zestawem
+        # kolumn i walidacją, więc widok jest jeden, a typ wybiera się na górze.
+        self.typ_importu = "tankowania"
+        self.e_typ = ft.Dropdown(
+            label="Co importujesz?",
+            options=[ft.DropdownOption(key=k, text=v["etykieta"]) for k, v in db.TYPY_IMPORTU.items()],
+            value=self.typ_importu,
+            on_select=self._zmien_typ,
+            **utils.styl_dropdown()
+        )
+        self.t_opis_typu = ft.Text(
+            db.TYPY_IMPORTU[self.typ_importu]["opis"],
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+        )
 
         self.t_plik = ft.Text("Nie wybrano jeszcze pliku.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self.btn_plik = ft.ElevatedButton(
@@ -54,6 +69,9 @@ class ImportCSVView(ft.View):
 
         k1 = utils.karta_formularza(
             [
+                self.e_typ,
+                self.t_opis_typu,
+                ft.Divider(height=1),
                 ft.Text(
                     "Wczytaj historię z arkusza albo z innej aplikacji. Obsługiwane są separatory "
                     "';', ',' i tabulator oraz kodowania UTF-8 / Windows-1250. Pierwszy wiersz "
@@ -103,14 +121,37 @@ class ImportCSVView(ft.View):
         self._zbuduj_mapowanie()
         self._odswiez_podglad()
 
+    def _konfiguracja(self):
+        return db.TYPY_IMPORTU[self.typ_importu]
+
+    def _zmien_typ(self, e):
+        """Zmiana typu unieważnia dopasowanie kolumn i podgląd — nagłówki pliku
+        zostają, ale pola docelowe są już zupełnie inne."""
+        self.typ_importu = self.e_typ.value or "tankowania"
+        self.t_opis_typu.value = self._konfiguracja()["opis"]
+        self.gotowe = []
+        if self.naglowki:
+            self._zbuduj_mapowanie()
+            self._odswiez_podglad()
+        else:
+            self.kolumna_mapowania.visible = False
+            self.kolumna_podgladu.visible = False
+            self.btn_importuj.visible = False
+        self._page.update()
+
     def _zbuduj_mapowanie(self):
-        mapowanie = db.dopasuj_kolumny_tankowan(self.naglowki)
+        konfig = self._konfiguracja()
+        mapowanie = konfig["dopasuj"](self.naglowki)
         opcje = [ft.DropdownOption(key="", text="— nie importuj —")]
         opcje += [ft.DropdownOption(key=str(i), text=h or f"Kolumna {i + 1}") for i, h in enumerate(self.naglowki)]
 
+        # UWAGA: ft.Dropdown we Flecie 0.86 nie zna `on_change` — reaguje na
+        # `on_select`. Wcześniejsza wersja tego ekranu przekazywała on_change
+        # w konstruktorze, więc wybór pliku CSV kończył się TypeError i mapowanie
+        # kolumn w ogóle się nie budowało.
         self.dropdowny = {}
         self.kolumna_mapowania.controls.clear()
-        for pole, (etykieta, wymagane) in db.POLA_IMPORTU_TANKOWAN.items():
+        for pole, (etykieta, wymagane) in konfig["pola"].items():
             if pole == "litry" and self.elektryczny:
                 etykieta = "Energia (kWh)"
             if pole == "stacja":
@@ -119,7 +160,7 @@ class ImportCSVView(ft.View):
                 label=f"{etykieta}{' *' if wymagane else ''}",
                 options=list(opcje),
                 value=str(mapowanie[pole]) if mapowanie.get(pole) is not None else "",
-                on_change=self._odswiez_podglad,
+                on_select=self._odswiez_podglad,
                 **utils.styl_dropdown()
             )
             self.dropdowny[pole] = dd
@@ -137,7 +178,7 @@ class ImportCSVView(ft.View):
     def _odswiez_podglad(self, e=None):
         if not self.wiersze:
             return
-        raport = db.przygotuj_import_tankowan(
+        raport = self._konfiguracja()["przygotuj"](
             self.state.auto_id, self.naglowki, self.wiersze, self._biezace_mapowanie()
         )
         self.gotowe = raport["gotowe"]
@@ -166,11 +207,10 @@ class ImportCSVView(ft.View):
         if self.gotowe:
             tresc.append(ft.Divider(height=10))
             tresc.append(ft.Text("Pierwsze wpisy do zaimportowania:", size=12, weight="bold"))
+            buduj_opis = self._konfiguracja()["podglad"]
             for g in self.gotowe[:3]:
-                opis = f"{g['data']} • {g['przebieg']} km • {g['litry']:.2f} {self.etykiety['jednostka']} • {g['kwota']:.2f}"
-                if g["stacja"]:
-                    opis += f" • {g['stacja']}"
-                tresc.append(ft.Text(opis, size=11, color=ft.Colors.ON_SURFACE_VARIANT))
+                tresc.append(ft.Text(buduj_opis(g, self.etykiety["jednostka"]),
+                                     size=11, color=ft.Colors.ON_SURFACE_VARIANT))
 
         self.kolumna_podgladu.controls = tresc
         self.kolumna_podgladu.visible = True
@@ -187,7 +227,7 @@ class ImportCSVView(ft.View):
             async def _zrob():
                 dlg = utils.pokaz_ladowanie(self._page, "Importowanie wpisów...")
                 try:
-                    ile = await asyncio.to_thread(db.zaimportuj_tankowania, self.state.auto_id, self.gotowe)
+                    ile = await asyncio.to_thread(self._konfiguracja()["zapisz"], self.state.auto_id, self.gotowe)
                     utils.ukryj_ladowanie(self._page, dlg)
                     utils.wypchnij_w_tle(self._page, self.state.auto_id, "import CSV")
                     utils.przejdz(self._page, "/")
@@ -200,7 +240,8 @@ class ImportCSVView(ft.View):
         utils.potwierdz(
             self._page,
             "Zaimportować wpisy?",
-            f"Do pojazdu „{self.state.auto_nazwa}” zostanie dodanych {len(self.gotowe)} wpisów. "
+            f"Do pojazdu „{self.state.auto_nazwa}” zostanie dodanych {len(self.gotowe)} wpisów "
+            f"({self._konfiguracja()['etykieta'].lower()}). "
             f"Duplikaty są już odfiltrowane. Operacji nie da się cofnąć jednym kliknięciem "
             f"— w razie czego zrób najpierw kopię bazy.",
             wykonaj,

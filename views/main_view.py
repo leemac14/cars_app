@@ -420,8 +420,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             return ft.Container(
                 width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
                 bgcolor=utils.tlo_karty(self._page, poziom=1),
-                ink=True, on_click=lambda e: utils.przejdz(self._page, "/magazyn"),
-                tooltip=f"Kondycja pojazdu: {etykieta_kond}",
+                # Klik prowadzi teraz do ROZPISKI, a nie do magazynu: sam wynik
+                # nie mówi, co go obniżyło, i to jest pierwsze pytanie po jego
+                # zobaczeniu.
+                ink=True, on_click=lambda e: utils.pokaz_panel_kondycji(self._page, self.state),
+                tooltip=f"Kondycja pojazdu: {etykieta_kond} — dotknij, aby zobaczyć rozpiskę",
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.MONITOR_HEART, size=15, color=kolor_gauge),
@@ -661,7 +664,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             with db.polacz_baze() as conn:
                 conn.row_factory = sqlite3.Row
                 c = conn.cursor()
-                c.execute("SELECT id, nazwa, nr_rej, zdjecie_glowne FROM samochody ORDER BY nazwa")
+                c.execute(
+                    "SELECT id, nazwa, nr_rej, zdjecie_glowne, nadwozie, kolor_motywu, marka, model "
+                    "FROM samochody ORDER BY nazwa"
+                )
                 auta_siatki = c.fetchall()
 
             bs = ft.BottomSheet(ft.Container())
@@ -697,17 +703,20 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.zamknij_dno(self._page, bs)
                 utils.przejdz(self._page, "/auto/nowy")
 
-            def zastepcze_zdjecie():
+            def zastepcze_zdjecie(a=None):
                 """Pojazd bez zdjęcia (albo ze zdjęciem, którego nie ma już na
-                dysku) nie może wypaść z siatki — dostaje kafelek w kolorze
-                motywu, więc karta zachowuje ten sam rozmiar i rytm."""
+                dysku) nie może wypaść z siatki — dostaje kafelek z sylwetką
+                nadwozia w kolorze przypisanym do TEGO auta, więc karta zachowuje
+                ten sam rozmiar i rytm, a auta nadal różnią się od siebie."""
+                kolor = utils.MAPA_KOLOROW.get((a["kolor_motywu"] if a is not None else None) or "", ft.Colors.PRIMARY)
+                nadwozie = a["nadwozie"] if a is not None else None
                 return ft.Container(
                     width=SZER_KARTY, height=WYS_ZDJECIA,
-                    bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
+                    bgcolor=ft.Colors.with_opacity(0.10, kolor),
                     alignment=ft.Alignment.CENTER,
                     content=ft.Icon(
-                        ft.Icons.DIRECTIONS_CAR, size=38,
-                        color=ft.Colors.with_opacity(0.55, ft.Colors.PRIMARY)
+                        utils.ikona_nadwozia(nadwozie), size=42,
+                        color=ft.Colors.with_opacity(0.60, kolor)
                     ),
                 )
 
@@ -715,20 +724,29 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 a_id, a_nazwa = a["id"], a["nazwa"]
                 zaznaczone = (a_id == self.state.auto_id)
 
-                if a["zdjecie_glowne"]:
+                ma_zdjecie = bool(a["zdjecie_glowne"])
+                if ma_zdjecie:
                     miniatura = ft.Image(
                         src=utils.abs_zalacznik(a["zdjecie_glowne"]),
                         width=SZER_KARTY, height=WYS_ZDJECIA, fit="cover",
-                        error_content=zastepcze_zdjecie(),
+                        error_content=zastepcze_zdjecie(a),
                     )
                 else:
-                    miniatura = zastepcze_zdjecie()
+                    miniatura = zastepcze_zdjecie(a)
 
                 odznaka = ft.Container(
                     top=6, right=6, visible=zaznaczone,
                     width=24, height=24, border_radius=12,
                     bgcolor=ft.Colors.PRIMARY, alignment=ft.Alignment.CENTER,
                     content=ft.Icon(ft.Icons.CHECK, size=15, color=ft.Colors.ON_PRIMARY),
+                )
+
+                # Przy zdjęciu sylwetka schodzi do rogu jako mała plakietka —
+                # zdjęcie i tak rozpoznaje auto, ale kolor odznaki utrzymuje
+                # ten sam „klucz” wizualny na całej liście.
+                plakietka = ft.Container(
+                    bottom=6, left=6, visible=ma_zdjecie,
+                    content=utils.odznaka_pojazdu(a, rozmiar=26),
                 )
 
                 ramka = ft.Container(
@@ -740,7 +758,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     tooltip=str(a_nazwa),
                     on_click=lambda ev, aid=a_id, an=a_nazwa: wybierz(aid, an),
                     content=ft.Column([
-                        ft.Stack([miniatura, odznaka], width=SZER_KARTY, height=WYS_ZDJECIA),
+                        ft.Stack([miniatura, plakietka, odznaka], width=SZER_KARTY, height=WYS_ZDJECIA),
                         ft.Container(
                             padding=ft.Padding(8, 6, 8, 8),
                             content=ft.Column([
@@ -894,12 +912,19 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                             padding=ft.Padding(8, 4, 8, 4),
                             border_radius=14,
                             bgcolor=ft.Colors.with_opacity(0.13, kolor_kond),
+                            ink=True,
+                            tooltip="Zobacz, co obniża kondycję",
+                            on_click=lambda e: (
+                                utils.zamknij_dno(self._page, bs_info),
+                                utils.pokaz_panel_kondycji(self._page, self.state),
+                            ),
                             content=ft.Row([
                                 ft.Icon(ikona_kond, size=13, color=kolor_kond),
                                 ft.Text(
                                     f"Kondycja: {kondycja if kondycja is not None else '-'}/100 ({etykieta_kond})",
                                     size=12, weight="bold", color=kolor_kond
-                                )
+                                ),
+                                ft.Icon(ft.Icons.CHEVRON_RIGHT, size=13, color=kolor_kond),
                             ], spacing=5, tight=True)
                         ),
                         ft.Divider(height=15),
@@ -1515,7 +1540,15 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "tankowania_mc", baza_lista, "data")
             filtr_tag_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "tankowania_tag", baza_lista, "tagi", "Tagi")
 
-            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_tag_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            # „Kto to dodał” ma sens dopiero przy pojeździe współdzielonym —
+            # przy jednym użytkowniku każdy wpis jest jego i filtr byłby szumem.
+            filtry_ui = [sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_tag_ui]
+            if wspolny_id:
+                filtry_ui.append(
+                    utils.przycisk_filtrowania_autora(self._page, self.state, "tankowania_autor", baza_lista, "dodane_przez")
+                )
+
+            self.elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
 
             def filtruj_tankowania(e):
                 zapytanie = e.control.value.lower().strip()
@@ -1540,6 +1573,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "tankowania_rok", "data")
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "tankowania_mc", "data")
             po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "tankowania_tag", "tagi")
+            if wspolny_id:
+                po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "tankowania_autor", "dodane_przez")
             utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
 
             def otworz_menu_t(tid, zalacznik=None):
@@ -1647,7 +1682,13 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "inne_mc", baza_lista, "data")
             filtr_kat_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "inne_kat", baza_lista, "kategoria", "Kategoria")
 
-            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_kat_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            filtry_ui = [sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_kat_ui]
+            if wspolny_id:
+                filtry_ui.append(
+                    utils.przycisk_filtrowania_autora(self._page, self.state, "inne_autor", baza_lista, "dodane_przez")
+                )
+
+            self.elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
 
             def filtruj_inne(e):
                 zapytanie = e.control.value.lower().strip()
@@ -1672,6 +1713,8 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "inne_rok", "data")
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "inne_mc", "data")
             po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "inne_kat", "kategoria")
+            if wspolny_id:
+                po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "inne_autor", "dodane_przez")
             utils.posortuj_liste(po_filtrach, self.state, "inne", opcje_sort)
 
             def otworz_menu_i(iid, zalacznik=None):

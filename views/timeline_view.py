@@ -60,7 +60,16 @@ class TimelineView(ft.View):
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "timeline_rok", zdarzenia, 2)
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "timeline_mc", zdarzenia, 2)
 
-            elementy.append(ft.Row([sort_ui, filtr_typ_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            # Filtr autorstwa ma sens dopiero, gdy pojazd jest współdzielony —
+            # przy jednym użytkowniku każdy wpis jest „jego” i przycisk byłby
+            # tylko szumem w i tak zapełnionym pasku filtrów.
+            filtry_ui = [sort_ui, filtr_typ_ui, filtr_rok_ui, filtr_mc_ui]
+            if wspolny_id:
+                filtry_ui.append(
+                    utils.przycisk_filtrowania_autora(self._page, self.state, "timeline_autor", zdarzenia, 8)
+                )
+
+            elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
 
             def filtruj_timeline(e):
                 zapytanie = e.control.value.lower().strip()
@@ -93,6 +102,8 @@ class TimelineView(ft.View):
             po_filtrach = utils.filtruj_po_kategorii(zdarzenia, self.state, "timeline_typ", 1)
             po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "timeline_rok", 2)
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "timeline_mc", 2)
+            if wspolny_id:
+                po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "timeline_autor", 8)
             utils.posortuj_liste(po_filtrach, self.state, "timeline", opcje_sort)
 
             if not po_filtrach:
@@ -100,8 +111,8 @@ class TimelineView(ft.View):
             else:
                 for z in po_filtrach:
                     wiersz = self._wiersz_osi_czasu(z)
-                    _, typ, data, tytul, opis, kwota, zalacznik, _ = z
-                    tekst_szukaj = f"{typ} {data} {tytul} {opis}".lower()
+                    typ, data, tytul, opis, autor = z[1], z[2], z[3], z[4], z[8]
+                    tekst_szukaj = f"{typ} {data} {tytul} {opis} {autor or ''}".lower()
                     wiersz["szukaj"] = tekst_szukaj
                     self.wszystkie_karty.append(wiersz)
                     self.lista_kart.controls.append(wiersz["karta"])
@@ -148,7 +159,8 @@ class TimelineView(ft.View):
 
         Zwraca dict z kontrolką i referencjami do obu odcinków linii, bo
         wyszukiwarka musi móc później poprawić końcówki osi."""
-        _, typ, data, tytul, opis, kwota, zalacznik, trasa = z
+        _, typ, data, tytul, opis, kwota, zalacznik, trasa = z[:8]
+        autor = z[8] if len(z) > 8 else None
         ikona, kolor = IKONY_TIMELINE.get(typ, (ft.Icons.EVENT_NOTE, ft.Colors.ON_SURFACE_VARIANT))
         kolor_linii = self._kolor_linii()
 
@@ -179,6 +191,15 @@ class TimelineView(ft.View):
         naglowek_bits = [ft.Text(str(data), size=12, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT)]
         if zalacznik:
             naglowek_bits.append(utils.wskaznik_zalacznika(self._page, zalacznik, typ))
+        if autor:
+            # Skoro można filtrować po autorze, trzeba go też widzieć na karcie —
+            # inaczej wynik filtrowania nie daje się zweryfikować wzrokiem.
+            naglowek_bits.append(ft.Container(
+                padding=ft.Padding(6, 1, 6, 1),
+                border_radius=utils.RADIUS["pill"],
+                bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE),
+                content=ft.Text(str(autor), size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+            ))
 
         prawa_strona = [ft.Row(naglowek_bits, spacing=6)]
         if kwota is not None and kwota != 0:

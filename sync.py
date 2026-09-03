@@ -131,7 +131,7 @@ def dolacz_po_kodzie(kod):
 KOLUMNY_POJAZDU = [
     "nazwa", "marka", "model", "generacja", "nr_rej", "vin", "rok_produkcji",
     "oc_data", "przeglad_data", "pojemnosc_silnika", "moc_silnika", "typ_paliwa",
-    "skrzynia_biegow", "notatki", "wycieraczki_przod", "wycieraczki_tyl",
+    "skrzynia_biegow", "nadwozie", "notatki", "wycieraczki_przod", "wycieraczki_tyl",
     "cisnienie_przod", "cisnienie_tyl", "olej_typ", "olej_pojemnosc", "akumulator",
     "zarowki_mijania", "zarowki_drogowe", "ac_data", "assistance_data",
     "gasnica_data", "apteczka_data", "wiadomosc_statusu",
