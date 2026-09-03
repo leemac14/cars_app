@@ -131,7 +131,8 @@ def dolacz_po_kodzie(kod):
 KOLUMNY_POJAZDU = [
     "nazwa", "marka", "model", "generacja", "nr_rej", "vin", "rok_produkcji",
     "oc_data", "przeglad_data", "pojemnosc_silnika", "moc_silnika", "typ_paliwa",
-    "skrzynia_biegow", "nadwozie", "notatki", "wycieraczki_przod", "wycieraczki_tyl",
+    "skrzynia_biegow", "nadwozie", "pojemnosc_baterii", "zasieg_ev",
+    "notatki", "wycieraczki_przod", "wycieraczki_tyl",
     "cisnienie_przod", "cisnienie_tyl", "olej_typ", "olej_pojemnosc", "akumulator",
     "zarowki_mijania", "zarowki_drogowe", "ac_data", "assistance_data",
     "gasnica_data", "apteczka_data", "wiadomosc_statusu",
@@ -140,7 +141,7 @@ KOLUMNY_POJAZDU = [
 
 KONFIGURACJA_SYNC = [
     {"tabela": "tagi", "kolumny": ["nazwa", "kolor"], "fk": {}},
-    {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
+    {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "rodzaj_energii", "typ_ladowania", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon", "prog_km", "prog_dni"], "fk": {}},
     {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},

@@ -131,7 +131,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         # Punkty do sparkline przy „Śr. spalanie” — ta sama metoda liczenia, co
         # wykres trendu w Statystykach, tylko per odcinek między pełnymi bakami.
-        seria_spalania = db.pobierz_serie_spalania(self.state.auto_id, 12) if "spalanie" in wlaczone else []
+        # Przy hybrydzie plug-in kafelek „Śr. spalanie” pokazuje stronę PALIWOWĄ
+        # (dla elektryka — prądową): mieszanie litrów z kWh w jednej serii dałoby
+        # liczbę bez znaczenia. Pełne rozbicie jest w Statystykach.
+        rodzaj_kokpitu = db.domyslny_rodzaj_energii(self.state.auto_id)
+        seria_spalania = db.pobierz_serie_spalania(self.state.auto_id, 12, rodzaj=rodzaj_kokpitu) if "spalanie" in wlaczone else []
         # Iskra przy pozostałych kafelkach liczbowych — kokpit ma wtedy jeden,
         # spójny język: liczba mówi „ile”, iskra mówi „w którą stronę”.
         seria_przebiegu = db.pobierz_serie_dziennego_przebiegu(self.state.auto_id, 12) if "przebieg_dzienny" in wlaczone else []
@@ -356,13 +360,50 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             )
 
         def widget_spalanie():
-            spalanie = dane_porownanie.get("spalanie")
-            wartosc = utils.formatuj_spalanie(spalanie) if spalanie else "Za mało danych"
+            czy_prad_kokpit = rodzaj_kokpitu == db.ENERGIA_PRAD
             wartosci_serii = [w for _, w in seria_spalania]
+            # Średnia z odcinków TEGO źródła, a nie ogólna z porównania —
+            # przy plug-inie tamta mieszała oba światy.
+            spalanie = (sum(wartosci_serii) / len(wartosci_serii)) if wartosci_serii else dane_porownanie.get("spalanie")
+            wartosc = utils.formatuj_spalanie(spalanie, elektryczny=czy_prad_kokpit) if spalanie else "Za mało danych"
+            etykieta = "Śr. zużycie" if czy_prad_kokpit else "Śr. spalanie"
             return kafel_z_iskra(
-                ft.Icons.LOCAL_GAS_STATION, ft.Colors.TEAL_700, "Śr. spalanie", wartosc,
+                ft.Icons.EV_STATION if czy_prad_kokpit else ft.Icons.LOCAL_GAS_STATION,
+                ft.Colors.TEAL_700, etykieta, wartosc,
                 wartosci_serii, idz_do_zakladki(1),
                 wzrost_zly=True, podpis_stopki=f"{len(wartosci_serii)} ost. odcinków",
+            )
+
+        def widget_zasieg_ev():
+            """Katalogowy zasięg jest z broszury, ten liczymy z Twojego
+            rzeczywistego zużycia — i to on mówi, czy dojedziesz."""
+            zasieg = db.pobierz_zasieg_ev(self.state.auto_id)
+            if not zasieg or not zasieg["szacowany"]:
+                wartosc, stopka = "Brak danych", "Uzupełnij baterię i naładuj do pełna"
+            else:
+                wartosc = f"{utils.formatuj_liczba(zasieg['szacowany'], 0)} km"
+                if zasieg["procent_deklarowanego"]:
+                    stopka = f"{utils.formatuj_liczba(zasieg['procent_deklarowanego'], 0)}% katalogowego"
+                elif zasieg["pojemnosc"]:
+                    stopka = f"z {utils.formatuj_liczba(zasieg['pojemnosc'], 0)} kWh"
+                else:
+                    stopka = "z Twojego zużycia"
+            # Własny kafelek zamiast kafel_wartosci, bo potrzebna jest trzecia
+            # linijka: „ile procent katalogowego” to sedno tej liczby.
+            return ft.Container(
+                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=idz_do_statystyk(0),
+                tooltip="Realny zasięg policzony z Twojego zużycia",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.BATTERY_CHARGING_FULL, size=15, color=ft.Colors.GREEN_700),
+                        ft.Text("Zasięg EV", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=4),
             )
 
         def widget_przebieg_dzienny():
@@ -447,6 +488,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             "przebieg_dzienny": widget_przebieg_dzienny,
             "ostatnia_aktywnosc": widget_ostatnia_aktywnosc,
             "kondycja": widget_kondycja,
+            "zasieg_ev": widget_zasieg_ev,
         }
 
         self.kokpit_kontener = ft.Container(content=self._zawartosc_kokpitu())
@@ -1506,27 +1548,39 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         else:
             baza_lista.sort(key=lambda x: int(x.get('przebieg') or 0))
 
-            ostatni_pelny_idx = -1
+            # Rodzaj energii normalizujemy raz: wpisy sprzed migracji 33 mają
+            # NULL i biorą domyślny dla pojazdu.
+            domyslny_rodzaj = db.domyslny_rodzaj_energii(self.state.auto_id)
+            for t in baza_lista:
+                t['rodzaj'] = str(t.get('rodzaj_energii') or domyslny_rodzaj)
+
+            # Zużycie liczymy OSOBNO w obrębie każdego źródła — przy hybrydzie
+            # plug-in odcinek „od pełnego baku do pełnego baku” nie ma nic
+            # wspólnego z ładowaniami, które wypadły pomiędzy nimi.
+            ostatni_pelny = {}
+            poprzedni_przebieg = {}
             for i, t in enumerate(baza_lista):
-                if i > 0:
-                    prz_akt = int(t.get('przebieg') or 0)
-                    prz_poprz = int(baza_lista[i-1].get('przebieg') or 0)
-                    t['dystans'] = max(0, prz_akt - prz_poprz)
-                else:
-                    t['dystans'] = 0
+                rodzaj = t['rodzaj']
+                prz_akt = int(t.get('przebieg') or 0)
+
+                poprz = poprzedni_przebieg.get(rodzaj)
+                t['dystans'] = max(0, prz_akt - poprz) if poprz is not None else 0
+                poprzedni_przebieg[rodzaj] = prz_akt
 
                 t['spalanie'] = None
                 if t.get('do_pelna'):
-                    if ostatni_pelny_idx != -1:
-                        prz_akt = int(t.get('przebieg') or 0)
-                        prz_ostatni_pelny = int(baza_lista[ostatni_pelny_idx].get('przebieg') or 0)
+                    idx_poprzedniego = ostatni_pelny.get(rodzaj)
+                    if idx_poprzedniego is not None:
+                        prz_ostatni_pelny = int(baza_lista[idx_poprzedniego].get('przebieg') or 0)
                         dystans_od_pelnego = prz_akt - prz_ostatni_pelny
-
-                        litry_od_pelnego = sum(float(baza_lista[k].get('litry') or 0) for k in range(ostatni_pelny_idx + 1, i + 1))
-
+                        ilosc_od_pelnego = sum(
+                            float(baza_lista[k].get('litry') or 0)
+                            for k in range(idx_poprzedniego + 1, i + 1)
+                            if baza_lista[k]['rodzaj'] == rodzaj
+                        )
                         if dystans_od_pelnego > 0:
-                            t['spalanie'] = (litry_od_pelnego / dystans_od_pelnego) * 100
-                    ostatni_pelny_idx = i
+                            t['spalanie'] = (ilosc_od_pelnego / dystans_od_pelnego) * 100
+                    ostatni_pelny[rodzaj] = i
 
             opcje_sort = [
                 ("Data", "data", lambda x: (utils.parsuj_date(x.get('data')), x.get('id', 0))),
@@ -1543,6 +1597,14 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             # „Kto to dodał” ma sens dopiero przy pojeździe współdzielonym —
             # przy jednym użytkowniku każdy wpis jest jego i filtr byłby szumem.
             filtry_ui = [sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_tag_ui]
+            # Przy hybrydzie plug-in lista miesza tankowania z ładowaniami —
+            # bez filtra nie da się obejrzeć samej jednej strony.
+            if len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1:
+                filtry_ui.insert(1, utils.przycisk_filtrowania_kategoria(
+                    self._page, self.state, "tankowania_rodzaj",
+                    [{"rodzaj_opis": db.ETYKIETY_RODZAJU[t['rodzaj']]} for t in baza_lista],
+                    "rodzaj_opis", "Źródło"
+                ))
             if wspolny_id:
                 filtry_ui.append(
                     utils.przycisk_filtrowania_autora(self._page, self.state, "tankowania_autor", baza_lista, "dodane_przez")
@@ -1573,6 +1635,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "tankowania_rok", "data")
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "tankowania_mc", "data")
             po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "tankowania_tag", "tagi")
+            if len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1:
+                for t in po_filtrach:
+                    t["rodzaj_opis"] = db.ETYKIETY_RODZAJU[t["rodzaj"]]
+                po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "tankowania_rodzaj", "rodzaj_opis")
             if wspolny_id:
                 po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "tankowania_autor", "dodane_przez")
             utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
@@ -1605,13 +1671,19 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
                 mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
+                dwuzrodlowy_lista = len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1
                 for w in po_filtrach:
+                    # Etykiety idą za RODZAJEM WPISU, nie za typem pojazdu —
+                    # w jednej liście plug-ina stoją obok siebie litry i kWh.
+                    rodzaj_w = w.get('rodzaj') or db.ENERGIA_PALIWO
+                    czy_prad_w = rodzaj_w == db.ENERGIA_PRAD
+                    etykiety_w = db.etykiety_energii(rodzaj_w)
                     spalanie = w.get('spalanie')
-                    sp_str = utils.formatuj_spalanie(spalanie, elektryczny=elektryczny)
+                    sp_str = utils.formatuj_spalanie(spalanie, elektryczny=czy_prad_w)
                     kwota_val = float(w.get('kwota') or 0)
                     litry_val = float(w.get('litry') or 0)
                     cena_str = f"{utils.formatuj_liczba(kwota_val)}  {utils.symbol_waluty()}"
-                    cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/{etykiety['jednostka']}" if litry_val > 0 else "-"
+                    cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/{etykiety_w['jednostka']}" if litry_val > 0 else "-"
                     dystans_val = w.get('dystans') or 0
 
                     tid = w.get('id')
@@ -1619,15 +1691,29 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Row([
                             ft.Text(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Row([
+                                # Odznaka źródła tylko przy plug-inie — przy aucie
+                                # jednoźródłowym byłaby tą samą etykietą przy każdym wpisie.
+                                ft.Container(
+                                    padding=ft.Padding(6, 1, 6, 1),
+                                    border_radius=utils.RADIUS["pill"],
+                                    bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.GREEN if czy_prad_w else ft.Colors.BLUE),
+                                    content=ft.Row([
+                                        ft.Icon(ft.Icons.EV_STATION if czy_prad_w else ft.Icons.LOCAL_GAS_STATION,
+                                                size=11, color=ft.Colors.GREEN_800 if czy_prad_w else ft.Colors.BLUE_800),
+                                        ft.Text(db.ETYKIETY_RODZAJU[rodzaj_w] + (f" · {w.get('typ_ladowania')}" if czy_prad_w and w.get('typ_ladowania') else ""),
+                                                size=10, weight="bold",
+                                                color=ft.Colors.GREEN_800 if czy_prad_w else ft.Colors.BLUE_800),
+                                    ], spacing=3, tight=True),
+                                ) if dwuzrodlowy_lista else ft.Container(),
                                 utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Tankowanie"),
-                                ft.Icon(ft.Icons.EV_STATION if elektryczny else ft.Icons.LOCAL_GAS_STATION, size=14, color=ft.Colors.PRIMARY, tooltip="Do pełna") if w.get('do_pelna') else ft.Container(),
+                                ft.Icon(ft.Icons.EV_STATION if czy_prad_w else ft.Icons.LOCAL_GAS_STATION, size=14, color=ft.Colors.PRIMARY, tooltip="Do pełna") if w.get('do_pelna') else ft.Container(),
                                 ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
                             ], spacing=4)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Row([
                             ft.Column([ft.Text("Dystans", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(f"{dystans_val} km", weight="bold")]),
-                            ft.Column([ft.Text(etykiety["zuzycie"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")]),
-                            ft.Column([ft.Text(etykiety["cena_jednostkowa"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(cena_litr_str, weight="bold")]),
+                            ft.Column([ft.Text(etykiety_w["zuzycie"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")]),
+                            ft.Column([ft.Text(etykiety_w["cena_jednostkowa"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(cena_litr_str, weight="bold")]),
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     ]
                     if w.get('tagi'):
@@ -1641,7 +1727,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, zal=w.get('zalacznik'): otworz_menu_t(id_el, zal), "tankowania")
 
                     karta_t = ft.Card(elevation=1, content=kontener)
-                    tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')}".lower()
+                    tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')} {db.ETYKIETY_RODZAJU[rodzaj_w]} {w.get('typ_ladowania') or ''}".lower()
                     self.wszystkie_karty_tankowania.append({"karta": karta_t, "szukaj": tekst_szukaj})
                     self.lista_kart_tankowania.controls.append(karta_t)
 
@@ -1854,25 +1940,117 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         if self.state.stat_podzakladka == 0:
             elektryczny = db.czy_pojazd_elektryczny(self.state.auto_id)
             etykiety = db.etykiety_paliwa(elektryczny)
+            statystyki_energii = db.pobierz_statystyki_energii(self.state.auto_id)
+            dwuzrodlowy = len(statystyki_energii) > 1
+
             self.elementy.extend([
                 ft.Row(utils.tytul_sekcji(ft.Icons.PIE_CHART, "Podsumowanie kosztów"), spacing=8),
                 kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)}  {utils.symbol_waluty()}", ft.Colors.RED_700),
                 ft.Row([
-                    kafel(ft.Icons.LOCAL_GAS_STATION, "Na paliwo", f"{utils.formatuj_liczba(pal)}  {utils.symbol_waluty()}", ft.Colors.BLUE_700, expand=1),
+                    kafel(ft.Icons.LOCAL_GAS_STATION, "Na energię" if dwuzrodlowy else "Na paliwo",
+                          f"{utils.formatuj_liczba(pal)}  {utils.symbol_waluty()}", ft.Colors.BLUE_700, expand=1),
                     kafel(ft.Icons.BUILD, "Na serwis", f"{utils.formatuj_liczba(serw)}  {utils.symbol_waluty()}", ft.Colors.ORANGE_700, expand=1),
                 ], spacing=10),
                 ft.Row([
                     kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),
                     kafel(ft.Icons.ADD_ROAD, "Koszt 1 km", f"{utils.formatuj_liczba(koszt_km)}  {utils.symbol_waluty()}/km", ft.Colors.PURPLE_700, expand=1),
                 ], spacing=10),
-                ft.Row(utils.tytul_sekcji(ft.Icons.INSIGHTS, "Wskaźniki i paliwo"), spacing=8),
+            ])
+
+            # Przy hybrydzie plug-in KAŻDE źródło dostaje własną sekcję. Jedna
+            # uśredniona liczba nie mówiłaby nic: litrów nie da się dodać do
+            # kilowatogodzin. Auto jednoźródłowe ma dokładnie jedną sekcję i
+            # wygląda tak, jak dotąd.
+            for stat in statystyki_energii:
+                czy_prad = stat["rodzaj"] == db.ENERGIA_PRAD
+                etyk = stat["etykiety"]
+                tytul_sekcji = (f"Wskaźniki — {stat['etykieta'].lower()}"
+                                if dwuzrodlowy else "Wskaźniki i paliwo")
+                ikona_sekcji = ft.Icons.EV_STATION if czy_prad else ft.Icons.INSIGHTS
+
+                self.elementy.append(ft.Row(utils.tytul_sekcji(ikona_sekcji, tytul_sekcji), spacing=8))
+                self.elementy.append(ft.Row([
+                    kafel(ft.Icons.SPEED, etyk["zuzycie"],
+                          utils.formatuj_spalanie(stat["zuzycie"], elektryczny=czy_prad)
+                          if stat["zuzycie"] > 0 else etyk["brak_pelnych"],
+                          ft.Colors.TEAL_700, expand=1),
+                    kafel(ft.Icons.WATER_DROP if not czy_prad else ft.Icons.BOLT, etyk["suma_ilosci"],
+                          f"{utils.formatuj_liczba(stat['ilosc'])} {stat['jednostka']}",
+                          ft.Colors.CYAN_700, expand=1),
+                ], spacing=10))
+                self.elementy.append(ft.Row([
+                    kafel(ft.Icons.PAYMENTS, etyk["cena_jednostkowa"],
+                          f"{utils.formatuj_liczba(stat['cena_jednostkowa'])} {utils.symbol_waluty()}"
+                          if stat["cena_jednostkowa"] > 0 else "—",
+                          ft.Colors.AMBER_800, expand=1),
+                    # Koszt na km liczony osobno pokazuje wprost, ile daje
+                    # ładowanie zamiast tankowania.
+                    kafel(ft.Icons.ADD_ROAD, f"Koszt 1 km ({stat['etykieta'].lower()})",
+                          f"{utils.formatuj_liczba(stat['koszt_km'])} {utils.symbol_waluty()}/km"
+                          if stat["koszt_km"] > 0 else "—",
+                          ft.Colors.PURPLE_700, expand=1),
+                ], spacing=10))
+
+                # Rozbicie AC/DC — szybkie ładowanie na trasie potrafi być
+                # kilka razy droższe niż wolne w domu.
+                if czy_prad and stat["ceny_ladowania"]:
+                    self.elementy.append(ft.Row([
+                        kafel(
+                            ft.Icons.POWER if typ == "AC" else ft.Icons.FLASH_ON,
+                            f"Cena/kWh — {typ}",
+                            f"{utils.formatuj_liczba(dane['cena'])} {utils.symbol_waluty()}",
+                            ft.Colors.LIGHT_GREEN_800 if typ == "AC" else ft.Colors.DEEP_ORANGE_700,
+                            expand=1,
+                        )
+                        for typ, dane in sorted(stat["ceny_ladowania"].items())
+                    ], spacing=10))
+
+            udzial = db.pobierz_udzial_energii(self.state.auto_id)
+            if udzial:
+                self.elementy.append(ft.Row(utils.tytul_sekcji(ft.Icons.PIE_CHART_OUTLINE, "Wydatek na energię"), spacing=8))
+                self.elementy.append(ft.Row([
+                    kafel(ft.Icons.EV_STATION, "Wydatek na prąd",
+                          f"{utils.formatuj_liczba(udzial['procent_prad'], 0)}%",
+                          ft.Colors.LIGHT_GREEN_800, expand=1),
+                    kafel(ft.Icons.LOCAL_GAS_STATION, "Wydatek na paliwo",
+                          f"{utils.formatuj_liczba(udzial['procent_paliwo'], 0)}%",
+                          ft.Colors.BLUE_700, expand=1),
+                ], spacing=10))
+
+            if dwuzrodlowy:
+                # Bez tej noty łatwo odczytać „1,9 kWh/100km” jako zużycie w trybie
+                # elektrycznym, a to zużycie rozłożone na CAŁY przebieg.
+                self.elementy.append(ft.Container(
+                    padding=ft.Padding(12, 10, 12, 10),
+                    border_radius=utils.RADIUS["sm"],
+                    bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY),
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.PRIMARY),
+                        ft.Text(
+                            "Przy hybrydzie plug-in oba zużycia liczą się po CAŁYM przebiegu "
+                            "(tak samo podaje je WLTP) — z samego licznika nie da się wydzielić, "
+                            "ile kilometrów przejechałeś na prądzie, a ile na paliwie. "
+                            "Koszty na km można za to dodać: razem dają pełny koszt energii.",
+                            size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                        ),
+                    ], spacing=8),
+                ))
+
+            zasieg = db.pobierz_zasieg_ev(self.state.auto_id)
+            if zasieg and zasieg["szacowany"]:
+                podpis = f"{utils.formatuj_liczba(zasieg['szacowany'], 0)} km"
+                if zasieg["procent_deklarowanego"]:
+                    podpis += f" ({utils.formatuj_liczba(zasieg['procent_deklarowanego'], 0)}% katalogowego)"
+                self.elementy.append(ft.Row([
+                    kafel(ft.Icons.BATTERY_CHARGING_FULL, "Realny zasięg na prądzie", podpis,
+                          ft.Colors.GREEN_700),
+                ], spacing=10))
+
+            self.elementy.extend([
+                ft.Row(utils.tytul_sekcji(ft.Icons.INSIGHTS, "Przebieg"), spacing=8),
                 ft.Row([
-                    kafel(ft.Icons.SPEED, etykiety["zuzycie"], utils.formatuj_spalanie(spalanie, elektryczny=elektryczny) if spalanie > 0 else etykiety["brak_pelnych"], ft.Colors.TEAL_700, expand=1),
                     kafel(ft.Icons.ROUTE, "Zanotowany dystans", f"{utils.formatuj_liczba(dystans, 0)} km", ft.Colors.INDIGO_700, expand=1),
-                ], spacing=10),
-                ft.Row([
                     kafel(ft.Icons.TIMELAPSE, "Średnio dziennie", sredni_dz_str, ft.Colors.BLUE_GREY_700, expand=1),
-                    kafel(ft.Icons.WATER_DROP, etykiety["suma_ilosci"], f"{utils.formatuj_liczba(litry)} {etykiety['jednostka']}", ft.Colors.CYAN_700, expand=1),
                 ], spacing=10),
             ])
 

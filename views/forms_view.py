@@ -133,6 +133,7 @@ class FormularzAutoView(ft.View):
         m_val, mod_val, gen_val = "", "", ""
         poj_val, moc_val, pal_val, skrz_val, not_val = "", "", "Benzyna", "Manualna", ""
         nadw_val = ""
+        bat_val, zas_val = "", ""
         wp_val, wt_val, cp_val, ct_val = "", "", "", ""
         ot_val, op_val, akum_val, zm_val, zd_val = "", "", "", "", ""
         ac_val, asy_val, gas_val, apt_val = "", "", "", ""
@@ -150,7 +151,7 @@ class FormularzAutoView(ft.View):
                     "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                     "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                     "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, zdjecie_glowne, "
-                    "marka, model, generacja, kolor_motywu, nadwozie "
+                    "marka, model, generacja, kolor_motywu, nadwozie, pojemnosc_baterii, zasieg_ev "
                     "FROM samochody WHERE id=?", 
                     (auto_id,)
                 )
@@ -161,6 +162,8 @@ class FormularzAutoView(ft.View):
                     poj_val, moc_val = str(w["pojemnosc_silnika"] or ""), str(w["moc_silnika"] or "")
                     pal_val, skrz_val, not_val = str(w["typ_paliwa"] or "Benzyna"), str(w["skrzynia_biegow"] or "Manualna"), str(w["notatki"] or "")
                     nadw_val = str(w["nadwozie"] or "")
+                    bat_val = str(w["pojemnosc_baterii"] or "")
+                    zas_val = str(w["zasieg_ev"] or "")
                     wp_val, wt_val = str(w["wycieraczki_przod"] or ""), str(w["wycieraczki_tyl"] or "")
                     cp_val, ct_val = str(w["cisnienie_przod"] or ""), str(w["cisnienie_tyl"] or "")
                     ot_val, op_val = str(w["olej_typ"] or ""), str(w["olej_pojemnosc"] or "")
@@ -218,6 +221,26 @@ class FormularzAutoView(ft.View):
         # Nadwozie służy przede wszystkim ODZNACE w selektorze pojazdów: sylwetka
         # w kolorze auta pozwala rozpoznać je bez czytania nazwy. Puste = ogólna
         # ikona samochodu, więc pole jest w pełni opcjonalne.
+        # Bateria i zasięg mają sens tylko przy napędzie z prądem — przy diesla
+        # byłyby dwoma pustymi polami do przewinięcia.
+        def czy_naped_z_pradem(typ):
+            return typ in db.TYPY_PALIWA_ELEKTRYCZNE or typ in db.TYPY_PALIWA_DWUZRODLOWE
+
+        self.e_bateria = ft.TextField(
+            label="Pojemność baterii (kWh)", value=bat_val, hint_text="np. 52",
+            keyboard_type=ft.KeyboardType.NUMBER, visible=czy_naped_z_pradem(pal_val), **utils.styl_pola(page=page)
+        )
+        self.e_zasieg = ft.TextField(
+            label="Deklarowany zasięg EV (km)", value=zas_val, hint_text="np. 380 (WLTP)",
+            keyboard_type=ft.KeyboardType.NUMBER, visible=czy_naped_z_pradem(pal_val), **utils.styl_pola(page=page)
+        )
+        self.info_bateria = ft.Text(
+            "Z pojemności i Twojego RZECZYWISTEGO zużycia aplikacja policzy realny "
+            "zasięg — zwykle sporo niższy niż katalogowy.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+            visible=czy_naped_z_pradem(pal_val),
+        )
+
         self.podglad_odznaki = ft.Row(spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         def odswiez_podglad_odznaki(e=None):
@@ -284,8 +307,20 @@ class FormularzAutoView(ft.View):
             [ft.Text("Ten kolor będzie używany w całym interfejsie, gdy ten pojazd jest aktywny.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT), self.k_kolor],
             "Kolor interfejsu dla tego pojazdu", ft.Icons.PALETTE
         )
+        def na_zmiane_paliwa(e=None):
+            widoczne = czy_naped_z_pradem(self.e_pal.value)
+            for kontrolka in (self.e_bateria, self.e_zasieg, self.info_bateria):
+                kontrolka.visible = widoczne
+            try:
+                self._page.update()
+            except Exception:
+                pass
+
+        self.e_pal.on_select = na_zmiane_paliwa
+
         k2 = utils.karta_formularza(
-            [self.e_pal, self.e_skrz, self.e_nadwozie, self.podglad_odznaki, self.e_poj, self.e_moc],
+            [self.e_pal, self.e_skrz, self.e_nadwozie, self.podglad_odznaki,
+             self.e_poj, self.e_moc, self.e_bateria, self.e_zasieg, self.info_bateria],
             "Specyfikacja techniczna", ft.Icons.SETTINGS
         )
         k3 = utils.karta_formularza([self.e_oc, self.e_pt], "Ważne daty", ft.Icons.CALENDAR_MONTH)
@@ -423,7 +458,8 @@ class FormularzAutoView(ft.View):
             self.e_marka.value, self.e_model.value, self.e_generacja.value,
             self.e_rej.value, self.e_rok.value, self.e_vin.value, self.e_przebieg.value,
             self.e_oc.value, self.e_pt.value, self.e_poj.value, self.e_moc.value,
-            self.e_pal.value, self.e_skrz.value, self.e_nadwozie.value, self.e_not.value,
+            self.e_pal.value, self.e_skrz.value, self.e_nadwozie.value,
+            self.e_bateria.value, self.e_zasieg.value, self.e_not.value,
             self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
             self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
             self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value,
@@ -498,13 +534,15 @@ class FormularzAutoView(ft.View):
                         "wycieraczki_przod=?, wycieraczki_tyl=?, cisnienie_przod=?, cisnienie_tyl=?, "
                         "olej_typ=?, olej_pojemnosc=?, akumulator=?, zarowki_mijania=?, zarowki_drogowe=?, "
                         "ac_data=?, assistance_data=?, gasnica_data=?, apteczka_data=?, gwarancja_data=?, gwarancja_przebieg=?, "
-                        "zdjecie_glowne=?, marka=?, model=?, generacja=?, kolor_motywu=?, nadwozie=? WHERE id=?", 
+                        "zdjecie_glowne=?, marka=?, model=?, generacja=?, kolor_motywu=?, nadwozie=?, "
+                        "pojemnosc_baterii=?, zasieg_ev=? WHERE id=?", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value, 
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
-                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None), self.auto_id)
+                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None),
+                         (self.e_bateria.value or None), (self.e_zasieg.value or None), self.auto_id)
                     )
                     if self.state.auto_id == self.auto_id:
                         self.state.auto_nazwa = n
@@ -516,17 +554,24 @@ class FormularzAutoView(ft.View):
                         "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                         "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                         "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, "
-                        "zdjecie_glowne, marka, model, generacja, kolor_motywu, nadwozie) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                        "zdjecie_glowne, marka, model, generacja, kolor_motywu, nadwozie, "
+                        "pojemnosc_baterii, zasieg_ev) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value,
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
-                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None))
+                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None),
+                         (self.e_bateria.value or None), (self.e_zasieg.value or None))
                     )
                     n_id = cur.lastrowid
-                    for dz in db.DOMYSLNE_ZADANIA:
+                    # Elektryk nie ma oleju ani filtra oleju — startuje z listą
+                    # dopasowaną do swojego napędu.
+                    lista_startowa = (db.DOMYSLNE_ZADANIA_EV
+                                      if self.e_pal.value in db.TYPY_PALIWA_ELEKTRYCZNE
+                                      else db.DOMYSLNE_ZADANIA)
+                    for dz in lista_startowa:
                         czy_opony = 1 if "opon" in dz.lower() or "kół" in dz.lower() else 0
                         conn.execute(
                             "INSERT INTO zadania (auto_id, nazwa, dotyczy_opon) VALUES (?, ?, ?)", 
@@ -561,8 +606,12 @@ class FormularzTankowanieView(ft.View):
         self.state = state
         self.t_id = t_id
         self._blokada_sync = False
+        # Hybryda plug-in tankuje OBA źródła, więc o etykietach nie decyduje już
+        # typ pojazdu, tylko rodzaj KONKRETNEGO wpisu (patrz db.etykiety_energii).
+        self.rodzaje = db.rodzaje_energii_pojazdu(state.auto_id)
+        self.dwuzrodlowy = len(self.rodzaje) > 1
+        self.rodzaj_energii = self.rodzaje[0]
         self.elektryczny = db.czy_pojazd_elektryczny(state.auto_id)
-        self.etykiety = db.etykiety_paliwa(self.elektryczny)
 
         duplikuj_id = getattr(state, "duplikuj_zrodlo_tankowanie", None) if not t_id else None
         state.duplikuj_zrodlo_tankowanie = None  # zużywamy jednorazowo
@@ -570,6 +619,7 @@ class FormularzTankowanieView(ft.View):
 
         d_val = datetime.now().strftime("%d.%m.%Y")
         p_val, dys_val, l_val, k_val, stacja_val = "", "", "", "", ""
+        ladowanie_val = ""
         pelna_val = True
         self.zalacznik_val = None
         tagi_val = ""
@@ -578,9 +628,11 @@ class FormularzTankowanieView(ft.View):
         with db.polacz_baze() as conn:
             c = conn.cursor()
             if zrodlo_id:
-                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi FROM tankowania WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania FROM tankowania WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
+                    self.rodzaj_energii = db.normalizuj_rodzaj_energii(w[9], self.state.auto_id)
+                    ladowanie_val = str(w[10] or "") if w[10] else ""
                     d_val = str(w[0] or "")
                     p_val = str(w[1] or "") if w[1] else ""
                     dys_val = str(w[2] or "") if w[2] else ""
@@ -649,15 +701,62 @@ class FormularzTankowanieView(ft.View):
                 self._blokada_sync = False
 
         self.e_d = utils.pole_daty(page, "Data tankowania", d_val)
-        self.k_stacja, self.get_stacja, self.ustaw_stacja = utils.komponent_wyboru_stacji(page, state, stacja_val, elektryczny=self.elektryczny)
+        self.k_stacja, self.get_stacja, self.ustaw_stacja = utils.komponent_wyboru_stacji(
+            page, state, stacja_val,
+            elektryczny=(self.rodzaj_energii == db.ENERGIA_PRAD)
+        )
         hint_prz = f"Ost.: {self.ostatni_prz} km" if self.ostatni_prz > 0 else "np. 150000"
         
         self.e_p = ft.TextField(label="Licznik (km)", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
         self.e_dys = ft.TextField(label="Dystans (km)", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola(page=page))
         
+        self.etykiety = db.etykiety_energii(self.rodzaj_energii)
+
         self.e_l = ft.TextField(label=self.etykiety["ilosc"], value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_k = ft.TextField(label=f"Całkowity Koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.c_pel = ft.Checkbox(label=self.etykiety["do_pelna"], value=pelna_val)
+
+        # Wolne ładowanie w domu bywa kilka razy tańsze od szybkiego na trasie —
+        # bez tego rozróżnienia średnia cena za kWh nic nie mówi.
+        self.e_ladowanie = ft.Dropdown(
+            label="Typ ładowania",
+            options=[ft.DropdownOption(key="", text="— nie podano —")]
+                    + [ft.DropdownOption(key=t, text=db.OPISY_LADOWANIA[t]) for t in db.TYPY_LADOWANIA],
+            value=ladowanie_val if ladowanie_val in db.TYPY_LADOWANIA else "",
+            visible=(self.rodzaj_energii == db.ENERGIA_PRAD),
+            **utils.styl_dropdown()
+        )
+
+        def przelacz_rodzaj(nowy_idx):
+            """Zmiana źródła podmienia etykiety i jednostki w locie — formularz
+            zostaje ten sam, bo dane (data, licznik, kwota) są wspólne."""
+            self.rodzaj_energii = self.rodzaje[nowy_idx]
+            self.etykiety = db.etykiety_energii(self.rodzaj_energii)
+            self.e_l.label = self.etykiety["ilosc"]
+            self.c_pel.label = self.etykiety["do_pelna"]
+            self.e_ladowanie.visible = (self.rodzaj_energii == db.ENERGIA_PRAD)
+            if not self.e_ladowanie.visible:
+                self.e_ladowanie.value = ""
+            self.przelacznik_rodzaju.content = utils.segmented_control(
+                self._page,
+                [(db.ETYKIETY_RODZAJU[r], i, ft.Icons.EV_STATION if r == db.ENERGIA_PRAD else ft.Icons.LOCAL_GAS_STATION)
+                 for i, r in enumerate(self.rodzaje)],
+                nowy_idx, przelacz_rodzaj,
+            )
+            try:
+                self._page.update()
+            except Exception:
+                pass
+
+        self.przelacznik_rodzaju = ft.Container(
+            visible=self.dwuzrodlowy,
+            content=utils.segmented_control(
+                page,
+                [(db.ETYKIETY_RODZAJU[r], i, ft.Icons.EV_STATION if r == db.ENERGIA_PRAD else ft.Icons.LOCAL_GAS_STATION)
+                 for i, r in enumerate(self.rodzaje)],
+                self.rodzaje.index(self.rodzaj_energii), przelacz_rodzaj,
+            ) if self.dwuzrodlowy else ft.Container(),
+        )
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
 
@@ -671,9 +770,20 @@ class FormularzTankowanieView(ft.View):
         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
         k1 = utils.karta_formularza([self.e_d, wiersz_przebiegu], "Przebieg i Data", ft.Icons.SPEED, domyslnie_otwarte=True, page=page)
+        zawartosc_k2 = []
+        if self.dwuzrodlowy:
+            zawartosc_k2 += [
+                ft.Text("Czym tankowałeś?", size=12, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+                self.przelacznik_rodzaju,
+            ]
+        zawartosc_k2 += [
+            self.k_stacja, self.e_l, self.e_ladowanie, self.e_k, self.c_pel,
+            ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi,
+        ]
         k2 = utils.karta_formularza(
-            [self.k_stacja, self.e_l, self.e_k, self.c_pel, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
-            "Szczegóły transakcji", ft.Icons.EV_STATION if self.elektryczny else ft.Icons.LOCAL_GAS_STATION
+            zawartosc_k2,
+            "Szczegóły transakcji",
+            ft.Icons.EV_STATION if self.rodzaj_energii == db.ENERGIA_PRAD else ft.Icons.LOCAL_GAS_STATION
         )
         k3 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
 
@@ -686,7 +796,8 @@ class FormularzTankowanieView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_d.value, self.e_p.value, self.e_dys.value, self.e_l.value,
-                self.e_k.value, self.c_pel.value, self.get_stacja(), self.get_tagi())
+                self.e_k.value, self.c_pel.value, self.get_stacja(), self.get_tagi(),
+                self.rodzaj_energii, self.e_ladowanie.value)
     
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -724,14 +835,17 @@ class FormularzTankowanieView(ft.View):
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
         stacja_wart = self.get_stacja()
+        # Typ ładowania zapisujemy TYLKO przy prądzie — przy paliwie byłby
+        # zaszumionym polem bez znaczenia.
+        typ_lad = (self.e_ladowanie.value or None) if self.rodzaj_energii == db.ENERGIA_PRAD else None
 
         with db.polacz_baze() as conn:
             if self.t_id: 
-                conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
-                             (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
+                conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, rodzaj_energii=?, typ_ladowania=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
+                             (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
             else: 
-                conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", 
-                             (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie()))
+                conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                             (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie()))
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "tankowanie")

@@ -77,8 +77,31 @@ TYPY_NADWOZIA = [
     "Van / Minivan", "Coupe", "Kabriolet", "Pickup", "Dostawczy",
 ]
 
-TYPY_PALIWA = ["Benzyna", "Diesel", "LPG", "Hybryda", "Elektryczny"]
+TYPY_PALIWA = ["Benzyna", "Diesel", "LPG", "Hybryda", "Hybryda plug-in", "Elektryczny"]
+
+# Auta, które tankują WYŁĄCZNIE prąd.
 TYPY_PALIWA_ELEKTRYCZNE = {"Elektryczny"}
+
+# Auta z DWOMA źródłami naraz — jedyny przypadek, w którym pojedynczy wpis musi
+# powiedzieć, czy to było tankowanie, czy ładowanie.
+TYPY_PALIWA_DWUZRODLOWE = {"Hybryda plug-in"}
+
+ENERGIA_PALIWO = "paliwo"
+ENERGIA_PRAD = "prad"
+RODZAJE_ENERGII = [ENERGIA_PALIWO, ENERGIA_PRAD]
+
+# Wolne ładowanie (dom, praca) bywa kilka razy tańsze od szybkiego na trasie,
+# więc średnią cenę za kWh liczymy dla każdego osobno.
+TYPY_LADOWANIA = ["AC", "DC"]
+OPISY_LADOWANIA = {"AC": "AC — wolne (dom / praca)", "DC": "DC — szybkie (trasa)"}
+
+# Elektryk nie ma oleju ani filtra oleju, za to ma własne pozycje serwisowe.
+# Bez tego każdy nowy elektryk startował z listą „Olej silnikowy i filtr”.
+DOMYSLNE_ZADANIA_EV = [
+    "Płyn hamulcowy", "Filtr kabinowy", "Płyn chłodzący baterii",
+    "Wymiana opon / Kół", "Klocki hamulcowe", "Tarcze hamulcowe",
+    "Przegląd układu wysokiego napięcia",
+]
 
 MAKS_BACKOFF_MINUT_SYNC = 60
 
@@ -494,6 +517,21 @@ def init_db():
             # rozpoznanie jednym spojrzeniem. Puste = ogólna ikona, jak dotąd.
             """
             ALTER TABLE samochody ADD COLUMN nadwozie TEXT;
+            """,
+            # Wersja 33: osobne śledzenie paliwa i prądu. Hybryda plug-in zużywa
+            # OBA źródła, a dotąd wpis mógł być tylko jednym z nich — trzeba było
+            # wybrać, którą stronę się liczy. Teraz każdy wpis w 'tankowania'
+            # deklaruje 'rodzaj_energii' ('paliwo' albo 'prad'), więc zużycie,
+            # koszty i wykresy da się policzyć dla każdej strony niezależnie.
+            # 'typ_ladowania' (AC/DC) rozdziela wolne ładowanie w domu od drogiego
+            # szybkiego na trasie. Bateria i deklarowany zasięg zasilają szacunek
+            # realnego zasięgu z RZECZYWISTEGO zużycia użytkownika.
+            """
+            ALTER TABLE tankowania ADD COLUMN rodzaj_energii TEXT;
+            ALTER TABLE tankowania ADD COLUMN typ_ladowania TEXT;
+            ALTER TABLE samochody ADD COLUMN pojemnosc_baterii TEXT;
+            ALTER TABLE samochody ADD COLUMN zasieg_ev TEXT;
+            CREATE INDEX IF NOT EXISTS idx_tankowania_auto_rodzaj ON tankowania(auto_id, rodzaj_energii);
             """
         ]
 
@@ -512,6 +550,16 @@ def init_db():
             # Jednorazowe uzupełnienie danych po dodaniu kolumny dotyczy_opon (wersja 8) —
             # dla istniejących podzespołów odtwarzamy dawne zachowanie na podstawie starej,
             # nazwowej heurystyki, żeby po aktualizacji nic nie „zniknęło”.
+            # Istniejące wpisy nie mają jeszcze rodzaju energii — wypełniamy go
+            # według typu paliwa POJAZDU, bo do tej pory auto mogło mieć tylko
+            # jedno źródło. Dzięki temu żadna statystyka nie zaczyna od zera.
+            if i == 32:
+                cursor.execute(
+                    "UPDATE tankowania SET rodzaj_energii = CASE WHEN auto_id IN "
+                    "(SELECT id FROM samochody WHERE typ_paliwa='Elektryczny') THEN 'prad' ELSE 'paliwo' END "
+                    "WHERE rodzaj_energii IS NULL"
+                )
+
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")
                 for zid, znazwa in cursor.fetchall():
@@ -589,7 +637,9 @@ def pobierz_jednostke_zuzycia_ev():
 
 
 def czy_pojazd_elektryczny(auto_id):
-    """True tylko dla typ_paliwa == 'Elektryczny'."""
+    """True tylko dla auta jeżdżącego WYŁĄCZNIE na prąd. Hybryda plug-in tu NIE
+    wchodzi — ona ma oba źródła i o etykietach decyduje rodzaj konkretnego wpisu
+    (patrz rodzaje_energii_pojazdu / etykiety_energii)."""
     if not auto_id:
         return False
     with polacz_baze() as conn:
@@ -636,6 +686,60 @@ def etykiety_paliwa(elektryczny=False):
         "suma_ilosci": "Zatankowano",
         "brak_pelnych": "Wymaga 2x do pełna",
     }
+
+def pobierz_typ_paliwa(auto_id):
+    if not auto_id:
+        return ""
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT typ_paliwa FROM samochody WHERE id=?", (auto_id,))
+        w = c.fetchone()
+    return str((w or [""])[0] or "")
+
+
+def czy_pojazd_dwuzrodlowy(auto_id):
+    """True dla hybrydy plug-in — jedynego napędu, który realnie tankuje OBA
+    źródła i wymaga, żeby pojedynczy wpis powiedział, którego dotyczy."""
+    return pobierz_typ_paliwa(auto_id) in TYPY_PALIWA_DWUZRODLOWE
+
+
+def rodzaje_energii_pojazdu(auto_id):
+    """Które źródła energii ma sens pokazywać dla tego auta.
+    Elektryk → sam prąd, plug-in → oba, reszta → samo paliwo."""
+    typ = pobierz_typ_paliwa(auto_id)
+    if typ in TYPY_PALIWA_DWUZRODLOWE:
+        return list(RODZAJE_ENERGII)
+    if typ in TYPY_PALIWA_ELEKTRYCZNE:
+        return [ENERGIA_PRAD]
+    return [ENERGIA_PALIWO]
+
+
+def domyslny_rodzaj_energii(auto_id):
+    """Rodzaj podstawiany nowemu wpisowi, zanim użytkownik cokolwiek przełączy."""
+    return rodzaje_energii_pojazdu(auto_id)[0]
+
+
+def normalizuj_rodzaj_energii(wartosc, auto_id=None):
+    """Stare wpisy (sprzed migracji 33) i dane z importu mogą nie mieć rodzaju —
+    wtedy decyduje typ pojazdu."""
+    tekst = str(wartosc or "").strip().lower()
+    if tekst in RODZAJE_ENERGII:
+        return tekst
+    return domyslny_rodzaj_energii(auto_id) if auto_id else ENERGIA_PALIWO
+
+
+def etykiety_energii(rodzaj):
+    """Etykiety zależne od RODZAJU WPISU, a nie od typu pojazdu — przy hybrydzie
+    plug-in jedno auto ma i tankowania, i ładowania, więc nazwy muszą podążać za
+    konkretnym wpisem. etykiety_paliwa() zostaje jako cieńsza nakładka na to."""
+    return etykiety_paliwa(rodzaj == ENERGIA_PRAD)
+
+
+ETYKIETY_RODZAJU = {
+    ENERGIA_PALIWO: "Paliwo",
+    ENERGIA_PRAD: "Prąd",
+}
+
 
 def pobierz_kolor_motywu():
     w = pobierz_ustawienie("kolor_motywu", "Indygo")
@@ -789,6 +893,7 @@ KOKPIT_WIDGETY = {
     "przebieg_dzienny": "Średni przebieg dzienny",
     "ostatnia_aktywnosc": "Ostatnia aktywność",
     "kondycja": "Kondycja pojazdu",
+    "zasieg_ev": "Realny zasięg na prądzie",
 }
 KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
 
@@ -1658,22 +1763,36 @@ def oblicz_kondycje_pojazdu(auto_id):
     pobierz_rozbicie_kondycji, dla miejsc, którym wystarczy liczba."""
     return pobierz_rozbicie_kondycji(auto_id)["wynik"]
 
-def pobierz_serie_spalania(auto_id, limit=12):
+def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None):
     """Spalanie liczone ODCINKAMI między kolejnymi tankowaniami „do pełna” —
     dokładnie ta sama metoda, co wykres trendu w Statystykach, tylko bez
     uśredniania po miesiącach (jeden punkt = jeden odcinek między pełnymi
     bakami). Używane przez sparkline przy kafelku „Śr. spalanie” w kokpicie.
     Zwraca listę (data_tankowania_konczacego_odcinek, l/100km) chronologicznie,
-    przyciętą do ostatnich `limit` punktów (limit=None → wszystkie)."""
+    przyciętą do ostatnich `limit` punktów (limit=None → wszystkie).
+
+    `rodzaj` zawęża liczenie do jednego źródła energii. Przy hybrydzie plug-in
+    to konieczność: mieszanie litrów z kilowatogodzinami w jednym odcinku dałoby
+    liczbę bez żadnego znaczenia. Brak `rodzaju` = wszystkie wpisy (auta
+    jednoźródłowe, gdzie nie ma czego mieszać)."""
     if not auto_id:
         return []
 
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute(
-            "SELECT data, przebieg, litry, do_pelna FROM tankowania WHERE auto_id=?",
-            (auto_id,)
-        )
+        if rodzaj:
+            # COALESCE, bo wpisy sprzed migracji 33 mają rodzaj_energii NULL
+            # — traktujemy je zgodnie z typem pojazdu, tak jak backfill.
+            c.execute(
+                "SELECT data, przebieg, litry, do_pelna FROM tankowania "
+                "WHERE auto_id=? AND COALESCE(rodzaj_energii, ?) = ?",
+                (auto_id, domyslny_rodzaj_energii(auto_id), rodzaj)
+            )
+        else:
+            c.execute(
+                "SELECT data, przebieg, litry, do_pelna FROM tankowania WHERE auto_id=?",
+                (auto_id,)
+            )
         wiersze = c.fetchall()
 
     # Sortujemy po dacie, a przy remisie po przebiegu — tak jak reszta aplikacji,
@@ -1790,6 +1909,187 @@ def pobierz_serie_kosztu_km(auto_id, liczba_miesiecy=6):
         if km > 0:
             seria.append((rok, mies, suma / km))
     return seria
+
+def pobierz_statystyki_energii(auto_id):
+    """Zużycie i koszty rozbite NA KAŻDE ŹRÓDŁO ENERGII osobno.
+
+    Przy hybrydzie plug-in jedna uśredniona liczba nie mówi nic sensownego —
+    dopiero „6,1 l/100km na paliwie i 18,4 kWh/100km na prądzie” pozwala ocenić,
+    ile daje ładowanie zamiast tankowania. Auta jednoźródłowe dostają jedną
+    sekcję i wyglądają dokładnie jak dotąd.
+
+    Zwraca listę słowników (w kolejności rodzajow_energii_pojazdu):
+    {rodzaj, etykieta, jednostka, ilosc, koszt, liczba_wpisow, zuzycie,
+     dystans, koszt_km, cena_jednostkowa, ceny_ladowania}
+    gdzie 'zuzycie' jest w jednostce właściwej dla źródła (l/100km albo
+    kWh/100km), a 'dystans' to suma odcinków między pełnymi tankowaniami TEGO
+    źródła — czyli baza, na której zużycie faktycznie policzono.
+    """
+    if not auto_id:
+        return []
+
+    domyslny = domyslny_rodzaj_energii(auto_id)
+    wyniki = []
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        for rodzaj in rodzaje_energii_pojazdu(auto_id):
+            c.execute(
+                "SELECT data, przebieg, litry, kwota, do_pelna, typ_ladowania FROM tankowania "
+                "WHERE auto_id=? AND COALESCE(rodzaj_energii, ?) = ?",
+                (auto_id, domyslny, rodzaj)
+            )
+            wiersze = c.fetchall()
+
+            ilosc = sum(float(r["litry"] or 0) for r in wiersze)
+            koszt = sum(float(r["kwota"] or 0) for r in wiersze)
+
+            # Dystans i zużycie liczymy tą samą metodą, co pobierz_serie_spalania:
+            # wyłącznie odcinki zamknięte dwoma tankowaniami „do pełna”.
+            posortowane = sorted(
+                ((parsuj_date(r["data"]), int(r["przebieg"] or 0), float(r["litry"] or 0), bool(r["do_pelna"]))
+                 for r in wiersze),
+                key=lambda t: (t[0], t[1])
+            )
+            pelne = [i for i, t in enumerate(posortowane) if t[3]]
+            dystans_licz, ilosc_licz = 0.0, 0.0
+            for a, b in zip(pelne, pelne[1:]):
+                odcinek = posortowane[b][1] - posortowane[a][1]
+                zuzyte = sum(posortowane[k][2] for k in range(a + 1, b + 1))
+                if odcinek > 0 and zuzyte > 0:
+                    dystans_licz += odcinek
+                    ilosc_licz += zuzyte
+
+            zuzycie = (ilosc_licz / dystans_licz * 100) if dystans_licz > 0 else 0.0
+            koszt_km = (koszt / dystans_licz) if dystans_licz > 0 else 0.0
+
+            # Średnia cena za jednostkę — dla prądu dodatkowo w rozbiciu AC/DC,
+            # bo szybkie ładowanie na trasie potrafi być kilka razy droższe.
+            cena_jednostkowa = (koszt / ilosc) if ilosc > 0 else 0.0
+            ceny_ladowania = {}
+            if rodzaj == ENERGIA_PRAD:
+                for typ in TYPY_LADOWANIA:
+                    pasujace = [r for r in wiersze if str(r["typ_ladowania"] or "").upper() == typ]
+                    suma_kwh = sum(float(r["litry"] or 0) for r in pasujace)
+                    suma_kosztu = sum(float(r["kwota"] or 0) for r in pasujace)
+                    if suma_kwh > 0:
+                        ceny_ladowania[typ] = {
+                            "cena": suma_kosztu / suma_kwh,
+                            "ilosc": suma_kwh,
+                            "koszt": suma_kosztu,
+                            "liczba": len(pasujace),
+                        }
+
+            etykiety = etykiety_energii(rodzaj)
+            # Przy dwóch źródłach zużycie jest liczone po CAŁYM przebiegu (tak
+            # samo podaje je WLTP dla plug-inów) — nie po kilometrach
+            # przejechanych na tym jednym źródle, bo tych nie da się wydzielić.
+            wyniki.append({
+                "rodzaj": rodzaj,
+                "etykieta": ETYKIETY_RODZAJU[rodzaj],
+                "jednostka": etykiety["jednostka"],
+                "etykiety": etykiety,
+                "ilosc": ilosc,
+                "koszt": koszt,
+                "liczba_wpisow": len(wiersze),
+                "zuzycie": zuzycie,
+                "dystans": dystans_licz,
+                "koszt_km": koszt_km,
+                "cena_jednostkowa": cena_jednostkowa,
+                "ceny_ladowania": ceny_ladowania,
+                "laczony_cykl": len(rodzaje_energii_pojazdu(auto_id)) > 1,
+            })
+
+    return wyniki
+
+
+def pobierz_udzial_energii(auto_id):
+    """Jak rozkłada się WYDATEK na energię między paliwo a prąd — sens ma
+    wyłącznie przy hybrydzie plug-in.
+
+    Świadomie liczymy udział KOSZTU, a nie kilometrów. Mając wyłącznie licznik
+    i ilości zatankowanej energii NIE DA SIĘ rozdzielić, ile kilometrów auto
+    przejechało na prądzie, a ile na paliwie — obie strony dzielą ten sam
+    przebieg. Udział kosztu jest policzalny, uczciwy i odpowiada na właściwe
+    pytanie: ile realnie oszczędza ładowanie zamiast tankowania.
+    """
+    if not czy_pojazd_dwuzrodlowy(auto_id):
+        return None
+    statystyki = {s["rodzaj"]: s for s in pobierz_statystyki_energii(auto_id)}
+    koszt_prad = statystyki.get(ENERGIA_PRAD, {}).get("koszt", 0.0)
+    koszt_paliwo = statystyki.get(ENERGIA_PALIWO, {}).get("koszt", 0.0)
+    razem = koszt_prad + koszt_paliwo
+    if razem <= 0:
+        return None
+    return {
+        "procent_prad": koszt_prad / razem * 100,
+        "procent_paliwo": koszt_paliwo / razem * 100,
+        "koszt_prad": koszt_prad,
+        "koszt_paliwo": koszt_paliwo,
+        "razem": razem,
+    }
+
+
+def pobierz_zasieg_ev(auto_id):
+    """Szacowany REALNY zasięg na prądzie: pojemność baterii podzielona przez
+    Twoje faktyczne zużycie. Katalogowy zasięg (WLTP) podajemy obok do porównania,
+    bo w praktyce prawie zawsze jest wyższy od osiąganego.
+
+    Zwraca None, gdy nie ma pojemności baterii albo policzonego zużycia."""
+    if not auto_id:
+        return None
+
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT pojemnosc_baterii, zasieg_ev, typ_paliwa FROM samochody WHERE id=?", (auto_id,))
+        w = c.fetchone()
+    if not w:
+        return None
+
+    typ = str(w["typ_paliwa"] or "")
+    # WYŁĄCZNIE czysty elektryk. Przy hybrydzie plug-in „kWh/100km” liczy się po
+    # CAŁYM przebiegu — także po kilometrach przejechanych na paliwie — więc
+    # bateria podzielona przez tę wartość dałaby zasięg kilkukrotnie zawyżony.
+    if typ not in TYPY_PALIWA_ELEKTRYCZNE:
+        return None
+
+    pojemnosc = _liczba_lub_none(w["pojemnosc_baterii"])
+    deklarowany = _liczba_lub_none(w["zasieg_ev"])
+
+    zuzycie = 0.0
+    for s in pobierz_statystyki_energii(auto_id):
+        if s["rodzaj"] == ENERGIA_PRAD:
+            zuzycie = s["zuzycie"]
+            break
+
+    szacowany = None
+    if pojemnosc and zuzycie > 0:
+        # kWh / (kWh/100km) * 100 = km
+        szacowany = pojemnosc / zuzycie * 100
+
+    if szacowany is None and deklarowany is None:
+        return None
+
+    return {
+        "pojemnosc": pojemnosc,
+        "deklarowany": deklarowany,
+        "szacowany": szacowany,
+        "zuzycie": zuzycie,
+        # Ile procent katalogowego zasięgu faktycznie osiągasz — liczba, której
+        # nie da się wyczytać z żadnej broszury.
+        "procent_deklarowanego": (szacowany / deklarowany * 100)
+                                  if (szacowany and deklarowany and deklarowany > 0) else None,
+    }
+
+
+def _liczba_lub_none(tekst):
+    """Pola specyfikacji są tekstowe (użytkownik wpisuje '52 kWh' albo '52,5'),
+    więc wyciągamy z nich liczbę tak samo pobłażliwie, jak import CSV."""
+    wartosc = _parsuj_liczbe_csv(tekst)
+    return wartosc if (wartosc and wartosc > 0) else None
+
 
 def pobierz_dane_do_porownania(auto_id):
     """Zbiorcze dane pojazdu (specyfikacja, koszty, przebieg, spalanie, serwis)
@@ -5369,6 +5669,9 @@ POLA_IMPORTU_TANKOWAN = {
     "kwota": ("Kwota", True),
     "stacja": ("Stacja / punkt ładowania", False),
     "do_pelna": ("Do pełna", False),
+    # Kolumna sensowna tylko przy hybrydzie plug-in: bez niej cały plik trafia
+    # do domyślnego źródła pojazdu, czyli zachowuje się jak dotąd.
+    "rodzaj_energii": ("Źródło (paliwo / prąd)", False),
 }
 
 _ALIASY_IMPORTU = {
@@ -5379,6 +5682,7 @@ _ALIASY_IMPORTU = {
     "kwota": ["kwota", "koszt", "cena", "cost", "total", "total cost", "price", "wartosc", "wartość"],
     "stacja": ["stacja", "station", "punkt ladowania", "punkt ładowania", "miejsce", "fuel station", "sprzedawca"],
     "do_pelna": ["do pelna", "do pełna", "full", "pelny bak", "pełny bak", "full tank", "tankowanie do pelna"],
+    "rodzaj_energii": ["rodzaj", "zrodlo", "źródło", "energia", "typ", "paliwo/prad", "fuel type"],
 }
 
 
@@ -5427,6 +5731,20 @@ def _parsuj_date_csv(tekst):
         except ValueError:
             continue
     return None
+
+
+def _rozpoznaj_rodzaj_csv(tekst, auto_id):
+    """Rozpoznaje źródło energii z kolumny pliku — po polsku i po angielsku.
+    Nierozpoznane albo puste = domyślne źródło pojazdu, więc pliki bez tej
+    kolumny (czyli praktycznie wszystkie) importują się jak dotąd."""
+    znormalizowany = _normalizuj_naglowek(tekst)
+    if not znormalizowany:
+        return domyslny_rodzaj_energii(auto_id)
+    if any(slowo in znormalizowany for slowo in ("prad", "prąd", "electric", "kwh", "ladow", "ładow", "charge", "ev")):
+        return ENERGIA_PRAD
+    if any(slowo in znormalizowany for slowo in ("paliw", "fuel", "benzyn", "diesel", "petrol", "gas", "lpg", "tankow")):
+        return ENERGIA_PALIWO
+    return domyslny_rodzaj_energii(auto_id)
 
 
 def _prawda_csv(tekst):
@@ -5550,6 +5868,7 @@ def przygotuj_import_tankowan(auto_id, naglowki, wiersze, mapowanie):
             "kwota": float(kwota),
             "do_pelna": do_pelna,
             "stacja": " ".join(str(wartosc(wiersz, "stacja") or "").split()),
+            "rodzaj_energii": _rozpoznaj_rodzaj_csv(wartosc(wiersz, "rodzaj_energii"), auto_id),
         })
 
     gotowe.sort(key=lambda g: (parsuj_date(g["data"]), g["przebieg"]))
@@ -5565,10 +5884,11 @@ def zaimportuj_tankowania(auto_id, gotowe):
     with polacz_baze() as conn:
         for g in gotowe:
             conn.execute(
-                "INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, dodane_przez) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, "
+                "rodzaj_energii, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (auto_id, g["data"], g["przebieg"], g["dystans"], g["litry"],
-                 g["kwota"], g["do_pelna"], g["stacja"] or None, kto)
+                 g["kwota"], g["do_pelna"], g["stacja"] or None,
+                 g.get("rodzaj_energii") or domyslny_rodzaj_energii(auto_id), kto)
             )
     return len(gotowe)
 
@@ -5761,8 +6081,10 @@ TYPY_IMPORTU = {
         "przygotuj": przygotuj_import_tankowan,
         "zapisz": zaimportuj_tankowania,
         "podglad": lambda g, jednostka: (
-            f"{g['data']} • {g['przebieg']} km • {g['litry']:.2f} {jednostka} • {g['kwota']:.2f}"
+            f"{g['data']} • {g['przebieg']} km • {g['litry']:.2f} "
+            f"{'kWh' if g.get('rodzaj_energii') == ENERGIA_PRAD else jednostka} • {g['kwota']:.2f}"
             + (f" • {g['stacja']}" if g.get("stacja") else "")
+            + (f" • {ETYKIETY_RODZAJU.get(g.get('rodzaj_energii'), '')}" if g.get("rodzaj_energii") else "")
         ),
     },
     "inne_koszty": {

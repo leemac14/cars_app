@@ -69,6 +69,7 @@ IKONY_KOKPITU = {
     "przebieg_dzienny": ft.Icons.TIMELAPSE,
     "ostatnia_aktywnosc": ft.Icons.HISTORY,
     "kondycja": ft.Icons.MONITOR_HEART,
+    "zasieg_ev": ft.Icons.BATTERY_CHARGING_FULL,
 }
 
 IKONY_AKTYWNOSCI = {
