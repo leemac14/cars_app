@@ -648,19 +648,34 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             utils.przejdz(self._page, "/")
 
         def pokaz_wybor_aut(e):
+            """Showroom zamiast listy plików: siatka kart ze zdjęciami pojazdów.
+            Auto rozpoznaje się po miniaturze szybciej, niż po przeczytaniu
+            nazwy w wierszu listy — przy kilku pojazdach wybór to jedno
+            spojrzenie, a nie skanowanie tekstu."""
+            with db.polacz_baze() as conn:
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                c.execute("SELECT id, nazwa, nr_rej, zdjecie_glowne FROM samochody ORDER BY nazwa")
+                auta_siatki = c.fetchall()
+
             bs = ft.BottomSheet(ft.Container())
-            kafelki_aut = []
+            karty_aut = {}  # id -> (ramka, odznaka)
+
+            # Dwie kolumny na telefonie, trzy na szerokim ekranie. Miniatura musi
+            # zostać na tyle duża, żeby dało się rozpoznać auto bez czytania nazwy.
+            try:
+                szer_ekranu = self._page.width or getattr(self._page.window, "width", None) or 400
+            except Exception:
+                szer_ekranu = 400
+            KOLUMNY = 3 if szer_ekranu >= 620 else 2
+            SZER_KARTY = max(128, int((szer_ekranu - 2 * 20 - (KOLUMNY - 1) * 10) / KOLUMNY))
+            WYS_ZDJECIA = int(SZER_KARTY * 0.62)
 
             def wybierz(aid, an):
-                for kafel, k_aid in kafelki_aut:
-                    if k_aid == aid:
-                        kafel.leading.icon = ft.Icons.CHECK_CIRCLE
-                        kafel.leading.color = ft.Colors.PRIMARY
-                        kafel.title.weight = "bold"
-                    else:
-                        kafel.leading.icon = ft.Icons.DIRECTIONS_CAR
-                        kafel.leading.color = ft.Colors.ON_SURFACE_VARIANT
-                        kafel.title.weight = "normal"
+                for k_aid, (ramka, odznaka) in karty_aut.items():
+                    zazn = (k_aid == aid)
+                    ramka.border = ft.Border.all(2, ft.Colors.PRIMARY if zazn else ft.Colors.TRANSPARENT)
+                    odznaka.visible = zazn
 
                 try:
                     self._page.update()
@@ -676,37 +691,116 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.zamknij_dno(self._page, bs)
                 utils.przejdz(self._page, "/auto/nowy")
 
-            pozycje_aut = [
-                ft.Text("Wybierz pojazd", weight="bold", size=18, color=ft.Colors.PRIMARY),
-                ft.Divider(height=1)
-            ]
-
-            for a_id, a_nazwa in auta:
-                zaznaczone = (a_id == self.state.auto_id)
-                kafel = ft.ListTile(
-                    leading=ft.Icon(
-                        ft.Icons.CHECK_CIRCLE if zaznaczone else ft.Icons.DIRECTIONS_CAR,
-                        color=ft.Colors.PRIMARY if zaznaczone else ft.Colors.ON_SURFACE_VARIANT
+            def zastepcze_zdjecie():
+                """Pojazd bez zdjęcia (albo ze zdjęciem, którego nie ma już na
+                dysku) nie może wypaść z siatki — dostaje kafelek w kolorze
+                motywu, więc karta zachowuje ten sam rozmiar i rytm."""
+                return ft.Container(
+                    width=SZER_KARTY, height=WYS_ZDJECIA,
+                    bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Icon(
+                        ft.Icons.DIRECTIONS_CAR, size=38,
+                        color=ft.Colors.with_opacity(0.55, ft.Colors.PRIMARY)
                     ),
-                    title=ft.Text(str(a_nazwa), weight="bold" if zaznaczone else "normal"),
-                    on_click=lambda ev, aid=a_id, an=a_nazwa: wybierz(aid, an)
                 )
-                kafelki_aut.append((kafel, a_id))
-                pozycje_aut.append(kafel)
 
-            pozycje_aut.append(ft.Divider(height=1))
-            pozycje_aut.append(
-                ft.ListTile(
-                    leading=ft.Icon(ft.Icons.ADD, color=ft.Colors.GREEN),
-                    title=ft.Text("Dodaj nowy pojazd", color=ft.Colors.GREEN),
-                    on_click=lambda ev: dodaj()
+            def karta_auta(a):
+                a_id, a_nazwa = a["id"], a["nazwa"]
+                zaznaczone = (a_id == self.state.auto_id)
+
+                if a["zdjecie_glowne"]:
+                    miniatura = ft.Image(
+                        src=utils.abs_zalacznik(a["zdjecie_glowne"]),
+                        width=SZER_KARTY, height=WYS_ZDJECIA, fit="cover",
+                        error_content=zastepcze_zdjecie(),
+                    )
+                else:
+                    miniatura = zastepcze_zdjecie()
+
+                odznaka = ft.Container(
+                    top=6, right=6, visible=zaznaczone,
+                    width=24, height=24, border_radius=12,
+                    bgcolor=ft.Colors.PRIMARY, alignment=ft.Alignment.CENTER,
+                    content=ft.Icon(ft.Icons.CHECK, size=15, color=ft.Colors.ON_PRIMARY),
                 )
+
+                ramka = ft.Container(
+                    width=SZER_KARTY,
+                    border_radius=utils.RADIUS["md"],
+                    border=ft.Border.all(2, ft.Colors.PRIMARY if zaznaczone else ft.Colors.TRANSPARENT),
+                    bgcolor=utils.tlo_karty(self._page, poziom=2),
+                    clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                    tooltip=str(a_nazwa),
+                    on_click=lambda ev, aid=a_id, an=a_nazwa: wybierz(aid, an),
+                    content=ft.Column([
+                        ft.Stack([miniatura, odznaka], width=SZER_KARTY, height=WYS_ZDJECIA),
+                        ft.Container(
+                            padding=ft.Padding(8, 6, 8, 8),
+                            content=ft.Column([
+                                ft.Text(
+                                    str(a_nazwa), size=utils.FS["body_strong"], weight="bold",
+                                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                                    color=ft.Colors.PRIMARY if zaznaczone else ft.Colors.ON_SURFACE,
+                                ),
+                                ft.Text(
+                                    str(a["nr_rej"]) if a["nr_rej"] else "Brak rej.",
+                                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                                ),
+                            ], spacing=1, tight=True),
+                        ),
+                    ], spacing=0, tight=True),
+                )
+
+                karty_aut[a_id] = (ramka, odznaka)
+                return ramka
+
+            # Dokładanie auta to kolejne miejsce w showroomie, a nie pozycja
+            # w menu — dlatego kafelek "Dodaj" ma wymiary karty pojazdu.
+            kafel_dodaj = ft.Container(
+                width=SZER_KARTY,
+                border_radius=utils.RADIUS["md"],
+                border=ft.Border.all(2, ft.Colors.with_opacity(0.35, ft.Colors.GREEN)),
+                bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.GREEN),
+                clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                tooltip="Dodaj nowy pojazd",
+                on_click=lambda ev: dodaj(),
+                content=ft.Column([
+                    ft.Container(
+                        width=SZER_KARTY, height=WYS_ZDJECIA, alignment=ft.Alignment.CENTER,
+                        content=ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, size=34, color=ft.Colors.GREEN),
+                    ),
+                    ft.Container(
+                        padding=ft.Padding(8, 6, 8, 8),
+                        content=ft.Text(
+                            "Dodaj pojazd", size=utils.FS["body_strong"], weight="bold",
+                            color=ft.Colors.GREEN, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                    ),
+                ], spacing=0, tight=True),
+            )
+
+            siatka = ft.Row(
+                [karta_auta(a) for a in auta_siatki] + [kafel_dodaj],
+                wrap=True, spacing=10, run_spacing=10,
             )
 
             bs.content = ft.Container(
                 padding=20,
                 bgcolor=ft.Colors.SURFACE,
-                content=ft.Column(pozycje_aut, tight=True, scroll=ft.ScrollMode.AUTO)
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.GARAGE, color=ft.Colors.PRIMARY, size=22),
+                        ft.Text("Wybierz pojazd", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
+                        ft.Text(
+                            f"{len(auta_siatki)} w garażu",
+                            size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Divider(height=1),
+                    siatka,
+                ], tight=True, spacing=12, scroll=ft.ScrollMode.AUTO)
             )
             utils.otworz_dno(self._page, bs)
 
