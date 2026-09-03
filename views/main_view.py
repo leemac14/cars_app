@@ -1135,12 +1135,57 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             ),
         ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
 
+        # --- TŁO KARTY: rozmyte zdjęcie pojazdu zamiast płaskiego koloru ---
+        # Zdjęcie idzie pod treść mocno rozmyte i przykryte gradientem w kolorze
+        # powierzchni. Karta ma nieść „to jest MOJE auto" barwą i kształtem
+        # widocznym kątem oka, a nie czytelnym obrazkiem — pod nazwą, rejestracją
+        # i statusem musi zostać tło o przewidywalnym kontraście, niezależnie od
+        # tego, czy zdjęcie jest jasne, ciemne czy kontrastowe.
+        PROMIEN_KARTY = 12  # zgodny z domyślnym kształtem ft.Card (RoundedRectangleBorder 12)
+
+        tresc_karty = ft.Container(
+            padding=12, border_radius=PROMIEN_KARTY,
+            content=ft.Row([awatar, kolumna_tekstowa, przyciski_karty], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        )
+
+        if zdjecie_glowne:
+            wnetrze_karty = ft.Stack([
+                # Warstwa 1 — zdjęcie wypełniające całą kartę (kadrowane, nie skalowane).
+                ft.Container(
+                    left=0, top=0, right=0, bottom=0,
+                    border_radius=PROMIEN_KARTY,
+                    image=ft.DecorationImage(
+                        src=utils.abs_zalacznik(zdjecie_glowne),
+                        fit=ft.BoxFit.COVER,
+                        alignment=ft.Alignment.CENTER,
+                    ),
+                ),
+                # Warstwa 2 — rozmycie tego, co pod spodem, plus gradient w kolorze
+                # motywu. Gradient jest lżejszy w lewym górnym rogu (przy awatarze),
+                # a gęstnieje w stronę wiersza statusu, czyli tam, gdzie tekstu
+                # jest najwięcej.
+                ft.Container(
+                    left=0, top=0, right=0, bottom=0,
+                    border_radius=PROMIEN_KARTY,
+                    blur=ft.Blur(18, 18),
+                    gradient=ft.LinearGradient(
+                        begin=ft.Alignment.TOP_LEFT,
+                        end=ft.Alignment.BOTTOM_RIGHT,
+                        colors=[
+                            ft.Colors.with_opacity(0.74, ft.Colors.SURFACE),
+                            ft.Colors.with_opacity(0.93, ft.Colors.SURFACE),
+                        ],
+                    ),
+                ),
+                tresc_karty,
+            ])
+        else:
+            wnetrze_karty = tresc_karty
+
         karta_auta = ft.Card(
             elevation=1,
-            content=ft.Container(
-                padding=12, border_radius=10,
-                content=ft.Row([awatar, kolumna_tekstowa, przyciski_karty], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-            )
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=wnetrze_karty,
         )
 
         wiele_aut = len(auta) > 1
