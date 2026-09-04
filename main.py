@@ -66,6 +66,7 @@ def main(page: ft.Page):
     # Zakładkę odtwarzamy tu, raz — pojazdem zajmuje się db.zainicjuj_domyslne_auto,
     # które i tak biegnie przy każdej nawigacji i samo sięga po zapamiętane auto.
     app_state.zakladka = db.pobierz_ostatnia_zakladke()
+    app_state.koszty_podzakladka = db.pobierz_podzakladke_kosztow()
 
     # Ostatnio zapisana pozycja startowa — trzymana w pamięci, żeby nawigacja
     # nie waliła w bazę UPDATE-em przy każdym przejściu między ekranami.
@@ -422,6 +423,11 @@ def main(page: ft.Page):
 
         trasa = page.route
         segmenty = [s for s in trasa.split("/") if s != ""]
+
+        # Historia „ostatnio używanych ekranów” zapisuje się TUTAJ, w jednym
+        # miejscu — niezależnie od tego, czy ekran otwarto z menu bocznego,
+        # ze skrótu na kokpicie, czy z odnośnika wewnątrz innego ekranu.
+        utils.zanotuj_ekran_dla_trasy(app_state, segmenty)
 
         page.views.clear()
         page.views.append(MainView(page, app_state, eksportuj_baze, importuj_baze, przelacz_tryb))

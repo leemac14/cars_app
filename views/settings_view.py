@@ -262,7 +262,7 @@ class UstawieniaView(ft.View):
             naglowek_kokpitu + [
                 ft.Text(
                     "Wybierz, które szybkie statystyki mają się pokazywać na górze ekranu głównego "
-                    "(zakładka Serwis). Kolejność ustawisz przeciąganiem — przytrzymaj kafelek na "
+                    "(zakładka Kokpit). Kolejność ustawisz przeciąganiem — przytrzymaj kafelek na "
                     "kokpicie albo dotknij ikony uchwytu na końcu karuzeli. Świeżo włączone pozycje "
                     "dopisują się na końcu i nie ruszają Twojego układu.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT

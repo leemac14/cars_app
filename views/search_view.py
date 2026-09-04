@@ -21,7 +21,8 @@ class SzukajView(ft.View):
     PODPOWIEDZ_STARTOWA = (
         "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
         "inne koszty, warsztaty, wydatki cykliczne, notatki wpisów i listę Do zrobienia "
-        "bieżącego pojazdu. Sama liczba szuka po kwocie."
+        "bieżącego pojazdu. Sama liczba szuka po kwocie. Szukanie obejmuje też EKRANY "
+        "aplikacji — wpisz „rok”, „limit” albo „licznik”, żeby wejść prosto tam, gdzie trzeba."
     )
 
     def __init__(self, page: ft.Page, state):
@@ -44,7 +45,7 @@ class SzukajView(ft.View):
             return
 
         self.pole_wyszukiwarki = ft.TextField(
-            hint_text="Szukaj (stacja, część, warsztat, opis, notatka, data, kwota)...",
+            hint_text="Szukaj wpisów i ekranów (stacja, część, kwota, „rok w pigułce”)...",
             prefix_icon=ft.Icons.SEARCH,
             autofocus=True,
             on_change=utils.z_opoznieniem(self._page, self._wyszukaj),
@@ -80,19 +81,77 @@ class SzukajView(ft.View):
         # kwota — inaczej nie wiadomo, czemu „450” nie znalazło daty z 450.
         self.pasek_trybu_kwoty = ft.Container(visible=False)
 
+        # Wyszukiwarka przestała być tylko przeglądarką WPISÓW. Najczęstszym
+        # pytaniem w rozrosłej aplikacji nie jest „ile zapłaciłem na Orlenie”,
+        # tylko „gdzie to było” — więc to samo pole odpowiada teraz na oba.
+        # Ekrany stoją NAD wpisami, bo kto wpisuje „budżet”, chce wejść na ekran
+        # budżetu, a nie przeczytać wpis, w którym padło to słowo.
+        self.sekcja_ekranow = ft.Column(spacing=8, visible=False)
+
         self.lista_wynikow = ft.ListView(
             spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False
         )
 
         elementy = [
             self.pole_wyszukiwarki, self.podpowiedz_kwot, self.pasek_trybu_kwoty,
-            self.kontener_pomocniczy, self.lista_wynikow,
+            self.sekcja_ekranow, self.kontener_pomocniczy, self.lista_wynikow,
         ]
 
         super().__init__(
             route="/szukaj", padding=15, spacing=15, appbar=appbar,
             controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _wiersz_ekranu(self, ekran):
+        kolor = utils.kolor_ekranu(ekran)
+        return ft.Container(
+            padding=ft.Padding(12, 10, 12, 10), border_radius=utils.RADIUS["md"], ink=True,
+            bgcolor=ft.Colors.with_opacity(0.07, kolor),
+            on_click=lambda e, ek=ekran: utils.otworz_ekran(
+                self._page, self.state, ek, self._akcje_ekranow()),
+            content=ft.Row([
+                ft.Container(
+                    width=32, height=32, border_radius=utils.RADIUS["sm"],
+                    alignment=ft.Alignment.CENTER,
+                    bgcolor=ft.Colors.with_opacity(0.16, kolor),
+                    content=ft.Icon(ekran["ikona"], size=17, color=kolor),
+                ),
+                ft.Column([
+                    ft.Text(ekran["tytul"], size=utils.FS["body"], weight="bold"),
+                    ft.Text(ekran.get("opis") or "", size=utils.FS["caption"],
+                            color=ft.Colors.ON_SURFACE_VARIANT, max_lines=1,
+                            overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=1, tight=True, expand=True),
+                ft.Icon(ft.Icons.ARROW_FORWARD_IOS, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+            ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
+    def _akcje_ekranow(self):
+        """Wyszukiwarka nie ma dostępu do kopii bazy ani przełącznika motywu (te
+        siedzą w module głównym), ale panele czysto interfejsowe — wydatki
+        cykliczne, edycja i usunięcie pojazdu — potrafi otworzyć sama. Reszta po
+        prostu nie pojawia się w wynikach, zamiast prowadzić donikąd."""
+        return utils.akcje_nawigacji(self._page, self.state)
+
+    def _pokaz_ekrany(self, zapytanie):
+        """Zwraca liczbę dopasowanych ekranów — wołający używa jej do rozróżnienia
+        „nic nie znaleziono” od „znaleziono tylko ekran, ale żadnego wpisu”."""
+        ekrany = utils.znajdz_ekrany(
+            zapytanie, akcje=self._akcje_ekranow(), ma_pojazd=bool(self.state.auto_id))
+        self.sekcja_ekranow.controls.clear()
+        if not ekrany:
+            self.sekcja_ekranow.visible = False
+            return 0
+
+        self.sekcja_ekranow.controls.append(ft.Row([
+            ft.Icon(ft.Icons.APPS, size=16, color=ft.Colors.PRIMARY),
+            ft.Text("Ekrany i funkcje", size=utils.FS["label"], weight="bold",
+                    color=ft.Colors.PRIMARY, expand=True),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        for ekran in ekrany:
+            self.sekcja_ekranow.controls.append(self._wiersz_ekranu(ekran))
+        self.sekcja_ekranow.visible = True
+        return len(ekrany)
 
     def _karta_wyniku(self, w):
         ikona, kolor = IKONY_WYSZUKIWANIA.get(w["typ"], (ft.Icons.EVENT_NOTE, ft.Colors.ON_SURFACE_VARIANT))
@@ -138,6 +197,7 @@ class SzukajView(ft.View):
             self.tekst_pomocniczy.value = self.PODPOWIEDZ_STARTOWA
             self.kontener_pomocniczy.visible = True
             self.pasek_trybu_kwoty.visible = False
+            self.sekcja_ekranow.visible = False
             self.update()
             return
 
@@ -156,12 +216,19 @@ class SzukajView(ft.View):
             self.pasek_trybu_kwoty.visible = False
             self.podpowiedz_kwot.visible = True
 
+        # Zapytanie kwotowe („>1000”) nie jest nazwą ekranu — pokazywanie przy nim
+        # listy ekranów byłoby szumem.
+        ile_ekranow = 0 if zakres else self._pokaz_ekrany(zapytanie)
+
         wyniki = db.globalne_wyszukiwanie(self.state.auto_id, zapytanie)
 
         if not wyniki:
             self.tekst_pomocniczy.value = (
                 f"Brak wpisów pasujących do zapytania „{zapytanie}”."
-                if zakres else f"Brak wyników dla „{zapytanie}”."
+                if zakres else (
+                    f"Brak wpisów dla „{zapytanie}” — pasuje za to ekran powyżej."
+                    if ile_ekranow else f"Brak wyników dla „{zapytanie}”."
+                )
             )
             self.kontener_pomocniczy.visible = True
         else:

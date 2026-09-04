@@ -669,6 +669,14 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN moment_dokrecania TEXT;
             ALTER TABLE samochody ADD COLUMN typ_zlacza_ev TEXT;
             ALTER TABLE samochody ADD COLUMN data_pierwszej_rejestracji TEXT;
+            """,
+            # Wersja 38: pamięć nawigacji. Aplikacja urosła do kilkudziesięciu
+            # ekranów i o tym, co pokazać na skróty, ma decydować to, z czego
+            # użytkownik faktycznie korzysta, a nie kolejność w kodzie.
+            # `przypiety` to ręczny wybór na Kokpit, `licznik`/`ostatnio` —
+            # automatyczna lista „Ostatnio używane”.
+            """
+            CREATE TABLE IF NOT EXISTS ekrany_uzycie (ekran_id TEXT PRIMARY KEY, licznik INTEGER NOT NULL DEFAULT 0, ostatnio TEXT, przypiety INTEGER NOT NULL DEFAULT 0, kolejnosc INTEGER NOT NULL DEFAULT 0);
             """
         ]
 
@@ -696,6 +704,27 @@ def init_db():
                     "(SELECT id FROM samochody WHERE typ_paliwa='Elektryczny') THEN 'prad' ELSE 'paliwo' END "
                     "WHERE rodzaj_energii IS NULL"
                 )
+
+            # Układ zakładek zmienił się z „Serwis / Paliwo / Inne / Statystyki”
+            # na „Kokpit / Serwis / Koszty / Analiza”. Bez przeliczenia ktoś, kto
+            # skończył na Paliwie, dostałby po aktualizacji Serwis — numer został
+            # ten sam, ale znaczy już co innego.
+            if i == 37:
+                MAPA_ZAKLADEK = {"0": "1", "1": "2", "2": "2", "3": "3"}
+                cursor.execute("SELECT wartosc FROM ustawienia WHERE klucz='ostatnia_zakladka'")
+                w_zak = cursor.fetchone()
+                if w_zak:
+                    stara = str(w_zak[0] or "0").strip()
+                    cursor.execute(
+                        "INSERT INTO ustawienia (klucz, wartosc) VALUES ('ostatnia_zakladka', ?) "
+                        "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc",
+                        (MAPA_ZAKLADEK.get(stara, "0"),)
+                    )
+                    if stara == "2":
+                        cursor.execute(
+                            "INSERT INTO ustawienia (klucz, wartosc) VALUES ('ostatnia_podzakladka_kosztow', '1') "
+                            "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc"
+                        )
 
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")
@@ -1233,7 +1262,7 @@ def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
     zdarzenia.sort(key=lambda z: z[3], reverse=True)
     return zdarzenia[:limit]
 
-LICZBA_ZAKLADEK_GLOWNYCH = 4   # Serwis, Paliwo, Inne, Statystyki
+LICZBA_ZAKLADEK_GLOWNYCH = 4   # Kokpit, Serwis, Koszty, Analiza
 
 def zapamietaj_ostatnia_pozycje(auto_id, zakladka):
     """Zapamiętuje, na czym użytkownik skończył — pojazd i zakładkę główną.
@@ -1249,6 +1278,188 @@ def pobierz_ostatnia_zakladke():
     except (TypeError, ValueError):
         return 0
     return z if 0 <= z < LICZBA_ZAKLADEK_GLOWNYCH else 0
+
+def zapamietaj_podzakladke_kosztow(idx):
+    zapisz_ustawienie("ostatnia_podzakladka_kosztow", str(int(idx or 0)))
+
+def pobierz_podzakladke_kosztow():
+    try:
+        z = int(pobierz_ustawienie("ostatnia_podzakladka_kosztow", "0") or 0)
+    except (TypeError, ValueError):
+        return 0
+    return z if z in (0, 1) else 0
+
+
+# ============ PAMIĘĆ NAWIGACJI (rejestr ekranów żyje w utils.EKRANY) ============
+# Tu trzymamy tylko to, CZEGO użytkownik używa — sam katalog ekranów jest po
+# stronie UI, bo składa się z ikon Fleta. Rozdzielenie jest celowe: baza nie
+# musi wiedzieć, jak ekran wygląda, a UI nie musi wiedzieć, jak liczyć użycia.
+
+# Zestaw startowy skrótów: karta pojazdu i karoseria, bo nie leżą na żadnym
+# pasku sekcji, plus to, po co sięga się najczęściej. Użytkownik i tak zmienia
+# go jednym dotknięciem („Wybierz” nad siatką skrótów).
+DOMYSLNE_PRZYPIETE = ["pojazd", "przebieg", "wizyty", "do-zrobienia", "karoseria", "rok"]
+MAKS_PRZYPIETYCH = 8
+
+def zanotuj_uzycie_ekranu(ekran_id):
+    """Wywoływane przy każdym wejściu na ekran z rejestru. Cicho ignoruje błędy —
+    statystyka używalności nigdy nie może wywrócić nawigacji."""
+    if not ekran_id:
+        return
+    try:
+        with polacz_baze() as conn:
+            conn.execute(
+                "INSERT INTO ekrany_uzycie (ekran_id, licznik, ostatnio) VALUES (?, 1, ?) "
+                "ON CONFLICT(ekran_id) DO UPDATE SET licznik = licznik + 1, ostatnio = excluded.ostatnio",
+                (str(ekran_id), datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            )
+    except Exception:
+        pass
+
+def pobierz_ostatnie_ekrany(limit=5, pomin=()):
+    """Ostatnio otwierane ekrany, najświeższy pierwszy. `pomin` odsiewa te, które
+    i tak są już widoczne (np. przypięte kafelki), żeby nie dublować wejść."""
+    try:
+        with polacz_baze() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT ekran_id FROM ekrany_uzycie WHERE ostatnio IS NOT NULL "
+                "ORDER BY ostatnio DESC LIMIT ?", (max(1, int(limit)) + len(pomin) + 4,)
+            )
+            wynik = [r[0] for r in c.fetchall() if r[0] not in set(pomin)]
+        return wynik[:limit]
+    except Exception:
+        return []
+
+def pobierz_przypiete_ekrany():
+    """Kafelki skrótów na Kokpicie. Pusty wynik oznacza „użytkownik jeszcze nic
+    nie wybrał” — wtedy dostaje sensowny zestaw startowy, a nie pustą sekcję.
+    Świadomie odpięcie wszystkiego zapisujemy jako znacznik, żeby odróżnić je
+    od stanu początkowego."""
+    try:
+        with polacz_baze() as conn:
+            c = conn.cursor()
+            c.execute("SELECT ekran_id FROM ekrany_uzycie WHERE przypiety=1 ORDER BY kolejnosc, ekran_id")
+            wybrane = [r[0] for r in c.fetchall()]
+        if wybrane:
+            return wybrane
+        return [] if pobierz_ustawienie("skroty_wyczyszczone", "0") == "1" else list(DOMYSLNE_PRZYPIETE)
+    except Exception:
+        return list(DOMYSLNE_PRZYPIETE)
+
+def czy_ekran_przypiety(ekran_id):
+    return str(ekran_id) in set(pobierz_przypiete_ekrany())
+
+def przelacz_przypiecie_ekranu(ekran_id):
+    """Zwraca (czy_przypiety_po_zmianie, komunikat). Limit jest po to, żeby siatka
+    skrótów została siatką, a nie drugą kopią szuflady."""
+    ekran_id = str(ekran_id)
+    obecne = pobierz_przypiete_ekrany()
+    if ekran_id in obecne:
+        nowe = [e for e in obecne if e != ekran_id]
+    else:
+        if len(obecne) >= MAKS_PRZYPIETYCH:
+            return True, f"Skróty mieszczą {MAKS_PRZYPIETYCH} pozycji — odepnij coś najpierw."
+        nowe = obecne + [ekran_id]
+
+    try:
+        with polacz_baze() as conn:
+            conn.execute("UPDATE ekrany_uzycie SET przypiety=0, kolejnosc=0")
+            for poz, eid in enumerate(nowe):
+                conn.execute(
+                    "INSERT INTO ekrany_uzycie (ekran_id, przypiety, kolejnosc) VALUES (?, 1, ?) "
+                    "ON CONFLICT(ekran_id) DO UPDATE SET przypiety=1, kolejnosc=excluded.kolejnosc",
+                    (eid, poz)
+                )
+        zapisz_ustawienie("skroty_wyczyszczone", "0" if nowe else "1")
+    except Exception:
+        return ekran_id in obecne, "Nie udało się zapisać skrótu."
+
+    przypiety = ekran_id in nowe
+    return przypiety, ("Dodano do skrótów na Kokpicie." if przypiety else "Usunięto ze skrótów.")
+
+def liczniki_nawigacji(auto_id):
+    """Odznaki przy pozycjach nawigacji — POLICZONE RAZ, jednym wejściem do bazy.
+    Szuflada, kafelki sekcji i pasek zakładek pokazują te same liczby, więc
+    liczenie ich osobno w każdym miejscu byłoby trzema zapytaniami o to samo.
+
+    Zwraca słownik {ekran_id: liczba}; brak klucza = brak odznaki."""
+    wynik = {}
+    if not auto_id:
+        return wynik
+    try:
+        with polacz_baze() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM do_zrobienia WHERE auto_id=? AND wykonane=0", (auto_id,))
+            n = (c.fetchone() or [0])[0]
+            if n:
+                wynik["do-zrobienia"] = n
+
+            # Magazyn sygnalizuje NISKI STAN, a nie liczbę pozycji — odznaka ma
+            # znaczyć „zajmij się tym”, nie „tyle tu leży”.
+            c.execute(
+                "SELECT COUNT(*) FROM magazyn_czesci WHERE auto_id=? AND ilosc <= COALESCE(prog_ostrzezenia, 1)",
+                (auto_id,)
+            )
+            n = (c.fetchone() or [0])[0]
+            if n:
+                wynik["magazyn"] = n
+    except Exception:
+        pass
+
+    try:
+        # Terminy pojazdu (OC, przegląd, ...) — odznaka na Karcie pojazdu liczy
+        # tylko te po terminie albo tuż przed nim, więc spokojne auto jej nie ma.
+        pilne = 0
+        for termin in (terminy_pojazdu(auto_id) or []):
+            if termin.get("status") in ("po_terminie", "blisko"):
+                pilne += 1
+        if pilne:
+            wynik["pojazd"] = pilne
+    except Exception:
+        pass
+
+    try:
+        n = liczba_w_koszu()
+        if n:
+            wynik["kosz"] = n
+    except Exception:
+        pass
+
+    return wynik
+
+def ustaw_przypiete_ekrany(identyfikatory):
+    """Nadpisuje CAŁĄ listę skrótów naraz — tak działa edytor skrótów, w którym
+    użytkownik zaznacza wszystko za jednym razem i dopiero potem zatwierdza."""
+    wybrane = [str(e) for e in (identyfikatory or [])][:MAKS_PRZYPIETYCH]
+    try:
+        with polacz_baze() as conn:
+            conn.execute("UPDATE ekrany_uzycie SET przypiety=0, kolejnosc=0")
+            for poz, eid in enumerate(wybrane):
+                conn.execute(
+                    "INSERT INTO ekrany_uzycie (ekran_id, przypiety, kolejnosc) VALUES (?, 1, ?) "
+                    "ON CONFLICT(ekran_id) DO UPDATE SET przypiety=1, kolejnosc=excluded.kolejnosc",
+                    (eid, poz)
+                )
+        zapisz_ustawienie("skroty_wyczyszczone", "0" if wybrane else "1")
+        return True
+    except Exception:
+        return False
+
+def przywroc_domyslne_skroty():
+    try:
+        with polacz_baze() as conn:
+            conn.execute("UPDATE ekrany_uzycie SET przypiety=0, kolejnosc=0")
+            for poz, eid in enumerate(DOMYSLNE_PRZYPIETE):
+                conn.execute(
+                    "INSERT INTO ekrany_uzycie (ekran_id, przypiety, kolejnosc) VALUES (?, 1, ?) "
+                    "ON CONFLICT(ekran_id) DO UPDATE SET przypiety=1, kolejnosc=excluded.kolejnosc",
+                    (eid, poz)
+                )
+        zapisz_ustawienie("skroty_wyczyszczone", "0")
+        return True
+    except Exception:
+        return False
 
 def pobierz_ostatni_pojazd():
     try:

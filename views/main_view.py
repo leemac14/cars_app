@@ -15,7 +15,15 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.elementy = []
         self.fab = None
 
-        appbar = utils.zbuduj_pasek_glowny(page, state, cb_export, cb_import, cb_theme)
+        # Akcje rejestru ekranów (kopia bazy, motyw, usunięcie pojazdu) muszą
+        # powstać PRZED paskiem, bo to one decydują, które pozycje szuflady
+        # w ogóle się pokażą.
+        self.akcje_nawigacji = utils.akcje_nawigacji(page, state, cb_export, cb_import, cb_theme)
+        self.liczniki_nawigacji = db.liczniki_nawigacji(state.auto_id) if state.auto_id else {}
+
+        appbar = utils.zbuduj_pasek_glowny(
+            page, state, cb_export, cb_import, cb_theme, on_menu=self._otworz_nawigacje
+        )
         # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
         self.tryb_zaznaczania = False
         self.zaznaczone_id = set()
@@ -26,14 +34,21 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         self.kokpit_edycja = False       # True = kafelki kokpitu można przeciągać (patrz _buduj_kokpit)
         self.kokpit_kontener = None      # kontener przełączany między karuzelą a trybem układania
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
+        self._przelacznik_pojazdow = None  # ustawiane w buduj_naglowek_auta (showroom aut)
         # --------------------------------------
+        # --- CZTERY ZAKŁADKI = CZTERY POWODY, DLA KTÓRYCH SIĘ TU WCHODZI ---
+        # Wcześniej dwie z czterech („Paliwo” i „Inne”) były tym samym pytaniem
+        # — ile to kosztowało — rozbitym na dwie listy, a ekran startowy
+        # (widżety kokpitu) nie miał własnego miejsca i doklejał się do Serwisu.
+        # Teraz: Kokpit = „co się dzieje z autem”, Serwis = „co trzeba zrobić”,
+        # Koszty = „ile to kosztuje”, Analiza = „jak to wygląda w czasie”.
         navbar = ft.SafeArea(
             content=ft.NavigationBar(
                 destinations=[
+                    ft.NavigationBarDestination(icon=ft.Icons.SPACE_DASHBOARD_OUTLINED, selected_icon=ft.Icons.SPACE_DASHBOARD, label="Kokpit"),
                     ft.NavigationBarDestination(icon=ft.Icons.BUILD_CIRCLE_OUTLINED, selected_icon=ft.Icons.BUILD_CIRCLE, label="Serwis"),
-                    ft.NavigationBarDestination(icon=ft.Icons.LOCAL_GAS_STATION_OUTLINED, selected_icon=ft.Icons.LOCAL_GAS_STATION, label="Paliwo"),
-                    ft.NavigationBarDestination(icon=ft.Icons.RECEIPT_LONG_OUTLINED, selected_icon=ft.Icons.RECEIPT_LONG, label="Inne"),
-                    ft.NavigationBarDestination(icon=ft.Icons.PIE_CHART_OUTLINE, selected_icon=ft.Icons.PIE_CHART, label="Statystyki"),
+                    ft.NavigationBarDestination(icon=ft.Icons.PAYMENTS_OUTLINED, selected_icon=ft.Icons.PAYMENTS, label="Koszty"),
+                    ft.NavigationBarDestination(icon=ft.Icons.INSIGHTS, selected_icon=ft.Icons.INSIGHTS, label="Analiza"),
                 ],
                 on_change=self.zmien_zakladke,
                 selected_index=self.state.zakladka,
@@ -53,12 +68,25 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             )
         else:
             self.buduj_naglowek_auta()
-            if self.state.zakladka == 0: self.buduj_serwis()
-            elif self.state.zakladka == 1: self.buduj_tankowania()
-            elif self.state.zakladka == 2: self.buduj_inne()
+            if self.state.zakladka == 0: self.buduj_kokpit_ekran()
+            elif self.state.zakladka == 1: self.buduj_serwis()
+            elif self.state.zakladka == 2: self.buduj_koszty()
             elif self.state.zakladka == 3: self.buduj_statystyki()
 
         self.elementy.append(utils.dol_bezpieczny(10))
+
+        # Szuflada powstaje RAZEM z widokiem, a nie dopiero przy kliknięciu
+        # hamburgera: kontrolka musi już siedzieć w drzewie, żeby dało się ją
+        # wysunąć, a dokładanie jej „w locie” i wołanie show_drawer w tej samej
+        # chwili to wyścig, w którym panel czasem się nie pokazuje.
+        szuflada = utils.zbuduj_szuflade(
+            page, state, self.akcje_nawigacji,
+            aktywny_ekran=utils.EKRAN_ZAKLADKI.get(
+                (int(state.zakladka or 0), int(getattr(state, "koszty_podzakladka", 0) or 0))
+            ),
+            on_pojazdy=self._pokaz_wybor_pojazdow if state.auto_id else None,
+            widok=self,
+        )
 
         super().__init__(
             route="/",
@@ -66,6 +94,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             spacing=15,                 # Zastępuje odstępy, które wcześniej robił wrapper
             appbar=appbar,
             navigation_bar=navbar,
+            drawer=szuflada,
             controls=self.elementy,     # Przekazujemy elementy bezpośrednio
             scroll=ft.ScrollMode.AUTO,  # Włączamy natywne przewijanie całej strony
             floating_action_button=self.fab
@@ -74,6 +103,24 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
     def zmien_zakladke(self, e):
         self.state.zakladka = int(e.control.selected_index)
         utils.przejdz(self._page, "/")
+
+    async def _otworz_nawigacje(self, e=None):
+        """Hamburger w pasku górnym. Szuflada jest już zbudowana i wpięta w widok
+        (patrz koniec __init__), więc zostaje samo wysunięcie panelu. Gdyby to
+        się nie powiodło, ta sama mapa ekranów leci jako menu od dołu — przycisk
+        nawigacji nie ma prawa nie zrobić NICZEGO."""
+        try:
+            await self.show_drawer()
+        except Exception:
+            utils.pokaz_nawigacje_awaryjna(self._page, self.state, self.akcje_nawigacji)
+
+    def _pokaz_wybor_pojazdow(self):
+        """Nagłówek szuflady prowadzi do tego samego showroomu, co kliknięcie
+        nazwy auta na kafelku — jeden pojazd wybiera się w jednym miejscu."""
+        if self._przelacznik_pojazdow:
+            self._przelacznik_pojazdow(None)
+        else:
+            utils.przejdz(self._page, "/")
 
     async def _synchronizuj_teraz(self):
         try:
@@ -148,10 +195,13 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.przejdz(self._page, "/")
             return handler
 
-        def idz_do_zakladki(idx):
+        def idz_do_kosztow(podzakladka=0):
+            """Numer zakładki zmienił się przy przebudowie nawigacji — kafelki
+            kokpitu wołają teraz ekran po nazwie z rejestru, więc następna zmiana
+            układu nie zostawi tu martwego odnośnika."""
             def handler(e):
-                self.state.zakladka = idx
-                utils.przejdz(self._page, "/")
+                utils.otworz_ekran(self._page, self.state,
+                                   "inne" if podzakladka else "paliwo", self.akcje_nawigacji)
             return handler
 
         def kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click):
@@ -370,7 +420,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             return kafel_z_iskra(
                 ft.Icons.EV_STATION if czy_prad_kokpit else ft.Icons.LOCAL_GAS_STATION,
                 ft.Colors.TEAL_700, etykieta, wartosc,
-                wartosci_serii, idz_do_zakladki(1),
+                wartosci_serii, idz_do_kosztow(0),
                 wzrost_zly=True, podpis_stopki=f"{len(wartosci_serii)} ost. odcinków",
             )
 
@@ -482,7 +532,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         def widget_obserwacja():
             """Najważniejsze spostrzeżenie o pojeździe — jedno zdanie zamiast
             kolejnej liczby. Kokpit ma ograniczoną uwagę, więc bierzemy tylko
-            pozycję z najwyższą wagą; pełna lista jest w Statystykach → Analiza."""
+            pozycję z najwyższą wagą; pełna lista jest w Analiza → Obserwacje."""
             obserwacje = db.obserwacje_analityczne(self.state.auto_id, limit=1)
             if not obserwacje:
                 return kafel_wartosci(
@@ -1084,6 +1134,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             ], width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA),
         )
 
+        # Nagłówek szuflady prowadzi do tego samego showroomu — jedno miejsce
+        # przełączania pojazdu w całej aplikacji.
+        self._przelacznik_pojazdow = pokaz_wybor_aut
+
         tytulowy_wiersz = ft.Row([
             ft.Container(
                 content=ft.Row([
@@ -1330,64 +1384,148 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         self.elementy.append(wiersz_karty_z_nawigacja)
 
-    # ================= SEKCJA SERWIS (nawigacja przeniesiona do menu ⋮) =================
-    def buduj_serwis(self):
+    # ================= KOKPIT — ZAKŁADKA STARTOWA =================
+    def buduj_kokpit_ekran(self):
+        """Ekran startowy dostał wreszcie własną zakładkę. Wcześniej widżety
+        kokpitu doklejały się nad listę podzespołów w Serwisie — przez co
+        pierwsze, co się widziało po uruchomieniu aplikacji, było pomieszaniem
+        „jak jest” z „co zrobić”, a żeby dojść do listy części trzeba było
+        przewinąć cały dashboard.
+
+        Kokpit odpowiada tylko na jedno pytanie: co się teraz dzieje z autem.
+        Nad nim kafel pojazdu z terminami, pod nim skróty do ekranów, które
+        użytkownik sam sobie wybrał."""
+        naglowek = utils.tytul_sekcji(ft.Icons.SPACE_DASHBOARD, "Kokpit")
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+        if wspolny_id:
+            naglowek.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
+        naglowek.append(
+            ft.IconButton(
+                icon=ft.Icons.TUNE, icon_size=18, tooltip="Które kafelki pokazywać",
+                on_click=lambda e: utils.przejdz(self._page, "/ustawienia"),
+                width=36, height=36, style=ft.ButtonStyle(padding=0),
+            )
+        )
+        self.elementy.append(ft.Row(naglowek, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
-        magazyn_cnt = 0
-        do_zrobienia_cnt = 0
-        try:
-            with db.polacz_baze() as conn:
-                c = conn.cursor()
-                # Licznik ma sygnalizować NISKI STAN, a nie samą liczbę pozycji
-                c.execute("SELECT COUNT(*) FROM magazyn_czesci WHERE auto_id=? AND ilosc <= COALESCE(prog_ostrzezenia, 1)", (self.state.auto_id,))
-                magazyn_cnt = (c.fetchone() or [0])[0]
+        self.elementy.append(self._buduj_kokpit())
+        if not db.pobierz_widgety_kokpitu(self.state.auto_id):
+            # Pusty kokpit bez słowa wyjaśnienia wyglądałby jak zepsuty ekran,
+            # a nie jak ekran czekający na wybór kafelków.
+            self.elementy.append(ft.Container(
+                padding=utils.SPACING["md"], border_radius=utils.RADIUS["lg"],
+                bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.WIDGETS, size=20, color=ft.Colors.PRIMARY),
+                    ft.Text(
+                        "Kokpit nie ma włączonych kafelków. Wybierz je w Ustawieniach → "
+                        "Kokpit ekranu głównego, a znajdą się tutaj.",
+                        size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                    ),
+                ], spacing=utils.SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ))
 
-                c.execute("SELECT COUNT(*) FROM do_zrobienia WHERE auto_id=? AND wykonane=0", (self.state.auto_id,))
-                do_zrobienia_cnt = (c.fetchone() or [0])[0]
-        except Exception:
-            pass
+        self.elementy.append(self._buduj_skroty())
+        # Kokpit jest ekranem startowym, a najczęstsza czynność w aplikacji to
+        # dopisanie tankowania — przycisk szybkiego dodawania musi tu być.
+        self.fab = self._buduj_fab_szybkich_akcji()
 
-        # --- MENU "TRZECH KROPEK" — dawne kafelki nawigacyjne + odznaki liczników ---
-        def pozycja_menu_nawigacji(ikona, etykieta, trasa, licznik=0):
-            wiersz = [
-                ft.Icon(ikona, size=18, color=ft.Colors.PRIMARY),
-                ft.Text(etykieta, expand=True),
-            ]
-            if licznik > 0:
-                wiersz.append(
-                    ft.Container(
-                        content=ft.Text(str(licznik) if licznik < 100 else "99+", size=10, weight="bold", color=ft.Colors.WHITE),
-                        bgcolor=ft.Colors.RED_700, border_radius=9, padding=ft.Padding(6, 2, 6, 2),
-                    )
-                )
-            return ft.PopupMenuItem(
-                content=ft.Row(wiersz, spacing=8),
-                on_click=lambda e, t=trasa: utils.przejdz(self._page, t)
+    def _buduj_skroty(self):
+        """Siatka skrótów. Sedno problemu, od którego zaczęła się przebudowa
+        nawigacji, brzmiało: „Rok w pigułce da się otworzyć z paru miejsc, ale
+        nigdy nie pamiętam, z których”. Odpowiedź jest taka, że ekran używany raz
+        na jakiś czas musi mieć STAŁE miejsce wybrane przez użytkownika — a nie
+        być rozsiany po menu kontekstowych."""
+        przypiete = [
+            utils.EKRANY_WG_ID[eid] for eid in db.pobierz_przypiete_ekrany()
+            if eid in utils.EKRANY_WG_ID
+        ]
+
+        naglowek = ft.Row([
+            ft.Icon(ft.Icons.BOOKMARK, size=17, color=ft.Colors.PRIMARY),
+            ft.Text("Skróty", size=utils.FS["label"], weight="bold",
+                    color=ft.Colors.PRIMARY, expand=True),
+            ft.TextButton(
+                "Wybierz", icon=ft.Icons.DASHBOARD_CUSTOMIZE,
+                on_click=lambda e: utils.pokaz_edytor_skrotow(
+                    self._page, self.state, po_zapisie=lambda: utils.przejdz(self._page, "/")
+                ),
+            ),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        if not przypiete:
+            tresc = ft.Container(
+                padding=utils.SPACING["md"], border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                content=ft.Text(
+                    "Brak skrótów. Dotknij „Wybierz” i przypnij ekrany, do których "
+                    "wracasz najczęściej — pełna lista jest zawsze w menu bocznym.",
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+            )
+        else:
+            # Siatka, a nie karuzela: skróty mają być widoczne WSZYSTKIE naraz,
+            # inaczej znowu trzeba by szukać — tym razem przewijaniem w bok.
+            try:
+                szer = self._page.width or getattr(self._page.window, "width", None) or 400
+            except Exception:
+                szer = 400
+            kolumny = 5 if szer >= 720 else (4 if szer >= 480 else 3)
+            szer_kafla = max(88, int((szer - 2 * 15 - (kolumny - 1) * 10) / kolumny))
+            tresc = ft.Row(
+                [
+                    utils.kafel_skrotu(self._page, self.state, ekran, self.akcje_nawigacji,
+                                       self.liczniki_nawigacji, szerokosc=szer_kafla)
+                    for ekran in przypiete
+                ],
+                spacing=10, run_spacing=10, wrap=True,
             )
 
-        menu_nawigacji = ft.PopupMenuButton(
-            content=ft.Container(
-                width=36, height=36, alignment=ft.Alignment.CENTER, border_radius=18,
-                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
-                content=ft.Icon(ft.Icons.MORE_VERT, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
-            ),
-            tooltip="Zadania, magazyn, wizyty, karoseria",
-            items=[
-                pozycja_menu_nawigacji(ft.Icons.CHECKLIST_RTL, "Zadania", "/do-zrobienia", do_zrobienia_cnt),
-                pozycja_menu_nawigacji(ft.Icons.INVENTORY_2, "Magazyn", "/magazyn", magazyn_cnt),
-                pozycja_menu_nawigacji(ft.Icons.HISTORY_EDU, "Wizyty", "/wizyty"),
-                pozycja_menu_nawigacji(ft.Icons.PHOTO_CAMERA, "Karoseria", "/karoseria"),
-            ]
-        )
+        return ft.Column([naglowek, tresc], spacing=8)
+
+    # ================= KOSZTY — TANKOWANIA I POZOSTAŁE WYDATKI =================
+    def buduj_koszty(self):
+        """Paliwo i „inne” to były dwie zakładki na jedno pytanie: ile to auto
+        kosztuje. Rozdzielone zajmowały połowę dolnego paska i zmuszały do
+        przeskakiwania tam i z powrotem przy porównywaniu wydatków z jednego
+        miesiąca. Teraz to jedna zakładka z przełącznikiem — a zwolnione miejsce
+        dostał Kokpit."""
+        def zmien(idx):
+            self.state.koszty_podzakladka = int(idx)
+            db.zapamietaj_podzakladke_kosztow(self.state.koszty_podzakladka)
+            utils.przejdz(self._page, "/")
+
+        self.elementy.append(utils.segmented_control(
+            self._page,
+            [("Tankowania", 0, ft.Icons.LOCAL_GAS_STATION), ("Inne koszty", 1, ft.Icons.RECEIPT_LONG)],
+            int(getattr(self.state, "koszty_podzakladka", 0) or 0), zmien,
+        ))
+
+        if int(getattr(self.state, "koszty_podzakladka", 0) or 0) == 1:
+            self.buduj_inne()
+        else:
+            self.buduj_tankowania()
+
+    def buduj_serwis(self):
+        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
 
         naglowek_serwis = utils.tytul_sekcji(ft.Icons.BUILD_CIRCLE, "Serwis")
         if wspolny_id:
             naglowek_serwis.append(utils.przycisk_synchronizacji(self._page, self._synchronizuj_teraz))
-        naglowek_serwis.append(menu_nawigacji)
 
         self.elementy.append(ft.Row(naglowek_serwis, vertical_alignment=ft.CrossAxisAlignment.CENTER))
-        self.elementy.append(self._buduj_kokpit())
+
+        # --- SEKCJE „POD-SERWISOWE” JAKO KARTY, A NIE MENU ⋮ ---
+        # Wizyty, zadania i magazyn siedziały pod trzema kropkami w rogu
+        # nagłówka — czyli w miejscu, w które zagląda się wtedy, gdy się już WIE,
+        # że tam coś jest. Jako karty z opisem i licznikiem mówią same o sobie,
+        # co mają w środku i czy wymagają uwagi. Karoseria przeniosła się do
+        # grupy „Pojazd”: to dokumentacja stanu auta, a nie czynność serwisowa.
+        self.elementy.append(utils.pasek_sekcji(
+            self._page, self.state,
+            ["wizyty", "do-zrobienia", "magazyn"],
+            self.akcje_nawigacji, self.liczniki_nawigacji,
+        ))
 
         akt_prz = int(db.pobierz_aktualny_przebieg(self.state.auto_id))
         prog_km = db.pobierz_prog_km()
@@ -2006,16 +2144,34 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 )
             )
 
+        # Rok w pigułce, budżet, historia przebiegu i porównanie pojazdów to
+        # wszystko „patrzenie na dane” — ale każde mieszkało gdzie indziej
+        # (menu ⋮, karta pojazdu, dialog przebiegu). Tutaj mają wspólne wejście,
+        # w zakładce, do której i tak wchodzi się po odpowiedzi na pytanie
+        # „jak to wygląda”.
+        self.elementy.append(ft.Row(
+            utils.tytul_sekcji(ft.Icons.INSIGHTS, "Analiza"),
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ))
+        self.elementy.append(utils.pasek_sekcji(
+            self._page, self.state,
+            ["rok", "budzet", "przebieg", "porownanie", "timeline"],
+            self.akcje_nawigacji, self.liczniki_nawigacji,
+        ))
+
         def zmien_podzakladke(idx):
             self.state.stat_podzakladka = idx
             utils.przejdz(self._page, "/")
 
         self.elementy.append(utils.segmented_control(
-            # „Analiza” stoi trzecia, ale dostaje indeks 3, a nie 2: numery
+            # Podzakładka nazywa się „Obserwacje”, a nie „Analiza” — od kiedy
+            # cała zakładka nosi nazwę Analiza, dwie „Analizy” jedna w drugiej
+            # mówiłyby użytkownikowi dokładnie tyle, co nic.
+            # „Obserwacje” stoją trzecie, ale dostają indeks 3, a nie 2: numery
             # podzakładek siedzą w zapamiętanym stanie użytkownika i przesunięcie
             # ich otworzyłoby komuś Tabele zamiast Wykresów po aktualizacji.
             self._page,
-            [("Liczby", 0), ("Wykresy", 1), ("Analiza", 3), ("Tabele", 2)],
+            [("Liczby", 0), ("Wykresy", 1), ("Obserwacje", 3), ("Tabele", 2)],
             self.state.stat_podzakladka, zmien_podzakladke
         ))
 

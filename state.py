@@ -7,7 +7,8 @@ class AppState:
     def __init__(self):
         self.auto_id = None
         self.auto_nazwa = "Brak pojazdów"
-        self.zakladka = 0
+        self.zakladka = 0            # 0 Kokpit, 1 Serwis, 2 Koszty, 3 Analiza
+        self.koszty_podzakladka = 0  # 0 Tankowania, 1 Inne koszty
         self.stat_podzakladka = 0
         self.wybrane_zadanie_id = None
         self.duplikuj_zrodlo_tankowanie = None
