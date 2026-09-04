@@ -29,7 +29,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT id, data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (self.state.auto_id,))
+            c.execute("SELECT id, data, przebieg, notatka, notatka_autor, notatka_data FROM odczyty_przebiegu WHERE auto_id=?", (self.state.auto_id,))
             baza_lista = c.fetchall()
 
         if not baza_lista:
@@ -45,7 +45,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             chronologicznie = sorted(baza_lista, key=lambda x: (utils.parsuj_date(x[1]), int(x[2] or 0)))
             dystans_wg_id = {}
             poprzedni = None
-            for wid, data_w, prz_w in chronologicznie:
+            for wid, data_w, prz_w, *_ in chronologicznie:
                 prz_i = int(prz_w or 0)
                 dystans_wg_id[wid] = (prz_i - poprzedni) if poprzedni is not None else None
                 poprzedni = prz_i
@@ -71,7 +71,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
             elementy.append(
                 ft.TextField(
-                    hint_text="Szukaj odczytu (data, przebieg)...",
+                    hint_text="Szukaj odczytu (data, przebieg, notatka)...",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_odczyty),
                     **utils.styl_pola()
@@ -87,7 +87,8 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             utils.posortuj_liste(po_filtrach, self.state, "odczyty_przebiegu", opcje_sort)
 
             def otworz_menu(rekord):
-                wid, data_w, prz_w = rekord
+                wid, data_w, prz_w = rekord[0], rekord[1], rekord[2]
+                notatka_w = rekord[3] if len(rekord) > 3 else None
 
                 def usun():
                     def wykonaj():
@@ -98,6 +99,10 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
                 utils.pokaz_menu_kontekstowe(self._page, f"Odczyt: {data_w}", [
                     {"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: self._dialog_odczytu(rekord)},
+                    utils.pozycja_menu_notatki(
+                        self._page, "odczyty_przebiegu", wid, notatka_w,
+                        lambda: utils.przejdz(self._page, "/przebieg"), "Notatka do odczytu"
+                    ),
                     {"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun, "kolor": ft.Colors.RED},
                 ])
 
@@ -105,7 +110,10 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
                 for w in po_filtrach:
-                    wid, data_w, prz_w = w
+                    wid, data_w, prz_w = w[0], w[1], w[2]
+                    notatka_w = w[3] if len(w) > 3 else None
+                    notatka_autor_w = w[4] if len(w) > 4 else None
+                    notatka_data_w = w[5] if len(w) > 5 else None
                     dystans = dystans_wg_id.get(wid)
 
                     tresc = [
@@ -126,13 +134,21 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                                 ft.Text(f"Przebieg niższy o {utils.formatuj_liczba(abs(dystans), 0)} km — sprawdź wpis", size=12, color=ft.Colors.RED_700, expand=True),
                             ], spacing=4))
 
+                    tresc.append(utils.podglad_notatki(
+                        self._page, notatka_w, notatka_autor_w, notatka_data_w, "Notatka do odczytu",
+                        on_edytuj=lambda rid=wid: utils.szybka_notatka(
+                            self._page, "odczyty_przebiegu", rid,
+                            lambda: utils.przejdz(self._page, "/przebieg"), "Notatka do odczytu"
+                        )
+                    ))
+
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc, spacing=4))
 
                     self.karty_ref[wid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, wid, lambda rek=w: otworz_menu(rek))
 
                     karta = ft.Card(elevation=1, content=kontener)
-                    tekst_szukaj = f"{data_w} {prz_w}".lower()
+                    tekst_szukaj = f"{data_w} {prz_w} {notatka_w or ''}".lower()
                     self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
                     self.lista_kart.controls.append(karta)
 
@@ -157,12 +173,14 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno usunąć {ile} zaznaczonych odczytów?", wykonaj)
 
     def _dialog_odczytu(self, odczyt=None):
-        """odczyt: None (dodawanie nowego) lub krotka (id, data, przebieg) do edycji."""
+        """odczyt: None (dodawanie nowego) lub krotka (id, data, przebieg, notatka...) do edycji."""
         edycja = odczyt is not None
         domyslna_data = odczyt[1] if edycja else datetime.now().strftime("%d.%m.%Y")
         domyslny_przebieg = str(odczyt[2]) if edycja else str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
+        notatka_bazowa = str((odczyt[3] if edycja and len(odczyt) > 3 else "") or "")
 
         e_data = utils.pole_daty(self._page, "Data odczytu", domyslna_data)
+        e_notatka = utils.pole_notatki(notatka_bazowa, self._page)
         e_przebieg = ft.TextField(
             label="Przebieg (km)", value=domyslny_przebieg,
             keyboard_type=ft.KeyboardType.NUMBER, autofocus=not edycja,
@@ -184,10 +202,12 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             utils.zamknij_dialog(self._page, dlg)
             if edycja:
                 db.aktualizuj_odczyt_przebiegu(odczyt[0], nowy, e_data.value)
+                utils.zapisz_notatke_z_formularza("odczyty_przebiegu", odczyt[0], e_notatka.value, notatka_bazowa)
                 utils.pokaz_komunikat(self._page, "Zapisano zmiany!")
             else:
-                nadpisano = db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy, e_data.value)
+                nadpisano = db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy, e_data.value, e_notatka.value)
                 utils.pokaz_komunikat(self._page, "Zaktualizowano odczyt z tego dnia!" if nadpisano else "Dodano odczyt przebiegu!")
+            utils.wypchnij_w_tle(self._page, self.state.auto_id, "odczyt przebiegu")
             utils.przejdz(self._page, "/przebieg")
 
         dlg = ft.AlertDialog(
@@ -196,6 +216,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             content=ft.Column([
                 e_data,
                 e_przebieg,
+                e_notatka,
                 ft.Text(
                     "Jeśli dla wybranej daty istnieje już odczyt, zostanie zaktualizowany.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT, visible=not edycja

@@ -139,20 +139,23 @@ KOLUMNY_POJAZDU = [
     "gwarancja_data", "gwarancja_przebieg",
 ]
 
+# Notatka wpisu jedzie do chmury razem z resztą jego pól (kolumny 'notatka',
+# 'notatka_autor', 'notatka_data') — sens tej funkcji polega na tym, że uwagę
+# zostawioną przy tankowaniu widzi też druga osoba korzystająca z auta.
 KONFIGURACJA_SYNC = [
     {"tabela": "tagi", "kolumny": ["nazwa", "kolor"], "fk": {}},
-    {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "rodzaj_energii", "typ_ladowania", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
+    {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "rodzaj_energii", "typ_ladowania", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon", "prog_km", "prog_dni"], "fk": {}},
     {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
-    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
+    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
     {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "data_zakupu", "notatki", "prog_ostrzezenia"], "fk": {}},
     {"tabela": "wizyta_czesci_magazynu", "kolumny": ["ilosc_uzyta"], "fk": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "historia_czesci_magazynu", "kolumny": ["ilosc_uzyta"], "fk": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
-    {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
+    {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
     {"tabela": "wydatki_cykliczne", "kolumny": ["nazwa", "kwota", "okres_dni", "nastepna_data", "czy_koszt"], "fk": {}},
-    {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg"], "fk": {}},
+    {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
     {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},
 ]
@@ -403,7 +406,15 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
         dane = rekord["dane"] or {}
         nowy_hash = _hash_zawartosci(dane)
 
-        wartosci = {nazwa: dane.get(nazwa) for nazwa in kolumny}
+        # Bierzemy WYŁĄCZNIE pola, które faktycznie są w zdalnym rekordzie.
+        # Klucza brakuje tylko wtedy, gdy rekord wypchnęła STARSZA wersja
+        # aplikacji, nieznająca tej kolumny — a wtedy `dane.get()` zwracałoby
+        # None i wyczyściłoby wartość lokalnie. Przy notatkach oznaczałoby to
+        # ciche skasowanie ręcznie wpisanego tekstu tylko dlatego, że druga
+        # osoba nie zaktualizowała jeszcze aplikacji. Celowe wyczyszczenie pola
+        # po drugiej stronie wygląda inaczej — klucz JEST, tylko z null — więc
+        # nadal się propaguje.
+        wartosci = {nazwa: dane.get(nazwa) for nazwa in kolumny if nazwa in dane}
         for pole_fk, tabela_fk in fk.items():
             zdalny_fk = dane.get(f"{pole_fk}_zdalne")
             lokalny_fk = None
@@ -443,9 +454,11 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
                 conn.execute(f"INSERT INTO {tabela} ({nazwy_kolumn}) VALUES ({znaki_zapytania})", tuple(wartosci.values()))
             pobrano += 1
         elif nowy_hash != lokalny["hash"]:
-            przypisania = ",".join(f"{nazwa}=?" for nazwa in wartosci.keys())
+            # Pusty słownik wartości (rekord bez żadnego znanego pola) dałby
+            # składniowo błędne "SET , zdalny_hash=?" — wtedy odświeżamy sam hash.
+            przypisania = "".join(f"{nazwa}=?," for nazwa in wartosci.keys())
             with db.polacz_baze() as conn:
-                conn.execute(f"UPDATE {tabela} SET {przypisania}, zdalny_hash=? WHERE id=?",
+                conn.execute(f"UPDATE {tabela} SET {przypisania} zdalny_hash=? WHERE id=?",
                              tuple(wartosci.values()) + (nowy_hash, lokalny["id"]))
             pobrano += 1
 

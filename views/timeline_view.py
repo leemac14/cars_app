@@ -112,7 +112,8 @@ class TimelineView(ft.View):
                 for z in po_filtrach:
                     wiersz = self._wiersz_osi_czasu(z)
                     typ, data, tytul, opis, autor = z[1], z[2], z[3], z[4], z[8]
-                    tekst_szukaj = f"{typ} {data} {tytul} {opis} {autor or ''}".lower()
+                    notatka = z[9] if len(z) > 9 else None
+                    tekst_szukaj = f"{typ} {data} {tytul} {opis} {autor or ''} {notatka or ''}".lower()
                     wiersz["szukaj"] = tekst_szukaj
                     self.wszystkie_karty.append(wiersz)
                     self.lista_kart.controls.append(wiersz["karta"])
@@ -161,6 +162,7 @@ class TimelineView(ft.View):
         wyszukiwarka musi móc później poprawić końcówki osi."""
         _, typ, data, tytul, opis, kwota, zalacznik, trasa = z[:8]
         autor = z[8] if len(z) > 8 else None
+        notatka = z[9] if len(z) > 9 else None
         ikona, kolor = IKONY_TIMELINE.get(typ, (ft.Icons.EVENT_NOTE, ft.Colors.ON_SURFACE_VARIANT))
         kolor_linii = self._kolor_linii()
 
@@ -211,6 +213,9 @@ class TimelineView(ft.View):
                 ft.Column([
                     ft.Text(str(tytul), size=15, weight="bold", expand=True),
                     ft.Text(str(opis) if opis else typ, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    # Notatka wpisu — w dzienniku życia auta to ona zwykle
+                    # tłumaczy, DLACZEGO dane zdarzenie wygląda tak, a nie inaczej.
+                    utils.podglad_notatki(self._page, notatka, tytul="Notatka", pokaz_podpis=False),
                 ], spacing=3, expand=True),
                 ft.Column(prawa_strona, spacing=4, horizontal_alignment=ft.CrossAxisAlignment.END),
             ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.START),

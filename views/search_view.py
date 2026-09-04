@@ -13,14 +13,15 @@ IKONY_WYSZUKIWANIA = {
     "Opony": (ft.Icons.TIRE_REPAIR, ft.Colors.INDIGO_700),
     "Warsztat": (ft.Icons.HANDYMAN, ft.Colors.BROWN_700),
     "Wydatek cykliczny": (ft.Icons.AUTORENEW, ft.Colors.CYAN_700),
+    "Odczyt licznika": (ft.Icons.SPEED, ft.Colors.BLUE_GREY_700),
 }
 
 
 class SzukajView(ft.View):
     PODPOWIEDZ_STARTOWA = (
         "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
-        "inne koszty, warsztaty, wydatki cykliczne i listę Do zrobienia bieżącego pojazdu. "
-        "Sama liczba szuka po kwocie."
+        "inne koszty, warsztaty, wydatki cykliczne, notatki wpisów i listę Do zrobienia "
+        "bieżącego pojazdu. Sama liczba szuka po kwocie."
     )
 
     def __init__(self, page: ft.Page, state):
@@ -43,7 +44,7 @@ class SzukajView(ft.View):
             return
 
         self.pole_wyszukiwarki = ft.TextField(
-            hint_text="Szukaj (stacja, część, warsztat, opis, data, kwota)...",
+            hint_text="Szukaj (stacja, część, warsztat, opis, notatka, data, kwota)...",
             prefix_icon=ft.Icons.SEARCH,
             autofocus=True,
             on_change=utils.z_opoznieniem(self._page, self._wyszukaj),

@@ -35,7 +35,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         elementy = []
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
+            c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
             wpisy = c.fetchall()
 
         if not wpisy:
@@ -80,9 +80,19 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             wpisy = utils.filtruj_po_miesiacu(wpisy, self.state, "historia_mc", 1)
             utils.posortuj_liste(wpisy, self.state, "historia", opcje_sort)
 
-            def otworz_menu_historii(h_id, w_id, zalacznik=None):
+            def otworz_menu_historii(h_id, w_id, zalacznik=None, notatka=None):
+                # Wpisu z wizyty zbiorczej nadal nie edytujemy stąd (dane trzyma
+                # wizyta), ale NOTATKĘ da się dopisać — jest własnością tego
+                # jednego wpisu, więc blokowanie jej tutaj byłoby sztuczne.
                 if w_id:
-                    utils.pokaz_komunikat(self._page, "Wpis to część wizyty zbiorczej. Otwórz 'Wizyty Zbiorcze', aby go edytować.", ft.Colors.ORANGE_700)
+                    utils.pokaz_menu_kontekstowe(self._page, "Wpis z wizyty zbiorczej", [
+                        utils.pozycja_menu_notatki(
+                            self._page, "historia", h_id, notatka,
+                            lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
+                        ),
+                        {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty zbiorcze”",
+                         "akcja": lambda: utils.przejdz(self._page, "/wizyty")},
+                    ])
                     return
 
                 def usun_wpis():
@@ -109,6 +119,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 else:
                     pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon/faktura)", "akcja": dodaj_zmien_zdj})
                 
+                pozycje.append(utils.pozycja_menu_notatki(
+                    self._page, "historia", h_id, notatka,
+                    lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
+                ))
                 pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{h_id}")})
                 pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_wpis", h_id), utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))})
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": ft.Colors.RED})
@@ -116,7 +130,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
 
             for w in wpisy:
-                h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez, zmodyfikowane_przez, data_modyfikacji = w
+                (h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez,
+                 zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data) = w
                 jest_zbiorcza = w_id is not None
                 # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
                 # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
@@ -137,6 +152,14 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
                 ]
+                tresc_h.append(utils.podglad_notatki(
+                    self._page, notatka, notatka_autor, notatka_data, "Notatka do wpisu",
+                    on_edytuj=lambda rid=h_id: utils.szybka_notatka(
+                        self._page, "historia", rid,
+                        lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
+                    ),
+                    pokaz_podpis=bool(wspolny_id)
+                ))
                 if wspolny_id and (dodane_przez or zmodyfikowane_przez):
                     tresc_h.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
                 karta, kontener = utils.karta_listy(
@@ -147,14 +170,14 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.karty_ref[h_id] = kontener
 
-                def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=zalacznik):
+                def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=zalacznik, nt=notatka):
                     if self.tryb_zaznaczania:
                         if wid:
                             utils.pokaz_komunikat(self._page, "Wpisów z Wizyty Zbiorczej nie można grupować stąd. Usuń całą wizytę.", ft.Colors.ORANGE_700)
                         else:
                             self.zaznacz_odznacz(hid, kont)
                     else:
-                        otworz_menu_historii(hid, wid, zal)
+                        otworz_menu_historii(hid, wid, zal, nt)
 
                 def _on_long_press(e, hid=h_id, wid=w_id, kont=kontener):
                     if wid: return 
@@ -165,7 +188,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 kontener.on_click = _on_click
                 kontener.on_long_press = _on_long_press
 
-                tekst_szukaj = f"{data} {sub_tekst} {k_str}".lower()
+                tekst_szukaj = f"{data} {sub_tekst} {k_str} {notatka or ''}".lower()
                 self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
                 self.lista_kart.controls.append(karta)
 
@@ -308,7 +331,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             c.execute("""
                 SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.tagi,
                        GROUP_CONCAT(z.nazwa, ', ') as czesci, w.dodane_przez,
-                       w.zmodyfikowane_przez, w.data_modyfikacji
+                       w.zmodyfikowane_przez, w.data_modyfikacji, w.notatki
                 FROM wizyty w
                 LEFT JOIN historia h ON h.wizyta_id = w.id
                 LEFT JOIN zadania z ON h.zadanie_id = z.id
@@ -380,7 +403,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         self.wszystkie_karty = []
         # ---------------------------------------------
 
-        def otworz_menu_wiz(wid, zalacznik=None):
+        def otworz_menu_wiz(wid, zalacznik=None, notatka=None):
             def usun_wizyte():
                 def wykonaj():
                     wynik = db.usun_wizyty_z_cofnieciem([wid])
@@ -406,6 +429,10 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             else:
                 pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie", "akcja": dodaj_zmien_zdj})
                 
+            pozycje.append(utils.pozycja_menu_notatki(
+                self._page, "wizyty", wid, notatka,
+                lambda: utils.przejdz(self._page, "/wizyty"), "Notatka do wizyty"
+            ))
             pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wizytę", "akcja": lambda: utils.przejdz(self._page, f"/wizyty/edytuj/{wid}")})
             pozycje.append({
                 "ikona": ft.Icons.CONTENT_COPY,
@@ -432,7 +459,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         else:
             mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
             for w in wizyty_lista:
-                w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez, zmodyfikowane_przez, data_modyfikacji = w
+                (w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez,
+                 zmodyfikowane_przez, data_modyfikacji, notatka_wizyty) = w
                 czesci = czesci or "Brak podpiętych części"
                 czesci_magazynowe = czesci_magazynu_wg_wizyty.get(w_id)
 
@@ -454,6 +482,16 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     tresc_karty.append(ft.Text(f"Z magazynu: {', '.join(czesci_magazynowe)}", size=13, color=ft.Colors.TEAL_700))
                 if tagi:
                     tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id, mapa_tagow))
+                # Wizyta ma pole „Notatki i uwagi” od zawsze, tylko nigdy nie było
+                # widać go na liście — pokazujemy je tym samym komponentem, co
+                # notatki pozostałych wpisów (tabela wizyty nie ma podpisu).
+                tresc_karty.append(utils.podglad_notatki(
+                    self._page, notatka_wizyty, tytul="Notatka do wizyty",
+                    on_edytuj=lambda rid=w_id: utils.szybka_notatka(
+                        self._page, "wizyty", rid,
+                        lambda: utils.przejdz(self._page, "/wizyty"), "Notatka do wizyty"
+                    )
+                ))
                 if wspolny_id and (dodane_przez or zmodyfikowane_przez):
                     tresc_karty.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
 
@@ -465,11 +503,11 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.karty_ref[w_id] = kontener
 
-                def _on_click(e, wid=w_id, zal=zalacznik):
+                def _on_click(e, wid=w_id, zal=zalacznik, nt=notatka_wizyty):
                     if self.tryb_zaznaczania:
                         self.zaznacz_odznacz(wid, self.karty_ref[wid])
                     else:
-                        otworz_menu_wiz(wid, zal)
+                        otworz_menu_wiz(wid, zal, nt)
 
                 def _on_long_press(e, wid=w_id):
                     if not self.tryb_zaznaczania:
@@ -480,7 +518,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 kontener.on_long_press = _on_long_press
 
                 magazyn_szukaj = " ".join(czesci_magazynowe) if czesci_magazynowe else ""
-                tekst_szukaj = f"{data} {wyk} {czesci} {kosz} {tagi} {magazyn_szukaj}".lower()
+                tekst_szukaj = f"{data} {wyk} {czesci} {kosz} {tagi} {magazyn_szukaj} {notatka_wizyty or ''}".lower()
                 self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
                 self.lista_kart.controls.append(karta)
 

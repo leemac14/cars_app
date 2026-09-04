@@ -1622,7 +1622,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
             self.elementy.append(
                 ft.TextField(
-                    hint_text="Szukaj tankowania (stacja, data, kwota, dystans)...",
+                    hint_text="Szukaj tankowania (stacja, data, kwota, dystans, notatka)...",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_tankowania),
                     **utils.styl_pola()
@@ -1643,7 +1643,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "tankowania_autor", "dodane_przez")
             utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
 
-            def otworz_menu_t(tid, zalacznik=None):
+            def otworz_menu_t(tid, zalacznik=None, notatka=None):
                 def usun_tankowanie():
                     def wykonaj():
                         wynik = db.usun_z_cofnieciem("tankowania", tid)
@@ -1661,6 +1661,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 else:
                     pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon)", "akcja": dodaj_zmien_zdj})
 
+                pozycje.append(utils.pozycja_menu_notatki(
+                    self._page, "tankowania", tid, notatka,
+                    lambda: utils.przejdz(self._page, "/"), "Notatka do tankowania"
+                ))
                 pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/tankowanie/edytuj/{tid}")})
                 pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_tankowanie", tid), utils.przejdz(self._page, "/tankowanie/nowe"))})
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": ft.Colors.RED})
@@ -1718,16 +1722,25 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                     ]
                     if w.get('tagi'):
                         tresc_karty.append(utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id, mapa_tagow))
+                    tresc_karty.append(utils.podglad_notatki(
+                        self._page, w.get('notatka'), w.get('notatka_autor'), w.get('notatka_data'),
+                        "Notatka do tankowania",
+                        on_edytuj=lambda rid=tid: utils.szybka_notatka(
+                            self._page, "tankowania", rid,
+                            lambda: utils.przejdz(self._page, "/"), "Notatka do tankowania"
+                        ),
+                        pokaz_podpis=bool(wspolny_id)
+                    ))
                     if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
                         tresc_karty.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
 
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
 
                     self.karty_ref[tid] = kontener
-                    self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, zal=w.get('zalacznik'): otworz_menu_t(id_el, zal), "tankowania")
+                    self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, zal=w.get('zalacznik'), nt=w.get('notatka'): otworz_menu_t(id_el, zal, nt), "tankowania")
 
                     karta_t = ft.Card(elevation=1, content=kontener)
-                    tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')} {db.ETYKIETY_RODZAJU[rodzaj_w]} {w.get('typ_ladowania') or ''}".lower()
+                    tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')} {db.ETYKIETY_RODZAJU[rodzaj_w]} {w.get('typ_ladowania') or ''} {w.get('notatka') or ''}".lower()
                     self.wszystkie_karty_tankowania.append({"karta": karta_t, "szukaj": tekst_szukaj})
                     self.lista_kart_tankowania.controls.append(karta_t)
 
@@ -1786,7 +1799,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
             self.elementy.append(
                 ft.TextField(
-                    hint_text="Szukaj kosztu (opis, kategoria, kwota, data)...",
+                    hint_text="Szukaj kosztu (opis, kategoria, kwota, data, notatka)...",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_inne),
                     **utils.styl_pola()
@@ -1803,7 +1816,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "inne_autor", "dodane_przez")
             utils.posortuj_liste(po_filtrach, self.state, "inne", opcje_sort)
 
-            def otworz_menu_i(iid, zalacznik=None):
+            def otworz_menu_i(iid, zalacznik=None, notatka=None):
                 def usun_koszt(e):
                     utils.zamknij_dno(self._page, bs)
                     def wykonaj():
@@ -1827,6 +1840,15 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 else:
                     pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.ADD_A_PHOTO), title=ft.Text("Dodaj zdjęcie (faktura/paragon)"), on_click=dodaj_zmien_zdj))
 
+                poz_notatka = utils.pozycja_menu_notatki(
+                    self._page, "inne_koszty", iid, notatka,
+                    lambda: utils.przejdz(self._page, "/"), "Notatka do kosztu"
+                )
+                pozycje.append(ft.ListTile(
+                    leading=ft.Icon(poz_notatka["ikona"]),
+                    title=ft.Text(poz_notatka["tekst"]),
+                    on_click=lambda ev: (utils.zamknij_dno(self._page, bs), poz_notatka["akcja"]())
+                ))
                 pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Edytuj koszt"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/inne/edytuj/{iid}"))))
                 pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.CONTENT_COPY), title=ft.Text("Duplikuj"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), setattr(self.state, "duplikuj_zrodlo_koszt", iid), utils.przejdz(self._page, "/inne/nowy"))))
                 pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED), title=ft.Text("Usuń koszt", color=ft.Colors.RED), on_click=usun_koszt))
@@ -1853,15 +1875,24 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Text(str(w.get('nazwa')) if w.get('nazwa') else "Brak opisu", size=16, weight="bold"),
                         utils.wizualizacja_tagow(w.get('tagi') or w.get('kategoria'), self.state.auto_id, mapa_tagow)
                     ]
+                    tresc_i.append(utils.podglad_notatki(
+                        self._page, w.get('notatka'), w.get('notatka_autor'), w.get('notatka_data'),
+                        "Notatka do kosztu",
+                        on_edytuj=lambda rid=iid: utils.szybka_notatka(
+                            self._page, "inne_koszty", rid,
+                            lambda: utils.przejdz(self._page, "/"), "Notatka do kosztu"
+                        ),
+                        pokaz_podpis=bool(wspolny_id)
+                    ))
                     if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
                         tresc_i.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_i))
 
                     self.karty_ref[iid] = kontener
-                    self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, zal=w.get('zalacznik'): otworz_menu_i(id_el, zal), "inne_koszty")
+                    self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, zal=w.get('zalacznik'), nt=w.get('notatka'): otworz_menu_i(id_el, zal, nt), "inne_koszty")
 
                     karta_i = ft.Card(elevation=1, content=kontener)
-                    tekst_szukaj = f"{w.get('data')} {w.get('nazwa')} {w.get('kategoria')} {cena_str}".lower()
+                    tekst_szukaj = f"{w.get('data')} {w.get('nazwa')} {w.get('kategoria')} {cena_str} {w.get('notatka') or ''}".lower()
                     self.wszystkie_karty_inne.append({"karta": karta_i, "szukaj": tekst_szukaj})
                     self.lista_kart_inne.controls.append(karta_i)
 

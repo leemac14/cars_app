@@ -623,12 +623,13 @@ class FormularzTankowanieView(ft.View):
         pelna_val = True
         self.zalacznik_val = None
         tagi_val = ""
+        notatka_val = ""
 
         self.ostatni_prz = 0
         with db.polacz_baze() as conn:
             c = conn.cursor()
             if zrodlo_id:
-                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania FROM tankowania WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, notatka FROM tankowania WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
                     self.rodzaj_energii = db.normalizuj_rodzaj_energii(w[9], self.state.auto_id)
@@ -642,6 +643,9 @@ class FormularzTankowanieView(ft.View):
                     stacja_val = str(w[6] or "") if len(w) > 6 else ""
                     self.zalacznik_val = w[7] if len(w) > 7 else None
                     tagi_val = str(w[8] or "") if len(w) > 8 else ""
+                    # Duplikat przenosi też notatkę — kontekst („tankowanie na
+                    # trasie do Krakowa”) jest zwykle tym, co się powtarza.
+                    notatka_val = str(w[11] or "") if len(w) > 11 else ""
                     
                     cur_prz = int(w[1] or 0)
                     c.execute("SELECT MAX(przebieg) FROM tankowania WHERE auto_id=? AND przebieg < ?", (self.state.auto_id, cur_prz))
@@ -759,6 +763,8 @@ class FormularzTankowanieView(ft.View):
         )
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        self.notatka_bazowa = (notatka_val or "").strip()
+        self.k_notatka = utils.pole_notatki(notatka_val, page)
 
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"Edycja: {self.etykiety['zdarzenie']}" if t_id else f"Nowe {self.etykiety['zdarzenie']}", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
@@ -786,8 +792,12 @@ class FormularzTankowanieView(ft.View):
             ft.Icons.EV_STATION if self.rodzaj_energii == db.ENERGIA_PRAD else ft.Icons.LOCAL_GAS_STATION
         )
         k3 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
+        # Karta notatki rozwinięta, gdy wpis już jakąś ma — inaczej trzeba by
+        # klikać w zwinięty nagłówek, żeby w ogóle zobaczyć, że notatka istnieje.
+        k4 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
+                                    domyslnie_otwarte=bool(notatka_val))
 
-        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz tankowanie", self.zapisz, "/")]
+        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz tankowanie", self.zapisz, "/")]
 
         super().__init__(
             route=f"/tankowanie/edytuj/{t_id}" if t_id else "/tankowanie/nowe",
@@ -797,7 +807,7 @@ class FormularzTankowanieView(ft.View):
     def _migawka_formularza(self):
         return (self.e_d.value, self.e_p.value, self.e_dys.value, self.e_l.value,
                 self.e_k.value, self.c_pel.value, self.get_stacja(), self.get_tagi(),
-                self.rodzaj_energii, self.e_ladowanie.value)
+                self.rodzaj_energii, self.e_ladowanie.value, self.k_notatka.value)
     
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -843,9 +853,14 @@ class FormularzTankowanieView(ft.View):
             if self.t_id: 
                 conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, rodzaj_energii=?, typ_ladowania=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
                              (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
+                rekord_id = self.t_id
             else: 
-                conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                kursor = conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", 
                              (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie()))
+                rekord_id = kursor.lastrowid
+        # Notatkę zapisujemy osobno i TYLKO gdy treść się zmieniła — inaczej
+        # poprawka ceny przestemplowałaby cudzy podpis pod notatką na swój.
+        utils.zapisz_notatke_z_formularza("tankowania", rekord_id, self.k_notatka.value, self.notatka_bazowa)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "tankowanie")
@@ -865,16 +880,18 @@ class FormularzInneView(ft.View):
         zrodlo_id = i_id or duplikuj_id
 
         d_val, op_val, kw_val, tagi_val = datetime.now().strftime("%d.%m.%Y"), "", "", ""
+        notatka_val = ""
         self.zalacznik_val = None
         if zrodlo_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, kategoria, nazwa, kwota, tagi, zalacznik FROM inne_koszty WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, kategoria, nazwa, kwota, tagi, zalacznik, notatka FROM inne_koszty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
                     d_val, op_val, kw_val = str(w[0] or ""), str(w[2] or ""), str(w[3] or "")
                     tagi_val = str(w[4] or w[1] or "")
                     self.zalacznik_val = w[5]
+                    notatka_val = str(w[6] or "")
                     if duplikuj_id:
                         d_val = datetime.now().strftime("%d.%m.%Y")
                         self.zalacznik_val = None
@@ -886,6 +903,8 @@ class FormularzInneView(ft.View):
         self.e_o = ft.TextField(label="Opis / Nazwa usługi", value=op_val, **utils.styl_pola(page=page))
         self.e_kw = ft.TextField(label=f"Kwota całkowita ({utils.symbol_waluty()})", value=kw_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        self.notatka_bazowa = (notatka_val or "").strip()
+        self.k_notatka = utils.pole_notatki(notatka_val, page)
 
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja kosztu" if i_id else "Nowy koszt", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
@@ -894,7 +913,9 @@ class FormularzInneView(ft.View):
             "Szczegóły wydatku", ft.Icons.RECEIPT_LONG, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
-        elementy = [k1, k2, utils.przyciski_akcji(page, "Zapisz koszt", self.zapisz, "/")]
+        k3 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
+                                    domyslnie_otwarte=bool(notatka_val))
+        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz koszt", self.zapisz, "/")]
 
         super().__init__(
             route=f"/inne/edytuj/{i_id}" if i_id else "/inne/nowy",
@@ -902,7 +923,7 @@ class FormularzInneView(ft.View):
         )
 
     def _migawka_formularza(self):
-        return (self.e_d.value, self.get_tagi(), self.e_o.value, self.e_kw.value)
+        return (self.e_d.value, self.get_tagi(), self.e_o.value, self.e_kw.value, self.k_notatka.value)
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -928,12 +949,15 @@ class FormularzInneView(ft.View):
                     "UPDATE inne_koszty SET data=?, nazwa=?, kwota=?, tagi=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
                     (self.e_d.value, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.i_id)
                 )
+                rekord_id = self.i_id
             else: 
-                conn.execute(
+                kursor = conn.execute(
                     "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", 
                     (self.state.auto_id, self.e_d.value, "", opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie())
                 )
-                
+                rekord_id = kursor.lastrowid
+
+        utils.zapisz_notatke_z_formularza("inne_koszty", rekord_id, self.k_notatka.value, self.notatka_bazowa)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         utils.przejdz(self._page, "/")
@@ -1203,6 +1227,7 @@ class FormularzWpisView(ft.View):
         self.trasa_powrotu = f"/historia/{self.z_id}" if self.z_id else "/"
 
         d_val, p_val, c_val, w_val, kat_val = datetime.now().strftime("%d.%m.%Y"), str(db.pobierz_aktualny_przebieg(self.state.auto_id) or ""), "", "", "Letnie"
+        notatka_val = ""
         self.zalacznik_val = None  # <-- NOWE
 
         duplikuj_id = getattr(state, "duplikuj_zrodlo_wpis", None) if not h_id else None
@@ -1211,12 +1236,13 @@ class FormularzWpisView(ft.View):
         if h_id or duplikuj_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, zalacznik FROM historia WHERE id=?", (h_id or duplikuj_id,))
+                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, zalacznik, notatka FROM historia WHERE id=?", (h_id or duplikuj_id,))
                 w = c.fetchone()
                 if w:
                     d_val, p_val, c_val, w_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), str(w[3] or "")
                     if czy_opony and w[4]: kat_val = str(w[4])
                     self.zalacznik_val = w[5]  # <-- NOWE
+                    notatka_val = str(w[6] or "")
                     if duplikuj_id:
                         d_val = datetime.now().strftime("%d.%m.%Y")
                         self.zalacznik_val = None
@@ -1237,6 +1263,8 @@ class FormularzWpisView(ft.View):
             **utils.styl_dropdown()
         )
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)  # <-- NOWE
+        self.notatka_bazowa = (notatka_val or "").strip()
+        self.k_notatka = utils.pole_notatki(notatka_val, page)
 
         # Magazyn części — dokładnie ta sama mechanika, co przy wizycie zbiorczej.
         # Wcześniej stan magazynu schodził tylko przy wizycie, więc wymiana oleju
@@ -1293,8 +1321,10 @@ class FormularzWpisView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"{'Edycja' if h_id else 'Nowa wymiana'}: {nazwa}", self.trasa_powrotu, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, self.e_c, self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True, page=page)
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / faktura)", ft.Icons.ATTACH_FILE)  # <-- NOWE
+        k3 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
+                                    domyslnie_otwarte=bool(notatka_val))
 
-        elementy = [k1, k2]
+        elementy = [k1, k2, k3]
         if self.magazyn_kontrolki:
             elementy.append(utils.karta_formularza(
                 [self.c_uzyj_magazynu, self.magazyn_lista_kontener],
@@ -1310,7 +1340,7 @@ class FormularzWpisView(ft.View):
     def _migawka_formularza(self):
         return (
             self.e_d.value, self.e_p.value, self.e_c.value, self.get_wykonawca(), self.e_kat.value,
-            self.c_uzyj_magazynu.value,
+            self.k_notatka.value, self.c_uzyj_magazynu.value,
             tuple((chk.value, pole.value) for chk, pole, _ in self.magazyn_kontrolki),
         )
 
@@ -1370,6 +1400,7 @@ class FormularzWpisView(ft.View):
 
             db.rozlicz_czesci_z_magazynu_wpisu(historia_id, nowe_uzyte, conn=conn)
 
+        utils.zapisz_notatke_z_formularza("historia", historia_id, self.k_notatka.value, self.notatka_bazowa)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         # Nagrobki rejestrujemy PO commicie transakcji powyżej — zarejestruj_nagrobek

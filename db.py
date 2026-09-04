@@ -138,6 +138,32 @@ JEDNOSTKI_MAGAZYNU = ["szt", "l", "ml", "kg", "g"]
 
 TABELE_Z_ZALACZNIKIEM = {"tankowania", "wizyty", "inne_koszty", "zdjecia_karoserii", "historia", "zestawy_opon", "magazyn_czesci"}
 
+# Krótka notatka przy pojedynczym wpisie. Wartość to nazwa kolumny z TREŚCIĄ:
+# wpisy, które takiego pola nie miały, dostały w migracji 34 własne 'notatka',
+# a tam gdzie pole opisowe istnieje od dawna (wizyta, zadanie do zrobienia,
+# magazyn, opony, warsztat) używamy JEGO — dokładanie drugiego pola na to samo
+# rozjechałoby dane, które użytkownik już wpisał.
+POLA_NOTATKI = {
+    "tankowania": "notatka",
+    "historia": "notatka",
+    "inne_koszty": "notatka",
+    "odczyty_przebiegu": "notatka",
+    "wizyty": "notatki",
+    "do_zrobienia": "opis",
+    "magazyn_czesci": "notatki",
+    "zestawy_opon": "notatki",
+    "warsztaty": "notatki",
+}
+
+# Tabele, w których notatka ma WŁASNY podpis (notatka_autor + notatka_data).
+# Przy współdzielonym pojeździe uwagę dopisuje zwykle ktoś inny niż autor wpisu
+# i długo po jego dodaniu, więc dodane_przez/zmodyfikowane_przez tego nie oddaje.
+TABELE_NOTATKI_Z_PODPISEM = {"tankowania", "historia", "inne_koszty", "odczyty_przebiegu"}
+
+# Notatka ma być KRÓTKA — jedno zdanie kontekstu, nie dziennik. Limit trzyma
+# karty na listach w ryzach i jest wspólny dla formularza i szybkiej edycji.
+MAKS_DLUGOSC_NOTATKI = 200
+
 STREFY_KAROSERII = ["Przód", "Tył", "Bok lewy", "Bok prawy", "Wnętrze / Kokpit", "Uszkodzenie / Rysa", "Inne"]
 TYPY_ZDJECIA = ["Brak", "Przed naprawą", "Po naprawie"]
 
@@ -532,6 +558,37 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN pojemnosc_baterii TEXT;
             ALTER TABLE samochody ADD COLUMN zasieg_ev TEXT;
             CREATE INDEX IF NOT EXISTS idx_tankowania_auto_rodzaj ON tankowania(auto_id, rodzaj_energii);
+            """,
+            # Wersja 34: krótka notatka przy POJEDYNCZYM wpisie. Do tej pory
+            # kontekst („tankowanie po zjeździe z autostrady”, „olej dolany, nie
+            # wymiana”) nie miał się gdzie zapisać — zostawały tagi, czyli
+            # słownik wspólny dla całego pojazdu, albo nazwa kosztu, która trafia
+            # na wykresy. Notatka jest wolnym tekstem JEDNEGO wpisu i nigdzie się
+            # nie agreguje.
+            # Kolumny osobne, a nie jedna wspólna tabela notatek: cała reszta
+            # aplikacji (synchronizacja z KONFIGURACJA_SYNC, kosz, cofanie
+            # usunięcia przez PRAGMA table_info, eksport) działa na kolumnach
+            # rekordu i dostaje notatkę za darmo — tabela obok wymagałaby łatki
+            # w każdym z tych miejsc.
+            # 'notatka_autor' i 'notatka_data' są niezależne od
+            # dodane_przez/zmodyfikowane_przez, bo uwagę przy współdzielonym
+            # pojeździe zwykle dopisuje KTO INNY niż autor wpisu, i to długo po
+            # jego dodaniu. Wizyty (notatki), zadania do zrobienia (opis),
+            # magazyn, opony i warsztaty mają swoje pole opisu od dawna —
+            # tam dokładamy tylko wspólną prezentację, bez nowych kolumn.
+            """
+            ALTER TABLE tankowania ADD COLUMN notatka TEXT;
+            ALTER TABLE tankowania ADD COLUMN notatka_autor TEXT;
+            ALTER TABLE tankowania ADD COLUMN notatka_data TEXT;
+            ALTER TABLE historia ADD COLUMN notatka TEXT;
+            ALTER TABLE historia ADD COLUMN notatka_autor TEXT;
+            ALTER TABLE historia ADD COLUMN notatka_data TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN notatka TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN notatka_autor TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN notatka_data TEXT;
+            ALTER TABLE odczyty_przebiegu ADD COLUMN notatka TEXT;
+            ALTER TABLE odczyty_przebiegu ADD COLUMN notatka_autor TEXT;
+            ALTER TABLE odczyty_przebiegu ADD COLUMN notatka_data TEXT;
             """
         ]
 
@@ -1346,7 +1403,7 @@ def pobierz_historie_przebiegu(auto_id):
 
     return [wg_daty[d] for d in sorted(wg_daty.keys())]
 
-def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None):
+def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None):
     """Zapisuje szybki, ręczny odczyt licznika (np. z deski rozdzielczej) w osobnym
     dzienniku — bez tworzenia sztucznego tankowania czy wpisu serwisowego tylko po
     to, by odświeżyć aktualny przebieg. Jeśli w danym dniu istnieje już odczyt,
@@ -1363,10 +1420,21 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None):
         w = c.fetchone()
         if w:
             conn.execute("UPDATE odczyty_przebiegu SET przebieg=? WHERE id=?", (przebieg, w[0]))
-            return True
+            rekord_id, nadpisano = w[0], True
         else:
-            conn.execute("INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)", (auto_id, data_str, przebieg))
-            return False
+            kursor = conn.execute("INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)", (auto_id, data_str, przebieg))
+            rekord_id, nadpisano = kursor.lastrowid, False
+
+    # Notatka POZA transakcją powyżej — zapisz_notatke otwiera własne połączenie
+    # i w środku otwartej transakcji potrafi zakleszczyć bazę (ten sam powód, co
+    # przy nagrobkach w formularzu wpisu).
+    # Pustej notatki celowo NIE zapisujemy: to ścieżka DODAWANIA, a przy trafieniu
+    # w istniejący odczyt z tego samego dnia wyczyściłaby notatkę, której formularz
+    # dodawania nawet nie pokazał. Kasowanie notatki idzie osobną drogą — przez
+    # edycję odczytu albo pozycję „Notatka” w jego menu.
+    if przytnij_notatke(notatka):
+        zapisz_notatke("odczyty_przebiegu", rekord_id, notatka)
+    return nadpisano
 
 def aktualizuj_odczyt_przebiegu(odczyt_id, przebieg, data_str):
     """Edycja konkretnego, istniejącego odczytu (z poziomu listy historii) —
@@ -2806,9 +2874,17 @@ def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
     return wyniki
 
 
+def skrot_notatki(tekst, maks=60):
+    """Notatka w jednej linii wyniku wyszukiwania — bez tego długa uwaga
+    rozpychałaby kartę wyniku i zasłaniała resztę opisu."""
+    tekst = " ".join(str(tekst or "").split())
+    if not tekst:
+        return ""
+    return tekst if len(tekst) <= maks else tekst[:maks - 1].rstrip() + "…"
+
 def globalne_wyszukiwanie(auto_id, zapytanie):
     """Przeszukuje jednocześnie tankowania, historię serwisową, wizyty zbiorcze,
-    inne koszty oraz listę Do zrobienia BIEŻĄCEGO pojazdu. Używane przez widok
+    inne koszty, notatki wpisów oraz listę Do zrobienia BIEŻĄCEGO pojazdu. Używane przez widok
     /szukaj — jedną wspólną wyszukiwarkę dostępną z paska głównego, w odróżnieniu
     od lokalnych pól filtruj_* działających tylko na już wczytanej liście.
     Zwraca listę słowników {typ, tytul, opis, data, trasa}, posortowaną malejąco
@@ -2831,26 +2907,30 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
         c = conn.cursor()
 
         c.execute(
-            "SELECT id, data, przebieg, stacja, tagi FROM tankowania "
-            "WHERE auto_id=? AND (stacja LIKE ? OR tagi LIKE ? OR data LIKE ?)",
-            (auto_id, q, q, q)
+            "SELECT id, data, przebieg, stacja, tagi, notatka FROM tankowania "
+            "WHERE auto_id=? AND (stacja LIKE ? OR tagi LIKE ? OR data LIKE ? OR notatka LIKE ?)",
+            (auto_id, q, q, q, q)
         )
         for r in c.fetchall():
             opis = f"{int(r['przebieg'] or 0)} km" + (f" • {r['stacja']}" if r["stacja"] else "")
+            if r["notatka"]:
+                opis += f" • {skrot_notatki(r['notatka'])}"
             wyniki.append({
                 "typ": "Tankowanie", "tytul": r["stacja"] or "Tankowanie", "opis": opis,
                 "data": r["data"], "trasa": f"/tankowanie/edytuj/{r['id']}",
             })
 
         c.execute(
-            "SELECT h.id, h.data, h.przebieg, h.wykonawca, h.kategoria, z.nazwa "
+            "SELECT h.id, h.data, h.przebieg, h.wykonawca, h.kategoria, h.notatka, z.nazwa "
             "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE z.auto_id=? AND h.wizyta_id IS NULL AND "
-            "(z.nazwa LIKE ? OR h.wykonawca LIKE ? OR h.kategoria LIKE ? OR h.data LIKE ?)",
-            (auto_id, q, q, q, q)
+            "(z.nazwa LIKE ? OR h.wykonawca LIKE ? OR h.kategoria LIKE ? OR h.data LIKE ? OR h.notatka LIKE ?)",
+            (auto_id, q, q, q, q, q)
         )
         for r in c.fetchall():
             opis = f"{int(r['przebieg'] or 0)} km" + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            if r["notatka"]:
+                opis += f" • {skrot_notatki(r['notatka'])}"
             wyniki.append({
                 "typ": "Serwis", "tytul": str(r["nazwa"]), "opis": opis,
                 "data": r["data"], "trasa": f"/wpis/edytuj/{r['id']}",
@@ -2889,12 +2969,14 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
             })
 
         c.execute(
-            "SELECT id, data, nazwa, kategoria, tagi FROM inne_koszty "
-            "WHERE auto_id=? AND (nazwa LIKE ? OR kategoria LIKE ? OR tagi LIKE ? OR data LIKE ?)",
-            (auto_id, q, q, q, q)
+            "SELECT id, data, nazwa, kategoria, tagi, notatka FROM inne_koszty "
+            "WHERE auto_id=? AND (nazwa LIKE ? OR kategoria LIKE ? OR tagi LIKE ? OR data LIKE ? OR notatka LIKE ?)",
+            (auto_id, q, q, q, q, q)
         )
         for r in c.fetchall():
             opis = str(r["kategoria"] or r["tagi"] or "Inny koszt")
+            if r["notatka"]:
+                opis += f" • {skrot_notatki(r['notatka'])}"
             wyniki.append({
                 "typ": "Inny koszt", "tytul": str(r["nazwa"] or "Koszt"), "opis": opis,
                 "data": r["data"], "trasa": f"/inne/edytuj/{r['id']}",
@@ -2909,6 +2991,22 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
             wyniki.append({
                 "typ": "Do zrobienia", "tytul": str(r["tytul"]), "opis": str(r["opis"] or r["priorytet"] or ""),
                 "data": r["termin"] or "", "trasa": f"/do-zrobienia/edytuj/{r['id']}",
+            })
+
+        # Odczyty licznika trafiają do wyników WYŁĄCZNIE przez notatkę: sam
+        # „12.03.2026 • 145 000 km” nie niesie treści, po której ktoś szuka,
+        # ale zostawiona przy nim uwaga („licznik po wymianie zegarów”) — owszem.
+        c.execute(
+            "SELECT id, data, przebieg, notatka FROM odczyty_przebiegu "
+            "WHERE auto_id=? AND notatka LIKE ?",
+            (auto_id, q)
+        )
+        for r in c.fetchall():
+            wyniki.append({
+                "typ": "Odczyt licznika",
+                "tytul": f"{formatuj_liczba_eksport(r['przebieg'] or 0, 0)} km",
+                "opis": skrot_notatki(r["notatka"]),
+                "data": r["data"], "trasa": "/przebieg",
             })
 
         # NOWE: Magazyn (części i płyny) — było obiecane w podpowiedzi wyszukiwarki
@@ -2991,9 +3089,10 @@ def pobierz_dane_timeline(auto_id):
     życia auta"). Wpisy historii powiązane z wizytą zbiorczą są pomijane
     (reprezentuje je already sama wizyta), analogicznie do eksportu danych.
     Zwraca listę krotek: (id_timeline, typ, data, tytul, opis, kwota, zalacznik,
-    trasa, dodane_przez). Ostatnie pole zasila filtr autorstwa przy pojeździe
-    współdzielonym; zdjęcia karoserii i odczyty licznika nie mają tej kolumny,
-    więc trafia tam None."""
+    trasa, dodane_przez, notatka). 'dodane_przez' zasila filtr autorstwa przy
+    pojeździe współdzielonym; zdjęcia karoserii nie mają tej kolumny, więc trafia
+    tam None. 'notatka' to krótka uwaga wpisu — dziennik życia auta bez niej
+    gubiłby dokładnie ten kontekst, po który się do niego wraca."""
     if not auto_id:
         return []
 
@@ -3004,7 +3103,7 @@ def pobierz_dane_timeline(auto_id):
         c = conn.cursor()
 
         c.execute(
-            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, zalacznik, dodane_przez "
+            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, zalacznik, dodane_przez, notatka "
             "FROM tankowania WHERE auto_id=?", (auto_id,)
         )
         for r in c.fetchall():
@@ -3014,11 +3113,11 @@ def pobierz_dane_timeline(auto_id):
                 f"tankowanie_{r['id']}", "Tankowanie", r["data"],
                 "Tankowanie" + (" (do pełna)" if r["do_pelna"] else ""), opis,
                 float(r["kwota"] or 0), r["zalacznik"], f"/tankowanie/edytuj/{r['id']}",
-                r["dodane_przez"],
+                r["dodane_przez"], r["notatka"],
             ))
 
         c.execute(
-            "SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, z.nazwa, h.zalacznik, h.dodane_przez "
+            "SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, z.nazwa, h.zalacznik, h.dodane_przez, h.notatka "
             "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
         )
@@ -3028,11 +3127,11 @@ def pobierz_dane_timeline(auto_id):
                 f"historia_{r['id']}", "Serwis", r["data"],
                 str(r["nazwa"]), opis,
                 float(r["cena"] or 0), r["zalacznik"], f"/wpis/edytuj/{r['id']}",
-                r["dodane_przez"],
+                r["dodane_przez"], r["notatka"],
             ))
 
         c.execute(
-            "SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.dodane_przez, "
+            "SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.dodane_przez, w.notatki, "
             "GROUP_CONCAT(z.nazwa, ', ') as czesci "
             "FROM wizyty w LEFT JOIN historia h ON h.wizyta_id=w.id LEFT JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE w.auto_id=? GROUP BY w.id", (auto_id,)
@@ -3043,16 +3142,16 @@ def pobierz_dane_timeline(auto_id):
                 f"wizyta_{r['id']}", "Wizyta zbiorcza", r["data"],
                 "Wizyta w warsztacie", opis,
                 float(r["koszt_calkowity"] or 0), r["zalacznik"], f"/wizyty/edytuj/{r['id']}",
-                r["dodane_przez"],
+                r["dodane_przez"], r["notatki"],
             ))
 
-        c.execute("SELECT id, data, nazwa, kategoria, kwota, zalacznik, dodane_przez FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, data, nazwa, kategoria, kwota, zalacznik, dodane_przez, notatka FROM inne_koszty WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             zdarzenia.append((
                 f"inne_{r['id']}", "Inny koszt", r["data"],
                 str(r["nazwa"] or "Koszt"), str(r["kategoria"] or ""),
                 float(r["kwota"] or 0), r["zalacznik"], f"/inne/edytuj/{r['id']}",
-                r["dodane_przez"],
+                r["dodane_przez"], r["notatka"],
             ))
 
         c.execute("SELECT id, data, strefa, typ_porownania, opis, zalacznik FROM zdjecia_karoserii WHERE auto_id=?", (auto_id,))
@@ -3061,15 +3160,15 @@ def pobierz_dane_timeline(auto_id):
             zdarzenia.append((
                 f"zdjecie_{r['id']}", "Zdjęcie karoserii", r["data"],
                 f"Zdjęcie: {r['strefa']}", opis,
-                None, r["zalacznik"], f"/karoseria/edytuj/{r['id']}", None,
+                None, r["zalacznik"], f"/karoseria/edytuj/{r['id']}", None, r["opis"],
             ))
 
-        c.execute("SELECT id, data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, data, przebieg, notatka FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             zdarzenia.append((
                 f"odczyt_{r['id']}", "Odczyt przebiegu", r["data"],
                 "Odczyt licznika", f"{int(r['przebieg'] or 0)} km",
-                None, None, "/przebieg", None,
+                None, None, "/przebieg", None, r["notatka"],
             ))
 
     return zdarzenia
@@ -4203,6 +4302,72 @@ def zalacznik_rekordu(tabela, rekord_id):
         w = c.fetchone()
         return w[0] if w else None
 
+# Tabele bez własnej kolumny auto_id — pojazd wyznacza dopiero JOIN.
+_ZAPYTANIA_AUTO_ID = {
+    "historia": "SELECT z.auto_id FROM historia h JOIN zadania z ON h.zadanie_id = z.id WHERE h.id=?",
+}
+
+def auto_id_rekordu(tabela, rekord_id):
+    """Pojazd, do którego należy pojedynczy rekord. Potrzebne przy zapisie
+    notatki poza formularzem (z menu wpisu), gdzie nie mamy pod ręką stanu
+    aplikacji, a trzeba wypchnąć zmianę do właściwego współdzielonego auta."""
+    if not rekord_id:
+        return None
+    zapytanie = _ZAPYTANIA_AUTO_ID.get(tabela, f"SELECT auto_id FROM {tabela} WHERE id=?")
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        try:
+            c.execute(zapytanie, (rekord_id,))
+        except sqlite3.OperationalError:
+            return None
+        w = c.fetchone()
+    return w[0] if w else None
+
+def przytnij_notatke(tresc):
+    """Jedno miejsce na normalizację treści notatki — formularz i szybka edycja
+    muszą przycinać tak samo, inaczej limit da się obejść jedną z dróg."""
+    return (tresc or "").strip()[:MAKS_DLUGOSC_NOTATKI]
+
+def pobierz_notatke(tabela, rekord_id):
+    """(treść, autor, data) notatki wpisu. Autor i data są puste dla tabel,
+    które notatkę trzymają w starym polu opisowym bez podpisu."""
+    kolumna = POLA_NOTATKI.get(tabela)
+    if not kolumna or not rekord_id:
+        return "", None, None
+    z_podpisem = tabela in TABELE_NOTATKI_Z_PODPISEM
+    pola = f"{kolumna}, notatka_autor, notatka_data" if z_podpisem else kolumna
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT {pola} FROM {tabela} WHERE id=?", (rekord_id,))
+        w = c.fetchone()
+    if not w:
+        return "", None, None
+    return (str(w[0] or ""), w[1], w[2]) if z_podpisem else (str(w[0] or ""), None, None)
+
+def zapisz_notatke(tabela, rekord_id, tresc):
+    """Zapisuje krótką notatkę POJEDYNCZEGO wpisu i zwraca auto_id pojazdu —
+    wołający wypycha nim zmianę w tle (utils.wypchnij_w_tle), dzięki czemu
+    notatka dociera do wszystkich współdzielących ten pojazd.
+    Pusta treść kasuje notatkę RAZEM z podpisem: sam autor bez tekstu
+    zostawiałby na karcie „Kasia • 04.09.2026” bez żadnej uwagi."""
+    kolumna = POLA_NOTATKI.get(tabela)
+    if not kolumna or not rekord_id:
+        raise ValueError(f"Wpisy z tabeli '{tabela}' nie mają notatki.")
+
+    tekst = przytnij_notatke(tresc)
+    with polacz_baze() as conn:
+        if tabela in TABELE_NOTATKI_Z_PODPISEM:
+            conn.execute(
+                f"UPDATE {tabela} SET {kolumna}=?, notatka_autor=?, notatka_data=? WHERE id=?",
+                (tekst or None,
+                 pobierz_moje_imie() if tekst else None,
+                 datetime.now().strftime("%d.%m.%Y %H:%M") if tekst else None,
+                 rekord_id)
+            )
+        else:
+            conn.execute(f"UPDATE {tabela} SET {kolumna}=? WHERE id=?", (tekst or None, rekord_id))
+    return auto_id_rekordu(tabela, rekord_id)
+
 def usun_wizyty_z_cofnieciem(ids_list):
     """Grupowe (lub pojedyncze) usuwanie wizyt zbiorczych z pełnym cofaniem, w tym magazynu."""
     if not ids_list:
@@ -5046,33 +5211,34 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
 
         if "tankowania" in kategorie:
             c.execute(
-                "SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi "
+                "SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi, notatka "
                 "FROM tankowania WHERE auto_id=?", (auto_id,)
             )
             wiersze = []
-            for data, prz, dys, lit, kwo, pelna, stacja, tagi in c.fetchall():
+            for data, prz, dys, lit, kwo, pelna, stacja, tagi, notatka in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
                     wiersze.append([
                         data, int(prz or 0), formatuj_liczba_eksport(dys), formatuj_liczba_eksport(lit),
-                        formatuj_liczba_eksport(kwo), "Tak" if pelna else "Nie", stacja or "", tagi or ""
+                        formatuj_liczba_eksport(kwo), "Tak" if pelna else "Nie", stacja or "", tagi or "",
+                        notatka or ""
                     ])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["tankowania"] = (
-                ["Data", "Przebieg (km)", "Dystans (km)", "Litry", "Kwota", "Do pełna", "Stacja", "Tagi"], wiersze
+                ["Data", "Przebieg (km)", "Dystans (km)", "Litry", "Kwota", "Do pełna", "Stacja", "Tagi", "Notatka"], wiersze
             )
 
         if "historia" in kategorie:
             c.execute(
-                "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.wykonawca, h.kategoria "
+                "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.wykonawca, h.kategoria, h.notatka "
                 "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
                 "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
             )
             wiersze = []
-            for data, nazwa, prz, cena, wyk, kat in c.fetchall():
+            for data, nazwa, prz, cena, wyk, kat, notatka in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([data, nazwa, int(prz or 0), formatuj_liczba_eksport(cena), wyk or "", kat or ""])
+                    wiersze.append([data, nazwa, int(prz or 0), formatuj_liczba_eksport(cena), wyk or "", kat or "", notatka or ""])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
-            wynik["historia"] = (["Data", "Podzespół", "Przebieg (km)", "Koszt", "Wykonawca", "Kategoria"], wiersze)
+            wynik["historia"] = (["Data", "Podzespół", "Przebieg (km)", "Koszt", "Wykonawca", "Kategoria", "Notatka"], wiersze)
 
         if "wizyty" in kategorie:
             c.execute(
@@ -5095,13 +5261,13 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             )
 
         if "inne_koszty" in kategorie:
-            c.execute("SELECT data, nazwa, kategoria, kwota, tagi FROM inne_koszty WHERE auto_id=?", (auto_id,))
+            c.execute("SELECT data, nazwa, kategoria, kwota, tagi, notatka FROM inne_koszty WHERE auto_id=?", (auto_id,))
             wiersze = []
-            for data, nazwa, kat, kwota, tagi in c.fetchall():
+            for data, nazwa, kat, kwota, tagi, notatka in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([data, nazwa or "", kat or "", formatuj_liczba_eksport(kwota), tagi or ""])
+                    wiersze.append([data, nazwa or "", kat or "", formatuj_liczba_eksport(kwota), tagi or "", notatka or ""])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
-            wynik["inne_koszty"] = (["Data", "Opis", "Kategoria", "Kwota", "Tagi"], wiersze)
+            wynik["inne_koszty"] = (["Data", "Opis", "Kategoria", "Kwota", "Tagi", "Notatka"], wiersze)
 
         if "magazyn_czesci" in kategorie:
             c.execute(
@@ -5180,13 +5346,13 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             wynik["warsztaty"] = (["Nazwa", "Telefon", "Adres", "Notatki"], wiersze)
 
         if "odczyty_przebiegu" in kategorie:
-            c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
+            c.execute("SELECT data, przebieg, notatka FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
             wiersze = [
-                [data, int(prz or 0)] for data, prz in c.fetchall()
+                [data, int(prz or 0), notatka or ""] for data, prz, notatka in c.fetchall()
                 if _data_w_zakresie(data, od_data, do_data)
             ]
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
-            wynik["odczyty_przebiegu"] = (["Data", "Przebieg (km)"], wiersze)
+            wynik["odczyty_przebiegu"] = (["Data", "Przebieg (km)", "Notatka"], wiersze)
 
         if "tagi" in kategorie:
             c.execute("SELECT nazwa, kolor FROM tagi WHERE auto_id=? ORDER BY nazwa", (auto_id,))
@@ -5558,6 +5724,15 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         pdf.set_y(pdf.get_y() + 55 + 14)
 
     for klucz, (naglowki, wiersze) in kategorie_dane.items():
+        # Notatki wpisów pomijamy w PDF: tabela dzieli szerokość strony PO RÓWNO
+        # między kolumny i przycina zawartość, więc kolumna wolnego tekstu byłaby
+        # nieczytelna („Tankowanie po...”), a przy okazji zwęziłaby wszystkie
+        # pozostałe. W CSV, gdzie szerokość nie ogranicza niczego, notatki są.
+        if "Notatka" in naglowki:
+            i_not = naglowki.index("Notatka")
+            naglowki = [h for j, h in enumerate(naglowki) if j != i_not]
+            wiersze = [[k for j, k in enumerate(w) if j != i_not] for w in wiersze]
+
         tytul = KATEGORIE_EKSPORTU.get(klucz, klucz)
         pdf.set_font(pdf.czcionka, "B", 13)
         pdf.cell(0, 9, pdf.t(f"{tytul} ({len(wiersze)})"), ln=1)
