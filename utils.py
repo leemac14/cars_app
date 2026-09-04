@@ -108,6 +108,32 @@ IKONY_KOKPITU = {
 
 # Klucze ikon obserwacji przychodzą z db.obserwacje_analityczne — warstwa
 # danych nie zna Fleta, więc mapowanie na konkretne ikony jest tutaj.
+# Źródła stanu licznika (db.ZRODLA_PRZEBIEGU) — ikona i kolor. Ten sam zestaw
+# obsługuje odznaki na kartach, punkty na wykresie i chipy w podsumowaniu, więc
+# „tankowanie” wygląda wszędzie tak samo.
+IKONY_ZRODEL_PRZEBIEGU = {
+    "odczyt": ft.Icons.SPEED,
+    "tankowanie": ft.Icons.LOCAL_GAS_STATION,
+    "wizyta": ft.Icons.HOME_REPAIR_SERVICE,
+    "serwis": ft.Icons.BUILD,
+}
+
+KOLORY_ZRODEL_PRZEBIEGU = {
+    "odczyt": ft.Colors.BLUE_GREY_700,
+    "tankowanie": ft.Colors.BLUE_700,
+    "wizyta": ft.Colors.RED_700,
+    "serwis": ft.Colors.ORANGE_700,
+}
+
+# Ikony podźródeł WŁASNYCH odczytów (db.ZRODLA_ODCZYTU) — dopowiadają, skąd
+# wziął się wpis, którego nie da się przypisać do kosztu.
+IKONY_PODZRODEL_ODCZYTU = {
+    "reczny": ft.Icons.EDIT,
+    "kokpit": ft.Icons.BOLT,
+    "pojazd": ft.Icons.DIRECTIONS_CAR,
+    "import": ft.Icons.INPUT,
+}
+
 IKONY_OBSERWACJI = {
     "budzet": ft.Icons.SAVINGS,
     "bak": ft.Icons.LOCAL_GAS_STATION,
@@ -1486,11 +1512,18 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         nastepny_tryb = db.KOLEJNOSC_TRYBOW_MOTYWU[(db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny_tryb) + 1) % 3]
         w_koszu = db.liczba_w_koszu()
 
-        pojazdy = [
+        pojazdy = []
+        if state.auto_id:
+            pojazdy.append(
+                {"ikona": ft.Icons.DIRECTIONS_CAR, "tekst": "Karta pojazdu",
+                 "opis": "Terminy, wartość, ubezpieczenie, ściągawka",
+                 "akcja": lambda: przejdz(page, "/pojazd")}
+            )
+        pojazdy.append(
             {"ikona": ft.Icons.ADD_CIRCLE_OUTLINE, "kolor": ft.Colors.GREEN_700,
              "tekst": "Dodaj nowy pojazd", "opis": "Nowe auto w garażu",
-             "akcja": lambda: przejdz(page, "/auto/nowy")},
-        ]
+             "akcja": lambda: przejdz(page, "/auto/nowy")}
+        )
         if state.auto_id:
             pojazdy.append(
                 {"ikona": ft.Icons.DELETE_OUTLINE, "kolor": ft.Colors.RED_700,
@@ -3434,6 +3467,221 @@ async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, st
 # definicja na komponent, żeby ostrzeżenie o budżecie wyglądało wszędzie tak
 # samo i żeby zmiana progu nie wymagała szukania po trzech plikach.
 
+# ==================== TOŻSAMOŚĆ POJAZDU ====================
+
+def tablica_rejestracyjna(nr_rej, wysokosc=30, on_click=None):
+    """Numer rejestracyjny narysowany jak prawdziwa tablica: niebieski pasek UE
+    z „PL” po lewej, czarny tekst na białym tle, ciemna ramka.
+
+    To nie jest ozdobnik bez funkcji. Rejestracja jest tym, po czym rozpoznaje
+    się auto w realnym świecie (parking, ubezpieczyciel, warsztat), a jako szary
+    tekst obok innych szarych tekstów po prostu ginęła. W tej formie znajduje ją
+    oko, zanim zacznie czytać."""
+    numer = " ".join(str(nr_rej or "").split()).upper()
+    if not numer:
+        return ft.Container(width=0, height=0)
+
+    return ft.Container(
+        height=wysokosc,
+        border_radius=RADIUS["xs"],
+        bgcolor="#FFFFFF",
+        border=ft.Border.all(1.5, "#1F2937"),
+        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        ink=bool(on_click), on_click=on_click,
+        tooltip="Numer rejestracyjny" if not on_click else "Dotknij, aby skopiować",
+        content=ft.Row([
+            ft.Container(
+                # Wysokość podana WPROST: w Row dziecko bez własnej wysokości
+                # kurczy się do treści i niebieski pasek nie sięgałby krawędzi.
+                width=wysokosc * 0.52, height=wysokosc, bgcolor="#003399",
+                alignment=ft.Alignment.CENTER,
+                content=ft.Column([
+                    ft.Text("★", size=wysokosc * 0.22, color="#FFCC00"),
+                    ft.Text("PL", size=wysokosc * 0.30, weight="bold", color="#FFFFFF"),
+                ], spacing=0, alignment=ft.MainAxisAlignment.CENTER,
+                   horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            ),
+            ft.Container(
+                height=wysokosc,
+                padding=ft.Padding(wysokosc * 0.30, 0, wysokosc * 0.30, 0),
+                alignment=ft.Alignment.CENTER,
+                content=ft.Text(numer, size=wysokosc * 0.50, weight="bold", color="#111827",
+                                no_wrap=True),
+            ),
+        ], spacing=0, tight=True),
+    )
+
+
+def kopiuj_do_schowka(page: ft.Page, wartosc, komunikat="Skopiowano do schowka"):
+    """Kopiowanie odporne na wersję Fleta: nowe API (usługa Clipboard) jest
+    asynchroniczne, starsze miało metodę na stronie. VIN czy numer polisy
+    przepisuje się z ekranu wyjątkowo źle, więc ta droga musi po prostu działać."""
+    tekst = str(wartosc or "").strip()
+    if not tekst:
+        return
+
+    metoda_synchroniczna = getattr(page, "set_clipboard", None)
+    if callable(metoda_synchroniczna):
+        try:
+            metoda_synchroniczna(tekst)
+            pokaz_komunikat(page, komunikat)
+            return
+        except Exception:
+            pass
+
+    async def _zadanie():
+        try:
+            schowek = getattr(page, "_schowek", None)
+            if schowek is None:
+                schowek = ft.Clipboard()
+                if hasattr(page, "services"):
+                    page.services.append(schowek)
+                else:
+                    page.overlay.append(schowek)
+                page._schowek = schowek
+            await schowek.set(tekst)
+            pokaz_komunikat(page, komunikat)
+        except Exception:
+            pokaz_komunikat(page, "Nie udało się skopiować.", ft.Colors.RED_700)
+
+    try:
+        page.run_task(_zadanie)
+    except Exception:
+        pokaz_komunikat(page, "Nie udało się skopiować.", ft.Colors.RED_700)
+
+
+def zadzwon(page: ft.Page, numer):
+    """Wybranie numeru z aplikacji. Telefon do assistance ma sens tylko wtedy,
+    gdy da się go użyć jednym dotknięciem — przepisywanie cyfr z ekranu na
+    poboczu, po stłuczce, jest dokładnie tym, czego chcemy uniknąć."""
+    czysty = "".join(z for z in str(numer or "") if z.isdigit() or z == "+")
+    if not czysty:
+        return
+
+    async def _zadanie():
+        try:
+            wynik = page.launch_url(f"tel:{czysty}")
+            if inspect.isawaitable(wynik):
+                await wynik
+        except Exception:
+            kopiuj_do_schowka(page, numer, "Nie udało się zadzwonić — numer w schowku")
+
+    try:
+        page.run_task(_zadanie)
+    except Exception:
+        kopiuj_do_schowka(page, numer, "Numer skopiowany do schowka")
+
+
+KOLORY_STATUSU_TERMINU = {
+    "po_terminie": ft.Colors.RED_700,
+    "blisko": ft.Colors.ORANGE_700,
+    "ok": ft.Colors.GREEN_700,
+}
+
+IKONY_STATUSU_TERMINU = {
+    "po_terminie": ft.Icons.WARNING,
+    "blisko": ft.Icons.HOURGLASS_BOTTOM,
+    "ok": ft.Icons.CHECK_CIRCLE,
+}
+
+IKONY_TERMINOW = {
+    "oc": ft.Icons.SHIELD,
+    "przeglad": ft.Icons.FACT_CHECK,
+    "ac": ft.Icons.HEALTH_AND_SAFETY,
+    "assistance": ft.Icons.SUPPORT_AGENT,
+    "gwarancja": ft.Icons.VERIFIED_USER,
+    "gasnica": ft.Icons.LOCAL_FIRE_DEPARTMENT,
+    "apteczka": ft.Icons.MEDICAL_SERVICES,
+}
+
+
+def opis_dni_terminu(dni):
+    """„za 12 dni” / „dzisiaj” / „5 dni po terminie” — jedno miejsce na tę
+    odmianę, bo pojawia się i na kaflu, i na ekranie danych pojazdu."""
+    if dni is None:
+        return ""
+    if dni < 0:
+        ile = abs(dni)
+        return f"{ile} {'dzień' if ile == 1 else 'dni'} po terminie"
+    if dni == 0:
+        return "dzisiaj"
+    if dni == 1:
+        return "jutro"
+    return f"za {dni} dni"
+
+
+def pasek_terminu(page: ft.Page, termin, pelny=True):
+    """Wiersz terminu dokumentu z odliczaniem i paskiem. Pasek pokazuje, ile
+    z okna ostrzegawczego już minęło — wypełnia się dopiero, gdy termin wchodzi
+    w próg powiadomienia, więc „zielony i pusty” znaczy „jeszcze długo”."""
+    kolor = KOLORY_STATUSU_TERMINU.get(termin["status"], ft.Colors.ON_SURFACE_VARIANT)
+    prog = max(1, termin.get("prog") or 30)
+    if termin["dni"] < 0:
+        udzial = 1.0
+    else:
+        udzial = max(0.0, min(1.0, 1 - (termin["dni"] / prog))) if termin["dni"] <= prog else 0.0
+
+    gorny = ft.Row([
+        ft.Icon(ikona_z_mapy(IKONY_TERMINOW, termin["klucz"], ft.Icons.EVENT), size=16, color=kolor),
+        ft.Text(termin["etykieta"], size=FS["body_strong"], weight="bold", expand=True,
+                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+        ft.Text(termin["data"], size=FS["body"], weight="bold", color=kolor),
+    ], spacing=6)
+
+    elementy = [gorny]
+    if pelny:
+        elementy.append(ft.ProgressBar(
+            value=udzial, color=kolor,
+            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+            height=6, border_radius=3,
+        ))
+        elementy.append(ft.Row([
+            ft.Icon(ikona_z_mapy(IKONY_STATUSU_TERMINU, termin["status"], ft.Icons.EVENT),
+                    size=12, color=kolor),
+            ft.Text(opis_dni_terminu(termin["dni"]), size=FS["caption"], color=kolor, expand=True),
+        ], spacing=4))
+
+    return ft.Column(elementy, spacing=SPACING["xs"])
+
+
+def wiersz_danych(page: ft.Page, ikona, etykieta, wartosc, kopiowalne=False, telefon=False,
+                  podpowiedz=None):
+    """Jeden wiersz danych pojazdu: ikona, etykieta, wartość. Wartość długa
+    i przepisywana ręcznie (VIN, numer polisy) dostaje przycisk kopiowania,
+    numer telefonu — przycisk dzwonienia. Puste pole zostaje widoczne z myślnikiem,
+    bo brak informacji też jest informacją: wiadomo, co warto uzupełnić."""
+    tekst = str(wartosc).strip() if wartosc not in (None, "") else ""
+    kolumna = [
+        ft.Text(etykieta, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+        ft.Text(tekst or "—", size=FS["body_strong"],
+                weight="bold" if tekst else "normal",
+                color=ft.Colors.ON_SURFACE if tekst else ft.Colors.ON_SURFACE_VARIANT,
+                selectable=bool(tekst)),
+    ]
+    if podpowiedz and tekst:
+        kolumna.append(ft.Text(podpowiedz, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+
+    akcje = []
+    if tekst and telefon:
+        akcje.append(ft.IconButton(
+            ft.Icons.PHONE, icon_size=18, icon_color=ft.Colors.GREEN_700, tooltip="Zadzwoń",
+            on_click=lambda e: zadzwon(page, tekst), style=ft.ButtonStyle(padding=0),
+            width=34, height=34,
+        ))
+    if tekst and kopiowalne:
+        akcje.append(ft.IconButton(
+            ft.Icons.COPY, icon_size=16, icon_color=ft.Colors.ON_SURFACE_VARIANT, tooltip="Kopiuj",
+            on_click=lambda e: kopiuj_do_schowka(page, tekst, f"Skopiowano: {etykieta}"),
+            style=ft.ButtonStyle(padding=0), width=34, height=34,
+        ))
+
+    return ft.Row(
+        [ft.Icon(ikona, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+         ft.Column(kolumna, spacing=0, expand=True)] + akcje,
+        spacing=SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
+
+
 def karta_obserwacji(page: ft.Page, obserwacja, kompaktowa=False, on_click=None):
     """Pojedyncze spostrzeżenie z db.obserwacje_analityczne jako karta:
     kolorowa ikona po lewej, tytuł i zdanie po prawej. Kolor niesie ton, więc
@@ -3694,6 +3942,104 @@ def sparkline(wartosci, kolor=None, wysokosc=30, szerokosc=None, wypelnienie=Tru
             min_x=0, max_x=len(liczby) - 1,
             min_y=minimum - zapas, max_y=maksimum + zapas,
             interactive=False,
+            expand=True,
+        ),
+    )
+
+
+def odznaka_zrodla_przebiegu(zrodlo, etykieta, podzrodlo=None, rozmiar=11):
+    """Mały chip „skąd ten przebieg”. Przy własnym odczycie dokłada drugą ikonę
+    z podźródłem (ręcznie / kokpit / dane pojazdu / import) — bez tego wszystkie
+    własne wpisy wyglądałyby identycznie, a to właśnie między nimi najłatwiej
+    się pogubić po imporcie kilkuset wierszy."""
+    kolor = KOLORY_ZRODEL_PRZEBIEGU.get(zrodlo, ft.Colors.ON_SURFACE_VARIANT)
+    tresc = [
+        ft.Icon(ikona_z_mapy(IKONY_ZRODEL_PRZEBIEGU, zrodlo, ft.Icons.CIRCLE_OUTLINED),
+                size=rozmiar + 2, color=kolor),
+        ft.Text(etykieta, size=rozmiar, weight="bold", color=kolor),
+    ]
+    if podzrodlo:
+        tresc.append(ft.Icon(ikona_z_mapy(IKONY_PODZRODEL_ODCZYTU, podzrodlo, ft.Icons.EDIT),
+                             size=rozmiar, color=ft.Colors.with_opacity(0.7, kolor)))
+    return ft.Container(
+        padding=ft.Padding(8, 2, 8, 2), border_radius=RADIUS["pill"],
+        bgcolor=ft.Colors.with_opacity(0.13, kolor),
+        content=ft.Row(tresc, spacing=4, tight=True),
+    )
+
+
+def wykres_przebiegu(page: ft.Page, wpisy, wysokosc=190):
+    """Krzywa stanu licznika w czasie, z punktami pokolorowanymi wg źródła.
+
+    Oś X to DNI od pierwszego wpisu, a nie kolejny numer pozycji — inaczej
+    trzymiesięczna przerwa i dwa tankowania w jednym tygodniu wyglądałyby na
+    wykresie tak samo, a to właśnie przestoje są tu najciekawsze."""
+    punkty = [w for w in (wpisy or []) if w.get("data_obj") and w.get("przebieg")]
+    if len(punkty) < 2:
+        return None
+
+    start = punkty[0]["data_obj"]
+    xy = [((w["data_obj"] - start).days, w["przebieg"], w["zrodlo"]) for w in punkty]
+    maks_x = max(x for x, _, _ in xy) or 1
+    wart_y = [y for _, y, _ in xy]
+    min_y, maks_y = min(wart_y), max(wart_y)
+    zapas = max((maks_y - min_y) * 0.08, 50)
+
+    dane_punkty = [
+        fc.LineChartDataPoint(
+            x, y,
+            point=fc.ChartCirclePoint(
+                color=KOLORY_ZRODEL_PRZEBIEGU.get(zrodlo, ft.Colors.PRIMARY),
+                radius=3.5, stroke_width=0,
+            ),
+            tooltip=f"{punkty[i]['data']}\n{formatuj_liczba(y, 0)} km\n{punkty[i]['etykieta_zrodla']}",
+        )
+        for i, (x, y, zrodlo) in enumerate(xy)
+    ]
+
+    def etykieta_daty(indeks):
+        return fc.ChartAxisLabel(
+            value=xy[indeks][0],
+            label=ft.Text(punkty[indeks]["data"][3:], size=9, color=ft.Colors.ON_SURFACE_VARIANT),
+        )
+
+    # Trzy podpisy na osi czasu (początek, środek, koniec) — więcej nachodziłoby
+    # na siebie na szerokości telefonu.
+    indeksy_dat = sorted({0, len(punkty) // 2, len(punkty) - 1})
+
+    return ft.Container(
+        height=wysokosc,
+        padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
+        content=fc.LineChart(
+            data_series=[fc.LineChartData(
+                points=dane_punkty, stroke_width=2, color=ft.Colors.PRIMARY,
+                curved=False, rounded_stroke_cap=True,
+                below_line_bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
+            )],
+            horizontal_grid_lines=fc.ChartGridLines(
+                interval=max(1, int((maks_y - min_y) / 3) or 1),
+                color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE), width=1,
+            ),
+            left_axis=fc.ChartAxis(
+                labels=[
+                    fc.ChartAxisLabel(
+                        value=wartosc,
+                        label=ft.Text(f"{formatuj_liczba(wartosc / 1000, 0)} tys.", size=9,
+                                      color=ft.Colors.ON_SURFACE_VARIANT),
+                    )
+                    for wartosc in (min_y, (min_y + maks_y) / 2, maks_y)
+                ],
+                label_size=44, title_size=0,
+            ),
+            bottom_axis=fc.ChartAxis(
+                labels=[etykieta_daty(i) for i in indeksy_dat],
+                label_size=22, title_size=0,
+            ),
+            right_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            top_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            min_x=0, max_x=maks_x,
+            min_y=min_y - zapas, max_y=maks_y + zapas,
+            interactive=True,
             expand=True,
         ),
     )

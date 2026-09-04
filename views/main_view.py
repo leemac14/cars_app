@@ -783,6 +783,13 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         wiadomosc_statusu = w["wiadomosc_statusu"]
         aktualny_przebieg = db.pobierz_aktualny_przebieg(self.state.auto_id)
 
+        # Komplet danych pojazdu liczony RAZ: kafel pokazuje teraz także wiek,
+        # tablicę i najbliższy termin, a każde z osobnego zapytania robiłoby
+        # z jednej karty cztery odpytania bazy przy każdym wejściu na ekran.
+        dane_pojazdu = db.pobierz_dane_pojazdu(self.state.auto_id) or {}
+        metryki_pojazdu = db.pobierz_metryki_pojazdu(self.state.auto_id, dane_pojazdu) or {}
+        najblizszy_termin = db.najblizszy_termin_pojazdu(self.state.auto_id, dane_pojazdu)
+
         idx = 0
         for i, a in enumerate(auta):
             if a[0] == self.state.auto_id:
@@ -913,8 +920,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                                     no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
                                     color=ft.Colors.PRIMARY if zaznaczone else ft.Colors.ON_SURFACE,
                                 ),
-                                ft.Text(
-                                    str(a["nr_rej"]) if a["nr_rej"] else "Brak rej.",
+                                # Ta sama tablica, co na kaflu głównym — w showroomie
+                                # to ona (a nie nazwa) najszybciej rozstrzyga, które
+                                # z dwóch podobnych aut jest które.
+                                utils.tablica_rejestracyjna(a["nr_rej"], wysokosc=20)
+                                if a["nr_rej"] else ft.Text(
+                                    "Brak rejestracji",
                                     size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                                     no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
                                 ),
@@ -974,147 +985,15 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             )
             utils.otworz_dno(self._page, bs)
 
-        def kolor_daty(d_str, klucz_terminu=None):
-            """(kolor, tekst, ikona statusu). Emoji przed datą zastąpiła ikona —
-            dzięki temu status terminu wygląda tak samo, jak wszystkie inne
-            oznaczenia w aplikacji i podąża za kolorem wiersza.
-
-            Pomarańczowy zapala się dokładnie wtedy, kiedy przychodzi
-            powiadomienie o tym terminie — czyli na progu USTAWIONYM DLA NIEGO
-            (Ustawienia → Progi powiadomień), a nie na sztywnych 30 dniach."""
-            if not d_str:
-                return ft.Colors.ON_SURFACE_VARIANT, "Brak", ft.Icons.REMOVE
-            try:
-                d_obj = datetime.strptime(str(d_str), "%d.%m.%Y").date()
-                roz = (d_obj - datetime.now().date()).days
-                prog = db.pobierz_prog_dni_dokumentu(klucz_terminu) if klucz_terminu else db.pobierz_prog_dni()
-                if roz < 0: return ft.Colors.RED_700, str(d_str), ft.Icons.WARNING
-                elif roz <= prog: return ft.Colors.ORANGE_700, str(d_str), ft.Icons.HOURGLASS_BOTTOM
-                return ft.Colors.GREEN_700, str(d_str), ft.Icons.CHECK_CIRCLE
-            except Exception:
-                return ft.Colors.ON_SURFACE_VARIANT, str(d_str), ft.Icons.EVENT
-
         kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
         kolor_kond, ikona_kond, etykieta_kond = utils.wskaznik_kondycji(kondycja)
 
-        # --- WSZYSTKO, CO ZNIKNĘŁO Z GŁÓWNEJ KARTY (OC, PT, VIN, Kondycja) —
-        # dostępne teraz WYŁĄCZNIE po kliknięciu przycisku Info ---
+        # Dawny bottom-sheet „Specyfikacja pojazdu” zastąpił pełny ekran /pojazd.
+        # Przy komplecie danych (terminy, zakup, ubezpieczenie, ściągawka) panel
+        # wysuwany rozciągał się na trzy ekrany przewijania, nie dawał się
+        # przeszukać ani skopiować, a przycisk wstecz zamykał go zamiast cofać.
         def pokaz_info_auta(e):
-            with db.polacz_baze() as conn:
-                conn.row_factory = sqlite3.Row
-                c = conn.cursor()
-                c.execute(
-                    "SELECT nazwa, nr_rej, vin, rok_produkcji, pojemnosc_silnika, moc_silnika, "
-                    "typ_paliwa, skrzynia_biegow, notatki, wycieraczki_przod, wycieraczki_tyl, "
-                    "cisnienie_przod, cisnienie_tyl, olej_typ, olej_pojemnosc, akumulator, "
-                    "zarowki_mijania, zarowki_drogowe, oc_data, przeglad_data, "
-                    "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, "
-                    "marka, model, generacja "
-                    "FROM samochody WHERE id=?",
-                    (self.state.auto_id,)
-                )
-                w_info = c.fetchone()
-
-            if not w_info: return
-
-            def wiersz_info(ikona, etykieta, wartosc):
-                return ft.Row([
-                    ft.Icon(ikona, color=ft.Colors.ON_SURFACE_VARIANT, size=20),
-                    ft.Text(f"{etykieta}:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT, width=110),
-                    ft.Text(str(wartosc) if wartosc else "-", size=14, expand=True, color=ft.Colors.ON_SURFACE)
-                ])
-
-            def wiersz_termin(ikona, etykieta, data_str, klucz_terminu=None):
-                kolor, tekst, ikona_statusu = kolor_daty(data_str, klucz_terminu)
-                return ft.Row([
-                    ft.Icon(ikona, color=kolor, size=20),
-                    ft.Text(f"{etykieta}:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT, width=110),
-                    ft.Icon(ikona_statusu, color=kolor, size=15),
-                    ft.Text(tekst, size=14, weight="bold", color=kolor, expand=True)
-                ], spacing=6)
-
-            def polacz_wartosci(*wartosci):
-                czesci = [str(x) for x in wartosci if x]
-                return " / ".join(czesci) if czesci else None
-
-            pojemnosc_tekst = f"{w_info['pojemnosc_silnika']} cm³" if w_info["pojemnosc_silnika"] else ""
-            moc_tekst = f"{w_info['moc_silnika']} KM" if w_info["moc_silnika"] else ""
-            wycieraczki_tekst = polacz_wartosci(w_info["wycieraczki_przod"], w_info["wycieraczki_tyl"])
-            cisnienie_tekst = polacz_wartosci(w_info["cisnienie_przod"], w_info["cisnienie_tyl"])
-            olej_tekst = ", ".join(x for x in (w_info["olej_typ"], w_info["olej_pojemnosc"]) if x) or None
-            zarowki_tekst = polacz_wartosci(w_info["zarowki_mijania"], w_info["zarowki_drogowe"])
-
-            bs_info = ft.BottomSheet(
-                ft.Container(
-                    padding=25,
-                    bgcolor=ft.Colors.SURFACE,
-                    border_radius=20,
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Icon(ft.Icons.INFO, size=28, color=ft.Colors.PRIMARY),
-                            ft.Text("Specyfikacja pojazdu", weight="bold", size=20, color=ft.Colors.PRIMARY)
-                        ], spacing=10),
-                        ft.Container(
-                            padding=ft.Padding(8, 4, 8, 4),
-                            border_radius=14,
-                            bgcolor=ft.Colors.with_opacity(0.13, kolor_kond),
-                            ink=True,
-                            tooltip="Zobacz, co obniża kondycję",
-                            on_click=lambda e: (
-                                utils.zamknij_dno(self._page, bs_info),
-                                utils.pokaz_panel_kondycji(self._page, self.state),
-                            ),
-                            content=ft.Row([
-                                ft.Icon(ikona_kond, size=13, color=kolor_kond),
-                                ft.Text(
-                                    f"Kondycja: {kondycja if kondycja is not None else '-'}/100 ({etykieta_kond})",
-                                    size=12, weight="bold", color=kolor_kond
-                                ),
-                                ft.Icon(ft.Icons.CHEVRON_RIGHT, size=13, color=kolor_kond),
-                            ], spacing=5, tight=True)
-                        ),
-                        ft.Divider(height=15),
-                        wiersz_info(ft.Icons.DIRECTIONS_CAR, "Marka", w_info["marka"]),
-                        wiersz_info(ft.Icons.DIRECTIONS_CAR_FILLED, "Model", w_info["model"]),
-                        wiersz_info(ft.Icons.STARS, "Generacja", w_info["generacja"]),
-                        wiersz_info(ft.Icons.BADGE, "Rejestracja", w_info["nr_rej"]),
-                        wiersz_info(ft.Icons.NUMBERS, "VIN", w_info["vin"]),
-                        wiersz_info(ft.Icons.CALENDAR_TODAY, "Rocznik", w_info["rok_produkcji"]),
-
-                        ft.Container(height=5),
-                        wiersz_info(ft.Icons.LOCAL_GAS_STATION, "Paliwo", w_info["typ_paliwa"]),
-                        wiersz_info(ft.Icons.SETTINGS_INPUT_COMPONENT, "Skrzynia", w_info["skrzynia_biegow"]),
-                        wiersz_info(ft.Icons.SPEED, "Silnik", pojemnosc_tekst),
-                        wiersz_info(ft.Icons.BOLT, "Moc silnika", moc_tekst),
-
-                        ft.Divider(height=15),
-                        ft.Row(utils.tytul_sekcji(ft.Icons.SHIELD, "Ważne terminy",
-                                                  kolor=ft.Colors.ON_SURFACE_VARIANT, rozmiar=14), spacing=6),
-                        wiersz_termin(ft.Icons.SHIELD, "Polisa OC", w_info["oc_data"], "oc"),
-                        wiersz_termin(ft.Icons.FACT_CHECK, "Przegląd", w_info["przeglad_data"], "przeglad"),
-                        wiersz_termin(ft.Icons.SHIELD, "Polisa AC", w_info["ac_data"], "ac"),
-                        wiersz_termin(ft.Icons.SUPPORT_AGENT, "Assistance", w_info["assistance_data"], "assistance"),
-                        wiersz_termin(ft.Icons.LOCAL_FIRE_DEPARTMENT, "Gaśnica", w_info["gasnica_data"], "gasnica"),
-                        wiersz_termin(ft.Icons.MEDICAL_SERVICES, "Apteczka", w_info["apteczka_data"], "apteczka"),
-                        wiersz_termin(ft.Icons.VERIFIED_USER, "Gwarancja", w_info["gwarancja_data"], "gwarancja"),
-                        wiersz_info(ft.Icons.SPEED, "Gwarancja do", f"{w_info['gwarancja_przebieg']} km" if w_info["gwarancja_przebieg"] else None),
-
-                        ft.Divider(height=15),
-                        ft.Row(utils.tytul_sekcji(ft.Icons.SHOPPING_CART, "Ściągawka do sklepu",
-                                                  kolor=ft.Colors.ON_SURFACE_VARIANT, rozmiar=14), spacing=6),
-                        wiersz_info(ft.Icons.WATER_DROP, "Wycieraczki", wycieraczki_tekst),
-                        wiersz_info(ft.Icons.AIR, "Ciśnienie opon", cisnienie_tekst),
-                        wiersz_info(ft.Icons.OPACITY, "Olej silnikowy", olej_tekst),
-                        wiersz_info(ft.Icons.BATTERY_FULL, "Akumulator", w_info["akumulator"]),
-                        wiersz_info(ft.Icons.LIGHTBULB, "Żarówki", zarowki_tekst),
-
-                        ft.Divider(height=15),
-                        ft.Text("Notatki:", weight="bold", size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(str(w_info["notatki"]) if w_info["notatki"] else "Brak dodatkowych notatek.", size=14, italic=not bool(w_info["notatki"]))
-                    ], tight=True, spacing=8)
-                )
-            )
-            utils.otworz_dno(self._page, bs_info)
+            utils.przejdz(self._page, "/pojazd")
 
         # --- SZYBKA AKTUALIZACJA PRZEBIEGU (bez sztucznego tankowania/wpisu) ---
         def pokaz_szybka_aktualizacja_przebiegu(e):
@@ -1138,7 +1017,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 if utils.sprawdz_podejrzany_przebieg(self._page, pole_przebiegu, self.state.auto_id, nowy, tabela="odczyty_przebiegu"):
                     return
 
-                db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy)
+                db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy, zrodlo="kokpit")
                 utils.zamknij_dialog(self._page, dlg)
                 utils.przejdz(self._page, "/")
                 utils.pokaz_komunikat(self._page, "Zaktualizowano stan licznika!")
@@ -1222,10 +1101,27 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             utils.wskaznik_synchronizacji(self._page, self.state.auto_id),
         ], spacing=0, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
-        wiersz_rejestracja = ft.Row([
-            ft.Icon(ft.Icons.BADGE, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Text(str(w["nr_rej"]) if w["nr_rej"] else "Brak rej.", size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
-        ], spacing=4)
+        # Rejestracja rysowana jak prawdziwa tablica. To po niej rozpoznaje się
+        # auto w świecie poza aplikacją (parking, warsztat, ubezpieczyciel),
+        # a jako szary tekst obok innych szarych tekstów po prostu ginęła.
+        if w["nr_rej"]:
+            wiersz_rejestracja = ft.Row([
+                utils.tablica_rejestracyjna(
+                    w["nr_rej"], wysokosc=26,
+                    on_click=lambda e: utils.kopiuj_do_schowka(
+                        self._page, w["nr_rej"], "Skopiowano numer rejestracyjny"),
+                ),
+            ], spacing=6, tight=True)
+        else:
+            wiersz_rejestracja = ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.BADGE, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text("Dodaj numer rejestracyjny", size=12, italic=True,
+                            color=ft.Colors.ON_SURFACE_VARIANT),
+                ], spacing=4),
+                on_click=lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
+                tooltip="Dotknij, aby uzupełnić dane pojazdu",
+            )
 
         def pokaz_edycja_statusu(e):
             pole_status = ft.TextField(
@@ -1268,16 +1164,57 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             )
             utils.otworz_dialog(self._page, dlg)
 
+        # Przebieg z wiekiem obok siebie: dopiero razem mówią, czy 135 tys. km
+        # to dużo. Wiek jest tylko dopiskiem — dotknięcie nadal aktualizuje licznik.
+        metryki_bity = [
+            ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold"),
+            ft.Icon(ft.Icons.EDIT, size=11, color=ft.Colors.PRIMARY),
+        ]
+        if metryki_pojazdu.get("wiek_lat"):
+            metryki_bity.append(ft.Text(
+                f"•  {utils.formatuj_liczba(metryki_pojazdu['wiek_lat'], 1)} lat",
+                size=12, color=ft.Colors.ON_SURFACE_VARIANT))
+        if metryki_pojazdu.get("przebieg_roczny"):
+            metryki_bity.append(ft.Text(
+                f"•  {utils.formatuj_liczba(metryki_pojazdu['przebieg_roczny'], 0)} km/rok",
+                size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
+
         wiersz_przebieg = ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold"),
-                ft.Icon(ft.Icons.EDIT, size=11, color=ft.Colors.PRIMARY)
-            ], spacing=5),
+            content=ft.Row(metryki_bity, spacing=5),
             on_click=pokaz_szybka_aktualizacja_przebiegu,
             on_long_press=lambda e: utils.przejdz(self._page, "/przebieg"),
-            tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia odczytów",
+            tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia licznika",
         )
+
+        # Najbliższy termin WPROST na kaflu. Dotąd data OC czy przeglądu była
+        # schowana pod przyciskiem „i” — czyli widziało ją się dopiero wtedy,
+        # gdy się jej szukało, a nie wtedy, gdy zaczynała gonić.
+        if najblizszy_termin:
+            kolor_terminu = utils.KOLORY_STATUSU_TERMINU.get(
+                najblizszy_termin["status"], ft.Colors.ON_SURFACE_VARIANT)
+            wiersz_termin_kafla = ft.Container(
+                padding=ft.Padding(8, 5, 8, 5),
+                border_radius=utils.RADIUS["sm"],
+                bgcolor=ft.Colors.with_opacity(
+                    0.13 if najblizszy_termin["status"] != "ok" else 0.07, kolor_terminu),
+                on_click=lambda e: utils.przejdz(self._page, "/pojazd"),
+                tooltip="Wszystkie terminy pojazdu",
+                content=ft.Row([
+                    ft.Icon(utils.ikona_z_mapy(utils.IKONY_STATUSU_TERMINU,
+                                               najblizszy_termin["status"], ft.Icons.EVENT),
+                            size=13, color=kolor_terminu),
+                    ft.Text(
+                        f"{najblizszy_termin['etykieta']} — "
+                        f"{utils.opis_dni_terminu(najblizszy_termin['dni'])}",
+                        size=12, weight="bold", color=kolor_terminu, expand=True,
+                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(najblizszy_termin["data"], size=11, color=kolor_terminu),
+                ], spacing=5),
+            )
+        else:
+            wiersz_termin_kafla = ft.Container(width=0, height=0)
 
         wiersz_status = ft.Container(
             content=ft.Row([
@@ -1301,12 +1238,13 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             wiersz_rejestracja,
             wiersz_przebieg,
             wiersz_status,
-        ], spacing=3, expand=True)
+        ], spacing=4, expand=True)
 
         przyciski_karty = ft.Column([
             ft.IconButton(
                 icon=ft.Icons.INFO_OUTLINE, icon_size=20, icon_color=ft.Colors.PRIMARY,
-                tooltip="Szczegóły pojazdu (OC, PT, VIN, kondycja...)", on_click=pokaz_info_auta,
+                tooltip="Karta pojazdu: terminy, wartość, ubezpieczenie, ściągawka",
+                on_click=pokaz_info_auta,
                 style=ft.ButtonStyle(padding=0), width=32, height=32,
             ),
             ft.IconButton(
@@ -1327,7 +1265,11 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
 
         tresc_karty = ft.Container(
             padding=12, border_radius=PROMIEN_KARTY,
-            content=ft.Row([awatar, kolumna_tekstowa, przyciski_karty], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            content=ft.Column([
+                ft.Row([awatar, kolumna_tekstowa, przyciski_karty], spacing=12,
+                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                wiersz_termin_kafla,
+            ], spacing=8),
         )
 
         if zdjecie_glowne:

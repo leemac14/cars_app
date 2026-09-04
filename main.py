@@ -33,6 +33,7 @@ from views.search_view import SzukajView
 from views.podzial_view import PodzialKosztowView
 from views.kosz_view import KoszView
 from views.budzet_view import BudzetView
+from views.pojazd_view import PojazdView
 from views.rok_view import RokWPigulceView
 
 def main(page: ft.Page):
@@ -503,6 +504,8 @@ def main(page: ft.Page):
             page.views.append(EksportView(page, app_state, eksportuj_dane_zaawansowane))
         elif segmenty[0] == "import":
             page.views.append(ImportCSVView(page, app_state))
+        elif segmenty[0] == "pojazd":
+            page.views.append(PojazdView(page, app_state))
         elif segmenty[0] == "budzet":
             page.views.append(BudzetView(page, app_state))
         elif segmenty[0] == "rok":

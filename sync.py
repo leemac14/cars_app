@@ -137,6 +137,13 @@ KOLUMNY_POJAZDU = [
     "zarowki_mijania", "zarowki_drogowe", "ac_data", "assistance_data",
     "gasnica_data", "apteczka_data", "wiadomosc_statusu",
     "gwarancja_data", "gwarancja_przebieg",
+    # Dane z wersji 37 — zakup i wartość, ubezpieczenie, rozszerzona ściągawka,
+    # pierwsza rejestracja. Wszystkie opisują POJAZD, więc przy współdzieleniu
+    # muszą być widoczne po obu stronach; telefon do assistance przede wszystkim.
+    "data_zakupu", "cena_zakupu", "przebieg_zakupu", "wartosc_szacowana",
+    "ubezpieczyciel", "nr_polisy", "skladka_roczna", "telefon_assistance",
+    "kod_lakieru", "rozmiar_opon", "rozmiar_felg", "rozstaw_srub",
+    "moment_dokrecania", "typ_zlacza_ev", "data_pierwszej_rejestracji",
 ]
 
 # Notatka wpisu jedzie do chmury razem z resztą jego pól (kolumny 'notatka',
@@ -155,7 +162,7 @@ KONFIGURACJA_SYNC = [
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
     {"tabela": "wydatki_cykliczne", "kolumny": ["nazwa", "kwota", "okres_dni", "nastepna_data", "czy_koszt"], "fk": {}},
-    {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
+    {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "zrodlo", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
     {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},
     # Limit wydatków ustala się raz dla pojazdu, nie osobno w każdym telefonie —

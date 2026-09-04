@@ -140,6 +140,26 @@ JEDNOSTKI_MAGAZYNU = ["szt", "l", "ml", "kg", "g"]
 
 TABELE_Z_ZALACZNIKIEM = {"tankowania", "wizyty", "inne_koszty", "zdjecia_karoserii", "historia", "zestawy_opon", "magazyn_czesci"}
 
+# Stan licznika zapisuje się w aplikacji na cztery sposoby. Trzy z nich są
+# „przy okazji” — nikt nie dodaje tankowania po to, żeby zanotować przebieg —
+# ale dla historii licznika są tak samo wiarygodne jak odczyt wpisany wprost.
+ZRODLA_PRZEBIEGU = {
+    "odczyt": "Odczyt licznika",
+    "tankowanie": "Tankowanie",
+    "wizyta": "Wizyta w warsztacie",
+    "serwis": "Wpis serwisowy",
+}
+
+# Podział WŁASNYCH odczytów (kolumna odczyty_przebiegu.zrodlo) — skąd dokładnie
+# wziął się wpis, którego nie da się przypisać do kosztu.
+ZRODLA_ODCZYTU = {
+    "reczny": "Wpisany ręcznie",
+    "kokpit": "Szybka aktualizacja",
+    "pojazd": "Korekta w danych pojazdu",
+    "import": "Import z pliku",
+}
+ZRODLO_ODCZYTU_DOMYSLNE = "reczny"
+
 # Krótka notatka przy pojedynczym wpisie. Wartość to nazwa kolumny z TREŚCIĄ:
 # wpisy, które takiego pola nie miały, dostały w migracji 34 własne 'notatka',
 # a tam gdzie pole opisowe istnieje od dawna (wizyta, zadanie do zrobienia,
@@ -608,6 +628,47 @@ def init_db():
             CREATE TABLE IF NOT EXISTS budzety (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, kategoria TEXT NOT NULL, okres TEXT NOT NULL, kwota REAL NOT NULL DEFAULT 0, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_budzety_klucz ON budzety(auto_id, kategoria, okres);
             CREATE INDEX IF NOT EXISTS idx_budzety_zdalne ON budzety(zdalne_id);
+            """,
+            # Wersja 36: skąd wziął się odczyt licznika. Historia odczytów
+            # pokazuje teraz WSZYSTKIE znane stany licznika — także te, które
+            # aplikacja zebrała sama przy tankowaniu, wizycie i wpisie serwisowym
+            # (te wynikają z samych tabel, bez nowych kolumn). Ta kolumna
+            # rozstrzyga tylko wewnętrzny podział własnych odczytów: wpisany
+            # ręcznie w historii, szybka aktualizacja z kokpitu, korekta przy
+            # danych pojazdu czy import z pliku. NULL = wpis sprzed tej wersji,
+            # traktowany jako ręczny — czyli dokładnie tym, czym wtedy był.
+            """
+            ALTER TABLE odczyty_przebiegu ADD COLUMN zrodlo TEXT;
+            """,
+            # Wersja 37: dane pojazdu, których dotąd nie było gdzie trzymać, a
+            # których szuka się w konkretnych, powtarzalnych sytuacjach:
+            # (a) ZAKUP I WARTOŚĆ — dopiero cena zakupu i dzisiejsza wartość
+            #     domykają rachunek posiadania: samo paliwo i serwis pomijają
+            #     największy koszt auta, czyli utratę wartości;
+            # (b) UBEZPIECZENIE I POMOC — po stłuczce szuka się numeru polisy
+            #     i telefonu do assistance, zwykle w emocjach i cudzym aucie;
+            # (c) ŚCIĄGAWKA — kod lakieru przy zaprawce, rozmiar opon i felg
+            #     przy zakupie, moment dokręcania i rozstaw śrub przy zmianie kół;
+            # (d) PIERWSZA REJESTRACJA — z niej liczy się WIEK auta i roczny
+            #     przebieg; sam rocznik potrafi się różnić od rejestracji o rok.
+            # Wszystko jako kolumny pojazdu, bo to opis JEGO tożsamości i wszystko
+            # leci do partnera tą samą drogą co reszta danych auta.
+            """
+            ALTER TABLE samochody ADD COLUMN data_zakupu TEXT;
+            ALTER TABLE samochody ADD COLUMN cena_zakupu REAL;
+            ALTER TABLE samochody ADD COLUMN przebieg_zakupu INTEGER;
+            ALTER TABLE samochody ADD COLUMN wartosc_szacowana REAL;
+            ALTER TABLE samochody ADD COLUMN ubezpieczyciel TEXT;
+            ALTER TABLE samochody ADD COLUMN nr_polisy TEXT;
+            ALTER TABLE samochody ADD COLUMN skladka_roczna REAL;
+            ALTER TABLE samochody ADD COLUMN telefon_assistance TEXT;
+            ALTER TABLE samochody ADD COLUMN kod_lakieru TEXT;
+            ALTER TABLE samochody ADD COLUMN rozmiar_opon TEXT;
+            ALTER TABLE samochody ADD COLUMN rozmiar_felg TEXT;
+            ALTER TABLE samochody ADD COLUMN rozstaw_srub TEXT;
+            ALTER TABLE samochody ADD COLUMN moment_dokrecania TEXT;
+            ALTER TABLE samochody ADD COLUMN typ_zlacza_ev TEXT;
+            ALTER TABLE samochody ADD COLUMN data_pierwszej_rejestracji TEXT;
             """
         ]
 
@@ -1457,7 +1518,7 @@ def pobierz_historie_przebiegu(auto_id):
 
     return [wg_daty[d] for d in sorted(wg_daty.keys())]
 
-def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None):
+def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None, zrodlo=ZRODLO_ODCZYTU_DOMYSLNE):
     """Zapisuje szybki, ręczny odczyt licznika (np. z deski rozdzielczej) w osobnym
     dzienniku — bez tworzenia sztucznego tankowania czy wpisu serwisowego tylko po
     to, by odświeżyć aktualny przebieg. Jeśli w danym dniu istnieje już odczyt,
@@ -1472,11 +1533,17 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None):
         c = conn.cursor()
         c.execute("SELECT id FROM odczyty_przebiegu WHERE auto_id=? AND data=?", (auto_id, data_str))
         w = c.fetchone()
+        zrodlo = zrodlo if zrodlo in ZRODLA_ODCZYTU else ZRODLO_ODCZYTU_DOMYSLNE
         if w:
-            conn.execute("UPDATE odczyty_przebiegu SET przebieg=? WHERE id=?", (przebieg, w[0]))
+            # Nadpisując odczyt z tego samego dnia przepisujemy też źródło:
+            # liczy się to, skąd pochodzi AKTUALNA wartość, a nie ta sprzed chwili.
+            conn.execute("UPDATE odczyty_przebiegu SET przebieg=?, zrodlo=? WHERE id=?", (przebieg, zrodlo, w[0]))
             rekord_id, nadpisano = w[0], True
         else:
-            kursor = conn.execute("INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)", (auto_id, data_str, przebieg))
+            kursor = conn.execute(
+                "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg, zrodlo) VALUES (?,?,?,?)",
+                (auto_id, data_str, przebieg, zrodlo)
+            )
             rekord_id, nadpisano = kursor.lastrowid, False
 
     # Notatka POZA transakcją powyżej — zapisz_notatke otwiera własne połączenie
@@ -1489,6 +1556,163 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None):
     if przytnij_notatke(notatka):
         zapisz_notatke("odczyty_przebiegu", rekord_id, notatka)
     return nadpisano
+
+
+# Ile razy średni dzienny przebieg musi zostać przekroczony, żeby uznać skok
+# licznika za podejrzany. Sześciokrotność bierze się stąd, że jeden wyjazd
+# wakacyjny potrafi dać 4-5× normy i NIE jest błędem — dopiero powyżej robi się
+# nieprawdopodobny. Dolny próg pilnuje aut jeżdżących mało: przy średniej
+# 3 km/dzień samo pomnożenie dałoby alarm po każdej wycieczce za miasto.
+KROTNOSC_SKOKU_PRZEBIEGU = 6
+MIN_SKOK_PRZEBIEGU_NA_DZIEN = 400
+
+
+def pobierz_pelna_historie_przebiegu(auto_id):
+    """WSZYSTKIE znane stany licznika pojazdu, nie tylko ręczne odczyty.
+
+    Każde tankowanie, każda wizyta i każdy wpis serwisowy niosą przebieg — do tej
+    pory ta wiedza leżała rozrzucona po czterech ekranach, a historia licznika
+    pokazywała wyłącznie to, co ktoś wpisał osobno. Tutaj składamy jedno,
+    chronologiczne źródło prawdy o liczniku wraz z informacją, SKĄD każdy wpis
+    pochodzi i czy da się go stąd edytować.
+
+    Zwraca listę słowników posortowaną rosnąco po (data, przebieg), z policzonymi
+    już: dystansem od poprzedniego wpisu, liczbą dni, średnią dzienną na tym
+    odcinku i ewentualną anomalią ('cofka' albo 'skok')."""
+    if not auto_id:
+        return []
+
+    wpisy = []
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        c.execute(
+            "SELECT id, data, przebieg, zrodlo, notatka, notatka_autor, notatka_data "
+            "FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,)
+        )
+        for r in c.fetchall():
+            podzrodlo = r["zrodlo"] if r["zrodlo"] in ZRODLA_ODCZYTU else ZRODLO_ODCZYTU_DOMYSLNE
+            wpisy.append({
+                "zrodlo": "odczyt", "podzrodlo": podzrodlo,
+                "id": r["id"], "data": r["data"], "przebieg": int(r["przebieg"] or 0),
+                "opis": ZRODLA_ODCZYTU[podzrodlo],
+                "notatka": r["notatka"], "notatka_autor": r["notatka_autor"],
+                "notatka_data": r["notatka_data"],
+                "trasa": None, "edytowalny": True,
+            })
+
+        c.execute(
+            "SELECT id, data, przebieg, stacja, rodzaj_energii, notatka, notatka_autor, notatka_data "
+            "FROM tankowania WHERE auto_id=?", (auto_id,)
+        )
+        for r in c.fetchall():
+            czy_prad = (r["rodzaj_energii"] or ENERGIA_PALIWO) == ENERGIA_PRAD
+            wpisy.append({
+                "zrodlo": "tankowanie", "podzrodlo": None,
+                "id": r["id"], "data": r["data"], "przebieg": int(r["przebieg"] or 0),
+                "opis": r["stacja"] or ("Ładowanie" if czy_prad else "Tankowanie"),
+                "notatka": r["notatka"], "notatka_autor": r["notatka_autor"],
+                "notatka_data": r["notatka_data"],
+                "trasa": f"/tankowanie/edytuj/{r['id']}", "edytowalny": False,
+            })
+
+        c.execute("SELECT id, data, przebieg, wykonawca, notatki FROM wizyty WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            wpisy.append({
+                "zrodlo": "wizyta", "podzrodlo": None,
+                "id": r["id"], "data": r["data"], "przebieg": int(r["przebieg"] or 0),
+                "opis": r["wykonawca"] or "Wizyta w warsztacie",
+                # Wizyta trzyma notatkę w starym polu 'notatki' (patrz POLA_NOTATKI)
+                # i nie ma podpisu — stąd None w autorze i dacie.
+                "notatka": r["notatki"], "notatka_autor": None, "notatka_data": None,
+                "trasa": f"/wizyty/edytuj/{r['id']}", "edytowalny": False,
+            })
+
+        c.execute(
+            "SELECT h.id, h.data, h.przebieg, h.notatka, h.notatka_autor, h.notatka_data, "
+            "z.nazwa, z.id AS zadanie_id "
+            "FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
+            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+        )
+        for r in c.fetchall():
+            wpisy.append({
+                "zrodlo": "serwis", "podzrodlo": None,
+                "id": r["id"], "data": r["data"], "przebieg": int(r["przebieg"] or 0),
+                "opis": r["nazwa"] or "Wpis serwisowy",
+                "notatka": r["notatka"], "notatka_autor": r["notatka_autor"],
+                "notatka_data": r["notatka_data"],
+                "trasa": f"/wpis/edytuj/{r['id']}", "edytowalny": False,
+            })
+
+    # Wpisy bez sensownego przebiegu (0 albo brak) nie mówią nic o liczniku —
+    # w historii licznika byłyby wyłącznie szumem.
+    wpisy = [w for w in wpisy if w["przebieg"] > 0]
+    for w in wpisy:
+        w["data_obj"] = parsuj_date(w["data"])
+        w["klucz"] = f"{w['zrodlo']}_{w['id']}"
+        w["etykieta_zrodla"] = ZRODLA_PRZEBIEGU[w["zrodlo"]]
+    wpisy = [w for w in wpisy if w["data_obj"] != datetime.min.date()]
+    wpisy.sort(key=lambda w: (w["data_obj"], w["przebieg"]))
+
+    sredni_dzienny = oblicz_sredni_dzienny_przebieg(auto_id) or 0
+    prog_skoku = max(MIN_SKOK_PRZEBIEGU_NA_DZIEN, sredni_dzienny * KROTNOSC_SKOKU_PRZEBIEGU)
+
+    poprzedni = None
+    for w in wpisy:
+        if poprzedni is None:
+            w["dystans"] = None
+            w["dni"] = None
+            w["srednia_dzienna"] = None
+            w["anomalia"] = None
+        else:
+            dystans = w["przebieg"] - poprzedni["przebieg"]
+            dni = (w["data_obj"] - poprzedni["data_obj"]).days
+            w["dystans"] = dystans
+            w["dni"] = dni
+            # Dwa wpisy tego samego dnia dzielimy przez 1, a nie przez 0 —
+            # inaczej każde tankowanie w dniu przeglądu byłoby „skokiem”.
+            w["srednia_dzienna"] = dystans / max(1, dni) if dystans >= 0 else None
+            if dystans < 0:
+                w["anomalia"] = "cofka"
+            elif w["srednia_dzienna"] and w["srednia_dzienna"] > prog_skoku and dni >= 1:
+                w["anomalia"] = "skok"
+            else:
+                w["anomalia"] = None
+        w["poprzedni_klucz"] = poprzedni["klucz"] if poprzedni else None
+        poprzedni = w
+
+    return wpisy
+
+
+def podsumowanie_historii_przebiegu(auto_id, wpisy=None):
+    """Nagłówek historii licznika: ile wpisów i z czego się składają, jaki
+    dystans obejmują, jak dawno był ostatni i ile jest nieścisłości."""
+    wpisy = pobierz_pelna_historie_przebiegu(auto_id) if wpisy is None else wpisy
+    if not wpisy:
+        return None
+
+    wg_zrodla = {}
+    for w in wpisy:
+        wg_zrodla[w["zrodlo"]] = wg_zrodla.get(w["zrodlo"], 0) + 1
+
+    pierwszy, ostatni = wpisy[0], wpisy[-1]
+    dni = (ostatni["data_obj"] - pierwszy["data_obj"]).days
+    dystans = ostatni["przebieg"] - pierwszy["przebieg"]
+
+    return {
+        "liczba": len(wpisy),
+        "wg_zrodla": wg_zrodla,
+        "pierwszy": pierwszy,
+        "ostatni": ostatni,
+        "dystans": dystans if dystans > 0 else 0,
+        "dni": dni,
+        "srednia_dzienna": (dystans / dni) if dni > 0 and dystans > 0 else None,
+        "dni_od_ostatniego": max(0, (datetime.now().date() - ostatni["data_obj"]).days),
+        "anomalie": sum(1 for w in wpisy if w.get("anomalia")),
+        "recznych": wg_zrodla.get("odczyt", 0),
+    }
+
 
 def aktualizuj_odczyt_przebiegu(odczyt_id, przebieg, data_str):
     """Edycja konkretnego, istniejącego odczytu (z poziomu listy historii) —
@@ -3091,6 +3315,173 @@ def _liczba_lub_none(tekst):
     więc wyciągamy z nich liczbę tak samo pobłażliwie, jak import CSV."""
     wartosc = _parsuj_liczbe_csv(tekst)
     return wartosc if (wartosc and wartosc > 0) else None
+
+
+
+# ==================== TOŻSAMOŚĆ I METRYKI POJAZDU ====================
+# Jedno miejsce, z którego korzystają: kafel pojazdu na ekranie głównym, ekran
+# „Dane pojazdu” i paszport PDF. Wcześniej każdy liczył sobie wiek i przebieg
+# roczny po swojemu — albo nie liczył wcale.
+
+# Umowna norma rocznego przebiegu w Polsce. Nie służy do oceniania, tylko do
+# jednego zdania kontekstu: „to auto jeździ dwa razy więcej niż przeciętne”.
+NORMA_PRZEBIEGU_ROCZNEGO = 15000
+
+# Terminy dokumentów pokazywane w jednym rzędzie: klucz progu powiadomień,
+# kolumna z datą i etykieta. Kolejność decyduje o tym, co wygra przy remisie dni.
+TERMINY_POJAZDU = [
+    ("oc", "oc_data", "Polisa OC"),
+    ("przeglad", "przeglad_data", "Przegląd techniczny"),
+    ("ac", "ac_data", "Polisa AC"),
+    ("assistance", "assistance_data", "Assistance"),
+    ("gwarancja", "gwarancja_data", "Gwarancja"),
+    ("gasnica", "gasnica_data", "Gaśnica"),
+    ("apteczka", "apteczka_data", "Apteczka"),
+]
+
+
+def pobierz_dane_pojazdu(auto_id):
+    """Komplet kolumn pojazdu jako zwykły słownik — bez wypisywania listy pól
+    w każdym widoku z osobna. Nowa kolumna dodana migracją pojawia się tu sama."""
+    if not auto_id:
+        return None
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM samochody WHERE id=?", (auto_id,))
+        w = c.fetchone()
+    return dict(w) if w else None
+
+
+def terminy_pojazdu(auto_id, dane=None):
+    """Wszystkie terminy dokumentów pojazdu z policzonymi dniami i statusem.
+    Status ('po_terminie' / 'blisko' / 'ok') liczy się względem progu USTAWIONEGO
+    DLA TEGO DOKUMENTU, więc pokrywa się dokładnie z momentem powiadomienia."""
+    dane = dane or pobierz_dane_pojazdu(auto_id)
+    if not dane:
+        return []
+
+    dzis = datetime.now().date()
+    wynik = []
+    for klucz, kolumna, etykieta in TERMINY_POJAZDU:
+        wartosc = dane.get(kolumna)
+        if not wartosc:
+            continue
+        data_obj = parsuj_date(wartosc)
+        if data_obj == datetime.min.date():
+            continue
+        dni = (data_obj - dzis).days
+        prog = pobierz_prog_dni_dokumentu(klucz)
+        wynik.append({
+            "klucz": klucz, "etykieta": etykieta, "data": wartosc, "data_obj": data_obj,
+            "dni": dni, "prog": prog,
+            "status": "po_terminie" if dni < 0 else ("blisko" if dni <= prog else "ok"),
+        })
+    wynik.sort(key=lambda t: t["dni"])
+    return wynik
+
+
+def najblizszy_termin_pojazdu(auto_id, dane=None):
+    """Termin, który wypada najwcześniej — z przeterminowanymi na przedzie.
+    To jedna informacja, którą kafel pojazdu musi pokazać bez klikania."""
+    terminy = terminy_pojazdu(auto_id, dane)
+    return terminy[0] if terminy else None
+
+
+def pobierz_metryki_pojazdu(auto_id, dane=None):
+    """Liczby opisujące pojazd jako całość: wiek, tempo jazdy, koszt posiadania.
+
+    Sedno jest w koszcie posiadania: paliwo i serwis to tylko część rachunku,
+    a największą pozycją bywa UTRATA WARTOŚCI, której nie widać w żadnym wpisie.
+    Dopiero cena zakupu i dzisiejsza wartość pozwalają powiedzieć, ile naprawdę
+    kosztuje kilometr. Każda z tych liczb jest opcjonalna — pola, których
+    użytkownik nie uzupełnił, po prostu nie mają wyniku (None), zamiast psuć
+    pozostałe."""
+    dane = dane or pobierz_dane_pojazdu(auto_id)
+    if not dane:
+        return None
+
+    dzis = datetime.now().date()
+    przebieg = pobierz_aktualny_przebieg(auto_id) or 0
+
+    # --- wiek: pierwsza rejestracja jest dokładniejsza niż sam rocznik ---
+    data_rej = parsuj_date(dane.get("data_pierwszej_rejestracji"))
+    if data_rej == datetime.min.date():
+        data_rej = None
+    rok_prod = parsuj_int_bezpiecznie(dane.get("rok_produkcji"), 0)
+    if data_rej:
+        dni_wieku = (dzis - data_rej).days
+    elif ROK_MIN <= rok_prod <= dzis.year:
+        # Bez dnia i miesiąca zakładamy środek roku — mniejszy błąd niż 1 stycznia.
+        dni_wieku = (dzis - date_cls(rok_prod, 7, 1)).days
+    else:
+        dni_wieku = None
+    wiek_lat = (dni_wieku / 365.25) if dni_wieku and dni_wieku > 0 else None
+
+    # --- tempo jazdy ---
+    przebieg_roczny = (przebieg / wiek_lat) if (wiek_lat and wiek_lat >= 0.5 and przebieg > 0) else None
+    intensywnosc = (przebieg_roczny / NORMA_PRZEBIEGU_ROCZNEGO * 100) if przebieg_roczny else None
+
+    # --- posiadanie ---
+    data_zakupu = parsuj_date(dane.get("data_zakupu"))
+    if data_zakupu == datetime.min.date():
+        data_zakupu = None
+    dni_posiadania = (dzis - data_zakupu).days if data_zakupu else None
+    przebieg_zakupu = parsuj_int_bezpiecznie(dane.get("przebieg_zakupu"), 0)
+    km_u_ciebie = (przebieg - przebieg_zakupu) if (przebieg_zakupu > 0 and przebieg > przebieg_zakupu) else None
+    if km_u_ciebie is None and dni_posiadania and przebieg > 0 and not przebieg_zakupu:
+        km_u_ciebie = None  # bez przebiegu przy zakupie nie ma czego odjąć
+
+    km_rocznie_u_ciebie = (
+        km_u_ciebie / (dni_posiadania / 365.25)
+        if (km_u_ciebie and dni_posiadania and dni_posiadania >= 30) else None
+    )
+
+    # --- wartość i amortyzacja ---
+    cena_zakupu = _liczba_lub_none(dane.get("cena_zakupu"))
+    wartosc = _liczba_lub_none(dane.get("wartosc_szacowana"))
+    utrata = (cena_zakupu - wartosc) if (cena_zakupu and wartosc is not None) else None
+    utrata_rocznie = (
+        utrata / (dni_posiadania / 365.25)
+        if (utrata is not None and dni_posiadania and dni_posiadania >= 90) else None
+    )
+    utrata_na_km = (utrata / km_u_ciebie) if (utrata is not None and km_u_ciebie) else None
+    procent_wartosci = (wartosc / cena_zakupu * 100) if (cena_zakupu and wartosc is not None) else None
+
+    # --- koszt posiadania: wydatki + utrata wartości ---
+    wydatki = koszty_w_okresie(auto_id, data_zakupu, dzis)["razem"] if data_zakupu else koszty_w_okresie(auto_id)["razem"]
+    koszt_calkowity = wydatki + (utrata or 0)
+    koszt_km_pelny = (koszt_calkowity / km_u_ciebie) if km_u_ciebie else None
+    koszt_miesieczny = (
+        koszt_calkowity / (dni_posiadania / DNI_W_MIESIACU)
+        if (dni_posiadania and dni_posiadania >= 30) else None
+    )
+
+    return {
+        "przebieg": przebieg,
+        "wiek_lat": wiek_lat,
+        "dni_wieku": dni_wieku,
+        "data_wieku": data_rej.strftime("%d.%m.%Y") if data_rej else (str(rok_prod) if rok_prod else None),
+        "zrodlo_wieku": "rejestracja" if data_rej else ("rocznik" if rok_prod else None),
+        "przebieg_roczny": przebieg_roczny,
+        "intensywnosc": intensywnosc,
+        "data_zakupu": dane.get("data_zakupu"),
+        "dni_posiadania": dni_posiadania,
+        "lata_posiadania": (dni_posiadania / 365.25) if dni_posiadania else None,
+        "km_u_ciebie": km_u_ciebie,
+        "km_rocznie_u_ciebie": km_rocznie_u_ciebie,
+        "cena_zakupu": cena_zakupu,
+        "wartosc_szacowana": wartosc,
+        "procent_wartosci": procent_wartosci,
+        "utrata_wartosci": utrata,
+        "utrata_rocznie": utrata_rocznie,
+        "utrata_na_km": utrata_na_km,
+        "wydatki_od_zakupu": wydatki,
+        "koszt_calkowity": koszt_calkowity,
+        "koszt_km_pelny": koszt_km_pelny,
+        "koszt_miesieczny": koszt_miesieczny,
+        "kondycja": oblicz_kondycje_pojazdu(auto_id),
+    }
 
 
 def pobierz_dane_do_porownania(auto_id):
@@ -7394,8 +7785,8 @@ def zaimportuj_odczyty(auto_id, gotowe):
     with polacz_baze() as conn:
         for g in gotowe:
             conn.execute(
-                "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?,?,?)",
-                (auto_id, g["data"], g["przebieg"])
+                "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg, zrodlo) VALUES (?,?,?,?)",
+                (auto_id, g["data"], g["przebieg"], "import")
             )
     return len(gotowe)
 

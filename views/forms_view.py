@@ -138,6 +138,11 @@ class FormularzAutoView(ft.View):
         ot_val, op_val, akum_val, zm_val, zd_val = "", "", "", "", ""
         ac_val, asy_val, gas_val, apt_val = "", "", "", ""
         gw_val, gwp_val = "", ""
+        # Dane z wersji 37: zakup i wartość, ubezpieczenie, rozszerzona ściągawka.
+        dz_val, cz_val, pz_val, ws_val = "", "", "", ""
+        ub_val, pol_val, skl_val, tel_val = "", "", "", ""
+        lak_val, opon_val, felg_val, srub_val, mom_val, zlacze_val = "", "", "", "", "", ""
+        pierwsza_rej_val = ""
         self.zg_val = None
         self.kolor_auta_val = None
         
@@ -145,16 +150,10 @@ class FormularzAutoView(ft.View):
             with db.polacz_baze() as c:
                 c.row_factory = sqlite3.Row
                 cur = c.cursor()
-                cur.execute(
-                    "SELECT nazwa, nr_rej, vin, rok_produkcji, oc_data, przeglad_data, "
-                    "pojemnosc_silnika, moc_silnika, typ_paliwa, skrzynia_biegow, notatki, "
-                    "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
-                    "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
-                    "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, zdjecie_glowne, "
-                    "marka, model, generacja, kolor_motywu, nadwozie, pojemnosc_baterii, zasieg_ev, pojemnosc_baku "
-                    "FROM samochody WHERE id=?", 
-                    (auto_id,)
-                )
+                # SELECT * zamiast wyliczanki kolumn: przy 50 polach każda nowa
+                # migracja oznaczała dopisanie nazwy w trzech miejscach tego pliku
+                # i cichy błąd, gdy się o którymś zapomniało.
+                cur.execute("SELECT * FROM samochody WHERE id=?", (auto_id,))
                 w = cur.fetchone()
                 if w: 
                     n_val, r_val, v_val, ro_val = str(w["nazwa"] or ""), str(w["nr_rej"] or ""), str(w["vin"] or ""), str(w["rok_produkcji"] or "")
@@ -165,6 +164,21 @@ class FormularzAutoView(ft.View):
                     bat_val = str(w["pojemnosc_baterii"] or "")
                     zas_val = str(w["zasieg_ev"] or "")
                     bak_val = str(w["pojemnosc_baku"] or "")
+                    dz_val = str(w["data_zakupu"] or "")
+                    cz_val = utils.formatuj_liczba(w["cena_zakupu"], 0) if w["cena_zakupu"] else ""
+                    pz_val = str(w["przebieg_zakupu"] or "")
+                    ws_val = utils.formatuj_liczba(w["wartosc_szacowana"], 0) if w["wartosc_szacowana"] else ""
+                    ub_val = str(w["ubezpieczyciel"] or "")
+                    pol_val = str(w["nr_polisy"] or "")
+                    skl_val = utils.formatuj_liczba(w["skladka_roczna"], 0) if w["skladka_roczna"] else ""
+                    tel_val = str(w["telefon_assistance"] or "")
+                    lak_val = str(w["kod_lakieru"] or "")
+                    opon_val = str(w["rozmiar_opon"] or "")
+                    felg_val = str(w["rozmiar_felg"] or "")
+                    srub_val = str(w["rozstaw_srub"] or "")
+                    mom_val = str(w["moment_dokrecania"] or "")
+                    zlacze_val = str(w["typ_zlacza_ev"] or "")
+                    pierwsza_rej_val = str(w["data_pierwszej_rejestracji"] or "")
                     wp_val, wt_val = str(w["wycieraczki_przod"] or ""), str(w["wycieraczki_tyl"] or "")
                     cp_val, ct_val = str(w["cisnienie_przod"] or ""), str(w["cisnienie_tyl"] or "")
                     ot_val, op_val = str(w["olej_typ"] or ""), str(w["olej_pojemnosc"] or "")
@@ -306,6 +320,57 @@ class FormularzAutoView(ft.View):
         self.e_asy = utils.pole_daty(page, "Ważność Assistance", asy_val)
         self.e_gas = utils.pole_daty(page, "Ważność gaśnicy", gas_val)
         self.e_apt = utils.pole_daty(page, "Ważność apteczki", apt_val)
+        # --- Zakup i wartość ---
+        self.e_data_zakupu = utils.pole_daty(page, "Data zakupu", dz_val)
+        self.e_cena_zakupu = ft.TextField(
+            label=f"Cena zakupu ({utils.symbol_waluty()})", value=cz_val, hint_text="np. 42000",
+            keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_przebieg_zakupu = ft.TextField(
+            label="Przebieg przy zakupie (km)", value=pz_val, hint_text="np. 98000",
+            keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_wartosc = ft.TextField(
+            label=f"Szacowana wartość dziś ({utils.symbol_waluty()})", value=ws_val,
+            hint_text="np. 33000", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.info_zakup = ft.Text(
+            "Z ceny zakupu i dzisiejszej wartości policzę utratę wartości — zwykle "
+            "największy koszt auta, którego nie widać w żadnym wpisie. Wartość warto "
+            "odświeżać raz na jakiś czas.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+
+        # --- Ubezpieczenie i pomoc ---
+        self.e_ubezpieczyciel = ft.TextField(
+            label="Ubezpieczyciel", value=ub_val, hint_text="np. PZU, Warta, Link4",
+            **utils.styl_pola(page=page))
+        self.e_polisa = ft.TextField(
+            label="Numer polisy", value=pol_val, **utils.styl_pola(page=page))
+        self.e_skladka = ft.TextField(
+            label=f"Składka roczna ({utils.symbol_waluty()})", value=skl_val,
+            keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_assistance = ft.TextField(
+            label="Telefon do assistance", value=tel_val, hint_text="np. 801 102 102",
+            keyboard_type=ft.KeyboardType.PHONE, **utils.styl_pola(page=page))
+
+        # --- Ściągawka: rzeczy, których szuka się w sklepie i przy kołach ---
+        self.e_lakier = ft.TextField(
+            label="Kod lakieru", value=lak_val, hint_text="np. Z20R / LY9B",
+            **utils.styl_pola(page=page))
+        self.e_opony = ft.TextField(
+            label="Rozmiar opon", value=opon_val, hint_text="np. 205/55 R16",
+            **utils.styl_pola(page=page))
+        self.e_felgi = ft.TextField(
+            label="Felgi", value=felg_val, hint_text="np. 6.5Jx16 ET40",
+            **utils.styl_pola(page=page))
+        self.e_srub = ft.TextField(
+            label="Rozstaw śrub", value=srub_val, hint_text="np. 5x115",
+            **utils.styl_pola(page=page))
+        self.e_moment = ft.TextField(
+            label="Moment dokręcania kół", value=mom_val, hint_text="np. 110 Nm",
+            **utils.styl_pola(page=page))
+        self.e_zlacze = ft.TextField(
+            label="Typ złącza ładowania", value=zlacze_val, hint_text="np. Type 2 / CCS",
+            visible=czy_naped_z_pradem(pal_val), **utils.styl_pola(page=page))
+
+        self.e_pierwsza_rej = utils.pole_daty(page, "Pierwsza rejestracja", pierwsza_rej_val)
         self.e_gw = utils.pole_daty(page, "Gwarancja producenta (do)", gw_val)
         self.e_gwp = ft.TextField(label="Gwarancja — limit przebiegu (km)", value=gwp_val, hint_text="np. 150000", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
 
@@ -317,6 +382,9 @@ class FormularzAutoView(ft.View):
         wiersz_cisnienie = ft.Row([ft.Container(self.e_cp, expand=True), ft.Container(self.e_ct, expand=True)], spacing=10)
         wiersz_olej = ft.Row([ft.Container(self.e_ot, expand=True), ft.Container(self.e_op, expand=True)], spacing=10)
         wiersz_zarowki = ft.Row([ft.Container(self.e_zm, expand=True), ft.Container(self.e_zd, expand=True)], spacing=10)
+        wiersz_opon = ft.Row([ft.Container(self.e_opony, expand=True), ft.Container(self.e_felgi, expand=True)], spacing=10)
+        wiersz_srub = ft.Row([ft.Container(self.e_srub, expand=True), ft.Container(self.e_moment, expand=True)], spacing=10)
+        wiersz_zakup = ft.Row([ft.Container(self.e_cena_zakupu, expand=True), ft.Container(self.e_przebieg_zakupu, expand=True)], spacing=10)
         
         k0 = utils.karta_formularza([self.k_zdjecie], "Zdjęcie profilowe", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
         # Zastąpiono pojedyncze pole e_nazwa rzędem i polem generacji
@@ -327,7 +395,7 @@ class FormularzAutoView(ft.View):
         )
         def na_zmiane_paliwa(e=None):
             widoczne = czy_naped_z_pradem(self.e_pal.value)
-            for kontrolka in (self.e_bateria, self.e_zasieg, self.info_bateria):
+            for kontrolka in (self.e_bateria, self.e_zasieg, self.info_bateria, self.e_zlacze):
                 kontrolka.visible = widoczne
             widoczne_paliwo = czy_naped_z_paliwem(self.e_pal.value)
             for kontrolka in (self.e_bak, self.info_bak):
@@ -342,15 +410,27 @@ class FormularzAutoView(ft.View):
         k2 = utils.karta_formularza(
             [self.e_pal, self.e_skrz, self.e_nadwozie, self.podglad_odznaki,
              self.e_poj, self.e_moc, self.e_bak, self.info_bak,
-             self.e_bateria, self.e_zasieg, self.info_bateria],
+             self.e_bateria, self.e_zasieg, self.info_bateria, self.e_zlacze],
             "Specyfikacja techniczna", ft.Icons.SETTINGS
         )
-        k3 = utils.karta_formularza([self.e_oc, self.e_pt], "Ważne daty", ft.Icons.CALENDAR_MONTH)
-        k5 = utils.karta_formularza([wiersz_wycieraczki, wiersz_cisnienie, wiersz_olej, self.e_akum, wiersz_zarowki], "Ściągawka do sklepu", ft.Icons.SHOPPING_CART)
+        k3 = utils.karta_formularza([self.e_pierwsza_rej, self.e_oc, self.e_pt],
+                                    "Ważne daty", ft.Icons.CALENDAR_MONTH)
+        k5 = utils.karta_formularza(
+            [wiersz_wycieraczki, wiersz_cisnienie, wiersz_olej, self.e_akum, wiersz_zarowki,
+             self.e_lakier, wiersz_opon, wiersz_srub],
+            "Ściągawka do sklepu", ft.Icons.SHOPPING_CART)
         k6 = utils.karta_formularza([self.e_ac, self.e_asy, self.e_gas, self.e_apt, self.e_gw, self.e_gwp], "Dodatkowe polisy, gwarancja i BHP", ft.Icons.SHIELD)
+        k7 = utils.karta_formularza(
+            [self.e_data_zakupu, wiersz_zakup, self.e_wartosc, self.info_zakup],
+            "Zakup i wartość", ft.Icons.SELL,
+            domyslnie_otwarte=bool(dz_val or cz_val), page=page)
+        k8 = utils.karta_formularza(
+            [self.e_ubezpieczyciel, self.e_polisa, self.e_skladka, self.e_assistance],
+            "Ubezpieczenie i pomoc", ft.Icons.SUPPORT_AGENT,
+            domyslnie_otwarte=bool(ub_val or tel_val), page=page)
         k4 = utils.karta_formularza([self.e_not], "Uwagi", ft.Icons.NOTES)
         
-        elementy = [k0, k1, kk, k2, k3, k5, k6, k4, utils.przyciski_akcji(page, "Zapisz pojazd", self.zapisz, "/")]
+        elementy = [k0, k1, kk, k2, k3, k7, k8, k5, k6, k4, utils.przyciski_akcji(page, "Zapisz pojazd", self.zapisz, "/")]
         super().__init__(route=f"/auto/edytuj/{auto_id}" if auto_id else "/auto/nowy", padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO)
 
     async def rozkoduj_vin(self, e):
@@ -481,7 +561,13 @@ class FormularzAutoView(ft.View):
             self.e_rej.value, self.e_rok.value, self.e_vin.value, self.e_przebieg.value,
             self.e_oc.value, self.e_pt.value, self.e_poj.value, self.e_moc.value,
             self.e_pal.value, self.e_skrz.value, self.e_nadwozie.value,
-            self.e_bateria.value, self.e_zasieg.value, self.e_bak.value, self.e_not.value,
+            self.e_bateria.value, self.e_zasieg.value, self.e_bak.value, self.e_zlacze.value,
+            self.e_pierwsza_rej.value, self.e_data_zakupu.value, self.e_cena_zakupu.value,
+            self.e_przebieg_zakupu.value, self.e_wartosc.value,
+            self.e_ubezpieczyciel.value, self.e_polisa.value, self.e_skladka.value,
+            self.e_assistance.value, self.e_lakier.value, self.e_opony.value,
+            self.e_felgi.value, self.e_srub.value, self.e_moment.value,
+            self.e_not.value,
             self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
             self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
             self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value,
@@ -547,47 +633,65 @@ class FormularzAutoView(ft.View):
         nowe_zdj = przygotowany_zdj if przygotowany_zdj is not None else self.zg_val
         nowy_kolor = self.get_kolor()
 
+        # Komplet pól pojazdu jako słownik, z którego składamy SQL. Ręcznie
+        # pisany UPDATE/INSERT po 50 kolumnach był miejscem, w którym jedna
+        # przesunięta wartość zapisywała ciśnienie opon do pola z żarówkami —
+        # a taki błąd nie rzuca wyjątku, tylko cicho psuje dane.
+        dane_pojazdu = {
+            "nazwa": n, "marka": marka, "model": model, "generacja": generacja,
+            "nr_rej": self.e_rej.value, "vin": self.e_vin.value,
+            "rok_produkcji": self.e_rok.value,
+            "data_pierwszej_rejestracji": (self.e_pierwsza_rej.value or None),
+            "oc_data": self.e_oc.value, "przeglad_data": self.e_pt.value,
+            "ac_data": self.e_ac.value, "assistance_data": self.e_asy.value,
+            "gasnica_data": self.e_gas.value, "apteczka_data": self.e_apt.value,
+            "gwarancja_data": self.e_gw.value, "gwarancja_przebieg": gwarancja_km,
+            "pojemnosc_silnika": self.e_poj.value, "moc_silnika": self.e_moc.value,
+            "typ_paliwa": self.e_pal.value, "skrzynia_biegow": self.e_skrz.value,
+            "nadwozie": (self.e_nadwozie.value or None),
+            "pojemnosc_baku": (self.e_bak.value or None),
+            "pojemnosc_baterii": (self.e_bateria.value or None),
+            "zasieg_ev": (self.e_zasieg.value or None),
+            "typ_zlacza_ev": (self.e_zlacze.value or None),
+            "notatki": self.e_not.value,
+            "wycieraczki_przod": self.e_wp.value, "wycieraczki_tyl": self.e_wt.value,
+            "cisnienie_przod": self.e_cp.value, "cisnienie_tyl": self.e_ct.value,
+            "olej_typ": self.e_ot.value, "olej_pojemnosc": self.e_op.value,
+            "akumulator": self.e_akum.value,
+            "zarowki_mijania": self.e_zm.value, "zarowki_drogowe": self.e_zd.value,
+            "kod_lakieru": (self.e_lakier.value or None),
+            "rozmiar_opon": (self.e_opony.value or None),
+            "rozmiar_felg": (self.e_felgi.value or None),
+            "rozstaw_srub": (self.e_srub.value or None),
+            "moment_dokrecania": (self.e_moment.value or None),
+            "data_zakupu": (self.e_data_zakupu.value or None),
+            "cena_zakupu": utils.parsuj_float(self.e_cena_zakupu.value, None),
+            "przebieg_zakupu": utils.parsuj_int(self.e_przebieg_zakupu.value, None),
+            "wartosc_szacowana": utils.parsuj_float(self.e_wartosc.value, None),
+            "ubezpieczyciel": (self.e_ubezpieczyciel.value or None),
+            "nr_polisy": (self.e_polisa.value or None),
+            "skladka_roczna": utils.parsuj_float(self.e_skladka.value, None),
+            "telefon_assistance": (self.e_assistance.value or None),
+            "zdjecie_glowne": nowe_zdj, "kolor_motywu": nowy_kolor,
+        }
+
         try:
             with db.polacz_baze() as conn:
                 if self.auto_id:
+                    przypisania = ", ".join(f"{kolumna}=?" for kolumna in dane_pojazdu)
                     conn.execute(
-                        "UPDATE samochody SET nazwa=?, nr_rej=?, vin=?, rok_produkcji=?, oc_data=?, przeglad_data=?, "
-                        "pojemnosc_silnika=?, moc_silnika=?, typ_paliwa=?, skrzynia_biegow=?, notatki=?, "
-                        "wycieraczki_przod=?, wycieraczki_tyl=?, cisnienie_przod=?, cisnienie_tyl=?, "
-                        "olej_typ=?, olej_pojemnosc=?, akumulator=?, zarowki_mijania=?, zarowki_drogowe=?, "
-                        "ac_data=?, assistance_data=?, gasnica_data=?, apteczka_data=?, gwarancja_data=?, gwarancja_przebieg=?, "
-                        "zdjecie_glowne=?, marka=?, model=?, generacja=?, kolor_motywu=?, nadwozie=?, "
-                        "pojemnosc_baterii=?, zasieg_ev=?, pojemnosc_baku=? WHERE id=?", 
-                        (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value, 
-                         self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
-                         self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
-                         self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
-                         self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
-                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None),
-                         (self.e_bateria.value or None), (self.e_zasieg.value or None),
-                         (self.e_bak.value or None), self.auto_id)
+                        f"UPDATE samochody SET {przypisania} WHERE id=?",
+                        tuple(dane_pojazdu.values()) + (self.auto_id,)
                     )
                     if self.state.auto_id == self.auto_id:
                         self.state.auto_nazwa = n
                 else:
                     cur = conn.cursor()
+                    nazwy_kolumn = ", ".join(dane_pojazdu)
+                    znaki = ",".join("?" for _ in dane_pojazdu)
                     cur.execute(
-                        "INSERT INTO samochody (nazwa, nr_rej, vin, rok_produkcji, oc_data, przeglad_data, "
-                        "pojemnosc_silnika, moc_silnika, typ_paliwa, skrzynia_biegow, notatki, "
-                        "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
-                        "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
-                        "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, "
-                        "zdjecie_glowne, marka, model, generacja, kolor_motywu, nadwozie, "
-                        "pojemnosc_baterii, zasieg_ev, pojemnosc_baku) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
-                        (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value,
-                         self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
-                         self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
-                         self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
-                         self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
-                         nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None),
-                         (self.e_bateria.value or None), (self.e_zasieg.value or None),
-                         (self.e_bak.value or None))
+                        f"INSERT INTO samochody ({nazwy_kolumn}) VALUES ({znaki})",
+                        tuple(dane_pojazdu.values())
                     )
                     n_id = cur.lastrowid
                     # Elektryk nie ma oleju ani filtra oleju — startuje z listą
@@ -609,9 +713,12 @@ class FormularzAutoView(ft.View):
                 
                 # Jeśli przebieg z formularza auta różni się od obecnego, zapisujemy to jako najnowszy odczyt
                 if prz > 0 and prz != aktualny_prz:
+                    # Korekta przebiegu z formularza pojazdu ma własne źródło —
+                    # w historii licznika od razu widać, że nie jest to odczyt
+                    # z deski rozdzielczej, tylko poprawka danych auta.
                     conn.execute(
-                        "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg) VALUES (?, ?, ?)", 
-                        (zapisane_id, datetime.now().strftime("%d.%m.%Y"), prz)
+                        "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg, zrodlo) VALUES (?, ?, ?, ?)", 
+                        (zapisane_id, datetime.now().strftime("%d.%m.%Y"), prz, "pojazd")
                     )
 
             db.zatwierdz_zalacznik(self.zg_val, przygotowany_zdj)
