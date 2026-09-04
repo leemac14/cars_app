@@ -479,6 +479,106 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             )
 
+        def widget_obserwacja():
+            """Najważniejsze spostrzeżenie o pojeździe — jedno zdanie zamiast
+            kolejnej liczby. Kokpit ma ograniczoną uwagę, więc bierzemy tylko
+            pozycję z najwyższą wagą; pełna lista jest w Statystykach → Analiza."""
+            obserwacje = db.obserwacje_analityczne(self.state.auto_id, limit=1)
+            if not obserwacje:
+                return kafel_wartosci(
+                    ft.Icons.INSIGHTS, ft.Colors.BLUE_GREY_700, "Obserwacja",
+                    "Brak sygnałów", idz_do_statystyk(3),
+                )
+            o = obserwacje[0]
+            kolor = utils.KOLORY_TONU.get(o["ton"], ft.Colors.BLUE_GREY_700)
+            return ft.Container(
+                width=SZER_KAFLA + 80, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                border=ft.Border.only(left=ft.BorderSide(3, kolor)),
+                ink=True, on_click=idz_do_statystyk(3),
+                tooltip=o["tekst"],
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(utils.ikona_z_mapy(utils.IKONY_OBSERWACJI, o["ikona"], ft.Icons.INSIGHTS),
+                                size=15, color=kolor),
+                        ft.Text(o["tytul"], size=utils.FS["caption"], color=kolor, weight="bold",
+                                expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ], spacing=6),
+                    ft.Text(o["tekst"], size=utils.FS["body"], color=ft.Colors.ON_SURFACE,
+                            max_lines=4, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            )
+
+        def widget_budzet():
+            """Pasek najbardziej zagrożonego limitu. stan_budzetow sortuje po
+            pilności, więc pierwszy element to dokładnie ten, o którym trzeba
+            wiedzieć — wszystkie paski naraz byłyby w kokpicie ścianą tekstu."""
+            stany = db.stan_budzetow(self.state.auto_id)
+            if not stany:
+                return kafel_wartosci(
+                    ft.Icons.SAVINGS, ft.Colors.BLUE_GREY_700, "Budżet",
+                    "Nie ustawiono", lambda e: utils.przejdz(self._page, "/budzet"),
+                )
+            stan = stany[0]
+            return ft.Container(
+                width=SZER_KAFLA + 80, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=lambda e: utils.przejdz(self._page, "/budzet"),
+                tooltip=f"Budżet {stan['etykieta_okresu'].lower()} — dotknij, aby zmienić limity",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.SAVINGS, size=15, color=ft.Colors.PRIMARY),
+                        ft.Text(f"Budżet • {stan['etykieta_okresu'].lower()}", size=utils.FS["caption"],
+                                color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ], spacing=6),
+                    utils.pasek_budzetu(self._page, stan),
+                ], spacing=8),
+            )
+
+        def widget_zasieg_bak():
+            dane = db.pobierz_zasieg_na_baku(self.state.auto_id)
+            if not dane:
+                return kafel_wartosci(
+                    ft.Icons.LOCAL_GAS_STATION, ft.Colors.BLUE_GREY_700, "Zasięg na baku",
+                    "Podaj pojemność", lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
+                )
+            return ft.Container(
+                width=SZER_KAFLA + 80, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=idz_do_statystyk(3),
+                tooltip="Szacunek z licznika i Twojego zużycia — nie z czujnika w aucie",
+                content=utils.wskaznik_baku(self._page, dane, kompaktowy=True),
+            )
+
+        def widget_prognoza_rok():
+            prognoza = db.prognoza_kosztow(self.state.auto_id)
+            if not prognoza:
+                return kafel_wartosci(
+                    ft.Icons.QUERY_STATS, ft.Colors.BLUE_GREY_700, "Prognoza roczna",
+                    "Za mało danych", idz_do_statystyk(3),
+                )
+            wartosc = f"{utils.formatuj_liczba(prognoza['prognoza_calego_roku'], 0)} {utils.symbol_waluty()}"
+            stopka = (f"do końca roku jeszcze "
+                      f"{utils.formatuj_liczba(prognoza['prognoza_do_konca'], 0)} {utils.symbol_waluty()}")
+            return ft.Container(
+                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=lambda e: utils.przejdz(self._page, "/rok"),
+                tooltip=f"Ekstrapolacja ze średniej z {prognoza['miesiecy_bazowych']} pełnych miesięcy",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.QUERY_STATS, size=15, color=ft.Colors.DEEP_PURPLE_700),
+                        ft.Text(f"Prognoza {prognoza['rok']}", size=utils.FS["caption"],
+                                color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(wartosc, size=utils.FS["title"], weight="bold",
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=4),
+            )
+
         self._kokpit_budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
@@ -489,6 +589,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             "ostatnia_aktywnosc": widget_ostatnia_aktywnosc,
             "kondycja": widget_kondycja,
             "zasieg_ev": widget_zasieg_ev,
+            "obserwacja": widget_obserwacja,
+            "budzet": widget_budzet,
+            "zasieg_bak": widget_zasieg_bak,
+            "prognoza_rok": widget_prognoza_rok,
         }
 
         self.kokpit_kontener = ft.Container(content=self._zawartosc_kokpitu())
@@ -1965,7 +2069,12 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             utils.przejdz(self._page, "/")
 
         self.elementy.append(utils.segmented_control(
-            self._page, [("Liczby", 0), ("Wykresy", 1), ("Tabele", 2)], self.state.stat_podzakladka, zmien_podzakladke
+            # „Analiza” stoi trzecia, ale dostaje indeks 3, a nie 2: numery
+            # podzakładek siedzą w zapamiętanym stanie użytkownika i przesunięcie
+            # ich otworzyłoby komuś Tabele zamiast Wykresów po aktualizacji.
+            self._page,
+            [("Liczby", 0), ("Wykresy", 1), ("Analiza", 3), ("Tabele", 2)],
+            self.state.stat_podzakladka, zmien_podzakladke
         ))
 
         if self.state.stat_podzakladka == 0:
@@ -2452,6 +2561,184 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 karta_cen,
                 karta_stacji,
             ])
+
+        elif self.state.stat_podzakladka == 3:
+            # ================= ANALIZA I PROGNOZY =================
+            # Zakładka odpowiada na pytania, a nie wypisuje liczby: co się zmienia,
+            # ile to będzie kosztować i czy mieszczę się w tym, co sobie założyłem.
+            obserwacje = db.obserwacje_analityczne(self.state.auto_id)
+            trend = db.analizuj_trend_spalania(self.state.auto_id)
+            bak = db.pobierz_zasieg_na_baku(self.state.auto_id)
+            prognoza = db.prognoza_kosztow(self.state.auto_id)
+            stany_budzetow = db.stan_budzetow(self.state.auto_id)
+
+            self.elementy.append(ft.Row(utils.tytul_sekcji(ft.Icons.INSIGHTS, "Co widać w danych"), spacing=8))
+            if obserwacje:
+                for o in obserwacje:
+                    self.elementy.append(utils.karta_obserwacji(self._page, o))
+            else:
+                self.elementy.append(ft.Container(
+                    padding=utils.SPACING["md"], border_radius=utils.RADIUS["lg"],
+                    bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY),
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, size=16, color=ft.Colors.PRIMARY),
+                        ft.Text(
+                            "Na razie nic nie odstaje od normy. Obserwacje pojawiają się same, "
+                            "gdy zużycie, koszty albo budżet zaczynają odbiegać od Twojej średniej.",
+                            size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                        ),
+                    ], spacing=8),
+                ))
+
+            # --- Trend zużycia ---
+            if trend:
+                czy_prad_tr = trend["rodzaj"] == db.ENERGIA_PRAD
+                kolor_tr = (ft.Colors.RED_700 if trend["kierunek"] == "wzrost"
+                            else ft.Colors.GREEN_700 if trend["kierunek"] == "spadek"
+                            else ft.Colors.BLUE_GREY_700)
+                opis_kierunku = {
+                    "wzrost": "Zużycie rośnie",
+                    "spadek": "Zużycie spada",
+                    "stabilnie": "Zużycie bez zmian",
+                }[trend["kierunek"]]
+                rocznie = db.koszt_trendu_rocznie(self.state.auto_id, trend)
+
+                wiersze_trendu = [
+                    ft.Row([
+                        ft.Column([
+                            ft.Text("Ostatnie odcinki", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(utils.formatuj_spalanie(trend["srednia_ostatnia"], elektryczny=czy_prad_tr),
+                                    weight="bold", size=utils.FS["title"], color=kolor_tr),
+                            ft.Text(f"{trend['odcinkow_ostatnio']} pomiary", size=utils.FS["caption"],
+                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                        ], spacing=2, expand=True),
+                        ft.Icon(ft.Icons.ARROW_FORWARD, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Column([
+                            ft.Text("Wcześniej", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(utils.formatuj_spalanie(trend["srednia_wczesniej"], elektryczny=czy_prad_tr),
+                                    weight="bold", size=utils.FS["title"]),
+                            ft.Text(f"{trend['odcinkow_wczesniej']} pomiarów", size=utils.FS["caption"],
+                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                        ], spacing=2, expand=True, horizontal_alignment=ft.CrossAxisAlignment.END),
+                    ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+                    ft.Row([
+                        ft.Container(
+                            padding=ft.Padding(10, 4, 10, 4), border_radius=utils.RADIUS["pill"],
+                            bgcolor=ft.Colors.with_opacity(0.15, kolor_tr),
+                            content=ft.Row([
+                                ft.Icon(ft.Icons.TRENDING_UP if trend["kierunek"] == "wzrost"
+                                        else ft.Icons.TRENDING_DOWN if trend["kierunek"] == "spadek"
+                                        else ft.Icons.TRENDING_FLAT, size=14, color=kolor_tr),
+                                ft.Text(f"{opis_kierunku} o {utils.formatuj_liczba(abs(trend['zmiana_proc']), 0)}%",
+                                        size=utils.FS["label"], weight="bold", color=kolor_tr),
+                            ], spacing=5, tight=True),
+                        ),
+                    ]),
+                ]
+                if rocznie and abs(rocznie) >= 20:
+                    wiersze_trendu.append(ft.Text(
+                        (f"Przy dotychczasowym przebiegu rocznym to około "
+                         f"{utils.formatuj_liczba(abs(rocznie))} {utils.symbol_waluty()} "
+                         f"{'więcej' if rocznie > 0 else 'mniej'} w skali roku."),
+                        size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
+                    ))
+                wiersze_trendu.append(ft.Text(
+                    f"Porównanie {trend['odcinkow_ostatnio']} ostatnich odcinków „do pełna” "
+                    f"ze średnią {trend['odcinkow_wczesniej']} wcześniejszych"
+                    + (f" (okno {trend['dni_okna']} dni)." if trend["dni_okna"] else "."),
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                ))
+                self.elementy.append(utils.karta_analizy(
+                    self._page, "Trend zużycia", ft.Icons.SPEED, wiersze_trendu, kolor_tr))
+            else:
+                self.elementy.append(utils.karta_analizy(
+                    self._page, "Trend zużycia", ft.Icons.SPEED,
+                    [ft.Text("Za mało odcinków, żeby mówić o trendzie — potrzeba co najmniej "
+                             "pięciu tankowań „do pełna”. Do tego czasu wolę nie zgadywać.",
+                             size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT)],
+                ))
+
+            # --- Zasięg na baku ---
+            if bak:
+                self.elementy.append(utils.karta_analizy(
+                    self._page, "Zasięg na baku", ft.Icons.LOCAL_GAS_STATION,
+                    [utils.wskaznik_baku(self._page, bak)], ft.Colors.TEAL_700))
+            elif db.ENERGIA_PALIWO in db.rodzaje_energii_pojazdu(self.state.auto_id):
+                self.elementy.append(utils.karta_analizy(
+                    self._page, "Zasięg na baku", ft.Icons.LOCAL_GAS_STATION,
+                    [
+                        ft.Text("Podaj pojemność baku w danych pojazdu, a policzę zasięg "
+                                "z Twojego rzeczywistego zużycia — łącznie z tym, ile zostało "
+                                "od ostatniego tankowania do pełna.",
+                                size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.FilledTonalButton(
+                            "Uzupełnij pojemność baku", icon=ft.Icons.EDIT,
+                            on_click=lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
+                        ),
+                    ], ft.Colors.TEAL_700))
+
+            # --- Prognoza ---
+            if prognoza:
+                wiersze_prognozy = [
+                    ft.Row([
+                        kafel(ft.Icons.CALENDAR_MONTH, "Średnio na miesiąc",
+                              f"{utils.formatuj_liczba(prognoza['srednia_miesieczna'])} {utils.symbol_waluty()}",
+                              ft.Colors.BLUE_700, expand=1),
+                        kafel(ft.Icons.HOURGLASS_BOTTOM, "Zostało do końca roku",
+                              f"{utils.formatuj_liczba(prognoza['prognoza_do_konca'])} {utils.symbol_waluty()}",
+                              ft.Colors.ORANGE_700, expand=1),
+                    ], spacing=10),
+                    kafel(ft.Icons.QUERY_STATS, f"Cały {prognoza['rok']} — prognoza",
+                          f"{utils.formatuj_liczba(prognoza['prognoza_calego_roku'])} {utils.symbol_waluty()}",
+                          ft.Colors.DEEP_PURPLE_700),
+                ]
+                if prognoza.get("zmiana_rdr") is not None:
+                    w_gore = prognoza["zmiana_rdr"] > 0
+                    wiersze_prognozy.append(ft.Row([
+                        ft.Icon(ft.Icons.TRENDING_UP if w_gore else ft.Icons.TRENDING_DOWN, size=16,
+                                color=ft.Colors.RED_700 if w_gore else ft.Colors.GREEN_700),
+                        ft.Text(
+                            f"{'Drożej' if w_gore else 'Taniej'} od {prognoza['rok'] - 1} roku o "
+                            f"{utils.formatuj_liczba(abs(prognoza['zmiana_rdr']), 0)}% "
+                            f"({utils.formatuj_liczba(prognoza['poprzedni_rok'])} {utils.symbol_waluty()})",
+                            size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6))
+                wiersze_prognozy.append(ft.Text(
+                    f"Ekstrapolacja ze średniej z {prognoza['miesiecy_bazowych']} pełnych miesięcy. "
+                    f"Bieżący miesiąc nie wchodzi do podstawy, żeby jego niepełność nie zaniżała wyniku. "
+                    f"Do końca roku zostało {prognoza['dni_pozostalo']} dni.",
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                ))
+                wiersze_prognozy.append(ft.FilledTonalButton(
+                    "Zobacz rok w pigułce", icon=ft.Icons.AUTO_AWESOME,
+                    on_click=lambda e: utils.przejdz(self._page, "/rok"),
+                ))
+                self.elementy.append(utils.karta_analizy(
+                    self._page, "Prognoza kosztów", ft.Icons.QUERY_STATS,
+                    wiersze_prognozy, ft.Colors.DEEP_PURPLE_700))
+
+            # --- Budżety ---
+            zawartosc_budzetu = []
+            if stany_budzetow:
+                for stan in stany_budzetow:
+                    zawartosc_budzetu.append(utils.pasek_budzetu(self._page, stan))
+                    zawartosc_budzetu.append(ft.Divider(height=8, color=ft.Colors.TRANSPARENT))
+                zawartosc_budzetu.append(ft.FilledTonalButton(
+                    "Zmień limity", icon=ft.Icons.TUNE,
+                    on_click=lambda e: utils.przejdz(self._page, "/budzet"),
+                ))
+            else:
+                zawartosc_budzetu = [
+                    ft.Text("Ustaw limit na paliwo, serwis albo wszystko razem, a kokpit "
+                            "ostrzeże Cię, zanim go przekroczysz — nie dopiero po fakcie.",
+                            size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.FilledTonalButton(
+                        "Ustaw budżet", icon=ft.Icons.SAVINGS,
+                        on_click=lambda e: utils.przejdz(self._page, "/budzet"),
+                    ),
+                ]
+            self.elementy.append(utils.karta_analizy(
+                self._page, "Budżety", ft.Icons.SAVINGS, zawartosc_budzetu, ft.Colors.GREEN_700))
 
         elif self.state.stat_podzakladka == 2:
             zdarzenia = []

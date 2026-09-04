@@ -32,6 +32,8 @@ from views.timeline_view import TimelineView
 from views.search_view import SzukajView
 from views.podzial_view import PodzialKosztowView
 from views.kosz_view import KoszView
+from views.budzet_view import BudzetView
+from views.rok_view import RokWPigulceView
 
 def main(page: ft.Page):
     page.title = "Flota Mobile"
@@ -331,9 +333,13 @@ def main(page: ft.Page):
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
 
+    # Widoki generujące własne pliki (np. grafika „Rok w pigułce”) korzystają
+    # z TEGO SAMEGO mechanizmu zapisu, co eksport danych — łącznie z udostępnianiem
+    # na telefonie. Wystawiamy go na page, tak jak zalacznik_picker i share_service.
+    page.zapisz_bajty_pliku = _zapisz_bajty_pliku
+
     def _bezpieczna_nazwa_pliku(tekst):
-        oczyszczone = "".join(c if c.isalnum() else "_" for c in str(tekst))
-        return oczyszczone.strip("_") or "pojazd"
+        return utils.bezpieczna_nazwa_pliku(tekst)
 
     async def eksportuj_dane_zaawansowane(auto_id, auto_nazwa, kategorie, od_d, do_d, opis_okresu, format_pliku, dolacz_podsumowanie, dolacz_paszport=False, po_zakonczeniu=None):
         try:
@@ -497,6 +503,15 @@ def main(page: ft.Page):
             page.views.append(EksportView(page, app_state, eksportuj_dane_zaawansowane))
         elif segmenty[0] == "import":
             page.views.append(ImportCSVView(page, app_state))
+        elif segmenty[0] == "budzet":
+            page.views.append(BudzetView(page, app_state))
+        elif segmenty[0] == "rok":
+            # /rok albo /rok/2025 — rok w adresie, żeby powrót z podglądu wracał
+            # do tego samego podsumowania, a nie zawsze do bieżącego roku.
+            page.views.append(RokWPigulceView(
+                page, app_state,
+                utils.parsuj_int(segmenty[1], None) if len(segmenty) >= 2 else None
+            ))
         elif segmenty[0] == "kalkulator":
             page.views.append(KalkulatorTrasyView(page, app_state))
         elif segmenty[0] == "timeline":

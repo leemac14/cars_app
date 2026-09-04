@@ -131,7 +131,7 @@ def dolacz_po_kodzie(kod):
 KOLUMNY_POJAZDU = [
     "nazwa", "marka", "model", "generacja", "nr_rej", "vin", "rok_produkcji",
     "oc_data", "przeglad_data", "pojemnosc_silnika", "moc_silnika", "typ_paliwa",
-    "skrzynia_biegow", "nadwozie", "pojemnosc_baterii", "zasieg_ev",
+    "skrzynia_biegow", "nadwozie", "pojemnosc_baterii", "zasieg_ev", "pojemnosc_baku",
     "notatki", "wycieraczki_przod", "wycieraczki_tyl",
     "cisnienie_przod", "cisnienie_tyl", "olej_typ", "olej_pojemnosc", "akumulator",
     "zarowki_mijania", "zarowki_drogowe", "ac_data", "assistance_data",
@@ -158,6 +158,13 @@ KONFIGURACJA_SYNC = [
     {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
     {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},
+    # Limit wydatków ustala się raz dla pojazdu, nie osobno w każdym telefonie —
+    # inaczej dwie osoby patrzyłyby na dwa różne budżety tego samego auta.
+    # 'klucz_scalania' jest tu konieczny: (kategoria, okres) ma w bazie UNIQUE,
+    # więc rekord przychodzący z chmury musi umieć wejść w istniejący lokalny
+    # wiersz zamiast rozbić się o indeks (patrz _pobierz_tabele).
+    {"tabela": "budzety", "kolumny": ["kategoria", "okres", "kwota"], "fk": {},
+     "klucz_scalania": ["kategoria", "okres"]},
 ]
 
 # Tabele bez własnej kolumny auto_id — do pojazdu dowiązane wyłącznie pośrednio,
@@ -443,6 +450,31 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig):
                         )
                         continue
             # -------------------------------------------------------------------------
+
+            # Tabele z naturalnym kluczem (dziś: budżety, z UNIQUE na
+            # kategoria+okres) nie mogą po prostu wstawić rekordu z chmury —
+            # trafiłyby w istniejący lokalny wiersz i wywróciły synchronizację
+            # na indeksie. Zamiast tego PRZEJMUJEMY ten wiersz: nadpisujemy jego
+            # wartości i przypinamy do niego zdalne id.
+            klucz_scalania = konfig.get("klucz_scalania")
+            if klucz_scalania and all(k in wartosci for k in klucz_scalania):
+                warunki = " AND ".join(f"{k}=?" for k in klucz_scalania)
+                parametry = tuple(wartosci[k] for k in klucz_scalania)
+                with db.polacz_baze() as conn:
+                    c = conn.cursor()
+                    c.execute(
+                        f"SELECT id FROM {tabela} WHERE auto_id=? AND {warunki}",
+                        (auto_id,) + parametry
+                    )
+                    istniejacy = c.fetchone()
+                    if istniejacy:
+                        przypisania_s = "".join(f"{k}=?," for k in wartosci)
+                        conn.execute(
+                            f"UPDATE {tabela} SET {przypisania_s} zdalne_id=?, zdalny_hash=? WHERE id=?",
+                            tuple(wartosci.values()) + (zdalne_id, nowy_hash, istniejacy[0])
+                        )
+                        pobrano += 1
+                        continue
             
             if tabela not in TABELE_POSREDNIE:
                 wartosci["auto_id"] = auto_id

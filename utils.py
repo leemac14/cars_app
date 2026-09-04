@@ -28,6 +28,36 @@ MAPA_KOLOROW = {
     "Limonkowy": ft.Colors.LIME,
 }
 
+# Kolor motywu pojazdu jako RGB — potrzebny poza Fletem, przy rysowaniu grafiki
+# „Roku w pigułce” (Pillow nie rozumie ft.Colors). Wartości dobrane pod ciemne
+# tło obrazka: te same barwy co w interfejsie, tylko w jaśniejszym wariancie,
+# żeby nie ginęły na granacie.
+RGB_KOLOROW_MOTYWU = {
+    "Indygo": (129, 140, 248),
+    "Czerwony": (248, 113, 113),
+    "Zielony": (74, 222, 128),
+    "Niebieski": (56, 189, 248),
+    "Szary": (203, 213, 225),
+    "Pomarańczowy": (251, 146, 60),
+    "Fioletowy": (192, 132, 252),
+    "Różowy": (244, 143, 177),
+    "Żółty": (250, 204, 21),
+    "Limonkowy": (163, 230, 53),
+}
+
+
+def rgb_koloru_motywu(nazwa_koloru):
+    return RGB_KOLOROW_MOTYWU.get(str(nazwa_koloru or ""), (56, 189, 248))
+
+
+def bezpieczna_nazwa_pliku(tekst, domyslna="pojazd"):
+    """Nazwa pliku bez znaków, których nie zniesie żaden system plików. Ta sama
+    zasada, co przy eksporcie danych — trzymamy ją tutaj, żeby korzystały z niej
+    też widoki generujące własne pliki."""
+    oczyszczone = "".join(z if z.isalnum() else "_" for z in str(tekst or ""))
+    return oczyszczone.strip("_") or domyslna
+
+
 def formatuj_liczba(wartosc, decimale=2):
     try:
         wartosc = float(wartosc)
@@ -70,6 +100,32 @@ IKONY_KOKPITU = {
     "ostatnia_aktywnosc": ft.Icons.HISTORY,
     "kondycja": ft.Icons.MONITOR_HEART,
     "zasieg_ev": ft.Icons.BATTERY_CHARGING_FULL,
+    "obserwacja": ft.Icons.INSIGHTS,
+    "budzet": ft.Icons.SAVINGS,
+    "zasieg_bak": ft.Icons.LOCAL_GAS_STATION,
+    "prognoza_rok": ft.Icons.QUERY_STATS,
+}
+
+# Klucze ikon obserwacji przychodzą z db.obserwacje_analityczne — warstwa
+# danych nie zna Fleta, więc mapowanie na konkretne ikony jest tutaj.
+IKONY_OBSERWACJI = {
+    "budzet": ft.Icons.SAVINGS,
+    "bak": ft.Icons.LOCAL_GAS_STATION,
+    "spalanie": ft.Icons.SPEED,
+    "prognoza": ft.Icons.QUERY_STATS,
+    "miesiac": ft.Icons.CALENDAR_MONTH,
+    "stacja": ft.Icons.STORE,
+    "cisza": ft.Icons.NOTIFICATIONS_PAUSED,
+}
+
+# Ton obserwacji → kolor. „uwaga” to bursztyn, nie czerwień: czerwony rezerwujemy
+# dla rzeczy, które już się wydarzyły (przekroczony budżet), żeby ostrzeżenie
+# nie krzyczało tak samo jak fakt.
+KOLORY_TONU = {
+    "zly": ft.Colors.RED_700,
+    "uwaga": ft.Colors.ORANGE_700,
+    "dobry": ft.Colors.GREEN_700,
+    "neutralny": ft.Colors.BLUE_GREY_700,
 }
 
 IKONY_AKTYWNOSCI = {
@@ -1463,6 +1519,12 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme):
         ]
 
         narzedzia = [
+            {"ikona": ft.Icons.SAVINGS, "tekst": "Budżet pojazdu",
+             "opis": "Limity na paliwo, serwis i wszystko razem",
+             "akcja": lambda: przejdz(page, "/budzet")},
+            {"ikona": ft.Icons.AUTO_AWESOME, "tekst": "Rok w pigułce",
+             "opis": "Podsumowanie roku i grafika do wysłania",
+             "akcja": lambda: przejdz(page, "/rok")},
             {"ikona": ft.Icons.MAP, "tekst": "Kalkulator podróży",
              "opis": "Policz koszt trasy przed wyjazdem",
              "akcja": lambda: przejdz(page, "/kalkulator")},
@@ -1982,21 +2044,12 @@ def formatuj_spalanie(wartosc_na_100km, decimale=1, elektryczny=False):
     """Formatuje zużycie w jednostce z Ustawień. Wejściem ZAWSZE jest zużycie
     na 100 km (l/100km albo kWh/100km) — dokładnie to, co liczy reszta aplikacji;
     przeliczenie na km/l, mpg czy km/kWh robimy dopiero tutaj."""
-    jednostka = db.pobierz_jednostke_zuzycia_ev() if elektryczny else db.pobierz_jednostke_spalania()
-    try:
-        val = float(wartosc_na_100km)
-    except (TypeError, ValueError):
+    # Samo przeliczenie siedzi w db.przelicz_zuzycie — korzystają z niego też
+    # teksty obserwacji budowane po stronie danych. Tutaj zostaje wyłącznie
+    # formatowanie liczby (spacje i przecinek dziesiętny).
+    wynik, jednostka = db.przelicz_zuzycie(wartosc_na_100km, elektryczny)
+    if wynik is None:
         return f"- {jednostka}"
-    if val <= 0:
-        return f"- {jednostka}"
-
-    if jednostka in ("km/l", "km/kWh"):
-        wynik = 100.0 / val
-    elif jednostka == "mpg":
-        wynik = 235.214583 / val
-    else:
-        wynik = val
-
     return f"{formatuj_liczba(wynik, decimale)} {jednostka}"
 
 def symbol_waluty():
@@ -3375,6 +3428,185 @@ async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, st
                     pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", ft.Colors.RED_700)
     except Exception as ex:
         pokaz_komunikat(page, f"Błąd wczytywania: {ex}", ft.Colors.RED_700)
+
+# ==================== ANALIZA: WSPÓLNE KOMPONENTY ====================
+# Kokpit, zakładka Analiza i ekran budżetów rysują te same rzeczy — jedna
+# definicja na komponent, żeby ostrzeżenie o budżecie wyglądało wszędzie tak
+# samo i żeby zmiana progu nie wymagała szukania po trzech plikach.
+
+def karta_obserwacji(page: ft.Page, obserwacja, kompaktowa=False, on_click=None):
+    """Pojedyncze spostrzeżenie z db.obserwacje_analityczne jako karta:
+    kolorowa ikona po lewej, tytuł i zdanie po prawej. Kolor niesie ton, więc
+    „budżet przekroczony” widać zanim się przeczyta treść."""
+    if not obserwacja:
+        return ft.Container(width=0, height=0)
+
+    kolor = KOLORY_TONU.get(obserwacja.get("ton"), ft.Colors.BLUE_GREY_700)
+    ikona = ikona_z_mapy(IKONY_OBSERWACJI, obserwacja.get("ikona"), ft.Icons.INSIGHTS)
+    trasa = obserwacja.get("trasa")
+    akcja = on_click or ((lambda e: przejdz(page, trasa)) if trasa else None)
+
+    tresc = [
+        ft.Text(obserwacja.get("tytul", ""), size=FS["label"], weight="bold", color=kolor),
+        ft.Text(obserwacja.get("tekst", ""), size=FS["body"], color=ft.Colors.ON_SURFACE,
+                max_lines=3 if kompaktowa else None,
+                overflow=ft.TextOverflow.ELLIPSIS if kompaktowa else None),
+    ]
+
+    return ft.Container(
+        padding=SPACING["md"], border_radius=RADIUS["lg"],
+        bgcolor=ft.Colors.with_opacity(0.07, kolor),
+        border=ft.Border.only(left=ft.BorderSide(3, kolor)),
+        ink=bool(akcja), on_click=akcja,
+        content=ft.Row([
+            ft.Container(
+                width=36, height=36, border_radius=RADIUS["md"],
+                bgcolor=ft.Colors.with_opacity(0.16, kolor),
+                alignment=ft.Alignment.CENTER,
+                content=ft.Icon(ikona, size=19, color=kolor),
+            ),
+            ft.Column(tresc, spacing=2, expand=True),
+        ], spacing=SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    )
+
+
+def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True):
+    """Wykorzystanie jednego limitu. Poza samym paskiem rysujemy pionowy
+    ZNACZNIK UPŁYWU OKRESU — miejsce, w którym wypadałoby być dzisiaj, gdyby
+    wydawać równo. Bez niego „62% limitu” nic nie mówi: w połowie miesiąca to
+    kłopot, a 28. dnia powód do zadowolenia."""
+    kolor = {
+        "przekroczony": ft.Colors.RED_700,
+        "uwaga": ft.Colors.ORANGE_700,
+        "ok": ft.Colors.GREEN_700,
+    }.get(stan.get("status"), ft.Colors.PRIMARY)
+
+    udzial = min(1.0, (stan["procent"] or 0) / 100)
+    udzial_czasu = min(1.0, stan["dni_minione"] / stan["dni_okresu"]) if stan.get("dni_okresu") else 0
+
+    WYSOKOSC = 10
+    pasek = ft.Stack([
+        ft.Container(
+            height=WYSOKOSC, border_radius=RADIUS["xs"],
+            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+        ),
+        ft.Row([
+            ft.Container(
+                height=WYSOKOSC, border_radius=RADIUS["xs"], bgcolor=kolor,
+                expand=max(1, int(udzial * 1000)),
+                animate=ft.Animation(400, ft.AnimationCurve.EASE_OUT),
+            ),
+            ft.Container(expand=max(1, int((1 - udzial) * 1000))),
+        ], spacing=0),
+        # Znacznik „gdzie powinieneś być dzisiaj” — cienka kreska w poprzek paska.
+        ft.Row([
+            ft.Container(expand=max(1, int(udzial_czasu * 1000))),
+            ft.Container(width=2, height=WYSOKOSC + 6, bgcolor=ft.Colors.ON_SURFACE,
+                         border_radius=1, tooltip="Tyle okresu już minęło"),
+            ft.Container(expand=max(1, int((1 - udzial_czasu) * 1000))),
+        ], spacing=0, alignment=ft.MainAxisAlignment.START),
+    ], height=WYSOKOSC + 6)
+
+    naglowek = ft.Row([
+        ft.Text(stan["etykieta_kategorii"], size=FS["body_strong"], weight="bold", expand=True,
+                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+        ft.Text(f"{formatuj_liczba(stan['wydano'])} / {formatuj_liczba(stan['limit'])} {symbol_waluty()}",
+                size=FS["body"], weight="bold", color=kolor),
+    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+    elementy = [naglowek, pasek]
+
+    if pokaz_szczegoly:
+        if stan["status"] == "przekroczony":
+            podpis = (f"Przekroczony o {formatuj_liczba(abs(stan['pozostalo']))} {symbol_waluty()}"
+                      f" • {formatuj_liczba(stan['procent'], 0)}% limitu")
+        elif stan.get("dzien_przekroczenia"):
+            podpis = (f"Zostało {formatuj_liczba(stan['pozostalo'])} {symbol_waluty()}"
+                      f" • w tym tempie limit padnie {stan['dzien_przekroczenia']}")
+        else:
+            podpis = (f"Zostało {formatuj_liczba(stan['pozostalo'])} {symbol_waluty()}"
+                      f" na {stan['dni_pozostalo']} dni ({stan['etykieta_okresu'].lower()})")
+        elementy.append(ft.Text(podpis, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+
+    return ft.Column(elementy, spacing=SPACING["xs"])
+
+
+def wskaznik_baku(page: ft.Page, dane, kompaktowy=False):
+    """Poziomy wskaźnik pozostałego paliwa z zasięgiem w kilometrach.
+    Zawsze z notą o szacunku — to wyliczenie z licznika i średniego zużycia,
+    a nie odczyt z pływaka, i użytkownik musi to wiedzieć, zanim zaufa liczbie
+    na trasie."""
+    if not dane:
+        return ft.Container(width=0, height=0)
+
+    procent = dane.get("procent_baku")
+    zasieg = dane.get("zasieg_pozostaly")
+    if procent is None:
+        kolor = ft.Colors.BLUE_GREY_700
+    elif procent < 15:
+        kolor = ft.Colors.RED_700
+    elif procent < 30:
+        kolor = ft.Colors.ORANGE_700
+    else:
+        kolor = ft.Colors.GREEN_700
+
+    gorny = ft.Row([
+        ft.Row([
+            ft.Icon(ft.Icons.LOCAL_GAS_STATION, size=16, color=kolor),
+            ft.Text("Szacowany zasięg", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT),
+        ], spacing=6),
+        ft.Text(f"{formatuj_liczba(zasieg, 0)} km" if zasieg is not None else "—",
+                size=FS["title"], weight="bold", color=kolor),
+    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+    elementy = [gorny]
+    if procent is not None:
+        elementy.append(ft.ProgressBar(
+            value=max(0.0, min(1.0, procent / 100)), color=kolor,
+            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+            height=8, border_radius=4,
+        ))
+
+    if not kompaktowy:
+        czesci = []
+        if dane.get("pojemnosc"):
+            czesci.append(f"bak {formatuj_liczba(dane['pojemnosc'], 0)} l")
+        if dane.get("pozostalo_jednostek") is not None:
+            czesci.append(f"~{formatuj_liczba(dane['pozostalo_jednostek'], 1)} l w baku")
+        if dane.get("zasieg_pelny"):
+            czesci.append(f"pełny bak ≈ {formatuj_liczba(dane['zasieg_pelny'], 0)} km")
+        elementy.append(ft.Text(" • ".join(czesci), size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+
+        nota = {
+            "wysoka": "Szacunek z licznika i Twojego zużycia — nie z czujnika w aucie.",
+            "srednia": "Szacunek z licznika; od ostatniego tankowania minęło już trochę czasu.",
+            "niska": "Szacunek mocno przybliżony — ostatnie tankowanie do pełna jest stare.",
+            "brak": "Brak tankowania do pełna, więc liczy się tylko zasięg na pełnym baku.",
+        }.get(dane.get("pewnosc"), "")
+        if nota:
+            elementy.append(ft.Row([
+                ft.Icon(ft.Icons.INFO_OUTLINE, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(nota, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+            ], spacing=5))
+
+    return ft.Column(elementy, spacing=SPACING["xs"])
+
+
+def karta_analizy(page: ft.Page, tytul, ikona, zawartosc, kolor=None):
+    """Sekcja zakładki Analiza: nagłówek z ikoną i treść na jednej powierzchni."""
+    kolor = kolor or ft.Colors.PRIMARY
+    return ft.Container(
+        padding=SPACING["lg"], border_radius=RADIUS["lg"],
+        **powierzchnia_karty(page, "md"),
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ikona, size=18, color=kolor),
+                ft.Text(tytul, size=FS["title"], weight="bold"),
+            ], spacing=SPACING["sm"]),
+            ft.Column(zawartosc if isinstance(zawartosc, list) else [zawartosc], spacing=SPACING["sm"]),
+        ], spacing=SPACING["sm"]),
+    )
+
 
 def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
     """Standardowa karta pozycji na liście, opcjonalnie z kolorowym paskiem

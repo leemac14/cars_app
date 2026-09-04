@@ -133,7 +133,7 @@ class FormularzAutoView(ft.View):
         m_val, mod_val, gen_val = "", "", ""
         poj_val, moc_val, pal_val, skrz_val, not_val = "", "", "Benzyna", "Manualna", ""
         nadw_val = ""
-        bat_val, zas_val = "", ""
+        bat_val, zas_val, bak_val = "", "", ""
         wp_val, wt_val, cp_val, ct_val = "", "", "", ""
         ot_val, op_val, akum_val, zm_val, zd_val = "", "", "", "", ""
         ac_val, asy_val, gas_val, apt_val = "", "", "", ""
@@ -151,7 +151,7 @@ class FormularzAutoView(ft.View):
                     "wycieraczki_przod, wycieraczki_tyl, cisnienie_przod, cisnienie_tyl, "
                     "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                     "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, zdjecie_glowne, "
-                    "marka, model, generacja, kolor_motywu, nadwozie, pojemnosc_baterii, zasieg_ev "
+                    "marka, model, generacja, kolor_motywu, nadwozie, pojemnosc_baterii, zasieg_ev, pojemnosc_baku "
                     "FROM samochody WHERE id=?", 
                     (auto_id,)
                 )
@@ -164,6 +164,7 @@ class FormularzAutoView(ft.View):
                     nadw_val = str(w["nadwozie"] or "")
                     bat_val = str(w["pojemnosc_baterii"] or "")
                     zas_val = str(w["zasieg_ev"] or "")
+                    bak_val = str(w["pojemnosc_baku"] or "")
                     wp_val, wt_val = str(w["wycieraczki_przod"] or ""), str(w["wycieraczki_tyl"] or "")
                     cp_val, ct_val = str(w["cisnienie_przod"] or ""), str(w["cisnienie_tyl"] or "")
                     ot_val, op_val = str(w["olej_typ"] or ""), str(w["olej_pojemnosc"] or "")
@@ -225,6 +226,23 @@ class FormularzAutoView(ft.View):
         # byłyby dwoma pustymi polami do przewinięcia.
         def czy_naped_z_pradem(typ):
             return typ in db.TYPY_PALIWA_ELEKTRYCZNE or typ in db.TYPY_PALIWA_DWUZRODLOWE
+
+        # Bak to odpowiednik baterii dla spalinowego: z pojemności i rzeczywistego
+        # zużycia liczy się zasięg. Przy elektryku ukryty, bo nie ma czego tankować;
+        # przy hybrydzie plug-in widoczny RAZEM z baterią — takie auto ma oba.
+        def czy_naped_z_paliwem(typ):
+            return typ not in db.TYPY_PALIWA_ELEKTRYCZNE
+
+        self.e_bak = ft.TextField(
+            label="Pojemność baku (l)", value=bak_val, hint_text="np. 55",
+            keyboard_type=ft.KeyboardType.NUMBER, visible=czy_naped_z_paliwem(pal_val), **utils.styl_pola(page=page)
+        )
+        self.info_bak = ft.Text(
+            "Z pojemności baku i Twojego rzeczywistego spalania aplikacja policzy zasięg — "
+            "na pełnym baku i ten pozostały od ostatniego tankowania do pełna.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+            visible=czy_naped_z_paliwem(pal_val),
+        )
 
         self.e_bateria = ft.TextField(
             label="Pojemność baterii (kWh)", value=bat_val, hint_text="np. 52",
@@ -311,6 +329,9 @@ class FormularzAutoView(ft.View):
             widoczne = czy_naped_z_pradem(self.e_pal.value)
             for kontrolka in (self.e_bateria, self.e_zasieg, self.info_bateria):
                 kontrolka.visible = widoczne
+            widoczne_paliwo = czy_naped_z_paliwem(self.e_pal.value)
+            for kontrolka in (self.e_bak, self.info_bak):
+                kontrolka.visible = widoczne_paliwo
             try:
                 self._page.update()
             except Exception:
@@ -320,7 +341,8 @@ class FormularzAutoView(ft.View):
 
         k2 = utils.karta_formularza(
             [self.e_pal, self.e_skrz, self.e_nadwozie, self.podglad_odznaki,
-             self.e_poj, self.e_moc, self.e_bateria, self.e_zasieg, self.info_bateria],
+             self.e_poj, self.e_moc, self.e_bak, self.info_bak,
+             self.e_bateria, self.e_zasieg, self.info_bateria],
             "Specyfikacja techniczna", ft.Icons.SETTINGS
         )
         k3 = utils.karta_formularza([self.e_oc, self.e_pt], "Ważne daty", ft.Icons.CALENDAR_MONTH)
@@ -459,7 +481,7 @@ class FormularzAutoView(ft.View):
             self.e_rej.value, self.e_rok.value, self.e_vin.value, self.e_przebieg.value,
             self.e_oc.value, self.e_pt.value, self.e_poj.value, self.e_moc.value,
             self.e_pal.value, self.e_skrz.value, self.e_nadwozie.value,
-            self.e_bateria.value, self.e_zasieg.value, self.e_not.value,
+            self.e_bateria.value, self.e_zasieg.value, self.e_bak.value, self.e_not.value,
             self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
             self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
             self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value,
@@ -535,14 +557,15 @@ class FormularzAutoView(ft.View):
                         "olej_typ=?, olej_pojemnosc=?, akumulator=?, zarowki_mijania=?, zarowki_drogowe=?, "
                         "ac_data=?, assistance_data=?, gasnica_data=?, apteczka_data=?, gwarancja_data=?, gwarancja_przebieg=?, "
                         "zdjecie_glowne=?, marka=?, model=?, generacja=?, kolor_motywu=?, nadwozie=?, "
-                        "pojemnosc_baterii=?, zasieg_ev=? WHERE id=?", 
+                        "pojemnosc_baterii=?, zasieg_ev=?, pojemnosc_baku=? WHERE id=?", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value, 
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
                          nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None),
-                         (self.e_bateria.value or None), (self.e_zasieg.value or None), self.auto_id)
+                         (self.e_bateria.value or None), (self.e_zasieg.value or None),
+                         (self.e_bak.value or None), self.auto_id)
                     )
                     if self.state.auto_id == self.auto_id:
                         self.state.auto_nazwa = n
@@ -555,15 +578,16 @@ class FormularzAutoView(ft.View):
                         "olej_typ, olej_pojemnosc, akumulator, zarowki_mijania, zarowki_drogowe, "
                         "ac_data, assistance_data, gasnica_data, apteczka_data, gwarancja_data, gwarancja_przebieg, "
                         "zdjecie_glowne, marka, model, generacja, kolor_motywu, nadwozie, "
-                        "pojemnosc_baterii, zasieg_ev) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                        "pojemnosc_baterii, zasieg_ev, pojemnosc_baku) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
                         (n, self.e_rej.value, self.e_vin.value, self.e_rok.value, self.e_oc.value, self.e_pt.value,
                          self.e_poj.value, self.e_moc.value, self.e_pal.value, self.e_skrz.value, self.e_not.value,
                          self.e_wp.value, self.e_wt.value, self.e_cp.value, self.e_ct.value,
                          self.e_ot.value, self.e_op.value, self.e_akum.value, self.e_zm.value, self.e_zd.value,
                          self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value, self.e_gw.value, gwarancja_km,
                          nowe_zdj, marka, model, generacja, nowy_kolor, (self.e_nadwozie.value or None),
-                         (self.e_bateria.value or None), (self.e_zasieg.value or None))
+                         (self.e_bateria.value or None), (self.e_zasieg.value or None),
+                         (self.e_bak.value or None))
                     )
                     n_id = cur.lastrowid
                     # Elektryk nie ma oleju ani filtra oleju — startuje z listą
