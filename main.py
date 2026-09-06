@@ -12,9 +12,9 @@ import sync
 import utils
 from state import AppState
 
-from views.main_view import MainView
+from views.ekran_glowny import MainView
 from views.history_view import HistoriaView, WizytyZbiorczeView
-from views.forms_view import (
+from views.formularze import (
     FormularzAutoView, FormularzTankowanieView, FormularzInneView,
     FormularzWizytyView, FormularzInterwalView, FormularzZadanieView,
     FormularzWpisView

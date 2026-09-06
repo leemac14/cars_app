@@ -2,6 +2,7 @@ import flet as ft
 import db
 import sync
 import utils
+from date import parsuj_date
 
 class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state, z_id):
@@ -42,7 +43,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             elementy.append(ft.Text("Brak wpisów w historii. Kliknij + aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
         else:
             opcje_sort = [
-                ("Data", "data", lambda x: (utils.parsuj_date(x[1]), x[0])),
+                ("Data", "data", lambda x: (parsuj_date(x[1]), x[0])),
                 ("Przebieg", "przebieg", lambda x: int(x[2] or 0)),
                 ("Cena", "cena", lambda x: float((x[5] if x[4] else x[3]) or 0))
             ]
@@ -321,7 +322,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
         elementy = []
         opcje_sort = [
-            ("Data", "data", lambda x: (utils.parsuj_date(x[1]), x[0])),
+            ("Data", "data", lambda x: (parsuj_date(x[1]), x[0])),
             ("Przebieg", "przebieg", lambda x: int(x[2] or 0)),
             ("Koszt", "koszt", lambda x: float(x[4] or 0))
         ]

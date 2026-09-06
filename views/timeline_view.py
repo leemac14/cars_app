@@ -2,6 +2,7 @@ import flet as ft
 import db
 import sync
 import utils
+from date import parsuj_date
 
 IKONY_TIMELINE = {
     "Tankowanie": (ft.Icons.LOCAL_GAS_STATION, ft.Colors.BLUE_700),
@@ -51,7 +52,7 @@ class TimelineView(ft.View):
             elementy.append(utils.heatmapa_aktywnosci(self._page, [z[2] for z in zdarzenia]))
 
             opcje_sort = [
-                ("Data", "data", lambda x: (utils.parsuj_date(x[2]), str(x[0]))),
+                ("Data", "data", lambda x: (parsuj_date(x[2]), str(x[0]))),
                 ("Kwota", "kwota", lambda x: float(x[5] or 0)),
             ]
 

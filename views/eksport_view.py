@@ -2,6 +2,7 @@ import flet as ft
 from datetime import datetime, timedelta, date
 import db
 import utils
+from date import parsuj_date
 
 PRESETY_OKRESU = [
     "Cały okres",
@@ -173,8 +174,8 @@ class EksportView(ft.View):
         if self.e_okres.value == "Zakres niestandardowy":
             od_txt = (self.e_od.value or "").strip()
             do_txt = (self.e_do.value or "").strip()
-            od_d = utils.parsuj_date(od_txt) if od_txt else None
-            do_d = utils.parsuj_date(do_txt) if do_txt else None
+            od_d = parsuj_date(od_txt) if od_txt else None
+            do_d = parsuj_date(do_txt) if do_txt else None
             if od_d == datetime.min.date(): od_d = None
             if do_d == datetime.min.date(): do_d = None
             if od_d and do_d and od_d > do_d:

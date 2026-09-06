@@ -2,6 +2,7 @@ import flet as ft
 from datetime import datetime
 import db
 import utils
+from date import parsuj_date
 
 class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state):
@@ -196,7 +197,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         if len(zdjecia) != 2: return
 
         # Starsze zdjęcie = "przed", nowsze = "po" (sortowanie po dacie)
-        zdjecia.sort(key=lambda z: utils.parsuj_date(z[0]))
+        zdjecia.sort(key=lambda z: parsuj_date(z[0]))
         (d_przed, s_przed, zal_przed, op_przed), (d_po, s_po, zal_po, op_po) = zdjecia
 
         SZER, WYS = 320, 420

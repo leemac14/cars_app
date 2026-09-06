@@ -3,6 +3,7 @@ from datetime import datetime
 import db
 import sync
 import utils
+from date import parsuj_date
 
 class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state):
@@ -50,7 +51,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
 
             opcje_sort = [
                 ("Priorytet", "priorytet", lambda x: db.KOLEJNOSC_PRIORYTETU.get(x[3], 9)),
-                ("Termin", "termin", lambda x: utils.parsuj_date(x[5])),
+                ("Termin", "termin", lambda x: parsuj_date(x[5])),
                 ("Nazwa", "nazwa", lambda x: str(x[1]).lower()),
                 ("Koszt", "koszt", lambda x: float(x[4] or 0)),
             ]
