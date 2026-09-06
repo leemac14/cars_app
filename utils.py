@@ -8,12 +8,10 @@ import os
 import asyncio
 import urllib.parse
 import inspect
+import dataclasses
 from state import MIESIACE_NAZWY
 from date import parsuj_date
 import sync
-
-FILTR_CALKOWITY = None
-FILTR_DZIESIETNY = None
 
 MAPA_KOLOROW = {
     "Indygo": ft.Colors.INDIGO,
@@ -259,6 +257,18 @@ def zbuduj_motyw_ciemny(kolor_seed):
     )
 
 
+# Nazwa koloru FAKTYCZNIE zastosowanego do interfejsu. Router (main.trasa_zmieniona)
+# przebudowuje motyw dopiero wtedy, gdy kolor się zmienił — bez tego znacznika
+# nie widziałby podglądu włączonego z Ustawień i porzucony (niezapisany) kolor
+# zostawał na ekranie aż do zmiany pojazdu.
+_OSTATNI_MOTYW = {"nazwa": None}
+
+
+def ostatni_zastosowany_motyw():
+    """Nazwa koloru ostatnio wgranego w page.theme — patrz zastosuj_motywy."""
+    return _OSTATNI_MOTYW["nazwa"]
+
+
 def zastosuj_motywy(page: ft.Page, nazwa_koloru):
     """Jedno miejsce ustawiające page.theme i page.dark_theme — wcześniej ta sama
     para przypisań powtarzała się w main.py (start, import bazy, zmiana pojazdu)
@@ -267,6 +277,7 @@ def zastosuj_motywy(page: ft.Page, nazwa_koloru):
     kolor_seed = MAPA_KOLOROW.get(nazwa_koloru, ft.Colors.INDIGO)
     page.theme = ft.Theme(color_scheme_seed=kolor_seed)
     page.dark_theme = zbuduj_motyw_ciemny(kolor_seed)
+    _OSTATNI_MOTYW["nazwa"] = nazwa_koloru
     return kolor_seed
 
 def tlo_karty(page: ft.Page = None, poziom=1):
@@ -705,8 +716,6 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
             zamknij_dno(page, bs)
             if akcja_docelowa:
                 res = akcja_docelowa()
-                # Używamy asyncio zamiast inspect
-                import asyncio
                 if asyncio.iscoroutine(res):
                     await res
         return wrapper
@@ -733,7 +742,7 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
     bs.content.content = ft.Column(elementy_menu, tight=True)
     otworz_dno(page, bs)
 
-def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str = None):
+def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str | None = None):
     """Menu z pozycjami POGRUPOWANYMI w rozwijane sekcje (BottomSheet).
 
     Płaskie menu z kilkunastoma pozycjami zmusza do czytania wszystkiego, żeby
@@ -754,7 +763,6 @@ def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str =
             zamknij_dno(page, bs)
             if akcja_docelowa:
                 wynik = akcja_docelowa()
-                import asyncio
                 if asyncio.iscoroutine(wynik):
                     await wynik
         return wrapper
@@ -806,7 +814,7 @@ def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str =
 
         def przelacz(e, cialo=cialo, strzalka=strzalka):
             cialo.visible = not cialo.visible
-            strzalka.name = ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN
+            ustaw_ikone(strzalka, ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN)
             try:
                 page.update()
             except Exception:
@@ -897,7 +905,7 @@ def pole_daty(page: ft.Page, label, wartosc_poczatkowa=None):
                 else:
                     pole.value = str(val)
 
-                pole.error_text = None
+                ustaw_blad(pole)
                 page.update()
 
         picker = ft.DatePicker(
@@ -919,9 +927,48 @@ def pole_daty(page: ft.Page, label, wartosc_poczatkowa=None):
     )
     return pole
 
+# ==================== ZGODNOŚĆ Z WERSJAMI FLETA ====================
+# Kontrolki Fleta to dataclassy BEZ __slots__, więc `pole.cokolwiek = x` nigdy
+# nie rzuca wyjątku — zwyczajnie dokleja nowy, nikomu niepotrzebny atrybut.
+# Skutek: po zmianie nazwy pola między wersjami kod dalej „działa”, tylko efekt
+# przestaje być widoczny (komunikat błędu się nie pokazuje, ikona się nie
+# przełącza, napis na przycisku zostaje stary). Poniższe funkcje wybierają
+# nazwę pola na podstawie DEFINICJI klasy, więc trafiają zawsze.
+
+_CACHE_POL = {}
+
+def _nazwa_pola(kontrolka, *kandydaci):
+    """Pierwsza z podanych nazw, która naprawdę istnieje w klasie kontrolki."""
+    klucz = (type(kontrolka), kandydaci)
+    if klucz not in _CACHE_POL:
+        try:
+            pola = {f.name for f in dataclasses.fields(type(kontrolka))}
+        except TypeError:
+            pola = set()
+        _CACHE_POL[klucz] = next((k for k in kandydaci if k in pola), kandydaci[-1])
+    return _CACHE_POL[klucz]
+
+def ustaw_blad(kontrolka, komunikat=None):
+    """Komunikat błędu pod polem. TextField/Checkbox mają `error`, Dropdown
+    `error_text` — a we wcześniejszych wersjach Fleta wszystkie miały
+    `error_text`. Podaj None (albo nic), żeby błąd wyczyścić."""
+    setattr(kontrolka, _nazwa_pola(kontrolka, "error_text", "error"), komunikat or None)
+
+def blad_kontrolki(kontrolka):
+    """Aktualny komunikat błędu kontrolki albo None."""
+    return getattr(kontrolka, _nazwa_pola(kontrolka, "error_text", "error"), None)
+
+def ustaw_ikone(kontrolka, ikona):
+    """Podmiana ikony już zbudowanej kontrolki (`icon`, wcześniej `name`)."""
+    setattr(kontrolka, _nazwa_pola(kontrolka, "icon", "name"), ikona)
+
+def ustaw_tekst_przycisku(przycisk, tekst):
+    """Napis na przycisku (`text`, w nowszych wersjach `content`)."""
+    setattr(przycisk, _nazwa_pola(przycisk, "text", "content"), tekst)
+
 def pokaz_bledy_formularza(page: ft.Page, bledy):
     for kontrolka, komunikat in bledy:
-        kontrolka.error_text = komunikat
+        ustaw_blad(kontrolka, komunikat)
     page.update()
     pokaz_komunikat(page, "Popraw zaznaczone pola formularza.", ft.Colors.RED_700)
 
@@ -939,7 +986,7 @@ def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, aut
 
     if ostrzezenie and getattr(pole_przebiegu, "_potwierdzona_wartosc", None) != nowy_przebieg:
         pole_przebiegu._potwierdzona_wartosc = nowy_przebieg
-        pole_przebiegu.error_text = "Niski przebieg — kliknij Zapisz ponownie, aby potwierdzić"
+        ustaw_blad(pole_przebiegu, "Niski przebieg — kliknij Zapisz ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
         return True
@@ -956,7 +1003,7 @@ def sprawdz_duplikat_tankowania(page: ft.Page, pole_kwoty: ft.TextField, auto_id
 
     if ostrzezenie and getattr(pole_kwoty, "_duplikat_potwierdzony", None) != klucz:
         pole_kwoty._duplikat_potwierdzony = klucz
-        pole_kwoty.error_text = "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić"
+        ustaw_blad(pole_kwoty, "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
         return True
@@ -973,7 +1020,7 @@ def sprawdz_duplikat_kosztu(page: ft.Page, pole_kwoty: ft.TextField, auto_id, da
 
     if ostrzezenie and getattr(pole_kwoty, "_duplikat_potwierdzony", None) != klucz:
         pole_kwoty._duplikat_potwierdzony = klucz
-        pole_kwoty.error_text = "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić"
+        ustaw_blad(pole_kwoty, "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
         return True
@@ -1186,7 +1233,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         def zapisz(e):
             dni = parsuj_int(e_dni.value, 0)
             if dni < 1:
-                e_dni.error_text = "Podaj liczbę dni (min. 1)"
+                ustaw_blad(e_dni, "Podaj liczbę dni (min. 1)")
                 e_dni.update()
                 return
             zamknij_dialog(page, dlg)
@@ -1267,7 +1314,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
 
         def przelacz(e):
             wiersze.visible = not wiersze.visible
-            strzalka.name = ft.Icons.KEYBOARD_ARROW_UP if wiersze.visible else ft.Icons.KEYBOARD_ARROW_DOWN
+            ustaw_ikone(strzalka, ft.Icons.KEYBOARD_ARROW_UP if wiersze.visible else ft.Icons.KEYBOARD_ARROW_DOWN)
             try:
                 page.update()
             except Exception:
@@ -1442,7 +1489,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         def przelacz_typ(e):
             e_kwota.visible = not e_tylko_przypomnienie.value
             if not e_kwota.visible:
-                e_kwota.error_text = None
+                ustaw_blad(e_kwota)
             page.update()
         e_tylko_przypomnienie.on_change = przelacz_typ
 
@@ -1460,8 +1507,8 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         e_data = pole_daty(page, "Następny termin", str(data_val))
 
         def zapisz(e):
-            e_nazwa.error_text = None
-            e_kwota.error_text = None
+            ustaw_blad(e_nazwa)
+            ustaw_blad(e_kwota)
             n = (e_nazwa.value or "").strip()
             czy_koszt = not e_tylko_przypomnienie.value
             kw = parsuj_float(e_kwota.value, None) if czy_koszt else 0.0
@@ -1469,7 +1516,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
             if not n: bledy.append((e_nazwa, "Podaj nazwę"))
             if czy_koszt and (kw is None or kw <= 0): bledy.append((e_kwota, "Podaj poprawną kwotę"))
             if bledy:
-                for kontrolka, komunikat in bledy: kontrolka.error_text = komunikat
+                for kontrolka, komunikat in bledy: ustaw_blad(kontrolka, komunikat)
                 page.update()
                 return
             okres_dni = parsuj_int(e_okres.value, 30)
@@ -1777,7 +1824,7 @@ def _akcja_pozycji(po_kliknieciu, ekran):
     return klik
 
 
-def _wiersz_szuflady(page, state, ekran, akcje, liczniki, aktywny, po_kliknieciu):
+def _wiersz_szuflady(ekran, liczniki, aktywny, po_kliknieciu):
     """Pojedyncza pozycja w szufladzie. Aktywny ekran dostaje wypełnioną pigułkę
     zamiast samego pogrubienia — w pionowej liście dwudziestu wierszy pogrubienie
     jest za słabym sygnałem, żeby dało się je złapać kątem oka."""
@@ -1844,7 +1891,7 @@ def zbuduj_szuflade(page: ft.Page, state, akcje=None, aktywny_ekran=None, on_poj
 
     def wiersz(ekran):
         return _wiersz_szuflady(
-            page, state, ekran, akcje, liczniki,
+            ekran, liczniki,
             aktywny=(ekran["id"] == aktywny_ekran), po_kliknieciu=przejdz_do,
         )
 
@@ -2568,7 +2615,6 @@ def wysokosc_listy(page: ft.Page, udzial=0.5, minimalna=260):
     return max(minimalna, int(wys_ekranu * udzial))
 
 def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False, page: ft.Page = None):
-    import flet as ft
     powierzchnia = powierzchnia_karty(page, "md")
 
     if not tytul:
@@ -2592,7 +2638,7 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False,
 
     def przelacz_rozwijanie(e):
         cialo.visible = not cialo.visible
-        ikona_strzalki.name = ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN
+        ustaw_ikone(ikona_strzalki, ft.Icons.KEYBOARD_ARROW_UP if cialo.visible else ft.Icons.KEYBOARD_ARROW_DOWN)
         e.control.page.update()
 
     naglowek = ft.Container(
@@ -2783,11 +2829,11 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                     )
                     
                     def zapisz_zmiany(e_btn):
-                        e_nazwa.error_text = None
+                        ustaw_blad(e_nazwa)
                         nowa_nazwa = (e_nazwa.value or "").strip()
                         
                         if "," in nowa_nazwa:
-                            e_nazwa.error_text = "Nazwa nie może zawierać przecinków"
+                            ustaw_blad(e_nazwa, "Nazwa nie może zawierać przecinków")
                             e_nazwa.update()
                             return
 
@@ -2859,11 +2905,11 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
             **styl_dropdown()
         )
         def zapisz_nowy(e):
-            e_nazwa.error_text = None
+            ustaw_blad(e_nazwa)
             n = (e_nazwa.value or "").strip()
             
             if "," in n:
-                e_nazwa.error_text = "Nazwa nie może zawierać przecinków"
+                ustaw_blad(e_nazwa, "Nazwa nie może zawierać przecinków")
                 e_nazwa.update()
                 return
 
@@ -2927,21 +2973,6 @@ def znacznik_atrybucji(dodane_przez, zmodyfikowane_przez=None, data_modyfikacji=
             ft.Icon(ft.Icons.PERSON_OUTLINE, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
             ft.Text(" | ".join(fragmenty), size=11, color=ft.Colors.ON_SURFACE_VARIANT),
         ], spacing=4),
-    )
-
-def znacznik_dodane_przez(nazwa):
-    """Mały, dyskretny 'chip' pokazujący kto dodał wpis — używany tylko przy
-    współdzielonych pojazdach, gdzie mogła to zrobić inna osoba."""
-    if not nazwa:
-        return ft.Container(width=0, height=0)
-    return ft.Container(
-        padding=ft.Padding(6, 2, 6, 2),
-        border_radius=6,
-        bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.TEAL_700),
-        content=ft.Row([
-            ft.Icon(ft.Icons.PERSON, size=10, color=ft.Colors.TEAL_700),
-            ft.Text(str(nazwa), size=10, weight="bold", color=ft.Colors.TEAL_700)
-        ], spacing=3, tight=True)
     )
 
 # ==================== KRÓTKA NOTATKA PRZY WPISIE ====================
@@ -3217,8 +3248,11 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
         else:
             ustaw_z_bazy(wart)
 
-    e_dropdown.on_change = po_zmianie
-    
+    # ft.Dropdown reaguje na `on_select`, nie na `on_change` (Flet 0.86) — bez tego
+    # wybór warsztatu z listy nie podstawiał jego telefonu ani adresu, więc przyciski
+    # „Zadzwoń” i „Nawiguj” nigdy się nie pojawiały.
+    e_dropdown.on_select = po_zmianie
+
     if pasujacy_start and not pokaz_reczne:
         stan["telefon"], stan["adres"] = pasujacy_start[2], pasujacy_start[3]
         odswiez_akcje()
@@ -3590,7 +3624,6 @@ def pokaz_podglad_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik
         return
         
     # 2. Pełnoekranowy podgląd zdjęcia z możliwością przybliżania (pinch-to-zoom)
-    import flet as ft
     img = ft.Image(src=abs_path, fit="contain") 
     
     viewer = ft.InteractiveViewer(

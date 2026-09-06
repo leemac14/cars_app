@@ -1347,37 +1347,6 @@ def pobierz_przypiete_ekrany():
     except Exception:
         return list(DOMYSLNE_PRZYPIETE)
 
-def czy_ekran_przypiety(ekran_id):
-    return str(ekran_id) in set(pobierz_przypiete_ekrany())
-
-def przelacz_przypiecie_ekranu(ekran_id):
-    """Zwraca (czy_przypiety_po_zmianie, komunikat). Limit jest po to, żeby siatka
-    skrótów została siatką, a nie drugą kopią szuflady."""
-    ekran_id = str(ekran_id)
-    obecne = pobierz_przypiete_ekrany()
-    if ekran_id in obecne:
-        nowe = [e for e in obecne if e != ekran_id]
-    else:
-        if len(obecne) >= MAKS_PRZYPIETYCH:
-            return True, f"Skróty mieszczą {MAKS_PRZYPIETYCH} pozycji — odepnij coś najpierw."
-        nowe = obecne + [ekran_id]
-
-    try:
-        with polacz_baze() as conn:
-            conn.execute("UPDATE ekrany_uzycie SET przypiety=0, kolejnosc=0")
-            for poz, eid in enumerate(nowe):
-                conn.execute(
-                    "INSERT INTO ekrany_uzycie (ekran_id, przypiety, kolejnosc) VALUES (?, 1, ?) "
-                    "ON CONFLICT(ekran_id) DO UPDATE SET przypiety=1, kolejnosc=excluded.kolejnosc",
-                    (eid, poz)
-                )
-        zapisz_ustawienie("skroty_wyczyszczone", "0" if nowe else "1")
-    except Exception:
-        return ekran_id in obecne, "Nie udało się zapisać skrótu."
-
-    przypiety = ekran_id in nowe
-    return przypiety, ("Dodano do skrótów na Kokpicie." if przypiety else "Usunięto ze skrótów.")
-
 def liczniki_nawigacji(auto_id):
     """Odznaki przy pozycjach nawigacji — POLICZONE RAZ, jednym wejściem do bazy.
     Szuflada, kafelki sekcji i pasek zakładek pokazują te same liczby, więc
@@ -5318,22 +5287,6 @@ def dodaj_warsztat(auto_id, nazwa, telefon=None, adres=None, notatki=None):
         )
         return c.lastrowid
 
-def edytuj_warsztat(warsztat_id, nazwa, telefon=None, adres=None, notatki=None):
-    with polacz_baze() as conn:
-        conn.execute(
-            "UPDATE warsztaty SET nazwa=?, telefon=?, adres=?, notatki=? WHERE id=?",
-            (nazwa, telefon or None, adres or None, notatki or None, warsztat_id)
-        )
-
-def usun_warsztat(warsztat_id):
-    with polacz_baze() as conn:
-        c = conn.cursor()
-        c.execute("SELECT zdalne_id FROM warsztaty WHERE id=?", (warsztat_id,))
-        w = c.fetchone()
-        conn.execute("DELETE FROM warsztaty WHERE id=?", (warsztat_id,))
-    if w and w[0]:
-        zarejestruj_nagrobek("warsztaty", w[0])
-
 # ==================== WYDATKI CYKLICZNE ====================
 
 def pobierz_wydatki_cykliczne(auto_id):
@@ -5802,15 +5755,6 @@ def usun_plik_zalacznika(sciezka_wzgledna):
     except Exception:
         pass
 
-def finalizuj_zalacznik(stara_sciezka, wynik_komponentu):
-    if wynik_komponentu is None:
-        return stara_sciezka
-    if wynik_komponentu == "":
-        usun_plik_zalacznika(stara_sciezka)
-        return None
-    usun_plik_zalacznika(stara_sciezka)
-    return zapisz_zalacznik(wynik_komponentu)
-
 # Dwuetapowy, bezpieczny zapis załącznika: "przygotuj" (zapisz nowy plik, NIE ruszaj
 # starego) + "zatwierdź" (dopiero po udanym zapisie do bazy kasuje stary plik).
 # Błąd zapisu do bazy nie kasuje już poprawnego, starego załącznika.
@@ -5830,13 +5774,6 @@ def zatwierdz_zalacznik(stara_sciezka, przygotowany):
 def anuluj_nowy_zalacznik(przygotowany):
     if przygotowany:
         usun_plik_zalacznika(przygotowany)
-
-def zalacznik_rekordu(tabela, rekord_id):
-    with polacz_baze() as conn:
-        c = conn.cursor()
-        c.execute(f"SELECT zalacznik FROM {tabela} WHERE id=?", (rekord_id,))
-        w = c.fetchone()
-        return w[0] if w else None
 
 # Tabele bez własnej kolumny auto_id — pojazd wyznacza dopiero JOIN.
 _ZAPYTANIA_AUTO_ID = {
@@ -5915,19 +5852,19 @@ def usun_wizyty_z_cofnieciem(ids_list):
         placeholders = ",".join("?" for _ in ids_list)
 
         # 1. Pobieramy wizyty
-        c.execute(f"PRAGMA table_info(wizyty)")
+        c.execute("PRAGMA table_info(wizyty)")
         kolumny_wizyty = [r["name"] for r in c.fetchall()]
         c.execute(f"SELECT * FROM wizyty WHERE id IN ({placeholders})", tuple(ids_list))
         wizyty_dane = [{k: w[k] for k in kolumny_wizyty} for w in c.fetchall()]
 
         # 2. Pobieramy powiązaną historię
-        c.execute(f"PRAGMA table_info(historia)")
+        c.execute("PRAGMA table_info(historia)")
         kolumny_historia = [r["name"] for r in c.fetchall()]
         c.execute(f"SELECT * FROM historia WHERE wizyta_id IN ({placeholders})", tuple(ids_list))
         historia_dane = [{k: w[k] for k in kolumny_historia} for w in c.fetchall()]
 
         # 3. Pobieramy użyte części
-        c.execute(f"PRAGMA table_info(wizyta_czesci_magazynu)")
+        c.execute("PRAGMA table_info(wizyta_czesci_magazynu)")
         kolumny_czesci = [r["name"] for r in c.fetchall()]
         c.execute(f"SELECT * FROM wizyta_czesci_magazynu WHERE wizyta_id IN ({placeholders})", tuple(ids_list))
         czesci_dane = [{k: w[k] for k in kolumny_czesci} for w in c.fetchall()]
@@ -7000,7 +6937,6 @@ class _RaportPDF(FPDF if FPDF is not None else object):
                 self.czcionka = "Helvetica"
 
     def t(self, tekst):
-        import re
         tekst = "" if tekst is None else str(tekst)
         
         # 1. Zamieniamy typograficzne ozdobniki z aplikacji na zwykłe odpowiedniki ASCII
@@ -7035,7 +6971,6 @@ MIESIACE_SKROT = ["sty", "lut", "mar", "kwi", "maj", "cze",
 # wbudowana czcionka Pillow, przy której transliterujemy polskie znaki (dokładnie
 # ta sama zasada, co w eksporcie PDF).
 _CZCIONKI_KANDYDACI = [
-    ("assets", "DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
     ("C:/Windows/Fonts", "segoeui.ttf", "segoeuib.ttf"),
     ("C:/Windows/Fonts", "arial.ttf", "arialbd.ttf"),
     ("/system/fonts", "Roboto-Regular.ttf", "Roboto-Bold.ttf"),
@@ -7046,8 +6981,7 @@ _CZCIONKI_KANDYDACI = [
 
 def _znajdz_czcionki_grafiki():
     """(ścieżka_regular, ścieżka_bold) albo (None, None), gdy nic nie znaleziono."""
-    kandydaci = [(FOLDER_ASSETS, "DejaVuSans.ttf", "DejaVuSans-Bold.ttf")]
-    kandydaci += [(folder, reg, bold) for folder, reg, bold in _CZCIONKI_KANDYDACI[1:]]
+    kandydaci = [(FOLDER_ASSETS, "DejaVuSans.ttf", "DejaVuSans-Bold.ttf")] + _CZCIONKI_KANDYDACI
     for folder, reg, bold in kandydaci:
         sciezka_reg = os.path.join(folder, reg)
         if os.path.exists(sciezka_reg):
@@ -7509,7 +7443,7 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         szer_kol = szer_strony / len(naglowki)
         maks_znakow = max(4, int(szer_kol / 1.8))
 
-        def naglowek_tabeli():
+        def naglowek_tabeli(naglowki=naglowki, szer_kol=szer_kol):
             pdf.set_font(pdf.czcionka, "B", 8.5)
             pdf.set_fill_color(230, 230, 230)
             for h in naglowki:
@@ -7624,8 +7558,8 @@ def _normalizuj_naglowek(tekst):
 
 def _parsuj_liczbe_csv(tekst):
     """Odporny parser liczby z arkusza: '1 234,56', '1,234.56', '12.5', '12,5',
-    '45,20 zł'. Zwraca float albo None. Bez regexpów — db.py nie importuje 're'
-    globalnie."""
+    '45,20 zł'. Zwraca float albo None. Celowo bez regexpów — pojedyncze przejście
+    po znakach jest tu czytelniejsze i szybsze niż wzorzec."""
     if tekst is None:
         return None
     s = str(tekst).replace("\u00a0", " ").strip()

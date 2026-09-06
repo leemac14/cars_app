@@ -420,9 +420,8 @@ class PorownanieView(ft.View):
             **utils.styl_dropdown(page=self._page)
         )
 
-        # Podpinamy pod oba potencjalne zdarzenia Flet
+        # ft.Dropdown we Flecie 0.86 reaguje wyłącznie na on_select.
         dropdown.on_select = zmien
-        dropdown.on_change = zmien
 
         return dropdown
 

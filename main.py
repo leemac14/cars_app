@@ -2,6 +2,7 @@ import flet as ft
 import os
 import shutil
 import inspect
+import dataclasses
 import zipfile
 import tempfile
 import io
@@ -394,7 +395,9 @@ def main(page: ft.Page):
 
     def przelacz_tryb(e=None):
         obecny = db.pobierz_tryb_motywu()
-        nowy = db.KOLEJNOSC_TRYBOW_MOTYWU[(db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny) + 1) % 3]
+        nowy = db.KOLEJNOSC_TRYBOW_MOTYWU[
+            (db.KOLEJNOSC_TRYBOW_MOTYWU.index(obecny) + 1) % len(db.KOLEJNOSC_TRYBOW_MOTYWU)
+        ]
         db.zapisz_tryb_motywu(nowy)
         utils.zastosuj_motywy(page, db.pobierz_kolor_auta(app_state.auto_id))
         zastosuj_tryb_motywu()
@@ -408,8 +411,13 @@ def main(page: ft.Page):
         # ustawień, zmiana koloru pojazdu, przełączenie aktywnego auta, import
         # bazy) — nie przy każdej nawigacji. Każdy pojazd może mieć własny
         # kolor (db.pobierz_kolor_auta), z fallbackiem na globalny domyślny.
+        # Porównujemy z kolorem FAKTYCZNIE wgranym w page.theme, a nie z własnym
+        # licznikiem: podgląd palety w Ustawieniach zmienia motyw poza routerem,
+        # więc wyjście bez zapisu musi go cofnąć.
         kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
-        if kolor_biezacy != kolor_motywu_zastosowany["nazwa"] or app_state.auto_id != kolor_motywu_zastosowany["auto_id"]:
+        if (kolor_biezacy != kolor_motywu_zastosowany["nazwa"]
+                or kolor_biezacy != utils.ostatni_zastosowany_motyw()
+                or app_state.auto_id != kolor_motywu_zastosowany["auto_id"]):
             utils.zastosuj_motywy(page, kolor_biezacy)
             kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
             kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
@@ -547,7 +555,13 @@ def main(page: ft.Page):
             if hasattr(aktywny_widok, "dostosuj_wysokosc_listy"):
                 aktywny_widok.dostosuj_wysokosc_listy()
 
-    page.on_resized = na_zmiane_rozmiaru
+    # Zdarzenie nazywa się `on_resize`; starsze wersje Fleta miały `on_resized`.
+    # ft.Page to dataclass bez __slots__, więc zła nazwa nie rzuca błędu — po
+    # prostu nikt nigdy nie przelicza wysokości list po obrocie ekranu.
+    if any(f.name == "on_resize" for f in dataclasses.fields(type(page))):
+        page.on_resize = na_zmiane_rozmiaru
+    else:
+        page.on_resized = na_zmiane_rozmiaru
 
     page.on_route_change = trasa_zmieniona
     page.on_view_pop = widok_zamkniety

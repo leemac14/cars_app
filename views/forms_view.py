@@ -437,12 +437,12 @@ class FormularzAutoView(ft.View):
         vin = (self.e_vin.value or "").strip().upper()
 
         if not vin or len(vin) != 17:
-            self.e_vin.error_text = "Wpisz pełny, 17-znakowy numer VIN"
+            utils.ustaw_blad(self.e_vin, "Wpisz pełny, 17-znakowy numer VIN")
             self._page.update()
             utils.pokaz_komunikat(self._page, "VIN jest pusty albo ma nieprawidłową długość (wymagane dokładnie 17 znaków).", ft.Colors.RED_700)
             return
 
-        self.e_vin.error_text = None
+        utils.ustaw_blad(self.e_vin)
         self.btn_dekoduj_vin.icon = ft.Icons.HOURGLASS_TOP
         self.btn_dekoduj_vin.disabled = True
         self._page.update()
@@ -580,11 +580,11 @@ class FormularzAutoView(ft.View):
 
     def zapisz(self, e):
         for pole in (self.e_marka, self.e_model, self.e_rok, self.e_vin):
-            pole.error_text = None
+            utils.ustaw_blad(pole)
 
         bledy = []
         
-        self.e_przebieg.error_text = None
+        utils.ustaw_blad(self.e_przebieg)
         prz = utils.parsuj_int(self.e_przebieg.value, 0)
         if prz < 0:
             bledy.append((self.e_przebieg, "Błędny przebieg"))
@@ -605,7 +605,7 @@ class FormularzAutoView(ft.View):
         if self.e_vin.value and len(self.e_vin.value) > 17:
             bledy.append((self.e_vin, "Maks. 17 znaków"))
 
-        self.e_gwp.error_text = None
+        utils.ustaw_blad(self.e_gwp)
         gwarancja_km = None
         if (self.e_gwp.value or "").strip():
             gwarancja_km = utils.parsuj_int(self.e_gwp.value, None)
@@ -623,8 +623,8 @@ class FormularzAutoView(ft.View):
             c = conn.cursor()
             c.execute("SELECT id FROM samochody WHERE LOWER(nazwa)=LOWER(?) AND id!=?", (n, self.auto_id or 0))
             if c.fetchone():
-                self.e_marka.error_text = "Pojazd o tej samej konfiguracji już istnieje!"
-                self.e_model.error_text = "Zmień dane, aby były unikalne."
+                utils.ustaw_blad(self.e_marka, "Pojazd o tej samej konfiguracji już istnieje!")
+                utils.ustaw_blad(self.e_model, "Zmień dane, aby były unikalne.")
                 self._page.update()
                 return utils.pokaz_komunikat(self._page, "Pojazd o takiej nazwie już istnieje w bazie.", ft.Colors.RED_700)
 
@@ -944,7 +944,7 @@ class FormularzTankowanieView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        for pole in (self.e_p, self.e_dys, self.e_l, self.e_k): pole.error_text = None
+        for pole in (self.e_p, self.e_dys, self.e_l, self.e_k): utils.ustaw_blad(pole)
         prz = utils.parsuj_int(self.e_p.value, 0)
         dys = utils.parsuj_float(self.e_dys.value, 0.0)
         lit = utils.parsuj_float(self.e_l.value, 0.0)
@@ -1060,7 +1060,7 @@ class FormularzInneView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        for pole in (self.e_o, self.e_kw): pole.error_text = None
+        for pole in (self.e_o, self.e_kw): utils.ustaw_blad(pole)
         opis, kwo = (self.e_o.value or "").strip(), utils.parsuj_float(self.e_kw.value, 0.0)
         bledy = []
         if not opis: bledy.append((self.e_o, "Podaj opis"))
@@ -1090,6 +1090,8 @@ class FormularzInneView(ft.View):
 
         utils.zapisz_notatke_z_formularza("inne_koszty", rekord_id, self.k_notatka.value, self.notatka_bazowa)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "inny koszt")
 
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano koszt z nowymi tagami!")
@@ -1161,8 +1163,8 @@ class FormularzZadanieView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        self.e_p.error_text = None
-        self.e_c.error_text = None
+        utils.ustaw_blad(self.e_p)
+        utils.ustaw_blad(self.e_c)
         nazwa = db.normalizuj_nazwe(self.e_n.value)
         if not nazwa: return utils.pokaz_bledy_formularza(self._page, [(self.e_n, "Podaj nazwę")])
 
@@ -1214,6 +1216,7 @@ class FormularzZadanieView(ft.View):
         if not self.z_id and self.c_dodaj_wymiane.value:
             db.aktualizuj_najnowszy_wpis(nowe_z_id)
 
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "podzespół")
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano podzespół i wpis!")
 
@@ -1292,8 +1295,8 @@ class FormularzInterwalView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        self.e_ik.error_text = None
-        self.e_im.error_text = None
+        utils.ustaw_blad(self.e_ik)
+        utils.ustaw_blad(self.e_im)
         vk, vm = utils.parsuj_int(self.e_ik.value, None), utils.parsuj_int(self.e_im.value, None)
 
         if not vk and not vm:
@@ -1316,6 +1319,7 @@ class FormularzInterwalView(ft.View):
                 "UPDATE zadania SET interwal_km=?, interwal_miesiace=?, prog_km=?, prog_dni=? WHERE id=?",
                 (vk, vm, prog_km_zapis, prog_dni_zapis, self.z_id)
             )
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "interwał")
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano interwały.")
 
@@ -1335,8 +1339,6 @@ class FormularzWpisView(ft.View):
         self.state = state
         self.h_id = h_id
         self.z_id = z_id_param
-        duplikuj_id = getattr(state, "duplikuj_zrodlo_wpis", None) if not h_id else None
-        state.duplikuj_zrodlo_wpis = None
 
         if h_id:
             with db.polacz_baze() as conn:
@@ -1479,7 +1481,7 @@ class FormularzWpisView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        for pole in (self.e_p, self.e_c): pole.error_text = None
+        for pole in (self.e_p, self.e_c): utils.ustaw_blad(pole)
         prz, kos = utils.parsuj_int(self.e_p.value, 0), utils.parsuj_float(self.e_c.value, 0.0)
         bledy = []
         if not (self.e_p.value or "").strip() or prz < 0: bledy.append((self.e_p, "Błędny przebieg"))
@@ -1487,14 +1489,14 @@ class FormularzWpisView(ft.View):
 
         nowe_uzyte = []
         for chk, pole_ilosc, poz in self.magazyn_kontrolki:
-            pole_ilosc.error_text = None
+            utils.ustaw_blad(pole_ilosc)
             if self.c_uzyj_magazynu.value and chk.value:
                 ilosc = utils.parsuj_float(pole_ilosc.value, None)
                 if ilosc is None or ilosc <= 0 or ilosc > poz["dostepna"] + 1e-9:
-                    pole_ilosc.error_text = f"Maks. {utils.formatuj_liczba(poz['dostepna'], 2)}"
+                    utils.ustaw_blad(pole_ilosc, f"Maks. {utils.formatuj_liczba(poz['dostepna'], 2)}")
                 else:
                     nowe_uzyte.append((poz["id"], ilosc))
-        blad_magazynu = any(pole.error_text for _, pole, _ in self.magazyn_kontrolki)
+        blad_magazynu = any(utils.blad_kontrolki(pole) for _, pole, _ in self.magazyn_kontrolki)
 
         if bledy or blad_magazynu:
             self._page.update()
@@ -1541,6 +1543,7 @@ class FormularzWpisView(ft.View):
             db.zarejestruj_nagrobek("historia_czesci_magazynu", zid)
 
         db.aktualizuj_najnowszy_wpis(self.z_id)
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "wpis serwisowy")
         utils.przejdz(self._page, self.trasa_powrotu)
         utils.pokaz_komunikat(self._page, "Zapisano wpis!")
 
@@ -1951,15 +1954,15 @@ class FormularzWizytyView(ft.View):
         bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
 
         def zapisz(e):
-            e_nazwa.error_text = None
+            utils.ustaw_blad(e_nazwa)
             nowa_nazwa = (e_nazwa.value or "").strip()
             if not nowa_nazwa:
-                e_nazwa.error_text = "Podaj nazwę"
+                utils.ustaw_blad(e_nazwa, "Podaj nazwę")
                 e_nazwa.update()
                 return
             nowe_pozycje = [chk.label for chk in checkboxy if chk.value] + nieobecne
             if not nowe_pozycje:
-                e_nazwa.error_text = "Zaznacz choć jeden podzespół"
+                utils.ustaw_blad(e_nazwa, "Zaznacz choć jeden podzespół")
                 e_nazwa.update()
                 return
 
@@ -2056,27 +2059,27 @@ class FormularzWizytyView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        self.e_p.error_text = None
-        self.e_k.error_text = None
+        utils.ustaw_blad(self.e_p)
+        utils.ustaw_blad(self.e_k)
         prz, kos = utils.parsuj_int(self.e_p.value, 0), utils.parsuj_float(self.e_k.value, 0.0)
         bledy = []
         if not (self.e_p.value or "").strip(): bledy.append((self.e_p, "Wymagane"))
-        if kos < 0: bledy.append((self.e_k, "Wymagane"))
+        if kos < 0: bledy.append((self.e_k, "Koszt nie może być ujemny"))
         
         wybrane = [chk.data for chk in self.chk_czesci if chk.value]
         self.blad_czesci.value = "Zaznacz co najmniej jedną część!" if not wybrane else ""
 
         nowe_uzyte = []
         for chk, pole_ilosc, poz in self.magazyn_kontrolki:
-            pole_ilosc.error_text = None
+            utils.ustaw_blad(pole_ilosc)
             if self.c_uzyj_magazynu.value and chk.value:
                 ilosc = utils.parsuj_float(pole_ilosc.value, None)
                 if ilosc is None or ilosc <= 0 or ilosc > poz["dostepna"] + 1e-9:
-                    pole_ilosc.error_text = f"Maks. {utils.formatuj_liczba(poz['dostepna'], 2)}"
+                    utils.ustaw_blad(pole_ilosc, f"Maks. {utils.formatuj_liczba(poz['dostepna'], 2)}")
                 else:
                     nowe_uzyte.append((poz["id"], ilosc))
 
-        blad_magazynu = any(pole.error_text for _, pole, _ in self.magazyn_kontrolki)
+        blad_magazynu = any(utils.blad_kontrolki(pole) for _, pole, _ in self.magazyn_kontrolki)
 
         if bledy or self.blad_czesci.value or blad_magazynu:
             self._page.update()
@@ -2144,5 +2147,6 @@ class FormularzWizytyView(ft.View):
             db.zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
 
         db.przelicz_wszystkie_zadania(self.state.auto_id)
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "wizyta")
         utils.przejdz(self._page, "/wizyty")
         utils.pokaz_komunikat(self._page, "Zapisano wizytę!")

@@ -20,11 +20,10 @@ class WspoldzielenieView(ft.View):
 
         if wspolny_id:
             def _kopiuj(e, k=kod):
-                try:
-                    self._page.set_clipboard(k or "")
-                except Exception:
-                    pass
-                utils.pokaz_komunikat(self._page, "Skopiowano kod!")
+                # Przez utils, bo page.set_clipboard istnieje tylko w starszych
+                # wersjach Fleta — wcześniej wyjątek był łykany, a komunikat
+                # „Skopiowano kod!” pokazywał się mimo pustego schowka.
+                utils.kopiuj_do_schowka(self._page, k or "", "Skopiowano kod!")
 
             # 1. Status współdzielenia
             elementy.append(utils.karta_formularza([
@@ -137,7 +136,7 @@ class WspoldzielenieView(ft.View):
     def _dolacz(self, e):
         kod = (self.e_kod.value or "").strip()
         if not kod:
-            self.e_kod.error_text = "Podaj kod"
+            utils.ustaw_blad(self.e_kod, "Podaj kod")
             self._page.update()
             return
 

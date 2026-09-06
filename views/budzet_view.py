@@ -119,7 +119,7 @@ class BudzetView(ft.View):
         do_zapisu = []
         bledy = []
         for (kategoria, okres), pole in self.pola.items():
-            pole.error_text = None
+            utils.ustaw_blad(pole)
             tekst = (pole.value or "").strip()
             if not tekst:
                 do_zapisu.append((kategoria, okres, 0.0))
@@ -133,13 +133,11 @@ class BudzetView(ft.View):
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
-        zmienione = 0
         for kategoria, okres, kwota in do_zapisu:
             db.zapisz_budzet(self.state.auto_id, kategoria, okres, kwota)
-            zmienione += 1
 
         # Limit jest częścią danych pojazdu, więc przy współdzieleniu leci do
         # partnera tą samą drogą co reszta — inaczej każdy patrzyłby na swój.
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "budżet")
         utils.przejdz(self._page, "/budzet")
-        utils.pokaz_komunikat(self._page, "Zapisano limity." if zmienione else "Brak zmian.")
+        utils.pokaz_komunikat(self._page, "Zapisano limity.")

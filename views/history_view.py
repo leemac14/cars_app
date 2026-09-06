@@ -522,7 +522,9 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
                 self.lista_kart.controls.append(karta)
 
-        elementy.append(self.lista_kart)
+            # Lista dokładana TYLKO gdy są wizyty — pusty ListView ma stałą wysokość
+            # i zostawiał pod komunikatem „Brak wizyt…” pół ekranu pustki.
+            elementy.append(self.lista_kart)
 
         super().__init__(
             route="/wizyty",

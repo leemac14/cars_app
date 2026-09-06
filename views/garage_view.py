@@ -445,7 +445,13 @@ class FormularzOponyView(ft.View):
                     self.zalacznik_val = w[13] if len(w) > 13 else None
 
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
-        self.e_sezon = ft.Dropdown(label="Sezon", options=[ft.DropdownOption(key=s, text=f"{IKONY_SEZONU[s]} {s}") for s in SEZONY], value=sezon_val, **utils.styl_dropdown())
+        # Ikona idzie do leading_icon, a NIE do tekstu: ft.Icons to wyliczenie,
+        # więc f"{IKONY_SEZONU[s]} {s}" renderowało się jako „74139 Letnie”.
+        self.e_sezon = ft.Dropdown(
+            label="Sezon",
+            options=[ft.DropdownOption(key=s, text=s, leading_icon=IKONY_SEZONU[s]) for s in SEZONY],
+            value=sezon_val, **utils.styl_dropdown()
+        )
         self.e_rozmiar = ft.TextField(label="Rozmiar (np. 205/55 R16)", value=rozmiar_val, **utils.styl_pola())
         self.e_marka = ft.TextField(label="Marka / model opony", value=marka_val, **utils.styl_pola())
         
@@ -502,7 +508,7 @@ class FormularzOponyView(ft.View):
 
     def zapisz(self, e):
         for pole in (self.e_gl, self.e_il, self.e_cena):
-            pole.error_text = None
+            utils.ustaw_blad(pole)
 
         bledy = []
 
@@ -512,7 +518,9 @@ class FormularzOponyView(ft.View):
             if glebokosc is None or glebokosc < 0 or glebokosc > 15:
                 bledy.append((self.e_gl, "Podaj sensowną głębokość (0–15 mm)"))
 
-        ilosc = utils.parsuj_int(self.e_il.value, 4) or 4
+        # Bez `or 4`: wpisane 0 albo wartość ujemna ma trafić na walidację poniżej,
+        # a nie zostać po cichu podmienione na 4.
+        ilosc = utils.parsuj_int(self.e_il.value, 4)
         if ilosc <= 0 or ilosc > 8:
             bledy.append((self.e_il, "Podaj sensowną ilość opon (1–8)"))
 
@@ -561,6 +569,7 @@ class FormularzOponyView(ft.View):
             with db.polacz_baze() as conn:
                 conn.execute("UPDATE zestawy_opon SET zamontowane=0 WHERE id=?", (self.zestaw_id,))
 
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "zestaw opon")
         utils.przejdz(self._page, "/magazyn")
         if bieznik_nizki:
             utils.pokaz_komunikat(
@@ -649,7 +658,7 @@ class FormularzCzesciView(ft.View):
 
     def zapisz(self, e):
         for pole in (self.e_nazwa, self.e_ilosc, self.e_cena, self.e_prog):
-            pole.error_text = None
+            utils.ustaw_blad(pole)
 
         # Wpisanie innego wariantu zapisu ("filtr Oleju ") nie zakłada nowej
         # pozycji — nazwa wraca w pisowni tej, która już jest w magazynie.
@@ -694,5 +703,6 @@ class FormularzCzesciView(ft.View):
 
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "magazyn")
         utils.przejdz(self._page, "/magazyn")
         utils.pokaz_komunikat(self._page, "Zapisano pozycję magazynu!")

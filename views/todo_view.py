@@ -346,8 +346,8 @@ class FormularzDoZrobieniaView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        self.e_tytul.error_text = None
-        self.e_koszt.error_text = None
+        utils.ustaw_blad(self.e_tytul)
+        utils.ustaw_blad(self.e_koszt)
 
         tytul = (self.e_tytul.value or "").strip()
         bledy = []
@@ -378,5 +378,6 @@ class FormularzDoZrobieniaView(ft.View):
                     (self.state.auto_id, tytul, self.e_opis.value, self.e_priorytet.value, koszt, self.e_termin.value, zadanie_id, datetime.now().strftime("%d.%m.%Y"))
                 )
 
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "do zrobienia")
         utils.przejdz(self._page, "/do-zrobienia")
         utils.pokaz_komunikat(self._page, "Zapisano pozycję listy!")

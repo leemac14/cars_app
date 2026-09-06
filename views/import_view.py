@@ -216,7 +216,9 @@ class ImportCSVView(ft.View):
         self.kolumna_podgladu.visible = True
         self.btn_importuj.visible = True
         self.btn_importuj.disabled = not self.gotowe
-        self.btn_importuj.text = f"Importuj {len(self.gotowe)} wpisów" if self.gotowe else "Importuj"
+        utils.ustaw_tekst_przycisku(
+            self.btn_importuj,
+            f"Importuj {len(self.gotowe)} wpisów" if self.gotowe else "Importuj")
         self._page.update()
 
     def _importuj(self, e):

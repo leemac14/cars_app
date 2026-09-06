@@ -1057,10 +1057,10 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
             )
 
             def zapisz(e2):
-                pole_przebiegu.error_text = None
+                utils.ustaw_blad(pole_przebiegu)
                 nowy = utils.parsuj_int(pole_przebiegu.value, None)
                 if nowy is None or nowy <= 0:
-                    pole_przebiegu.error_text = "Podaj poprawny przebieg"
+                    utils.ustaw_blad(pole_przebiegu, "Podaj poprawny przebieg")
                     self._page.update()
                     return
 
@@ -2046,7 +2046,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
                 mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
                 for w in po_filtrach:
                     cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
-                    tagi_str = str(w.get('tagi') or w.get('kategoria') or "Brak tagów")
                     iid = w.get('id')
                     tresc_i = [
                         ft.Row([
@@ -2106,16 +2105,7 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         tankowania.sort(key=lambda x: int(x.get('przebieg') or 0))
 
         pal = sum(float(t.get('kwota') or 0) for t in tankowania) if tankowania else 0.0
-        litry = sum(float(t.get('litry') or 0) for t in tankowania) if tankowania else 0.0
         dystans = (int(tankowania[-1].get('przebieg') or 0) - int(tankowania[0].get('przebieg') or 0)) if len(tankowania) > 1 else 0
-
-        spalanie = 0.0
-        peln_idx = [i for i, t in enumerate(tankowania) if t.get('do_pelna')]
-        if len(peln_idx) >= 2:
-            p, o = peln_idx[0], peln_idx[-1]
-            d_p = int(tankowania[o].get('przebieg') or 0) - int(tankowania[p].get('przebieg') or 0)
-            l_p = sum(float(t.get('litry') or 0) for t in tankowania[p+1: o+1])
-            if d_p > 0: spalanie = (l_p / d_p) * 100
 
         razem = pal + serw + inn
         koszt_km = (razem / dystans) if dystans > 0 else 0.0
@@ -2176,8 +2166,6 @@ class MainView(ft.View, utils.ZaznaczanieGrupowe):
         ))
 
         if self.state.stat_podzakladka == 0:
-            elektryczny = db.czy_pojazd_elektryczny(self.state.auto_id)
-            etykiety = db.etykiety_paliwa(elektryczny)
             statystyki_energii = db.pobierz_statystyki_energii(self.state.auto_id)
             dwuzrodlowy = len(statystyki_energii) > 1
 

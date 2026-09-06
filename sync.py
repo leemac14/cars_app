@@ -315,9 +315,6 @@ def pobierz_konflikty_ostatniej_synchronizacji():
     [{"tabela","etykieta","opis","zdalne_id"}, ...]. Pusta lista = brak konfliktów."""
     return list(_konflikty_biezacej_synchronizacji)
 
-def liczba_konfliktow_ostatniej_synchronizacji():
-    return len(_konflikty_biezacej_synchronizacji)
-
 def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig):
     tabela = konfig["tabela"]
     kolumny = konfig["kolumny"]

@@ -325,10 +325,10 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         )
 
         def zapisz(e):
-            e_przebieg.error_text = None
+            utils.ustaw_blad(e_przebieg)
             nowy = utils.parsuj_int(e_przebieg.value, None)
             if nowy is None or nowy <= 0:
-                e_przebieg.error_text = "Podaj poprawny przebieg"
+                utils.ustaw_blad(e_przebieg, "Podaj poprawny przebieg")
                 self._page.update()
                 return
 

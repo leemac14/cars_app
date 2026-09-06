@@ -361,7 +361,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        for pole in (self.e_p, self.e_strefa, self.e_typ, self.e_opis): pole.error_text = None
+        for pole in (self.e_p, self.e_strefa, self.e_typ, self.e_opis): utils.ustaw_blad(pole)
         prz = utils.parsuj_int(self.e_p.value, 0)
 
         if self.wpis_id:

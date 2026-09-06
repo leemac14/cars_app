@@ -70,7 +70,10 @@ class EksportView(ft.View):
             self.wiersz_niestandardowy.visible = (self.e_okres.value == "Zakres niestandardowy")
             self.wiersz_niestandardowy.update()
 
-        self.e_okres.on_change = zmien_okres
+        # UWAGA: ft.Dropdown we Flecie 0.86 NIE zna `on_change` — reaguje wyłącznie
+        # na `on_select`. Przypisanie on_change było po cichu ignorowane, więc wybór
+        # „Zakres niestandardowy” nigdy nie odsłaniał pól Od/Do.
+        self.e_okres.on_select = zmien_okres
 
         # --- Kategorie danych ---
         self.checkboxy_kategorii = [
@@ -182,7 +185,7 @@ class EksportView(ft.View):
             od_d, do_d, opis_okresu = _okres_z_presetu(self.e_okres.value)
 
         self.btn_eksportuj.disabled = True
-        self.btn_eksportuj.text = "Przygotowywanie..."
+        utils.ustaw_tekst_przycisku(self.btn_eksportuj, "Przygotowywanie...")
         self._page.update()
 
         self._page.run_task(
@@ -194,7 +197,7 @@ class EksportView(ft.View):
 
     def _po_zakonczeniu(self):
         self.btn_eksportuj.disabled = False
-        self.btn_eksportuj.text = "Eksportuj"
+        utils.ustaw_tekst_przycisku(self.btn_eksportuj, "Eksportuj")
         try:
             self._page.update()
         except Exception:
