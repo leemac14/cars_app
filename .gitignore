@@ -183,6 +183,7 @@ cython_debug/
 zalaczniki_odroczone/
 zalaczniki_bak/
 zalaczniki/
+supabase/
 
 flota_zadania.db
 flota_zadania.db.bak
