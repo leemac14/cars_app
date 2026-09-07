@@ -9,9 +9,36 @@ from .dialogi import otworz_dialog, pokaz_komunikat, zamknij_dialog
 
 
 def abs_zalacznik(sciezka_wzgledna):
+    """Ścieżka do pliku załącznika gotowa dla ft.Image.
+
+    Ścieżki zapisują się jako `os.path.join(FOLDER_ZALACZNIKI, nazwa)`, a
+    FOLDER_ZALACZNIKI bierze się z FLET_APP_STORAGE_DATA — na Androidzie jest
+    ABSOLUTNY (/data/user/0/<pakiet>/files/data/zalaczniki), na komputerze pusty,
+    więc ścieżka wychodzi względna. Kopia zapasowa z telefonu przenosi na
+    komputer ścieżki katalogu, którego tu nie ma: pliki jadą w ZIP-ie i lądują
+    na miejscu, a zdjęcia i tak się nie pokazują. To samo w drugą stronę.
+
+    Dlatego: gdy zapisanej ścieżki nie da się otworzyć, szukamy pliku o tej
+    samej nazwie w tutejszym folderze załączników (i w koszu). Trwałą naprawę
+    samych wpisów w bazie robi db.napraw_sciezki_zalacznikow() przy imporcie —
+    tu chodzi o to, żeby obraz pokazał się nawet zanim to nastąpi."""
     if not sciezka_wzgledna:
         return None
-    return os.path.abspath(sciezka_wzgledna)
+
+    kandydat = os.path.abspath(sciezka_wzgledna)
+    if os.path.exists(kandydat):
+        return kandydat
+
+    nazwa = os.path.basename(str(sciezka_wzgledna).replace("\\", "/"))
+    if nazwa:
+        for folder in (db.FOLDER_ZALACZNIKI, db.FOLDER_KOSZ):
+            alternatywa = os.path.abspath(os.path.join(folder, nazwa))
+            if os.path.exists(alternatywa):
+                return alternatywa
+
+    # Pliku nie ma nigdzie — oddajemy pierwotną ścieżkę, żeby komunikat o błędzie
+    # (i podgląd „brak pliku”) mówił o tym, co faktycznie jest w bazie.
+    return kandydat
 
 
 def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=False):

@@ -7,7 +7,7 @@ import uuid
 
 from .stale import OSIE_MONTAZU, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
-from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
+from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
 from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika
 from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow
 
@@ -63,6 +63,35 @@ def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
         conn.execute("UPDATE zestawy_opon SET zamontowane=1, os_montazu=? WHERE id=?", (os_montazu, zestaw_id))
 
 
+def _auto_wiersza(tabela, dane):
+    """Do którego pojazdu należy usuwany wiersz. Większość tabel ma auto_id
+    wprost; historia serwisowa wisi pod podzespołem i trzeba ją dojechać
+    JOIN-em."""
+    if dane.get("auto_id"):
+        return dane["auto_id"]
+    if tabela == "historia" and dane.get("zadanie_id"):
+        with polacz_baze() as conn:
+            c = conn.cursor()
+            c.execute("SELECT auto_id FROM zadania WHERE id=?", (dane["zadanie_id"],))
+            w = c.fetchone()
+        return w[0] if w else None
+    return None
+
+
+def _wolno_usunac(tabela, dane):
+    """Ostatnia bramka przed skasowaniem czegokolwiek. Usuwanie z list omija
+    router (nie zmienia trasy), więc bez tego sprawdzenia gość z rolą „tylko
+    podgląd” mógłby wyczyścić cudzą historię u siebie — a nagrobki poszłyby
+    do chmury i wyczyściłyby ją wszystkim."""
+    auto_id = _auto_wiersza(tabela, dane)
+    if not auto_id:
+        return True  # wiersz bez pojazdu (np. dane globalne) — rola go nie dotyczy
+    try:
+        return czy_moge_zmieniac_rekord(auto_id, tabela, dane.get("dodane_przez"))
+    except Exception:
+        return True
+
+
 def usun_z_cofnieciem(tabela, rekord_id):
     """Usuwa pojedynczy rekord i zwraca callback cofnij() przywracający go z tymi
     samymi wartościami (i tym samym id, o ile nic go w międzyczasie nie zajęło).
@@ -80,6 +109,9 @@ def usun_z_cofnieciem(tabela, rekord_id):
         if not wiersz:
             return None
         dane = {k: wiersz[k] for k in kolumny}
+
+    if not _wolno_usunac(tabela, dane):
+        return None
 
     zdalny_id_usuniety = dane.get("zdalne_id")
 
@@ -101,11 +133,16 @@ def usun_z_cofnieciem(tabela, rekord_id):
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id=?", (rekord_id,))
 
+    # Nagrobek dostaje przypisanie do pojazdu (patrz db/synchronizacja), żeby
+    # usunięcie z auta A nie próbowało się wysłać przy synchronizacji auta B —
+    # a przy pojeździe „tylko do podglądu” nie wysłało się w ogóle. Tabele bez
+    # własnego auto_id (historia) zostają z NULL-em i zachowują się jak dotąd.
+    auto_nagrobka = dane.get("auto_id")
     if zdalny_id_usuniety:
-        zarejestruj_nagrobek(tabela, zdalny_id_usuniety)
+        zarejestruj_nagrobek(tabela, zdalny_id_usuniety, auto_nagrobka)
     for w in czesci_wpisu:
         if w.get("zdalne_id"):
-            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"])
+            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"], auto_nagrobka)
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -166,6 +203,22 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
         if not wiersze:
             return None
         dane_lista = [{k: w[k] for k in kolumny} for w in wiersze]
+
+    # Przy roli współautora zaznaczenie grupowe może obejmować i moje, i cudze
+    # wpisy. Nie odrzucamy wtedy całej operacji — kasujemy to, do czego mam
+    # prawo, i zostawiamy resztę. Odrzucone wracają w wyniku, żeby interfejs
+    # mógł powiedzieć, ile i dlaczego pominięto.
+    dozwolone = [d for d in dane_lista if _wolno_usunac(tabela, d)]
+    ile_pominietych = len(dane_lista) - len(dozwolone)
+    if ile_pominietych:
+        if not dozwolone:
+            return None
+        dane_lista = dozwolone
+        # Listę identyfikatorów odbudowujemy z wierszy, a nie filtrujemy
+        # wejściową: te przychodzą z interfejsu i bywają tekstem, a tu muszą
+        # trafić w kolumnę id jako liczby.
+        ids_list = [d["id"] for d in dane_lista]
+        placeholders = ",".join("?" for _ in ids_list)
 
     zdalne_id_usuniete = [d.get("zdalne_id") for d in dane_lista if d.get("zdalne_id")]
 
@@ -237,7 +290,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
         for tmp, _ in sciezki_tymczasowe:
             usun_plik_zalacznika(tmp)
 
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
+    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "pominiete": ile_pominietych}
 
 
 def przelacz_wykonane_do_zrobienia(pozycja_id, status):
@@ -263,6 +316,8 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
         if not w_zad:
             return None
         dane_zad = {k: w_zad[k] for k in kol_z}
+        if not _wolno_usunac("zadania", dane_zad):
+            return None
 
         # 2. Pobieramy powiązaną historię (która zniknie przez CASCADE)
         c.execute("PRAGMA table_info(historia)")
@@ -298,13 +353,14 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
 
     zdalny_id_zadania = dane_zad.get("zdalne_id")
     zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
+    auto_nagrobka = dane_zad.get("auto_id")
     if zdalny_id_zadania:
-        zarejestruj_nagrobek("zadania", zdalny_id_zadania)
+        zarejestruj_nagrobek("zadania", zdalny_id_zadania, auto_nagrobka)
     for zid in zdalne_id_historii:
-        zarejestruj_nagrobek("historia", zid)
+        zarejestruj_nagrobek("historia", zid, auto_nagrobka)
     for w in czesci_wpisow:
         if w.get("zdalne_id"):
-            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"])
+            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"], auto_nagrobka)
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -372,6 +428,10 @@ def usun_wiele_zadan_z_cofnieciem(ids_list):
     wyniki = [w for w in (usun_zadanie_z_cofnieciem(zid) for zid in ids_list) if w]
     if not wyniki:
         return None
+    # None z usun_zadanie_z_cofnieciem znaczy „nie ma” albo „nie wolno” (patrz
+    # _wolno_usunac) — liczbę pominiętych oddajemy dalej, żeby komunikat mówił
+    # prawdę zamiast chwalić się usunięciem wszystkiego.
+    ile_pominietych = len(list(ids_list)) - len(wyniki)
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -389,7 +449,7 @@ def usun_wiele_zadan_z_cofnieciem(ids_list):
         for w in wyniki:
             w["finalizuj"]()
 
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
+    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "pominiete": ile_pominietych}
 
 
 __all__ = [

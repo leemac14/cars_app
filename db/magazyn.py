@@ -8,7 +8,7 @@ from datetime import datetime
 
 from .stale import MIESIACE_ZIMOWE, SEZONY_PRZELACZALNE
 from .polaczenie import polacz_baze
-from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
+from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
 from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika
 
 
@@ -192,6 +192,17 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
         if not w:
             return None
         dane_czesc = {k: w[k] for k in kol_m}
+
+        # Magazyn to wspólny inwentarz pojazdu, więc współautora nie ogranicza —
+        # ale gość z rolą „tylko podgląd” nie ma prawa go czyścić (patrz
+        # db/synchronizacja.czy_moge_zmieniac_rekord).
+        try:
+            if dane_czesc.get("auto_id") and not czy_moge_zmieniac_rekord(
+                dane_czesc["auto_id"], "magazyn_czesci", None
+            ):
+                return None
+        except Exception:
+            pass
 
         c.execute("PRAGMA table_info(wizyta_czesci_magazynu)")
         kol_w = [r["name"] for r in c.fetchall()]

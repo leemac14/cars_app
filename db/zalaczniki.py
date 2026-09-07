@@ -10,7 +10,69 @@ except ImportError:
     Image = None
     ImageOps = None
 
-from .stale import FOLDER_ODROCZONE, FOLDER_ZALACZNIKI
+from .stale import FOLDER_KOSZ, FOLDER_ODROCZONE, FOLDER_ZALACZNIKI, TABELE_Z_ZALACZNIKIEM
+from .polaczenie import polacz_baze
+
+
+# Gdzie w bazie mieszkają ścieżki do plików. Poza kolumną `zalacznik` w tabelach
+# z TABELE_Z_ZALACZNIKIEM jest jeszcze zdjęcie profilowe pojazdu.
+KOLUMNY_ZE_SCIEZKAMI = [("samochody", "zdjecie_glowne")] + [(t, "zalacznik") for t in sorted(TABELE_Z_ZALACZNIKIEM)]
+
+
+def napraw_sciezki_zalacznikow():
+    """Przepisuje ścieżki załączników na tutejsze i zwraca (naprawione, brakujace).
+
+    Ścieżka zapisuje się jako `os.path.join(FOLDER_ZALACZNIKI, nazwa)`, a
+    FOLDER_ZALACZNIKI bierze się z FLET_APP_STORAGE_DATA. Na Androidzie jest
+    ABSOLUTNY (/data/user/0/<pakiet>/files/data/zalaczniki), na komputerze pusty
+    — więc ścieżka wychodzi względna. Skutek: kopia zapasowa zrobiona na
+    telefonie i wczytana na komputerze przenosi do bazy ścieżki katalogu,
+    którego tu nie ma. Pliki jadą w ZIP-ie i lądują w folderze załączników,
+    ale żadne zdjęcie się nie pokazuje. Tak samo w drugą stronę.
+
+    Naprawiamy po NAZWIE pliku (nazwy są losowymi UUID-ami, więc kolizja jest
+    wykluczona): jeśli zapisanego pliku nie ma, a plik o tej samej nazwie leży
+    w folderze załączników albo w koszu, wpisujemy ścieżkę tutejszą. Wpisów,
+    których pliku nie ma nigdzie, NIE ruszamy — lepiej zostawić ślad, dokąd
+    prowadziły, niż podmienić je na inną nieistniejącą ścieżkę."""
+    naprawione = 0
+    brakujace = 0
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        for tabela, kolumna in KOLUMNY_ZE_SCIEZKAMI:
+            try:
+                c.execute(f"PRAGMA table_info({tabela})")
+                if kolumna not in [r[1] for r in c.fetchall()]:
+                    continue
+                c.execute(
+                    f"SELECT id, {kolumna} FROM {tabela} "
+                    f"WHERE {kolumna} IS NOT NULL AND TRIM({kolumna}) <> ''"
+                )
+                wiersze = c.fetchall()
+            except Exception:
+                continue  # brak tabeli w starszej bazie — nie ma czego naprawiać
+
+            for rekord_id, zapisana in wiersze:
+                if os.path.exists(zapisana):
+                    continue
+                nazwa = os.path.basename(str(zapisana).replace("\\", "/"))
+                if not nazwa:
+                    brakujace += 1
+                    continue
+                for folder in (FOLDER_ZALACZNIKI, FOLDER_KOSZ):
+                    tutejsza = os.path.join(folder, nazwa)
+                    if os.path.exists(tutejsza):
+                        conn.execute(
+                            f"UPDATE {tabela} SET {kolumna}=? WHERE id=?",
+                            (tutejsza, rekord_id)
+                        )
+                        naprawione += 1
+                        break
+                else:
+                    brakujace += 1
+
+    return naprawione, brakujace
 
 
 def _upewnij_folder_odroczonych():
@@ -163,9 +225,11 @@ def anuluj_nowy_zalacznik(przygotowany):
 
 
 __all__ = [
+    "KOLUMNY_ZE_SCIEZKAMI",
     "_upewnij_folder_odroczonych",
     "_upewnij_folder_zalacznikow",
     "anuluj_nowy_zalacznik",
+    "napraw_sciezki_zalacznikow",
     "polacz_zdjecia_w_pdf",
     "posprzataj_odroczone_zalaczniki",
     "przygotuj_nowy_zalacznik",

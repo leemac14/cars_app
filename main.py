@@ -38,6 +38,98 @@ from views.budzet_view import BudzetView
 from views.pojazd_view import PojazdView
 from views.rok_view import RokWPigulceView
 
+# ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
+# Router jest jedynym miejscem, przez które przechodzi KAŻDE otwarcie formularza,
+# więc jedno sprawdzenie tutaj zastępuje dwadzieścia rozsianych po widokach.
+# To warstwa wygody: twardą granicę stawia wyzwalacz w Supabase, a drugą — sync,
+# który przy roli podglądu nie wysyła nic. Tu chodzi o to, żeby nie dało się
+# nawet wejść w ekran, którego zapis i tak zostałby odrzucony.
+
+AKCJE_DODAWANIA = ("nowy", "nowa", "nowe")
+
+# Trasa -> tabela, w której siedzi edytowany rekord. Wyłącznie te z podpisem
+# autora; reszta formularzy dotyczy wspólnego inwentarza pojazdu.
+TABELE_TRAS = {
+    "tankowanie": "tankowania",
+    "inne": "inne_koszty",
+    "wizyty": "wizyty",
+    "wpis": "historia",
+}
+
+
+def _cel_trasy(segmenty):
+    """(czy_zmienia_dane, czy_dodawanie, tabela, rekord_id) dla podanej trasy."""
+    if not segmenty:
+        return False, False, None, None
+
+    glowa = segmenty[0]
+    drugi = segmenty[1] if len(segmenty) > 1 else ""
+    trzeci = segmenty[2] if len(segmenty) > 2 else ""
+
+    # Import CSV i kosz zapisują do bazy, choć nie są formularzem wpisu.
+    if glowa in ("import", "kosz"):
+        return True, True, None, None
+
+    # /auto/nowy zakłada NOWY, własny pojazd — to wolno zawsze, niezależnie od
+    # tego, jaką rolę mam przy aktualnie wybranym aucie.
+    if glowa == "auto":
+        if drugi == "edytuj":
+            return True, False, None, None
+        return False, False, None, None
+
+    if glowa == "magazyn":
+        if trzeci in AKCJE_DODAWANIA:
+            return True, True, None, None
+        if trzeci == "edytuj":
+            return True, False, None, None
+        return False, False, None, None
+
+    if glowa == "interwal":
+        return (len(segmenty) >= 2), False, None, None
+
+    if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria"):
+        if drugi in AKCJE_DODAWANIA:
+            return True, True, None, None
+        if drugi == "edytuj":
+            tabela = TABELE_TRAS.get(glowa)
+            rekord_id = None
+            if tabela and len(segmenty) > 2:
+                try:
+                    rekord_id = int(segmenty[2])
+                except (TypeError, ValueError):
+                    rekord_id = None
+            return True, False, tabela, rekord_id
+        return False, False, None, None
+
+    return False, False, None, None
+
+
+def _wolno_wejsc(auto_id, segmenty):
+    """(wolno, powod). Powód trafia prosto do komunikatu — użytkownik ma
+    wiedzieć, że ekran nie zniknął przez błąd, tylko przez rolę."""
+    zmienia, dodawanie, tabela, rekord_id = _cel_trasy(segmenty)
+    if not zmienia or not auto_id:
+        return True, ""
+
+    try:
+        rola = db.rola_pojazdu(auto_id)
+        if dodawanie:
+            wolno = db.czy_moge_dodawac(auto_id)
+        else:
+            # tabela=None oznacza formularz wspólnego inwentarza (podzespół,
+            # opony, zdjęcie karoserii) — tam pytanie „czyj to wpis” nie ma
+            # sensu i rozstrzyga sama rola.
+            wolno = db.czy_moge_edytowac_w_tabeli(auto_id, tabela, rekord_id)
+    except Exception:
+        return True, ""  # cokolwiek by tu nie padło, nie może zablokować aplikacji
+
+    if wolno:
+        return True, ""
+    if rola == db.ROLA_PODGLAD:
+        return False, "Ten pojazd masz w trybie tylko do odczytu — możesz oglądać historię, ale jej nie zmieniać."
+    return False, "To nie jest Twój wpis. Jako współautor zmieniasz tylko to, co sam dodałeś."
+
+
 def main(page: ft.Page):
     page.title = "Flota Mobile"
     page.window.width = 400
@@ -190,6 +282,13 @@ def main(page: ft.Page):
 
             db.init_db()
 
+            # Kopia zrobiona na telefonie trzyma ścieżki załączników w formacie
+            # Androida (/data/user/0/<pakiet>/files/data/zalaczniki/...). Pliki
+            # przyjeżdżają w ZIP-ie i lądują w folderze załączników, ale ścieżki
+            # w bazie wskazują katalog, którego na tym urządzeniu nie ma — bez
+            # tego kroku import „się udaje”, a żadne zdjęcie się nie pokazuje.
+            naprawione, brakujace_zalaczniki = db.napraw_sciezki_zalacznikow()
+
             app_state.auto_id = None
             app_state.wybrane_zadanie_id = None
             app_state.wybrane_zadanie_nazwa = ""
@@ -206,7 +305,12 @@ def main(page: ft.Page):
             kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
             
             utils.przejdz(page, "/")
-            utils.pokaz_komunikat(page, "Pomyślnie wczytano bazę! Stara zapisana jako .bak")
+            komunikat = "Pomyślnie wczytano bazę! Stara zapisana jako .bak"
+            if naprawione:
+                komunikat += f" Dopasowano {naprawione} zdjęć/załączników do tego urządzenia."
+            if brakujace_zalaczniki:
+                komunikat += f" Uwaga: {brakujace_zalaczniki} załączników nie ma w archiwum."
+            utils.pokaz_komunikat(page, komunikat)
         except sqlite3.DatabaseError:
             if kopia_zrobiona:
                 przywroc_kopie_bezpieczenstwa()
@@ -438,6 +542,18 @@ def main(page: ft.Page):
         # ze skrótu na kokpicie, czy z odnośnika wewnątrz innego ekranu.
         utils.zanotuj_ekran_dla_trasy(app_state, segmenty)
 
+        # Rola przy tym pojeździe decyduje, czy formularz w ogóle ma prawo się
+        # otworzyć. Sprawdzamy PRZED zbudowaniem widoków — inaczej użytkownik
+        # zobaczyłby ekran, wypełnił go i dopiero przy zapisie dowiedział się,
+        # że nie wolno.
+        wolno, powod_odmowy = _wolno_wejsc(app_state.auto_id, segmenty)
+        if not wolno:
+            utils.pokaz_komunikat(page, powod_odmowy, ft.Colors.ORANGE_700)
+            if page.route != "/":
+                utils.przejdz(page, "/")
+                return
+            segmenty = []
+
         page.views.clear()
         page.views.append(MainView(page, app_state, eksportuj_baze, importuj_baze, przelacz_tryb))
 
@@ -574,7 +690,22 @@ def main(page: ft.Page):
             await asyncio.to_thread(sync.przetworz_kolejke_sync, 10)
         except Exception:
             pass  # start aplikacji nigdy nie może się wywalić przez brak sieci
+        # Po nadgonieniu zaległości dociągamy jeszcze cudze zmiany. Bez tego
+        # ktoś, kto tylko OGLĄDA współdzielony pojazd — a przy roli „tylko
+        # podgląd” to jedyne, co robi — nie zobaczyłby nic nowego, dopóki sam
+        # czegoś nie kliknął.
+        try:
+            if db.czy_auto_synchronizacja():
+                await utils.synchronizuj_cicho(page, app_state.auto_id)
+        except Exception:
+            pass
     page.run_task(_nadgon_kolejke_sync)
+
+    # Cykliczne dociąganie w tle plus jedno przy powrocie aplikacji z tła.
+    try:
+        utils.uruchom_auto_synchronizacje(page, app_state)
+    except Exception:
+        pass
 
     utils.przejdz(page, page.route or "/")
 

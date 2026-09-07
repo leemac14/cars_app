@@ -2,6 +2,7 @@
 
 import db
 import flet as ft
+import inspect
 
 from .stale import FS, RADIUS
 from .format import bez_ogonkow
@@ -256,6 +257,32 @@ def ekrany_grupy(grupa_id, akcje=None, ma_pojazd=True):
     return wynik
 
 
+def uruchom_akcje(page: ft.Page, obsluga):
+    """Wywołuje akcję z rejestru ekranów niezależnie od tego, czy jest zwykłą
+    funkcją, czy asynchroniczną.
+
+    `akcje_nawigacji` owija wszystko w lambdy (`lambda: cb_export(None)`), więc
+    po samej lambdzie nie widać, że pod spodem siedzi `async def`. Wywołanie
+    zwracało wtedy korutynę, której nikt nie awaitował — kopia zapasowa i
+    wczytanie bazy po cichu nie robiły NIC, a jedynym śladem było
+    „RuntimeWarning: coroutine ... was never awaited” w konsoli.
+
+    page.run_task wymaga prawdziwego `async def` (sprawdza
+    `asyncio.iscoroutinefunction`), więc gotowej korutyny nie da się mu podać
+    wprost — musi ją opakować osobna funkcja."""
+    wynik = obsluga()
+    if not inspect.isawaitable(wynik):
+        return
+
+    async def _dokoncz():
+        try:
+            await wynik
+        except Exception as ex:
+            pokaz_komunikat(page, f"Nie udało się wykonać akcji: {ex}", ft.Colors.RED_700)
+
+    page.run_task(_dokoncz)
+
+
 def otworz_ekran(page: ft.Page, state, ekran, akcje=None):
     """Wejście na ekran z rejestru — po jego identyfikatorze albo po całym wpisie.
     Historię „ostatnio używanych” prowadzi router (zanotuj_ekran_dla_trasy), bo
@@ -270,7 +297,7 @@ def otworz_ekran(page: ft.Page, state, ekran, akcje=None):
         db.zanotuj_uzycie_ekranu(ekran["id"])
         obsluga = (akcje or {}).get(ekran["akcja"])
         if obsluga:
-            obsluga()
+            uruchom_akcje(page, obsluga)
         return
 
     # Ekrany mieszkające w PODZAKŁADCE innego widoku (Checklisty, Opony) niosą
@@ -935,6 +962,7 @@ __all__ = [
     "karta_sekcji",
     "kolor_ekranu",
     "otworz_ekran",
+    "uruchom_akcje",
     "pasek_sekcji",
     "pokaz_edytor_skrotow",
     "pokaz_nawigacje_awaryjna",

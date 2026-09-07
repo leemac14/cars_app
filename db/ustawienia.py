@@ -292,6 +292,42 @@ def _przywroc_ustawienia_pojazdu(auto_id, dane):
             zapisz_ustawienie(buduj_klucz(auto_id), wartosc)
 
 
+
+# ---------------------- AUTOMATYCZNA SYNCHRONIZACJA ----------------------
+# Do tej pory synchronizacja ruszała wyłącznie po zapisie formularza albo
+# z przycisku. Kto tylko OGLĄDAŁ współdzielony pojazd — a przy roli „tylko
+# podgląd” to jedyne, co robi — nie zobaczyłby cudzych zmian, dopóki sam
+# czegoś nie kliknął.
+INTERWAL_AUTO_SYNC_MINUTY = 15
+MIN_INTERWAL_AUTO_SYNC_MINUTY = 5
+
+
+def czy_auto_synchronizacja():
+    return (pobierz_ustawienie("auto_sync", "1") or "1") == "1"
+
+
+def zapisz_auto_synchronizacje(wlaczona):
+    zapisz_ustawienie("auto_sync", "1" if wlaczona else "0")
+
+
+def interwal_auto_synchronizacji():
+    """Co ile minut aplikacja sama sięga do chmury, gdy jest otwarta.
+    Wartości poniżej progu podnosimy — sekundowe odpytywanie to tylko
+    zjedzona bateria i transfer."""
+    try:
+        minuty = int(pobierz_ustawienie("auto_sync_minuty", str(INTERWAL_AUTO_SYNC_MINUTY)))
+    except (TypeError, ValueError):
+        minuty = INTERWAL_AUTO_SYNC_MINUTY
+    return max(MIN_INTERWAL_AUTO_SYNC_MINUTY, minuty)
+
+
+def zapisz_interwal_auto_synchronizacji(minuty):
+    try:
+        minuty = int(minuty)
+    except (TypeError, ValueError):
+        minuty = INTERWAL_AUTO_SYNC_MINUTY
+    zapisz_ustawienie("auto_sync_minuty", str(max(MIN_INTERWAL_AUTO_SYNC_MINUTY, minuty)))
+
 __all__ = [
     "KOKPIT_WIDGETY",
     "KOKPIT_WIDGETY_DOMYSLNE",
@@ -305,6 +341,10 @@ __all__ = [
     "pobierz_zwiniete_grupy_szuflady",
     "przelacz_grupe_szuflady",
     "zapisz_zwiniete_grupy_szuflady",
+    "INTERWAL_AUTO_SYNC_MINUTY",
+    "MIN_INTERWAL_AUTO_SYNC_MINUTY",
+    "czy_auto_synchronizacja",
+    "interwal_auto_synchronizacji",
     "pobierz_czysta_czern",
     "pobierz_jednostke_spalania",
     "pobierz_jednostke_zuzycia_ev",
@@ -322,7 +362,9 @@ __all__ = [
     "przywroc_kokpit_wspolny",
     "scal_widgety_kokpitu",
     "usun_ustawienie",
+    "zapisz_auto_synchronizacje",
     "zapisz_czysta_czern",
+    "zapisz_interwal_auto_synchronizacji",
     "zapisz_moje_imie",
     "zapisz_prog_dni_dokumentu",
     "zapisz_tryb_motywu",

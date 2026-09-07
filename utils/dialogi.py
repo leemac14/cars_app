@@ -18,10 +18,23 @@ def pokaz_komunikat(page: ft.Page, wiadomosc, kolor=ft.Colors.GREEN_700):
         page.update()
 
 
-def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5):
-    """wynik_usuwania to słownik zwrócony przez db.usun_z_cofnieciem()."""
+def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5, wiadomosc_bledu=None):
+    """wynik_usuwania to słownik zwrócony przez db.usun_z_cofnieciem().
+
+    None znaczy, że nic nie zostało usunięte — bo rekordu już nie ma albo bo
+    rola przy tym pojeździe na to nie pozwala (patrz db/usuwanie._wolno_usunac).
+    Wypisywanie wtedy „Pomyślnie usunięto...” na czerwono mówiło coś dokładnie
+    odwrotnego do tego, co się stało."""
     if not wynik_usuwania:
-        return pokaz_komunikat(page, wiadomosc, ft.Colors.RED_700)
+        return pokaz_komunikat(
+            page,
+            wiadomosc_bledu or "Nie usunięto: wpisu już nie ma albo nie masz do niego uprawnień.",
+            ft.Colors.RED_700
+        )
+
+    pominiete = wynik_usuwania.get("pominiete") if isinstance(wynik_usuwania, dict) else 0
+    if pominiete:
+        wiadomosc = f"{wiadomosc} Pominięto {pominiete} cudzych wpisów."
 
     def po_cofnieciu(e):
         wynik_usuwania["cofnij"]()

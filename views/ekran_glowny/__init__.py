@@ -87,10 +87,22 @@ class MainView(
             )
         else:
             self.buduj_naglowek_auta()
+            # Pasek roli tuż pod nagłówkiem pojazdu. Bez niego „dlaczego nie ma
+            # plusa” byłoby zagadką — przyciski po prostu znikają, a użytkownik
+            # nie wie, że to celowe.
+            pasek = utils.pasek_roli(page, self.state.auto_id)
+            if getattr(pasek, "content", None) is not None:
+                self.elementy.append(pasek)
             if self.state.zakladka == 0: self.buduj_kokpit_ekran()
             elif self.state.zakladka == 1: self.buduj_serwis()
             elif self.state.zakladka == 2: self.buduj_koszty()
             elif self.state.zakladka == 3: self.buduj_statystyki()
+
+        # Szybkie dodawanie znika u kogoś, kto ma pojazd wyłącznie do wglądu.
+        # FAB składają zakładki (patrz _buduj_fab_szybkich_akcji), więc gasimy go
+        # tutaj — w jednym miejscu, przez które przechodzą wszystkie cztery.
+        if self.state.auto_id and not utils.wolno_dodawac(self.state.auto_id):
+            self.fab = None
 
         self.elementy.append(utils.dol_bezpieczny(10))
 
@@ -147,11 +159,18 @@ class MainView(
             await asyncio.to_thread(sync.przetworz_kolejke_sync)
             utils.przejdz(self._page, "/")
             konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
+            odrzucone = sync.pobierz_odrzucone_ostatniej_synchronizacji()
             if konflikty:
                 utils.pokaz_komunikat(self._page, utils.podsumowanie_konfliktow(konflikty), ft.Colors.AMBER_700)
-                utils.pokaz_dialog_konfliktow(self._page, konflikty)
+                utils.pokaz_dialog_konfliktow(self._page, konflikty, self.state.auto_id)
+            elif odrzucone:
+                utils.pokaz_komunikat(self._page, utils.podsumowanie_odrzuconych(odrzucone), ft.Colors.ORANGE_700)
+            elif db.czy_tylko_podglad(self.state.auto_id):
+                utils.pokaz_komunikat(self._page, f"Pobrano {pobrano} zmian. Ten pojazd masz w trybie tylko do odczytu.")
             else:
                 utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+        except sync.SynchronizacjaWToku:
+            utils.pokaz_komunikat(self._page, "Synchronizacja już trwa — chwilę to potrwa.")
         except Exception as ex:
             db.zakolejkuj_synchronizacje(self.state.auto_id, "reczna", str(ex))
             utils.pokaz_komunikat(
@@ -172,6 +191,11 @@ class MainView(
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
+        # Zaznaczenie grupowe omija router, więc rolę sprawdzamy tu wprost.
+        # Przy współautorze nie da się z góry powiedzieć, czyje są WSZYSTKIE
+        # zaznaczone wpisy — odsiewa je warstwa niżej (db.usun_wiele_z_cofnieciem).
+        if utils.zablokowane(self._page, self.state.auto_id):
+            return
         def wykonaj():
             if self.tabela_cel == "zadania":
                 wynik = db.usun_wiele_zadan_z_cofnieciem(list(self.zaznaczone_id))

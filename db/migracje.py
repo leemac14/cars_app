@@ -3,7 +3,8 @@
 import sqlite3
 
 from .polaczenie import polacz_baze
-from .zalaczniki import _upewnij_folder_zalacznikow, posprzataj_odroczone_zalaczniki
+from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
+from .zalaczniki import _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki
 from .kosz import posprzataj_kosz
 
 
@@ -522,6 +523,44 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN status TEXT DEFAULT 'aktywny';
             ALTER TABLE samochody ADD COLUMN data_sprzedazy TEXT;
             ALTER TABLE samochody ADD COLUMN cena_sprzedazy REAL;
+            """,
+            # Wersja 40: role przy współdzieleniu pojazdu. Do tej pory kod
+            # zaproszenia dawał dokładnie jedno uprawnienie — wszystko. Kto
+            # dostał kod, mógł też skasować cudze tankowanie sprzed roku, a
+            # jedyną granicą było zaufanie.
+            #
+            # (a) `rola_wspoldzielenia` mówi, czym JEST dla mnie ten pojazd:
+            #     'wlasciciel' (ja go udostępniłem), 'pelna' (dołączyłem
+            #     kodem pełnym — zachowanie dotychczasowe), 'wspolautor'
+            #     (dopisuję swoje wpisy, cudzych nie ruszam) albo 'podglad'
+            #     (tylko czytam; aplikacja nigdy nic nie wysyła). Domyślne
+            #     'wlasciciel' zostawia wszystkie istniejące pojazdy dokładnie
+            #     z tymi prawami, które miały do tej pory.
+            #
+            # (b) `kod_wspolautora` / `kod_podgladu` — dwa dodatkowe, NIEZALEŻNE
+            #     kody zaproszenia trzymane u właściciela. Celowo losowe, a nie
+            #     wyprowadzone z kodu głównego: gdyby były jego wariantem, gość
+            #     z kodu podglądu odgadłby kod pełny i cała rola byłaby ozdobą.
+            #
+            # (c) `znacznik_delty` — najwyższy `zaktualizowano` pobrany
+            #     z serwera. Bez niego każda synchronizacja ściągała komplet
+            #     rekordów ze wszystkich tabel, za każdym razem, po komórce.
+            #
+            # (d) `zdalne_nagrobki.auto_id` + `proby` — nagrobek wiedział tylko
+            #     CO usunąć, nie z którego pojazdu, więc przy synchronizacji
+            #     auta A leciały też skasowania z auta B (w tym z pojazdu, do
+            #     którego mam wyłącznie podgląd). `proby` zamyka drugą dziurę:
+            #     nagrobek odrzucany przez serwer w nieskończoność (bo nie mam
+            #     do niego prawa) próbował się wysłać przy każdej synchronizacji.
+            """
+            ALTER TABLE samochody ADD COLUMN rola_wspoldzielenia TEXT DEFAULT 'wlasciciel';
+            ALTER TABLE samochody ADD COLUMN kod_wspolautora TEXT;
+            ALTER TABLE samochody ADD COLUMN kod_podgladu TEXT;
+            ALTER TABLE samochody ADD COLUMN znacznik_delty TEXT;
+
+            ALTER TABLE zdalne_nagrobki ADD COLUMN auto_id INTEGER;
+            ALTER TABLE zdalne_nagrobki ADD COLUMN proby INTEGER NOT NULL DEFAULT 0;
+            CREATE INDEX IF NOT EXISTS idx_zdalne_nagrobki_auto ON zdalne_nagrobki(auto_id);
             """
         ]
 
@@ -579,6 +618,16 @@ def init_db():
                 cursor.execute("UPDATE samochody SET status='aktywny' WHERE status IS NULL OR TRIM(status)=''")
                 cursor.execute("UPDATE wydatki_cykliczne SET typ='wydatek' WHERE typ IS NULL OR TRIM(typ)=''")
 
+            # Kolumna roli dostała DEFAULT, ale w części wersji SQLite
+            # istniejące wiersze zostają z NULL-em — a NULL w roli znaczyłby
+            # „nie wiadomo, co wolno”. Wszystko, co już jest w bazie, powstało
+            # przed rolami i miało prawa pełne, więc dopisujemy je wprost.
+            if i == 39:
+                cursor.execute(
+                    "UPDATE samochody SET rola_wspoldzielenia='wlasciciel' "
+                    "WHERE rola_wspoldzielenia IS NULL OR TRIM(rola_wspoldzielenia)=''"
+                )
+
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")
                 for zid, znazwa in cursor.fetchall():
@@ -596,6 +645,18 @@ def init_db():
     # pozycje kasujemy raz, przy starcie aplikacji, a nie przy każdym wejściu na
     # ekran kosza: retencja liczona jest w dniach, więc częściej nie ma sensu.
     posprzataj_kosz()
+
+    # Jednorazowa naprawa ścieżek załączników przeniesionych z innego urządzenia.
+    # Wczytanie kopii woła to samo wprost, przy KAŻDYM imporcie (patrz
+    # main.wykonaj_import) — ten blok jest dla baz, które przyjechały z telefonu,
+    # zanim naprawa w ogóle powstała, i mają w sobie ścieżki
+    # /data/user/0/<pakiet>/files/data/zalaczniki/... wskazujące donikąd.
+    if pobierz_ustawienie("naprawa_sciezek_zalacznikow_v1") != "1":
+        try:
+            napraw_sciezki_zalacznikow()
+        except Exception:
+            pass  # brak zdjęć nie może uniemożliwić uruchomienia aplikacji
+        zapisz_ustawienie("naprawa_sciezek_zalacznikow_v1", "1")
 
 
 __all__ = [
