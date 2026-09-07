@@ -175,6 +175,33 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False):
             height=8, border_radius=4,
         ))
 
+    # Prognoza najbliższego tankowania — to samo tempo (km/dzień), co przy
+    # terminach podzespołów. Pokazujemy ją też w kompaktowym kafelku kokpitu:
+    # to ta liczba odpowiada na pytanie „zdążę bez tankowania?”, nie sam procent baku.
+    dni_do_pustego = dane.get("dni_do_pustego")
+    if dni_do_pustego is not None:
+        if dni_do_pustego <= 0:
+            opis_dni = "dziś"
+        elif dni_do_pustego == 1:
+            opis_dni = "jutro"
+        else:
+            opis_dni = f"za około {dni_do_pustego} dni"
+        kolor_prognozy = (
+            ft.Colors.RED_700 if dni_do_pustego <= 2
+            else ft.Colors.ORANGE_700 if dni_do_pustego <= 5
+            else ft.Colors.ON_SURFACE_VARIANT
+        )
+        data_pustego = dane.get("data_pustego")
+        elementy.append(ft.Row([
+            ft.Icon(ft.Icons.EVENT_BUSY, size=13, color=kolor_prognozy),
+            ft.Text(
+                f"Przy Twoim tempie zabraknie paliwa {opis_dni}"
+                + (f" ({data_pustego})" if data_pustego else "") + ".",
+                size=FS["caption"], weight="bold" if dni_do_pustego <= 5 else "normal",
+                color=kolor_prognozy, expand=True,
+            ),
+        ], spacing=5))
+
     if not kompaktowy:
         czesci = []
         if dane.get("pojemnosc"):

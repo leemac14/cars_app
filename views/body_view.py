@@ -235,8 +235,8 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
             content=ft.Text(f"PO • {d_po}", size=11, weight="bold", color=ft.Colors.WHITE),
         )
 
-        obszar = ft.GestureDetector(
-            content=ft.Stack([obraz_po, warstwa_przed, uchwyt_linia, uchwyt_kolko, etykieta_przed, etykieta_po], width=SZER, height=WYS),
+        obszar = ft.Stack(
+            [obraz_po, warstwa_przed, uchwyt_linia, uchwyt_kolko, etykieta_przed, etykieta_po],
             width=SZER, height=WYS,
         )
 
@@ -247,8 +247,11 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
             uchwyt_kolko.left = nowy_x - 18
             obszar.update()
 
-        obszar.on_pan_update = lambda e2: przesun(e2.local_x)
-        obszar.on_tap_down = lambda e2: przesun(e2.local_x)
+        suwak = ft.Slider(
+            min=0, max=SZER, value=pozycja_startowa,
+            active_color=ft.Colors.PRIMARY,
+            on_change=lambda e2: przesun(float(e2.control.value)),
+        )
 
         bits_podpisu = [f"{s_przed} → {s_po}" if s_przed != s_po else str(s_przed)]
         if op_przed: bits_podpisu.append(f"Przed: {op_przed}")
@@ -257,7 +260,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         dlg = ft.AlertDialog(
             title=ft.Row([
                 ft.Icon(ft.Icons.COMPARE, color=ft.Colors.PRIMARY),
-                ft.Text("Przeciągnij suwak, by porównać", weight="bold", size=15)
+                ft.Text("Przesuń suwak, by porównać", weight="bold", size=15)
             ]),
             content=ft.Container(
                 width=SZER,
@@ -267,6 +270,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
                         content=obszar,
                     ),
+                    suwak,
                     ft.Text("  •  ".join(bits_podpisu), size=12, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
                 ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
             ),

@@ -342,6 +342,8 @@ def pobierz_zasieg_na_baku(auto_id):
         "procent_baku": None,
         "data_tankowania": None,
         "dni_od_tankowania": None,
+        "dni_do_pustego": None,
+        "data_pustego": None,
         "pewnosc": "brak",
     }
 
@@ -363,16 +365,27 @@ def pobierz_zasieg_na_baku(auto_id):
     zuzyte = przejechane * spalanie / 100
     pozostalo = pojemnosc - zuzyte
     dni = (datetime.now().date() - data_tank).days if data_tank != datetime.min.date() else None
+    zasieg_pozostaly = max(0.0, pozostalo / spalanie * 100)
+
+    # Prognoza „zabraknie za X dni” — to samo tempo km/dzień, którego już
+    # używają terminy podzespołów (patrz db.powiadomienia). Brak historii
+    # licznika (sredni_dzienny=None) albo zerowe tempo = brak prognozy,
+    # zamiast dzielenia przez zero.
+    sredni_dzienny = oblicz_sredni_dzienny_przebieg(auto_id)
+    dni_do_pustego, data_pustego = None, None
+    if sredni_dzienny and sredni_dzienny > 0:
+        dni_do_pustego = max(0, int(round(zasieg_pozostaly / sredni_dzienny)))
+        data_pustego = (datetime.now().date() + timedelta(days=dni_do_pustego)).strftime("%d.%m.%Y")
 
     wynik.update({
         "przejechane": przejechane,
         "pozostalo_jednostek": max(0.0, pozostalo),
-        "zasieg_pozostaly": max(0.0, pozostalo / spalanie * 100),
+        "zasieg_pozostaly": zasieg_pozostaly,
         "procent_baku": max(0.0, min(100.0, pozostalo / pojemnosc * 100)),
         "data_tankowania": ostatnie[0],
         "dni_od_tankowania": dni,
-        # Szacunek starzeje się szybko: po dwóch tygodniach od tankowania szansa,
-        # że ktoś dolał paliwa bez wpisu, jest już spora.
+        "dni_do_pustego": dni_do_pustego,
+        "data_pustego": data_pustego,
         "pewnosc": "niska" if (dni is None or dni > 21) else ("srednia" if dni > 7 else "wysoka"),
     })
     return wynik
@@ -717,10 +730,17 @@ def obserwacje_analityczne(auto_id, limit=None):
     bak = pobierz_zasieg_na_baku(auto_id)
     if bak and bak.get("zasieg_pozostaly") is not None and bak["pewnosc"] in ("wysoka", "srednia"):
         if bak["zasieg_pozostaly"] < 80:
+            tekst_baku = (
+                f"Szacunkowo zostało około {formatuj_liczba_eksport(bak['zasieg_pozostaly'], 0)} km "
+                f"({formatuj_liczba_eksport(bak['procent_baku'], 0)}% baku)."
+            )
+            if bak.get("dni_do_pustego") is not None:
+                ile = bak["dni_do_pustego"]
+                opis_dni = "dziś" if ile <= 0 else "jutro" if ile == 1 else f"za około {ile} dni"
+                tekst_baku += f" Przy Twoim tempie zabraknie paliwa {opis_dni}."
             obserwacje.append(_obserwacja(
                 "bak_niski", "uwaga", "bak", "Czas zatankować",
-                f"Szacunkowo zostało około {formatuj_liczba_eksport(bak['zasieg_pozostaly'], 0)} km "
-                f"({formatuj_liczba_eksport(bak['procent_baku'], 0)}% baku).",
+                tekst_baku,
                 85, "/tankowanie/nowe",
             ))
 
