@@ -4,9 +4,10 @@ import db
 import flet as ft
 from datetime import datetime
 
-from .stale import KOLOR_STATUS, RADIUS, formatuj_liczba
+from .stale import IKONY_SEZONU_OPON, KOLOR_STATUS, RADIUS, formatuj_liczba
 from .format import kolor_i_tekst_terminu, parsuj_float, parsuj_int, symbol_waluty
 from .zgodnosc import ustaw_blad, ustaw_ikone
+from .wyglad import dol_bezpieczny
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, potwierdz, przejdz, zamknij_dialog, zamknij_dno
 from .formularze import pole_daty, styl_dropdown, styl_pola
 from .komponenty import znacznik_wykonania
@@ -14,6 +15,55 @@ from .komponenty import znacznik_wykonania
 
 def _sygnatura_powiadomien(powiadomienia):
     return frozenset((p["typ"], p["tytul"], p["status"]) for p in powiadomienia)
+
+
+# Wpis typu „opony” nie jest ani płatnością, ani gołym przypomnieniem — jego
+# odhaczenie przestawia zamontowany komplet, więc i przycisk, i komunikat muszą
+# mówić o czymś innym niż „Zapłacone”.
+def etykieta_wykonania_cyklicznego(typ, czy_koszt):
+    if typ == db.TYP_CYKLICZNY_OPONY:
+        return "Zmieniono"
+    return "Zapłacone" if czy_koszt else "Wykonano"
+
+
+def ikona_wpisu_cyklicznego(typ, czy_koszt):
+    if typ == db.TYP_CYKLICZNY_OPONY:
+        return ft.Icons.TIRE_REPAIR
+    return ft.Icons.AUTORENEW if czy_koszt else ft.Icons.NOTIFICATIONS_ACTIVE
+
+
+def komunikat_zmiany_opon(opony):
+    """Zdanie opisujące, co się stało z kompletem opon. Osobno od reszty, bo tę
+    samą informację pokazuje panel przypomnień i ekran Magazyn → Opony."""
+    opony = opony or {}
+    if opony.get("ok"):
+        skad = f" (zdjęto: {opony['z'].lower()})" if opony.get("z") else ""
+        opis = f" — {opony['opis_zestawu']}" if opony.get("opis_zestawu") else ""
+        return f"Zamontowano opony {str(opony.get('na') or '').lower()}{opis}{skad}."
+    if opony.get("powod") == "brak_zestawow":
+        return "W magazynie nie ma żadnego zestawu opon do zamontowania."
+    docelowy = str(opony.get("docelowy_sezon") or "").lower()
+    return f"Nie zmieniono opon — brak wolnego zestawu ({docelowy}) w magazynie."
+
+
+def komunikat_po_wykonaniu(wynik, czy_koszt=True):
+    """Zdanie, które użytkownik zobaczy po odhaczeniu wpisu cyklicznego.
+
+    Przy sezonowej zmianie opon musi powiedzieć, CO SIĘ STAŁO Z DANYMI: albo
+    „zamontowano zimowe”, albo — jeśli drugiego kompletu nie ma w magazynie —
+    że termin przesunięto, ale opon nie zmieniono. Cicha zmiana albo ciche jej
+    pominięcie byłyby tu równie złe."""
+    if not isinstance(wynik, dict):
+        return "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
+
+    czy_koszt = wynik.get("czy_koszt", czy_koszt)
+    if wynik.get("typ") != db.TYP_CYKLICZNY_OPONY:
+        return "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
+
+    opony = wynik.get("opony") or {}
+    if opony.get("ok"):
+        return komunikat_zmiany_opon(opony)
+    return "Przesunięto termin. " + komunikat_zmiany_opon(opony)
 
 
 def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
@@ -64,7 +114,13 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
 
 
 def pokaz_panel_powiadomien(page: ft.Page, state):
-    bs = ft.BottomSheet(ft.Container())
+    # Jak w panelu wydatków: podmieniamy TREŚĆ stałej kolumny, a nie cały
+    # `bs.content` — inaczej odłożenie albo odhaczenie powiadomienia nie było
+    # widać w już otwartym arkuszu.
+    lista_pozycji = ft.Column([], tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
+    bs = ft.BottomSheet(ft.Container(
+        padding=20, bgcolor=ft.Colors.SURFACE, content=lista_pozycji,
+    ))
 
     def idz_do(trasa):
         def handler(e):
@@ -72,10 +128,10 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             przejdz(page, trasa)
         return handler
 
-    def zaplac_cykliczny(wydatek_id, czy_koszt=True, kafelek=None):
+    def zaplac_cykliczny(wydatek_id, czy_koszt=True, kafelek=None, typ=None):
         def handler(e):
-            db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
-            komunikat = "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
+            wynik = db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
+            komunikat = komunikat_po_wykonaniu(wynik, czy_koszt)
 
             def dokoncz():
                 pokaz_komunikat(page, komunikat)
@@ -91,7 +147,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             # znikał w tej samej klatce, w której użytkownik go dotknął.
             kafelek.trailing = znacznik_wykonania(
                 page,
-                "Zapłacone" if czy_koszt else "Wykonano",
+                etykieta_wykonania_cyklicznego(typ, czy_koszt),
                 po_zakonczeniu=dokoncz,
             )
             try:
@@ -230,7 +286,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 padding=ft.Padding.symmetric(vertical=20),
                 content=ft.Row([
                     ft.Icon(ft.Icons.TASK_ALT, size=18, color=KOLOR_STATUS["ok"]),
-                    ft.Text("Brak zbliżających się terminów", italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text("Brak zbliżających się terminów", italic=True, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                 ], spacing=8)
             ))
         else:
@@ -239,15 +295,19 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 ikona = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
                 if p["typ"] == "cykliczny":
                     czy_koszt_p = p.get("czy_koszt", True)
+                    typ_p = p.get("typ_cykliczny", db.TYP_CYKLICZNY_WYDATEK)
+                    # Sezonowa zmiana opon dostaje własną ikonę zamiast klepsydry:
+                    # na liście przypomnień ma się od razu odróżniać od rat i polis.
+                    ikona_p = ft.Icons.TIRE_REPAIR if typ_p == db.TYP_CYKLICZNY_OPONY else ikona
                     kafelek = ft.ListTile(
-                        leading=ft.Icon(ikona, color=kolor),
+                        leading=ft.Icon(ikona_p, color=kolor),
                         title=ft.Text(p["tytul"], weight="bold"),
                         subtitle=ft.Text(p["opis"], color=kolor, size=13),
                     )
                     akcje = [ft.TextButton(
-                        "Zapłacone" if czy_koszt_p else "Wykonano",
+                        etykieta_wykonania_cyklicznego(typ_p, czy_koszt_p),
                         icon=ft.Icons.CHECK,
-                        on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p, kafelek),
+                        on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p, kafelek, typ_p),
                     )]
                     drzemka = przycisk_odlozenia(p)
                     if drzemka:
@@ -267,15 +327,15 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         # ale nie znikają bez śladu — widać datę powrotu i można ją cofnąć.
         pozycje.extend(sekcja_odlozonych())
 
-        bs.content = ft.Container(
-            padding=20,
-            bgcolor=ft.Colors.SURFACE,
-            content=ft.Column(pozycje, tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
-        )
+        pozycje.append(dol_bezpieczny(20))
+        lista_pozycji.controls = pozycje
         try:
-            page.update()
+            lista_pozycji.update()
         except Exception:
-            pass
+            try:
+                page.update()
+            except Exception:
+                pass
 
     odswiez()
     otworz_dno(page, bs)
@@ -286,14 +346,21 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
     (raty, abonamenty, ubezpieczenia ratalne) ORAZ zwykłymi przypomnieniami
     cyklicznymi bez kosztu (np. "co miesiąc sprawdź ciśnienie w oponach") —
     bez osobnej trasy, analogicznie do pokaz_panel_powiadomien()."""
-    bs = ft.BottomSheet(ft.Container())
+    # Stała kolumna, której podmieniamy tylko `controls`. Podmiana całego
+    # `bs.content` po każdej zmianie nie trafiała do już otwartego arkusza —
+    # świeżo dodany wpis (np. sezonowa zmiana opon) pojawiał się dopiero po
+    # zamknięciu i ponownym otwarciu panelu.
+    lista_pozycji = ft.Column([], tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
+    bs = ft.BottomSheet(ft.Container(
+        padding=20, bgcolor=ft.Colors.SURFACE, content=lista_pozycji,
+    ))
 
     def odswiez():
         wpisy = db.pobierz_wydatki_cykliczne(state.auto_id)
         pozycje = [
             ft.Row([
                 ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.PRIMARY),
-                ft.Text("Wydatki cykliczne i przypomnienia", weight="bold", size=18, color=ft.Colors.PRIMARY)
+                ft.Text("Wydatki cykliczne i przypomnienia", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True)
             ], spacing=8),
             ft.Divider(height=1),
         ]
@@ -304,26 +371,37 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
                 content=ft.Text("Brak zapisanych wydatków cyklicznych ani przypomnień.", italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
             ))
         else:
-            for w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt in wpisy:
+            for w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ in wpisy:
                 kolor, tekst_daty = kolor_i_tekst_terminu(nastepna_data)
                 czy_koszt = bool(czy_koszt)
-                podtytul = (
-                    f"{formatuj_liczba(kwota)} {symbol_waluty()} • co {okres_dni} dni • {tekst_daty or nastepna_data}"
-                    if czy_koszt else
-                    f"Przypomnienie • co {okres_dni} dni • {tekst_daty or nastepna_data}"
-                )
+                termin_txt = f"co {okres_dni} dni • {tekst_daty or nastepna_data}"
+                if typ == db.TYP_CYKLICZNY_OPONY:
+                    # Przy zmianie opon najważniejsze jest, CO stoi na aucie i co
+                    # zostanie zamontowane — sam termin mówi tu najmniej.
+                    stan = db.pobierz_stan_opon(state.auto_id) or {}
+                    teraz = stan.get("sezon")
+                    docelowy = stan.get("docelowy_sezon")
+                    kierunek = f"{teraz} → {docelowy}" if teraz else (f"→ {docelowy}" if docelowy else "brak zestawów")
+                    podtytul = f"Zmiana opon: {kierunek} • {termin_txt}"
+                    if not stan.get("ma_para"):
+                        podtytul += " • brak wolnego kompletu"
+                elif czy_koszt:
+                    podtytul = f"{formatuj_liczba(kwota)} {symbol_waluty()} • {termin_txt}"
+                else:
+                    podtytul = f"Przypomnienie • {termin_txt}"
                 pozycje.append(ft.ListTile(
-                    leading=ft.Icon(ft.Icons.AUTORENEW if czy_koszt else ft.Icons.NOTIFICATIONS_ACTIVE, color=kolor),
+                    leading=ft.Icon(ikona_wpisu_cyklicznego(typ, czy_koszt), color=kolor),
                     title=ft.Text(str(nazwa), weight="bold"),
                     subtitle=ft.Text(podtytul, size=12, color=kolor),
                     trailing=ft.PopupMenuButton(items=[
                         ft.PopupMenuItem(
-                            content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18), ft.Text("Zapłacone" if czy_koszt else "Wykonano")]),
+                            content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18),
+                                            ft.Text(etykieta_wykonania_cyklicznego(typ, czy_koszt))]),
                             on_click=lambda e, wid=w_id, ck=czy_koszt: zaplac(wid, ck)
                         ),
                         ft.PopupMenuItem(
                             content=ft.Row([ft.Icon(ft.Icons.EDIT, size=18), ft.Text("Edytuj")]),
-                            on_click=lambda e, w=(w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt): formularz(w)
+                            on_click=lambda e, w=(w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ): formularz(w)
                         ),
                         ft.PopupMenuItem(
                             content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=18), ft.Text("Usuń")]),
@@ -334,20 +412,35 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
 
         pozycje.append(ft.Divider(height=1))
         pozycje.append(ft.TextButton("Dodaj wydatek / przypomnienie", icon=ft.Icons.ADD, on_click=lambda e: formularz(None)))
+        if state.auto_id and not any(w[6] == db.TYP_CYKLICZNY_OPONY for w in wpisy):
+            # Skrót zamiast pustego pola: sezonowa zmiana opon ma ten sam okres
+            # i tę samą nazwę u każdego, więc nie ma czego wpisywać ręcznie.
+            def dodaj_opony(e):
+                db.dodaj_przypomnienie_o_oponach(state.auto_id)
+                odswiez()
+                pokaz_komunikat(page, "Dodano przypomnienie o sezonowej zmianie opon (co pół roku).")
 
-        bs.content = ft.Container(
-            padding=20, bgcolor=ft.Colors.SURFACE,
-            content=ft.Column(pozycje, tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
-        )
+            pozycje.append(ft.TextButton(
+                "Dodaj sezonową zmianę opon", icon=ft.Icons.TIRE_REPAIR, on_click=dodaj_opony,
+            ))
+
+        # Margines na przyciski systemowe telefonu doklejamy SAMI: otworz_dno robi
+        # to jednorazowo, a my podmieniamy zawartość kolumny przy każdym odświeżeniu.
+        pozycje.append(dol_bezpieczny(20))
+        lista_pozycji.controls = pozycje
         try:
-            page.update()
+            lista_pozycji.update()
         except Exception:
-            pass
+            # Kolumna nie jest jeszcze w drzewie strony (pierwsze budowanie
+            # panelu) — otworz_dno pokaże ją już z aktualną treścią.
+            try:
+                page.update()
+            except Exception:
+                pass
 
     def zaplac(wydatek_id, czy_koszt=True):
-        db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
-        komunikat = "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
-        pokaz_komunikat(page, komunikat)
+        wynik = db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
+        pokaz_komunikat(page, komunikat_po_wykonaniu(wynik, czy_koszt))
         odswiez()
 
     def usun(wydatek_id):
@@ -359,9 +452,9 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
 
     def formularz(istniejacy):
         edycja = istniejacy is not None
-        w_id, nazwa_val, kwota_val, okres_val, data_val, czy_koszt_val = (
+        w_id, nazwa_val, kwota_val, okres_val, data_val, czy_koszt_val, typ_val = (
             istniejacy if istniejacy is not None
-            else (None, "", "", 30, datetime.now().strftime("%d.%m.%Y"), 1)
+            else (None, "", "", 30, datetime.now().strftime("%d.%m.%Y"), 1, db.TYP_CYKLICZNY_WYDATEK)
         )
 
         e_nazwa = ft.TextField(label="Nazwa (np. Rata leasingu, Sprawdź ciśnienie w oponach)", value=str(nazwa_val), **styl_pola())
@@ -369,12 +462,49 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         e_tylko_przypomnienie = ft.Switch(label="Tylko przypomnienie (bez kwoty)", value=not bool(czy_koszt_val))
         e_kwota.visible = not e_tylko_przypomnienie.value
 
-        def przelacz_typ(e):
+        # Rodzaj wpisu. „Sezonowa zmiana opon” to jedyny rodzaj, który przy
+        # odhaczeniu ZMIENIA DANE (montuje drugi komplet), więc dostaje własną
+        # pozycję zamiast chować się jako zwykłe przypomnienie z nazwą „opony”.
+        e_rodzaj = ft.Dropdown(
+            label="Rodzaj wpisu",
+            options=[
+                ft.DropdownOption(key=db.TYP_CYKLICZNY_WYDATEK, text="Wydatek / czynność cykliczna"),
+                ft.DropdownOption(key=db.TYP_CYKLICZNY_OPONY, text="Sezonowa zmiana opon"),
+            ],
+            value=typ_val if typ_val in db.TYPY_CYKLICZNE else db.TYP_CYKLICZNY_WYDATEK,
+            **styl_dropdown()
+        )
+        podpowiedz_opon = ft.Text(
+            "Po odhaczeniu aplikacja sama przestawi zamontowany zestaw opon na komplet z drugiego sezonu.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
+        def odswiez_rodzaj():
+            czy_opony = e_rodzaj.value == db.TYP_CYKLICZNY_OPONY
+            podpowiedz_opon.visible = czy_opony
             e_kwota.visible = not e_tylko_przypomnienie.value
             if not e_kwota.visible:
                 ustaw_blad(e_kwota)
-            page.update()
+            if czy_opony and not (e_nazwa.value or "").strip():
+                e_nazwa.value = "Sezonowa zmiana opon"
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        def przelacz_typ(e):
+            odswiez_rodzaj()
         e_tylko_przypomnienie.on_change = przelacz_typ
+
+        def przelacz_rodzaj(e):
+            if e_rodzaj.value == db.TYP_CYKLICZNY_OPONY:
+                # Zmiana opon wypada dwa razy w roku — podstawiamy pół roku,
+                # żeby nie trzeba było tego poprawiać po każdym wyborze rodzaju.
+                e_okres.value = "180"
+                e_tylko_przypomnienie.value = True
+            odswiez_rodzaj()
+        # Dropdown w Flet 0.8x ma on_select, nie on_change (patrz utils/zgodnosc).
+        e_rodzaj.on_select = przelacz_rodzaj
 
         e_okres = ft.Dropdown(
             label="Powtarzaj co",
@@ -388,6 +518,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
             **styl_dropdown()
         )
         e_data = pole_daty(page, "Następny termin", str(data_val))
+        podpowiedz_opon.visible = e_rodzaj.value == db.TYP_CYKLICZNY_OPONY
 
         def zapisz(e):
             ustaw_blad(e_nazwa)
@@ -403,16 +534,20 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
                 page.update()
                 return
             okres_dni = parsuj_int(e_okres.value, 30)
+            typ = e_rodzaj.value if e_rodzaj.value in db.TYPY_CYKLICZNE else db.TYP_CYKLICZNY_WYDATEK
             if edycja:
-                db.edytuj_wydatek_cykliczny(w_id, n, kw or 0.0, okres_dni, e_data.value, czy_koszt)
+                db.edytuj_wydatek_cykliczny(w_id, n, kw or 0.0, okres_dni, e_data.value, czy_koszt, typ)
             else:
-                db.dodaj_wydatek_cykliczny(state.auto_id, n, kw or 0.0, okres_dni, e_data.value, czy_koszt)
+                db.dodaj_wydatek_cykliczny(state.auto_id, n, kw or 0.0, okres_dni, e_data.value, czy_koszt, typ)
             zamknij_dialog(page, dlg)
             odswiez()
 
         dlg = ft.AlertDialog(
             title=ft.Text("Edytuj wpis" if edycja else "Nowy wydatek cykliczny / przypomnienie", weight="bold"),
-            content=ft.Column([e_nazwa, e_tylko_przypomnienie, e_kwota, e_okres, e_data], tight=True, spacing=10),
+            content=ft.Column(
+                [e_nazwa, e_rodzaj, podpowiedz_opon, e_tylko_przypomnienie, e_kwota, e_okres, e_data],
+                tight=True, spacing=10, scroll=ft.ScrollMode.AUTO,
+            ),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
                 ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
@@ -426,6 +561,10 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
 
 __all__ = [
     "_sygnatura_powiadomien",
+    "etykieta_wykonania_cyklicznego",
+    "ikona_wpisu_cyklicznego",
+    "komunikat_zmiany_opon",
+    "komunikat_po_wykonaniu",
     "pokaz_panel_powiadomien",
     "pokaz_panel_wydatkow_cyklicznych",
     "przycisk_dzwonka",

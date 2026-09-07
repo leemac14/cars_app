@@ -10,12 +10,19 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self._page = page
         self.state = state
 
+        podzakladka = int(getattr(state, "do_zrobienia_podzakladka", 0) or 0)
+        podzakladka = podzakladka if podzakladka in (0, 1) else 0
+
         wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "Do zrobienia", "/", ikona=ft.Icons.CHECKLIST,
+            page, "Do zrobienia" if podzakladka == 0 else "Checklisty", "/",
+            ikona=ft.Icons.CHECKLIST if podzakladka == 0 else ft.Icons.FACT_CHECK,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/do-zrobienia"))] if wspolny_id else None
         )
-        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"))
+        if podzakladka == 1:
+            fab = utils.fab_animowany(ft.Icons.ADD, lambda e: self._okno_edytora_checklisty(None))
+        else:
+            fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"))
 
         # --- ZMIENNE DLA GRUPOWEGO ZAZNACZANIA / USUWANIA ---
         self.tryb_zaznaczania = False
@@ -27,76 +34,96 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
 
         elementy = []
 
-        with db.polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT d.id, d.tytul, d.opis, d.priorytet, d.szacowany_koszt, d.termin, "
-                "d.zadanie_id, d.wykonane, z.nazwa "
-                "FROM do_zrobienia d LEFT JOIN zadania z ON d.zadanie_id = z.id "
-                "WHERE d.auto_id=?", (self.state.auto_id,)
-            )
-            pozycje = c.fetchall()
+        # Ekran ma teraz DWIE listy o różnym cyklu życia: „Do zrobienia”, gdzie
+        # pozycja znika po wykonaniu, i checklisty, które odhacza się przed każdym
+        # wyjazdem i zeruje po powrocie. Trzymanie ich razem zamieniałoby listę
+        # planów w rytuał przepisywania tych samych dziesięciu punktów.
+        def zmien_podzakladke(idx):
+            self.state.do_zrobienia_podzakladka = idx
+            utils.przejdz(self._page, "/do-zrobienia")
 
-        if not pozycje:
-            elementy.append(utils.ekran_braku_danych(
-                ikona=ft.Icons.CHECKLIST_RTL,
-                tytul="Lista jest pusta",
-                opis="Dodawaj tu wszystko, co planujesz zrobić przy aucie. Gdy przyjdzie czas, zamienisz to jednym kliknięciem w Wizytę w warsztacie.",
-                tekst_przycisku="Dodaj pozycję",
-                on_click=lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")
-            ))
+        elementy.append(utils.segmented_control(
+            page,
+            [("Do zrobienia", 0, ft.Icons.CHECKLIST_RTL), ("Checklisty", 1, ft.Icons.FACT_CHECK)],
+            podzakladka, zmien_podzakladke,
+        ))
+
+        if podzakladka == 1:
+            self._buduj_checklisty(elementy)
         else:
-            # Doklejamy syntetyczne pole statusu, żeby użyć gotowego mechanizmu filtrowania po kategorii
-            dane = [tuple(p) + ("Zakończone" if p[7] else "Aktywne",) for p in pozycje]
 
-            opcje_sort = [
-                ("Priorytet", "priorytet", lambda x: db.KOLEJNOSC_PRIORYTETU.get(x[3], 9)),
-                ("Termin", "termin", lambda x: parsuj_date(x[5])),
-                ("Nazwa", "nazwa", lambda x: str(x[1]).lower()),
-                ("Koszt", "koszt", lambda x: float(x[4] or 0)),
-            ]
+            with db.polacz_baze() as conn:
+                c = conn.cursor()
+                c.execute(
+                    "SELECT d.id, d.tytul, d.opis, d.priorytet, d.szacowany_koszt, d.termin, "
+                    "d.zadanie_id, d.wykonane, z.nazwa "
+                    "FROM do_zrobienia d LEFT JOIN zadania z ON d.zadanie_id = z.id "
+                    "WHERE d.auto_id=?", (self.state.auto_id,)
+                )
+                pozycje = c.fetchall()
 
-            sort_ui = utils.przycisk_sortowania(self._page, self.state, "do_zrobienia", opcje_sort)
-            filtr_status_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_status", dane, 9, "Status")
-            filtr_priorytet_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_priorytet", dane, 3, "Priorytet")
-
-            elementy.append(ft.Row([sort_ui, filtr_status_ui, filtr_priorytet_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
-
-            def filtruj_pozycje(e):
-                zapytanie = e.control.value.lower().strip()
-                self.lista_kart.controls.clear()
-                for k in self.wszystkie_karty:
-                    if zapytanie in k["szukaj"]:
-                        self.lista_kart.controls.append(k["karta"])
-                self.update()
-
-            self.pole_wyszukiwarki = ft.TextField(
-                hint_text="Szukaj (tytuł, opis, podzespół)...",
-                prefix_icon=ft.Icons.SEARCH,
-                on_change=utils.z_opoznieniem(self._page, filtruj_pozycje),
-                **utils.styl_pola()
-            )
-            elementy.append(self.pole_wyszukiwarki)
-
-            self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-            self.wszystkie_karty = []
-            self.uzyj_wirtualizacji = True
-
-            po_filtrach = utils.filtruj_po_kategorii(dane, self.state, "do_zrobienia_status", 9)
-            po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "do_zrobienia_priorytet", 3)
-            utils.posortuj_liste(po_filtrach, self.state, "do_zrobienia", opcje_sort)
-
-            if not po_filtrach:
-                elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+            if not pozycje:
+                elementy.append(utils.ekran_braku_danych(
+                    ikona=ft.Icons.CHECKLIST_RTL,
+                    tytul="Lista jest pusta",
+                    opis="Dodawaj tu wszystko, co planujesz zrobić przy aucie. Gdy przyjdzie czas, zamienisz to jednym kliknięciem w Wizytę w warsztacie.",
+                    tekst_przycisku="Dodaj pozycję",
+                    on_click=lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")
+                ))
             else:
-                for w in po_filtrach:
-                    karta = self._karta_pozycji(w)
-                    _, tytul, opis, priorytet, koszt, termin, _, _, zadanie_nazwa = w[:9]
-                    tekst_szukaj = f"{tytul} {opis} {priorytet} {termin} {zadanie_nazwa}".lower()
-                    self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
-                    self.lista_kart.controls.append(karta)
+                # Doklejamy syntetyczne pole statusu, żeby użyć gotowego mechanizmu filtrowania po kategorii
+                dane = [tuple(p) + ("Zakończone" if p[7] else "Aktywne",) for p in pozycje]
 
-            elementy.append(self.lista_kart)
+                opcje_sort = [
+                    ("Priorytet", "priorytet", lambda x: db.KOLEJNOSC_PRIORYTETU.get(x[3], 9)),
+                    ("Termin", "termin", lambda x: parsuj_date(x[5])),
+                    ("Nazwa", "nazwa", lambda x: str(x[1]).lower()),
+                    ("Koszt", "koszt", lambda x: float(x[4] or 0)),
+                ]
+
+                sort_ui = utils.przycisk_sortowania(self._page, self.state, "do_zrobienia", opcje_sort)
+                filtr_status_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_status", dane, 9, "Status")
+                filtr_priorytet_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_priorytet", dane, 3, "Priorytet")
+
+                elementy.append(utils.pasek_zawijany([sort_ui, filtr_status_ui, filtr_priorytet_ui]))
+
+                def filtruj_pozycje(e):
+                    zapytanie = e.control.value.lower().strip()
+                    self.lista_kart.controls.clear()
+                    for k in self.wszystkie_karty:
+                        if zapytanie in k["szukaj"]:
+                            self.lista_kart.controls.append(k["karta"])
+                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=185)
+                    self.update()
+
+                self.pole_wyszukiwarki = ft.TextField(
+                    hint_text="Szukaj (tytuł, opis, podzespół)...",
+                    prefix_icon=ft.Icons.SEARCH,
+                    on_change=utils.z_opoznieniem(self._page, filtruj_pozycje),
+                    **utils.styl_pola()
+                )
+                elementy.append(self.pole_wyszukiwarki)
+
+                self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.wszystkie_karty = []
+                self.uzyj_wirtualizacji = True
+
+                po_filtrach = utils.filtruj_po_kategorii(dane, self.state, "do_zrobienia_status", 9)
+                po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "do_zrobienia_priorytet", 3)
+                utils.posortuj_liste(po_filtrach, self.state, "do_zrobienia", opcje_sort)
+
+                if not po_filtrach:
+                    elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+                else:
+                    for w in po_filtrach:
+                        karta = self._karta_pozycji(w)
+                        _, tytul, opis, priorytet, koszt, termin, _, _, zadanie_nazwa = w[:9]
+                        tekst_szukaj = f"{tytul} {opis} {priorytet} {termin} {zadanie_nazwa}".lower()
+                        self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
+                        self.lista_kart.controls.append(karta)
+
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=185)
+                elementy.append(self.lista_kart)
 
         elementy.append(utils.dol_bezpieczny(10))
 
@@ -109,6 +136,190 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             controls=elementy,          # lub self.elementy, w zależności jak masz w tym pliku
             scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
         )
+
+    # ==================== CHECKLISTY ====================
+    # Lista przedwyjazdowa różni się od „Do zrobienia” jedną rzeczą, ale
+    # zasadniczą: jest WIELOKROTNEGO UŻYTKU. Dlatego pozycji się tu nie usuwa,
+    # tylko odhacza, a po powrocie zeruje jednym przyciskiem.
+
+    def _buduj_checklisty(self, elementy):
+        listy = db.pobierz_checklisty(self.state.auto_id)
+
+        if not listy:
+            elementy.append(utils.ekran_braku_danych(
+                ikona=ft.Icons.FACT_CHECK,
+                tytul="Brak checklist",
+                opis="Lista kontrolna, którą odhaczasz przed dłuższą trasą: opony, olej, płyn do "
+                     "spryskiwaczy, dokumenty. Po powrocie zerujesz ją jednym przyciskiem.",
+                tekst_przycisku="Dodaj gotową listę przedwyjazdową",
+                on_click=lambda e: self._utworz_domyslna(),
+            ))
+            elementy.append(ft.Row([
+                ft.TextButton("Albo zbuduj własną listę", icon=ft.Icons.ADD,
+                              on_click=lambda e: self._okno_edytora_checklisty(None)),
+            ], alignment=ft.MainAxisAlignment.CENTER))
+            return
+
+        for lista in listy:
+            elementy.append(self._karta_checklisty(lista))
+
+        elementy.append(ft.Row([
+            ft.TextButton("Nowa checklista", icon=ft.Icons.ADD,
+                          on_click=lambda e: self._okno_edytora_checklisty(None)),
+        ], alignment=ft.MainAxisAlignment.CENTER))
+
+    def _utworz_domyslna(self):
+        db.utworz_domyslna_checkliste(self.state.auto_id)
+        utils.przejdz(self._page, "/do-zrobienia")
+
+    def _karta_checklisty(self, lista):
+        razem = lista["razem"]
+        licznik = ft.Text("", weight="bold", size=13)
+        pasek = ft.ProgressBar(height=6, border_radius=3,
+                               bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE))
+
+        def odswiez_naglowek():
+            zrobione = sum(1 for c in checkboxy if c.value)
+            gotowa = razem > 0 and zrobione == razem
+            licznik.value = f"{zrobione} / {razem}"
+            licznik.color = ft.Colors.GREEN_700 if gotowa else ft.Colors.ON_SURFACE_VARIANT
+            pasek.value = (zrobione / razem) if razem else 0
+            pasek.color = ft.Colors.GREEN_700 if gotowa else ft.Colors.PRIMARY
+
+        def przelacz(e, pozycja_id):
+            db.przelacz_pozycje_checklisty(pozycja_id, bool(e.control.value))
+            odswiez_naglowek()
+            # Odświeżamy sam nagłówek, a nie cały ekran: przy dziesięciu punktach
+            # przeładowanie widoku po każdym ptaszku gubiłoby pozycję przewijania.
+            try:
+                self._page.update()
+            except Exception:
+                pass
+
+        checkboxy = []
+        for p in lista["pozycje"]:
+            checkboxy.append(ft.Checkbox(
+                label=p["tresc"], value=p["odhaczone"],
+                on_change=lambda e, pid=p["id"]: przelacz(e, pid),
+            ))
+        odswiez_naglowek()
+
+        def wyzeruj():
+            db.wyzeruj_checkliste(lista["id"])
+            utils.przejdz(self._page, "/do-zrobienia")
+            utils.pokaz_komunikat(self._page, f"Wyzerowano „{lista['nazwa']}”.")
+
+        def odhacz_wszystko():
+            db.odhacz_cala_checkliste(lista["id"])
+            utils.przejdz(self._page, "/do-zrobienia")
+            utils.pokaz_komunikat(self._page, f"Odhaczono całą listę „{lista['nazwa']}”.")
+
+        def usun():
+            def wykonaj():
+                db.usun_checkliste(lista["id"])
+                utils.przejdz(self._page, "/do-zrobienia")
+                utils.pokaz_komunikat(self._page, "Usunięto checklistę.")
+            utils.potwierdz(
+                self._page, "Usunąć checklistę?",
+                f"„{lista['nazwa']}” zniknie razem z wszystkimi pozycjami.", wykonaj,
+            )
+
+        def menu(e):
+            utils.pokaz_menu_kontekstowe(self._page, f"Checklista: {lista['nazwa']}", [
+                {"ikona": ft.Icons.EDIT, "tekst": "Edytuj listę i pozycje",
+                 "akcja": lambda: self._okno_edytora_checklisty(lista)},
+                {"ikona": ft.Icons.DONE_ALL, "tekst": "Odhacz wszystko", "akcja": odhacz_wszystko},
+                {"ikona": ft.Icons.RESTART_ALT, "tekst": "Wyzeruj ptaszki", "akcja": wyzeruj},
+                {"ikona": ft.Icons.DELETE, "tekst": "Usuń checklistę", "kolor": ft.Colors.RED, "akcja": usun},
+            ])
+
+        podpis = []
+        if lista["ostatnie_uzycie"]:
+            podpis.append(f"ostatnio: {lista['ostatnie_uzycie']}")
+        if lista["opis"]:
+            podpis.append(lista["opis"])
+
+        naglowek = [
+            ft.Row([
+                ft.Icon(ft.Icons.FACT_CHECK, size=18, color=ft.Colors.PRIMARY),
+                ft.Text(lista["nazwa"], weight="bold", size=16, expand=True,
+                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                licznik,
+                ft.IconButton(ft.Icons.MORE_VERT, icon_size=18, tooltip="Opcje listy", on_click=menu),
+            ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            pasek,
+        ]
+        if podpis:
+            naglowek.append(ft.Text(" • ".join(podpis), size=utils.FS["caption"],
+                                    color=ft.Colors.ON_SURFACE_VARIANT))
+
+        return ft.Card(elevation=1, content=ft.Container(
+            padding=15,
+            content=ft.Column(
+                naglowek + [ft.Divider(height=10)] + (checkboxy or [
+                    ft.Text("Ta lista nie ma jeszcze pozycji — dodaj je w edycji.",
+                            size=12, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+                ]) + [
+                    ft.Row([
+                        ft.TextButton("Wyzeruj", icon=ft.Icons.RESTART_ALT, on_click=lambda e: wyzeruj()),
+                        ft.TextButton("Odhacz wszystko", icon=ft.Icons.DONE_ALL, on_click=lambda e: odhacz_wszystko()),
+                    ], alignment=ft.MainAxisAlignment.END, spacing=0),
+                ],
+                spacing=6,
+            ),
+        ))
+
+    def _okno_edytora_checklisty(self, lista):
+        """Jeden edytor do tworzenia i edycji. Pozycje wpisuje się jako zwykły
+        tekst, po jednej w linii — wklejenie listy z notatnika ma po prostu
+        zadziałać, a nie wymagać dziesięciu kliknięć „dodaj pozycję”."""
+        edycja = lista is not None
+        e_nazwa = ft.TextField(
+            label="Nazwa listy", value=str(lista["nazwa"]) if edycja else "",
+            **utils.styl_pola()
+        )
+        e_pozycje = ft.TextField(
+            label="Pozycje — po jednej w linii",
+            value="\n".join(p["tresc"] for p in lista["pozycje"]) if edycja else "",
+            multiline=True, min_lines=6, max_lines=14, **utils.styl_pola()
+        )
+
+        def zapisz(e):
+            utils.ustaw_blad(e_nazwa)
+            utils.ustaw_blad(e_pozycje)
+            nazwa = (e_nazwa.value or "").strip()
+            pozycje = [w for w in (e_pozycje.value or "").splitlines() if w.strip()]
+            bledy = []
+            if not nazwa:
+                bledy.append((e_nazwa, "Podaj nazwę listy"))
+            if not pozycje:
+                bledy.append((e_pozycje, "Dodaj przynajmniej jedną pozycję"))
+            if bledy:
+                for kontrolka, komunikat in bledy:
+                    utils.ustaw_blad(kontrolka, komunikat)
+                self._page.update()
+                return
+            if edycja:
+                db.aktualizuj_checkliste(lista["id"], nazwa, pozycje)
+            else:
+                db.dodaj_checkliste(self.state.auto_id, nazwa, pozycje)
+            utils.zamknij_dialog(self._page, dlg)
+            utils.przejdz(self._page, "/do-zrobienia")
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Edytuj checklistę" if edycja else "Nowa checklista", weight="bold"),
+            content=ft.Column([
+                e_nazwa, e_pozycje,
+                ft.Text("Zmiana nazwy albo dopisanie punktu NIE kasuje postawionych ptaszków — "
+                        "pozycje dopasowują się po treści.",
+                        size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
+            ], tight=True, spacing=10, scroll=ft.ScrollMode.AUTO),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
+                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+            ],
+        )
+        utils.otworz_dialog(self._page, dlg)
 
     # --- KARTA POJEDYNCZEJ POZYCJI ---
     def _karta_pozycji(self, w):

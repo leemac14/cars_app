@@ -1,10 +1,12 @@
-"""Magazyn części: rozliczanie zużycia i zwroty."""
+"""Magazyn części: rozliczanie zużycia, zwroty i zestawy opon."""
 
 import os
 import shutil
 import sqlite3
 import uuid
+from datetime import datetime
 
+from .stale import MIESIACE_ZIMOWE, SEZONY_PRZELACZALNE
 from .polaczenie import polacz_baze
 from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
 from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika
@@ -290,15 +292,148 @@ def usun_wiele_czesci_magazynu_z_cofnieciem(ids_list):
     return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
 
 
+def pobierz_stan_magazynu(auto_id):
+    """Ile pozycji leży na półce i ile z nich zeszło poniżej własnego progu —
+    jedna liczba, po którą sięga kafelek kokpitu i podsumowania."""
+    if not auto_id:
+        return {"razem": 0, "niski": 0, "nazwy_niskich": []}
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT nazwa, ilosc, jednostka, prog_ostrzezenia FROM magazyn_czesci WHERE auto_id=?",
+            (auto_id,)
+        )
+        wiersze = c.fetchall()
+
+    niskie = []
+    for nazwa, ilosc, jednostka, prog in wiersze:
+        try:
+            prog_efektywny = float(prog) if prog is not None else 1.0
+        except (TypeError, ValueError):
+            prog_efektywny = 1.0
+        if float(ilosc or 0) <= prog_efektywny:
+            niskie.append(str(nazwa or ""))
+    return {"razem": len(wiersze), "niski": len(niskie), "nazwy_niskich": niskie}
+
+
+# ============================================================================
+#  SEZONOWA ZMIANA OPON
+# ============================================================================
+# Zmiana opon to jedyne cykliczne przypomnienie, którego wykonanie ZMIENIA STAN
+# w bazie: po niej na aucie stoi drugi komplet. Dopóki było zwykłym wpisem
+# w kalendarzu, magazyn opon i tak trzeba było poprawić ręcznie w drugim
+# miejscu — a że nikt tego nie robił, aplikacja przez pół roku twierdziła, że
+# auto jeździ na zimówkach w lipcu.
+
+
+def _docelowy_sezon(zamontowany_sezon, dzis=None):
+    """Na co zmieniamy. Kierunek bierzemy z tego, co JEST na aucie — to jedyna
+    pewna informacja. Dopiero gdy nic nie jest zamontowane (albo stoją opony
+    całoroczne, które nie mają pary), decyduje kalendarz."""
+    if zamontowany_sezon in SEZONY_PRZELACZALNE:
+        return "Letnie" if zamontowany_sezon == "Zimowe" else "Zimowe"
+    miesiac = (dzis or datetime.now()).month
+    return "Zimowe" if miesiac in MIESIACE_ZIMOWE else "Letnie"
+
+
+def pobierz_stan_opon(auto_id):
+    """Co stoi na aucie i co czeka w piwnicy — jedno źródło dla kafelka kokpitu
+    i dla samego przełączania. Zwraca None, gdy pojazd nie ma ani jednego
+    zestawu (wtedy nie ma o czym mówić)."""
+    if not auto_id:
+        return None
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, sezon, rozmiar, marka_model, glebokosc_bieznika, zamontowane, os_montazu "
+            "FROM zestawy_opon WHERE auto_id=? ORDER BY zamontowane DESC, id",
+            (auto_id,)
+        )
+        wiersze = c.fetchall()
+    if not wiersze:
+        return None
+
+    zestawy = [
+        {"id": w[0], "sezon": str(w[1] or ""), "rozmiar": str(w[2] or ""),
+         "marka_model": str(w[3] or ""), "bieznik": w[4],
+         "zamontowany": bool(w[5]), "os": str(w[6] or "Wszystkie")}
+        for w in wiersze
+    ]
+    zamontowane = [z for z in zestawy if z["zamontowany"]]
+    biezniki = [float(z["bieznik"]) for z in zamontowane if z["bieznik"] not in (None, "")]
+    sezon_teraz = zamontowane[0]["sezon"] if zamontowane else None
+    docelowy = _docelowy_sezon(sezon_teraz)
+    czeka = [z for z in zestawy if not z["zamontowany"] and z["sezon"] == docelowy]
+
+    return {
+        "zestawy": zestawy,
+        "zamontowane": zamontowane,
+        "sezon": sezon_teraz,
+        "bieznik": min(biezniki) if biezniki else None,
+        "docelowy_sezon": docelowy,
+        "kandydaci": czeka,
+        "ma_para": bool(czeka),
+    }
+
+
+def przelacz_zestaw_sezonowy(auto_id, docelowy_sezon=None):
+    """Zdejmuje obecny komplet i montuje ten z drugiego sezonu.
+
+    Zwraca słownik z opisem tego, co się stało (`ok`, `z`, `na`, `powod`) —
+    interfejs musi umieć powiedzieć „zmieniono z Zimowych na Letnie” ALBO
+    „nie ma czego zamontować”, a nie tylko cicho przesunąć termin.
+
+    Kandydatów rozstrzygamy po najgrubszym bieżniku: jeśli ktoś trzyma dwa
+    komplety letnich, na auto ma trafić ten lepszy, a nie ten z niższym ID.
+    """
+    stan = pobierz_stan_opon(auto_id)
+    if not stan:
+        return {"ok": False, "powod": "brak_zestawow"}
+
+    docelowy = docelowy_sezon or stan["docelowy_sezon"]
+    kandydaci = [z for z in stan["zestawy"] if not z["zamontowany"] and z["sezon"] == docelowy]
+    if not kandydaci:
+        return {"ok": False, "powod": "brak_kompletu", "docelowy_sezon": docelowy,
+                "z": stan["sezon"]}
+
+    def waga(z):
+        try:
+            return -float(z["bieznik"])
+        except (TypeError, ValueError):
+            return 0.0
+
+    nowy = sorted(kandydaci, key=lambda z: (waga(z), z["id"]))[0]
+
+    with polacz_baze() as conn:
+        conn.execute("UPDATE zestawy_opon SET zamontowane=0 WHERE auto_id=?", (auto_id,))
+        conn.execute(
+            "UPDATE zestawy_opon SET zamontowane=1, os_montazu='Wszystkie' WHERE id=?",
+            (nowy["id"],)
+        )
+
+    return {
+        "ok": True,
+        "z": stan["sezon"],
+        "na": nowy["sezon"],
+        "zestaw_id": nowy["id"],
+        "opis_zestawu": " ".join(x for x in (nowy["marka_model"], nowy["rozmiar"]) if x),
+        "bieznik": nowy["bieznik"],
+    }
+
+
 __all__ = [
     "POWIAZANIA_MAGAZYNU",
+    "_docelowy_sezon",
     "_pobierz_uzyte_czesci",
     "_przywroc_czesci",
     "_przywroc_powiazania_czesci_wpisow",
     "_rozlicz_czesci",
     "_zdejmij_powiazania_czesci_wpisow",
+    "pobierz_stan_magazynu",
+    "pobierz_stan_opon",
     "pobierz_uzyte_czesci_wizyty",
     "pobierz_uzyte_czesci_wpisu",
+    "przelacz_zestaw_sezonowy",
     "przywroc_czesci_wizyty",
     "przywroc_czesci_wpisu",
     "rozlicz_czesci_z_magazynu",

@@ -144,6 +144,9 @@ KOLUMNY_POJAZDU = [
     "ubezpieczyciel", "nr_polisy", "skladka_roczna", "telefon_assistance",
     "kod_lakieru", "rozmiar_opon", "rozmiar_felg", "rozstaw_srub",
     "moment_dokrecania", "typ_zlacza_ev", "data_pierwszej_rejestracji",
+    # Sprzedaż auta musi dojść do drugiej strony: inaczej u współdzielącego
+    # pojazd dalej stałby w garażu, choć fizycznie już go nie ma.
+    "status", "data_sprzedazy", "cena_sprzedazy",
 ]
 
 # Notatka wpisu jedzie do chmury razem z resztą jego pól (kolumny 'notatka',
@@ -161,7 +164,7 @@ KONFIGURACJA_SYNC = [
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
-    {"tabela": "wydatki_cykliczne", "kolumny": ["nazwa", "kwota", "okres_dni", "nastepna_data", "czy_koszt"], "fk": {}},
+    {"tabela": "wydatki_cykliczne", "kolumny": ["nazwa", "kwota", "okres_dni", "nastepna_data", "czy_koszt", "typ"], "fk": {}},
     {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "zrodlo", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
     {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},
@@ -172,6 +175,14 @@ KONFIGURACJA_SYNC = [
     # wiersz zamiast rozbić się o indeks (patrz _pobierz_tabele).
     {"tabela": "budzety", "kolumny": ["kategoria", "okres", "kwota"], "fk": {},
      "klucz_scalania": ["kategoria", "okres"]},
+    # Trasa „do teściów” jest cechą AUTA, nie telefonu — kto wsiądzie, ten ma
+    # tę samą pozycję w kalkulatorze.
+    {"tabela": "trasy_szablony", "kolumny": ["nazwa", "dystans", "powrot", "osoby", "oplaty", "notatki"], "fk": {}},
+    # Checklista jedzie w komplecie: nagłówek plus pozycje. Stan odhaczenia też
+    # — przy wspólnym aucie sens polega właśnie na tym, że druga osoba widzi,
+    # co zostało już sprawdzone przed wyjazdem.
+    {"tabela": "checklisty", "kolumny": ["nazwa", "opis", "ostatnie_uzycie"], "fk": {}},
+    {"tabela": "checklisty_pozycje", "kolumny": ["tresc", "kolejnosc", "odhaczone"], "fk": {"checklista_id": "checklisty"}},
 ]
 
 # Tabele bez własnej kolumny auto_id — do pojazdu dowiązane wyłącznie pośrednio,
@@ -190,6 +201,12 @@ TABELE_POSREDNIE = {
         "join": "JOIN wizyty w ON wcm.wizyta_id = w.id",
         "warunek": "w.auto_id=?",
         "reset_where": "wizyta_id IN (SELECT id FROM wizyty WHERE auto_id=?)",
+    },
+    "checklisty_pozycje": {
+        "alias": "p",
+        "join": "JOIN checklisty l ON p.checklista_id = l.id",
+        "warunek": "l.auto_id=?",
+        "reset_where": "checklista_id IN (SELECT id FROM checklisty WHERE auto_id=?)",
     },
     "historia_czesci_magazynu": {
         "alias": "hcm",
@@ -262,6 +279,10 @@ ETYKIETY_TABEL_SYNC = {
     "do_zrobienia": "Zadanie do zrobienia",
     "tagi": "Tag",
     "pakiety_serwisowe_wlasne": "Własny pakiet serwisowy",
+    "budzety": "Limit budżetu",
+    "trasy_szablony": "Zapisana trasa",
+    "checklisty": "Checklista",
+    "checklisty_pozycje": "Pozycja checklisty",
     "info_pojazdu": "Dane pojazdu",
 }
 

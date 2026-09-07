@@ -366,6 +366,39 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
                 "data": r["nastepna_data"] or "", "trasa": "__wydatki_cykliczne__",
             })
 
+        # Zapisane trasy kalkulatora i checklisty — szuka się ich po nazwie
+        # („teściów”, „przed zimą”), a bez tego były jedynymi danymi pojazdu
+        # niewidocznymi dla wyszukiwarki.
+        c.execute(
+            "SELECT id, nazwa, dystans, powrot, osoby FROM trasy_szablony "
+            "WHERE auto_id=? AND (nazwa LIKE ? OR notatki LIKE ?)",
+            (auto_id, q, q)
+        )
+        for r in c.fetchall():
+            opis = f"{formatuj_liczba_eksport(r['dystans'], 0)} km"
+            if r["powrot"]:
+                opis += " • tam i z powrotem"
+            opis += f" • {int(r['osoby'] or 1)} os."
+            wyniki.append({
+                "typ": "Zapisana trasa", "tytul": str(r["nazwa"]), "opis": opis,
+                "data": "", "trasa": "/kalkulator",
+            })
+
+        c.execute(
+            "SELECT l.id, l.nazwa, l.ostatnie_uzycie, "
+            "       (SELECT COUNT(*) FROM checklisty_pozycje p WHERE p.checklista_id = l.id) AS razem, "
+            "       (SELECT COUNT(*) FROM checklisty_pozycje p WHERE p.checklista_id = l.id AND p.odhaczone=1) AS zrobione "
+            "FROM checklisty l WHERE l.auto_id=? AND (l.nazwa LIKE ? OR l.opis LIKE ? OR EXISTS "
+            "   (SELECT 1 FROM checklisty_pozycje p WHERE p.checklista_id = l.id AND p.tresc LIKE ?))",
+            (auto_id, q, q, q)
+        )
+        for r in c.fetchall():
+            wyniki.append({
+                "typ": "Checklista", "tytul": str(r["nazwa"]),
+                "opis": f"odhaczone {int(r['zrobione'] or 0)} z {int(r['razem'] or 0)}",
+                "data": r["ostatnie_uzycie"] or "", "trasa": "__checklisty__",
+            })
+
         # NOWE: Podzespoły — samodzielna kategoria, bo świeżo dodany podzespół bez
         # ŻADNEJ historii wymiany (powyższy JOIN wymaga wpisu w historii) był dotąd
         # całkowicie niewidoczny dla wyszukiwarki.

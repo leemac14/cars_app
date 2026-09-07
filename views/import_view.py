@@ -186,16 +186,16 @@ class ImportCSVView(ft.View):
         tresc = [
             ft.Row([
                 ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color=ft.Colors.GREEN_700),
-                ft.Text(f"Do dodania: {len(self.gotowe)}", size=13, weight="bold"),
+                ft.Text(f"Do dodania: {len(self.gotowe)}", size=13, weight="bold", expand=True),
             ], spacing=6),
             ft.Row([
                 ft.Icon(ft.Icons.CONTENT_COPY, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.Text(f"Pominięte duplikaty: {raport['duplikaty']}", size=13),
+                ft.Text(f"Pominięte duplikaty: {raport['duplikaty']}", size=13, expand=True),
             ], spacing=6),
             ft.Row([
                 ft.Icon(ft.Icons.ERROR_OUTLINE, size=16,
                         color=ft.Colors.RED_700 if raport["bledy"] else ft.Colors.ON_SURFACE_VARIANT),
-                ft.Text(f"Wiersze z błędami: {len(raport['bledy'])}", size=13),
+                ft.Text(f"Wiersze z błędami: {len(raport['bledy'])}", size=13, expand=True),
             ], spacing=6),
         ]
 

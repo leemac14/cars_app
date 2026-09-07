@@ -179,6 +179,46 @@ def wysokosc_listy(page: ft.Page, udzial=0.5, minimalna=260):
     return max(minimalna, int(wys_ekranu * udzial))
 
 
+def dopasuj_wysokosc_listy(lista, page: ft.Page, wysokosc_pozycji=175, na_wiersz=1, udzial=0.5):
+    """Dociąga wysokość zwirtualizowanej listy do tego, co w niej NAPRAWDĘ leży.
+
+    `wysokosc_listy` daje pół ekranu i tyle samo zajmowała lista z jedną kartą,
+    co z pięćdziesięcioma — pod krótką listą zostawał wtedy pusty prostokąt na
+    pół ekranu (najbardziej rzucało się to w oczy w Wizytach i Karoserii, gdzie
+    tło listy jest jasne). Teraz bierzemy MNIEJSZĄ z dwóch wartości: sugerowaną
+    połowę ekranu i szacowaną wysokość zawartości.
+
+    `wysokosc_pozycji` to przybliżona wysokość jednej karty razem z odstępem —
+    lepiej ją PRZESZACOWAĆ, bo zapas oznacza tylko trochę wolnego miejsca, a
+    niedoszacowanie chowa ostatnią kartę za wewnętrznym przewijaniem.
+    `na_wiersz` > 1 dla siatek (GridView), gdzie w jednym wierszu stoi kilka
+    kafelków.
+
+    Wołać PO wypełnieniu listy kartami. Wysokość zapamiętuje się na kontrolce,
+    żeby obrót ekranu (dostosuj_wysokosc_listy) przeliczył ją tak samo."""
+    try:
+        liczba = len(lista.controls or [])
+    except Exception:
+        return lista
+
+    lista._wys_pozycji = wysokosc_pozycji
+    lista._na_wiersz = max(1, int(na_wiersz or 1))
+    lista._udzial_ekranu = udzial
+
+    if liczba <= 0:
+        # Pusty ListView ma stałą wysokość i sam w sobie zostawiał pustkę pod
+        # komunikatem „brak danych”. Skoro nie ma czego pokazać — niech go nie ma.
+        lista.height = 0
+        lista.visible = False
+        return lista
+
+    lista.visible = True
+    wiersze = -(-liczba // lista._na_wiersz)   # ceil bez importu math
+    potrzebna = wiersze * wysokosc_pozycji
+    lista.height = min(wysokosc_listy(page, udzial=udzial), max(wysokosc_pozycji, potrzebna))
+    return lista
+
+
 def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False, page: ft.Page = None):
     powierzchnia = powierzchnia_karty(page, "md")
 
@@ -245,6 +285,7 @@ def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj, ikona_
 
 
 __all__ = [
+    "dopasuj_wysokosc_listy",
     "karta_formularza",
     "pokaz_bledy_formularza",
     "pole_daty",

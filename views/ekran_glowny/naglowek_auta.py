@@ -14,7 +14,10 @@ class MiksinNaglowkaAuta:
         with db.polacz_baze() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT id, nazwa FROM samochody ORDER BY nazwa")
+            # Sprzedane auta wypadają z przełącznika i showroomu — garaż ma
+            # pokazywać to, czym się jeździ. Ich historia zostaje dostępna
+            # z ekranu Archiwum (patrz db.pobierz_sprzedane_pojazdy).
+            c.execute(f"SELECT id, nazwa FROM samochody WHERE {db.WARUNEK_AKTYWNE} ORDER BY nazwa")
             auta = c.fetchall()
             c.execute("SELECT nr_rej, zdjecie_glowne, wiadomosc_statusu FROM samochody WHERE id=?", (self.state.auto_id,))
             w = c.fetchone()
@@ -31,14 +34,25 @@ class MiksinNaglowkaAuta:
         metryki_pojazdu = db.pobierz_metryki_pojazdu(self.state.auto_id, dane_pojazdu) or {}
         najblizszy_termin = db.najblizszy_termin_pojazdu(self.state.auto_id, dane_pojazdu)
 
+        # Podgląd sprzedanego auta otwiera się z Archiwum przez podstawienie
+        # state.auto_id. Takiego pojazdu NIE MA na liście `auta`, więc strzałki
+        # „poprzedni/następny” prowadziłyby w losowe miejsce, a przy garażu
+        # złożonym z samych sprzedanych aut lista byłaby pusta i modulo poleciałoby
+        # dzieleniem przez zero. Dlatego przy archiwalnym pojeździe karuzeli nie ma.
+        czy_sprzedany = str(dane_pojazdu.get("status") or "aktywny") == db.STATUS_POJAZDU_SPRZEDANY
+
         idx = 0
         for i, a in enumerate(auta):
             if a[0] == self.state.auto_id:
                 idx = i
                 break
 
-        poprzedni_id, poprzedni_nazwa = auta[(idx - 1) % len(auta)]
-        nastepny_id, nastepny_nazwa = auta[(idx + 1) % len(auta)]
+        if auta:
+            poprzedni_id, poprzedni_nazwa = auta[(idx - 1) % len(auta)]
+            nastepny_id, nastepny_nazwa = auta[(idx + 1) % len(auta)]
+        else:
+            poprzedni_id, poprzedni_nazwa = self.state.auto_id, self.state.auto_nazwa
+            nastepny_id, nastepny_nazwa = self.state.auto_id, self.state.auto_nazwa
 
         def on_prev(e):
             self.state.auto_id = poprzedni_id
@@ -60,7 +74,7 @@ class MiksinNaglowkaAuta:
                 c = conn.cursor()
                 c.execute(
                     "SELECT id, nazwa, nr_rej, zdjecie_glowne, nadwozie, kolor_motywu, marka, model "
-                    "FROM samochody ORDER BY nazwa"
+                    f"FROM samochody WHERE {db.WARUNEK_AKTYWNE} ORDER BY nazwa"
                 )
                 auta_siatki = c.fetchall()
 
@@ -331,10 +345,14 @@ class MiksinNaglowkaAuta:
 
         tytulowy_wiersz = ft.Row([
             ft.Container(
+                # expand na kontenerze I na tekście: bez tego długa nazwa
+                # („OPEL ASTRA J KOMBI 1.7 CDTI”) rozpycha wiersz pod przyciski
+                # po prawej, zamiast przyciąć się wielokropkiem.
+                expand=True,
                 content=ft.Row([
                     ft.Text(
                         str(self.state.auto_nazwa), size=16, weight="bold", color=ft.Colors.PRIMARY,
-                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
                     ),
                     ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=18)
                 ], spacing=0, tight=True),
@@ -411,20 +429,27 @@ class MiksinNaglowkaAuta:
 
         # Przebieg z wiekiem obok siebie: dopiero razem mówią, czy 135 tys. km
         # to dużo. Wiek jest tylko dopiskiem — dotknięcie nadal aktualizuje licznik.
+        # Dopiski (wiek, przebieg roczny) sklejamy w JEDEN tekst z expand:
+        # dwa osobne, sztywne teksty w tym wierszu nie miały jak się skurczyć
+        # i przy dłuższych liczbach wychodziły pod przyciski po prawej stronie
+        # karty — stąd wrażenie nachodzących na siebie ikon.
+        dopiski = []
+        if metryki_pojazdu.get("wiek_lat"):
+            dopiski.append(f"{utils.formatuj_liczba(metryki_pojazdu['wiek_lat'], 1)} lat")
+        if metryki_pojazdu.get("przebieg_roczny"):
+            dopiski.append(f"{utils.formatuj_liczba(metryki_pojazdu['przebieg_roczny'], 0)} km/rok")
+
         metryki_bity = [
             ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold"),
+            ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold",
+                    no_wrap=True),
             ft.Icon(ft.Icons.EDIT, size=11, color=ft.Colors.PRIMARY),
         ]
-        if metryki_pojazdu.get("wiek_lat"):
+        if dopiski:
             metryki_bity.append(ft.Text(
-                f"•  {utils.formatuj_liczba(metryki_pojazdu['wiek_lat'], 1)} lat",
-                size=12, color=ft.Colors.ON_SURFACE_VARIANT))
-        if metryki_pojazdu.get("przebieg_roczny"):
-            metryki_bity.append(ft.Text(
-                f"•  {utils.formatuj_liczba(metryki_pojazdu['przebieg_roczny'], 0)} km/rok",
+                "•  " + "  •  ".join(dopiski),
                 size=12, color=ft.Colors.ON_SURFACE_VARIANT,
-                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
+                expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
 
         wiersz_przebieg = ft.Container(
             content=ft.Row(metryki_bity, spacing=5),
@@ -485,20 +510,18 @@ class MiksinNaglowkaAuta:
             wiersz_status,
         ], spacing=4, expand=True)
 
-        przyciski_karty = ft.Column([
-            ft.IconButton(
-                icon=ft.Icons.INFO_OUTLINE, icon_size=20, icon_color=ft.Colors.PRIMARY,
-                tooltip="Karta pojazdu: terminy, wartość, ubezpieczenie, ściągawka",
-                on_click=pokaz_info_auta,
-                style=ft.ButtonStyle(padding=0), width=32, height=32,
-            ),
-            ft.IconButton(
-                icon=ft.Icons.EDIT, icon_size=16, icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                tooltip="Edytuj pojazd",
-                on_click=lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
-                style=ft.ButtonStyle(padding=0), width=32, height=32,
-            ),
-        ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        # JEDEN przycisk zamiast dwóch. Ołówek „Edytuj pojazd” stał tuż pod
+        # ikoną „i”, a nad nimi w tym samym wierszu siedział jeszcze ołówek
+        # aktualizacji przebiegu — trzy podobne ikony na przestrzeni 60 px, przy
+        # czym dwie z nich robiły co innego. Edycja danych pojazdu jest o jedno
+        # dotknięcie dalej: z Karty pojazdu i z szuflady („Edytuj dane pojazdu”),
+        # a to nie jest czynność, którą robi się codziennie.
+        przyciski_karty = ft.IconButton(
+            icon=ft.Icons.INFO_OUTLINE, icon_size=20, icon_color=ft.Colors.PRIMARY,
+            tooltip="Karta pojazdu: terminy, wartość, ubezpieczenie, ściągawka",
+            on_click=pokaz_info_auta,
+            style=ft.ButtonStyle(padding=0), width=36, height=36,
+        )
 
         # --- TŁO KARTY: rozmyte zdjęcie pojazdu zamiast płaskiego koloru ---
         # Zdjęcie idzie pod treść mocno rozmyte i przykryte gradientem w kolorze
@@ -557,7 +580,27 @@ class MiksinNaglowkaAuta:
             content=wnetrze_karty,
         )
 
-        wiele_aut = len(auta) > 1
+        wiele_aut = len(auta) > 1 and not czy_sprzedany
+
+        if czy_sprzedany:
+            # Bez tego paska podgląd archiwalnego auta wyglądałby dokładnie jak
+            # zwykły garaż — z FAB-em zachęcającym do dopisania tankowania do
+            # samochodu, którego się już nie ma.
+            data_sprzedazy = dane_pojazdu.get("data_sprzedazy")
+            self.elementy.append(ft.Container(
+                padding=ft.Padding(12, 8, 8, 8), border_radius=utils.RADIUS["lg"],
+                bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.BLUE_GREY_500),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.INVENTORY, size=18, color=ft.Colors.BLUE_GREY_700),
+                    ft.Text(
+                        "Pojazd sprzedany" + (f" {data_sprzedazy}" if data_sprzedazy else "")
+                        + " — podgląd archiwalny.",
+                        size=12, weight="bold", color=ft.Colors.BLUE_GREY_700, expand=True,
+                    ),
+                    ft.TextButton("Archiwum", icon=ft.Icons.ARROW_FORWARD,
+                                  on_click=lambda e: utils.przejdz(self._page, "/archiwum")),
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ))
 
         wiersz_karty_z_nawigacja = ft.Row([
             ft.IconButton(

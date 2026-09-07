@@ -436,6 +436,50 @@ def pobierz_zasieg_ev(auto_id):
     }
 
 
+def podsumowanie_do_zrobienia(auto_id):
+    """Ile rzeczy czeka na zrobienie, ile z nich jest pilnych i co wypada
+    najbliżej. „Pilne” liczymy po TERMINIE, a nie po priorytecie: zaległy
+    termin jest faktem, priorytet tylko deklaracją."""
+    if not auto_id:
+        return None
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT tytul, priorytet, termin, szacowany_koszt FROM do_zrobienia "
+            "WHERE auto_id=? AND wykonane=0",
+            (auto_id,)
+        )
+        wiersze = c.fetchall()
+    if not wiersze:
+        return {"otwarte": 0, "po_terminie": 0, "najblizsze": None, "szacowany_koszt": 0.0}
+
+    dzis = datetime.now().date()
+    po_terminie = 0
+    z_terminem = []
+    koszt = 0.0
+    for tytul, priorytet, termin, szacunek in wiersze:
+        koszt += float(szacunek or 0.0)
+        d = parsuj_date(termin)
+        if d == datetime.min.date():
+            continue
+        if d < dzis:
+            po_terminie += 1
+        z_terminem.append((d, str(tytul or ""), str(priorytet or "")))
+
+    z_terminem.sort(key=lambda p: p[0])
+    najblizsze = None
+    if z_terminem:
+        d, tytul, priorytet = z_terminem[0]
+        najblizsze = {
+            "tytul": tytul, "priorytet": priorytet,
+            "data": d.strftime("%d.%m.%Y"), "dni": (d - dzis).days,
+        }
+    return {
+        "otwarte": len(wiersze), "po_terminie": po_terminie,
+        "najblizsze": najblizsze, "szacowany_koszt": koszt,
+    }
+
+
 __all__ = [
     "KARY_KONDYCJI",
     "oblicz_kondycje_pojazdu",
@@ -447,4 +491,5 @@ __all__ = [
     "pobierz_statystyki_energii",
     "pobierz_udzial_energii",
     "pobierz_zasieg_ev",
+    "podsumowanie_do_zrobienia",
 ]

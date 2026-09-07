@@ -201,7 +201,48 @@ def _mieszaj_kolory(kolor_a, kolor_b, udzial):
     return tuple(int(round(k * 255)) for k in colorsys.hsv_to_rgb(h, s, v))
 
 
+# Ile miejsca zostawić POD treścią na pasek przewijania. Suwak Fleta rysuje się
+# przy dolnej krawędzi przewijanego obszaru, więc bez tej rezerwy leży na
+# kafelkach — a bez suwaka w ogóle nie widać, że pasek da się przesunąć, i myszą
+# nie ma czego złapać (Flutter nie pozwala przeciągać zawartości kursorem).
+MIEJSCE_NA_SUWAK = 16
+
+
+def pasek_przewijany(kontrolki, spacing=10, miejsce_na_suwak=MIEJSCE_NA_SUWAK,
+                     wyrownanie=ft.CrossAxisAlignment.CENTER):
+    """Poziomy pasek z widocznym, chwytalnym suwakiem, który NIE nachodzi na treść.
+
+    Wzorzec przeniesiony z ekranu porównania pojazdów, gdzie sprawdził się przy
+    szerokich tabelach: treść siedzi w kontenerze z dolnym paddingiem WEWNĄTRZ
+    przewijanego wiersza, więc suwak ląduje w tym marginesie, a nie na kaflach.
+
+    Używać tylko tam, gdzie zawartość naprawdę musi jechać w bok (karuzela
+    kokpitu, mapa cieplna). Paski filtrów i chipów lepiej ZAWIJAĆ — wtedy nie ma
+    czego przewijać i nic nie ginie za krawędzią."""
+    if not kontrolki:
+        return ft.Container()
+    return ft.Row(
+        [ft.Container(
+            content=ft.Row(kontrolki, spacing=spacing, vertical_alignment=wyrownanie),
+            padding=ft.Padding.only(bottom=miejsce_na_suwak),
+        )],
+        scroll=ft.ScrollMode.ALWAYS,
+    )
+
+
+def pasek_zawijany(kontrolki, spacing=6, run_spacing=6):
+    """Pasek filtrów / chipów, który zamiast jechać w bok ZAWIJA się do drugiej
+    linijki. Filtry są małe i jest ich kilka — schowanie części z nich za
+    niewidoczną krawędzią było jedynym powodem, dla którego ten pasek w ogóle
+    musiał się przewijać."""
+    if not kontrolki:
+        return ft.Container()
+    return ft.Row(kontrolki, spacing=spacing, run_spacing=run_spacing, wrap=True,
+                  vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+
 __all__ = [
+    "MIEJSCE_NA_SUWAK",
     "POWIERZCHNIE_OLED",
     "_CACHE_CZERNI",
     "_OSTATNI_MOTYW",
@@ -213,6 +254,8 @@ __all__ = [
     "obramowanie_karty",
     "odswiez_cache_czerni",
     "ostatni_zastosowany_motyw",
+    "pasek_przewijany",
+    "pasek_zawijany",
     "powierzchnia_karty",
     "tlo_karty",
     "zastosuj_motywy",

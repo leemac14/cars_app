@@ -220,11 +220,12 @@ class MiksinZakladkiStatystyki:
                     ft.Row([
                         ft.Row([
                             ft.Icon(ikona, size=15, color=kolor),
-                            ft.Text(tytul, weight="bold", size=13, color=ft.Colors.ON_SURFACE)
-                        ], spacing=6),
+                            ft.Text(tytul, weight="bold", size=13, color=ft.Colors.ON_SURFACE,
+                                    expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)
+                        ], spacing=6, expand=True),
                         ft.Text(
                             f"{utils.formatuj_liczba(kwota)} {utils.symbol_waluty()} ({utils.formatuj_liczba(procent, 0)}%)",
-                            weight="bold", size=13, color=kolor
+                            weight="bold", size=13, color=kolor, no_wrap=True,
                         )
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.ProgressBar(
@@ -245,6 +246,51 @@ class MiksinZakladkiStatystyki:
                     segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["inne"], "Inne", inn, proc_inn, ft.Colors.GREEN_700),
                 ], spacing=12)
             )
+
+            # ----- Rozbicie „Innych kosztów” na kategorie -----
+            # Trzy paski wyżej mówią, ile poszło na „inne”. Samo w sobie to
+            # bezużyteczna liczba: w tym worku leży mandat obok myjni i polisy.
+            # Dopiero rozbicie pokazuje, czy „inne” rosną od opłat drogowych
+            # (czyli od jeżdżenia), czy od czegoś zupełnie innego.
+            rozbicie_innych = db.pobierz_koszty_innych_wg_kategorii(self.state.auto_id)
+            if rozbicie_innych:
+                wiersze_kategorii = []
+                for nazwa_kat, suma_kat, liczba_kat in rozbicie_innych:
+                    procent_kat = (suma_kat / inn * 100) if inn > 0 else 0
+                    wiersze_kategorii.append(ft.Column([
+                        ft.Row([
+                            ft.Row([
+                                ft.Icon(utils.ikona_kategorii_innych(nazwa_kat), size=15,
+                                        color=utils.kolor_kategorii_innych(nazwa_kat)),
+                                ft.Text(nazwa_kat, weight="bold", size=13, color=ft.Colors.ON_SURFACE,
+                                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                            ], spacing=6, expand=True),
+                            ft.Text(
+                                f"{utils.formatuj_liczba(suma_kat)} {utils.symbol_waluty()} ({utils.formatuj_liczba(procent_kat, 0)}%)",
+                                weight="bold", size=13, color=utils.kolor_kategorii_innych(nazwa_kat), no_wrap=True
+                            ),
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.ProgressBar(
+                            value=(procent_kat / 100) if procent_kat > 0 else 0,
+                            color=utils.kolor_kategorii_innych(nazwa_kat),
+                            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                            height=6, border_radius=3,
+                        ),
+                        ft.Text(f"{liczba_kat} {'wpis' if liczba_kat == 1 else 'wpisy/-ów'}",
+                                size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], spacing=3))
+                karta_kategorii_innych = ft.Container(
+                    border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
+                    **utils.powierzchnia_karty(self._page, "md"),
+                    content=ft.Column(wiersze_kategorii, spacing=12),
+                )
+            else:
+                karta_kategorii_innych = ft.Container(
+                    border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
+                    **utils.powierzchnia_karty(self._page, "md"),
+                    content=ft.Text("Brak innych kosztów w historii pojazdu.", size=13, italic=True,
+                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                )
 
             dzisiaj = datetime.now()
             miesiace_klucze, miesiace_etykiety = [], []
@@ -526,12 +572,13 @@ class MiksinZakladkiStatystyki:
                             ft.Row([
                                 ft.Icon(ft.Icons.EMOJI_EVENTS if czy_najtansza else ft.Icons.LOCAL_GAS_STATION,
                                         size=16, color=ft.Colors.AMBER_700 if czy_najtansza else ft.Colors.ON_SURFACE_VARIANT),
-                                ft.Text(s["nazwa"], weight="bold" if czy_najtansza else "normal", size=13),
-                            ], spacing=6),
+                                ft.Text(s["nazwa"], weight="bold" if czy_najtansza else "normal", size=13,
+                                        expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            ], spacing=6, expand=True),
                             ft.Text(
                                 f"{utils.formatuj_liczba(s['srednia_cena'], 2)} {utils.symbol_waluty()}/L  •  {s['liczba_tankowan']}x",
-                                size=13, weight="bold" if czy_najtansza else "normal",
-                                color=ft.Colors.GREEN_700 if czy_najtansza else ft.Colors.ON_SURFACE
+                                size=13, weight="bold" if czy_najtansza else "normal", no_wrap=True,
+                                color=ft.Colors.GREEN_700 if czy_najtansza else ft.Colors.ON_SURFACE,
                             )
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     )
@@ -563,6 +610,13 @@ class MiksinZakladkiStatystyki:
             self.elementy.extend([
                 ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 karta_struktury,
+                ft.Divider(height=20),
+                ft.Row([
+                    ft.Text("Inne koszty wg kategorii", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
+                    ft.Text(f"Razem: {utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", weight="bold",
+                            size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                ]),
+                karta_kategorii_innych,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Wydatki miesięczne (ostatnie 6 mies.)", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
@@ -839,7 +893,7 @@ class MiksinZakladkiStatystyki:
                 filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "stat_miesiace_mc", wiersze_mc_wszystkie, 9)
 
                 self.elementy.append(
-                    ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN)
+                    utils.pasek_zawijany([sort_ui, filtr_rok_ui, filtr_mc_ui])
                 )
 
                 def filtruj_okresy(e):
@@ -848,6 +902,7 @@ class MiksinZakladkiStatystyki:
                     for k in self.wszystkie_karty_stat:
                         if zapytanie in k["szukaj"]:
                             self.lista_kart_stat.controls.append(k["karta"])
+                    utils.dopasuj_wysokosc_listy(self.lista_kart_stat, self._page, wysokosc_pozycji=150)
                     self.update()
 
                 self.elementy.append(
@@ -873,6 +928,7 @@ class MiksinZakladkiStatystyki:
                         karta = karta_okresu(w)
                         self.wszystkie_karty_stat.append({"karta": karta, "szukaj": w[1].lower()})
                         self.lista_kart_stat.controls.append(karta)
+                    utils.dopasuj_wysokosc_listy(self.lista_kart_stat, self._page, wysokosc_pozycji=150)
                     self.elementy.append(self.lista_kart_stat)
 
             self.elementy.append(ft.Divider(height=20))
@@ -886,7 +942,7 @@ class MiksinZakladkiStatystyki:
                     ("Koszt", "koszt", lambda x: x[6]),
                 ]
                 sort_ui_rok = utils.przycisk_sortowania(self._page, self.state, "stat_lata", opcje_sort_rok)
-                self.elementy.append(ft.Row([sort_ui_rok], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+                self.elementy.append(utils.pasek_zawijany([sort_ui_rok]))
 
                 utils.posortuj_liste(wiersze_rok_wszystkie, self.state, "stat_lata", opcje_sort_rok)
                 self.elementy.append(ft.Column([karta_okresu(w) for w in wiersze_rok_wszystkie], spacing=15))

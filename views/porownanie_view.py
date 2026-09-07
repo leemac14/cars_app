@@ -57,7 +57,9 @@ class PorownanieView(ft.View):
 
         with db.polacz_baze() as conn:
             c = conn.cursor()
-            c.execute("SELECT id, nazwa FROM samochody ORDER BY nazwa")
+            # Porównujemy auta z garażu; sprzedane mają zamknięty rachunek
+            # i osobne miejsce (Archiwum), więc nie zaśmiecają wyboru.
+            c.execute(f"SELECT id, nazwa FROM samochody WHERE {db.WARUNEK_AKTYWNE} ORDER BY nazwa")
             self.wszystkie_auta = c.fetchall()
 
         wszystkie_id = {a[0] for a in self.wszystkie_auta}

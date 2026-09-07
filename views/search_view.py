@@ -13,6 +13,8 @@ IKONY_WYSZUKIWANIA = {
     "Opony": (ft.Icons.TIRE_REPAIR, ft.Colors.INDIGO_700),
     "Warsztat": (ft.Icons.HANDYMAN, ft.Colors.BROWN_700),
     "Wydatek cykliczny": (ft.Icons.AUTORENEW, ft.Colors.CYAN_700),
+    "Zapisana trasa": (ft.Icons.ROUTE, ft.Colors.ORANGE_700),
+    "Checklista": (ft.Icons.FACT_CHECK, ft.Colors.LIGHT_GREEN_700),
     "Odczyt licznika": (ft.Icons.SPEED, ft.Colors.BLUE_GREY_700),
 }
 
@@ -20,7 +22,8 @@ IKONY_WYSZUKIWANIA = {
 class SzukajView(ft.View):
     PODPOWIEDZ_STARTOWA = (
         "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
-        "inne koszty, warsztaty, wydatki cykliczne, notatki wpisów i listę Do zrobienia "
+        "inne koszty, warsztaty, wydatki cykliczne, zapisane trasy, checklisty, "
+        "notatki wpisów i listę Do zrobienia "
         "bieżącego pojazdu. Sama liczba szuka po kwocie. Szukanie obejmuje też EKRANY "
         "aplikacji — wpisz „rok”, „limit” albo „licznik”, żeby wejść prosto tam, gdzie trzeba."
     )
@@ -159,6 +162,11 @@ class SzukajView(ft.View):
         def po_kliknieciu(e, wynik=w):
             if wynik["trasa"] == "__wydatki_cykliczne__":
                 utils.pokaz_panel_wydatkow_cyklicznych(self._page, self.state)
+            elif wynik["trasa"] == "__checklisty__":
+                # Checklisty mieszkają w podzakładce ekranu „Do zrobienia”,
+                # więc samo przejście pod adres wylądowałoby na liście zadań.
+                self.state.do_zrobienia_podzakladka = 1
+                utils.przejdz(self._page, "/do-zrobienia")
             else:
                 utils.przejdz(self._page, wynik["trasa"])
 
@@ -236,4 +244,7 @@ class SzukajView(ft.View):
             for w in wyniki:
                 self.lista_wynikow.controls.append(self._karta_wyniku(w))
 
+        # Lista wyników rośnie i kurczy się z każdą literą — wysokość musi iść za
+        # nią, inaczej trzy trafienia zostawiają pod sobą pół pustego ekranu.
+        utils.dopasuj_wysokosc_listy(self.lista_wynikow, self._page, wysokosc_pozycji=104)
         self.update()

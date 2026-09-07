@@ -127,12 +127,74 @@ KLUCZE_TERMINOW = {k for k, _, _ in TERMINY_DOKUMENTOW}
 PROGI_DNI_DOKUMENTU_OPCJE = [7, 14, 30, 60, 90, 180, 365]
 
 
+# Rodzaj wpisu cyklicznego (wydatki_cykliczne.typ). „wydatek” to wszystko, co
+# było do tej pory — rata, abonament albo goła czynność do odhaczenia
+# (rozróżnia je czy_koszt). „opony” to osobny rodzaj, bo jego wykonanie ma
+# SKUTEK W DANYCH: przestawia zamontowany komplet w magazynie opon, zamiast
+# tylko przesunąć termin.
+TYP_CYKLICZNY_WYDATEK = "wydatek"
+
+TYP_CYKLICZNY_OPONY = "opony"
+
+TYPY_CYKLICZNE = [TYP_CYKLICZNY_WYDATEK, TYP_CYKLICZNY_OPONY]
+
+
+# Sezonowa zmiana opon wypada dwa razy w roku.
+OKRES_ZMIANY_OPON_DNI = 182
+
+
+# Checklista przedwyjazdowa zakładana na życzenie jednym kliknięciem. Kolejność
+# jest kolejnością obchodzenia auta: najpierw to, co widać z zewnątrz, potem
+# płyny pod maską, na końcu papiery i wyposażenie w bagażniku.
+CHECKLISTA_PRZEDWYJAZDOWA = (
+    "Przed dłuższą trasą",
+    [
+        "Ciśnienie i stan opon (także zapasowe)",
+        "Poziom oleju silnikowego",
+        "Płyn do spryskiwaczy",
+        "Płyn chłodniczy",
+        "Płyn hamulcowy",
+        "Światła — mijania, drogowe, stop, kierunkowskazy",
+        "Wycieraczki",
+        "Paliwo / naładowana bateria",
+        "Dokumenty: dowód, OC, prawo jazdy",
+        "Apteczka, trójkąt, kamizelka",
+    ],
+)
+
+
 PRIORYTETY_DO_ZROBIENIA = ["Wysoki", "Średni", "Niski"]
 
 KOLEJNOSC_PRIORYTETU = {"Wysoki": 1, "Średni": 2, "Niski": 3}
 
 
 KOLORY_MOTYWU = ["Indygo", "Czerwony", "Zielony", "Niebieski", "Szary", "Pomarańczowy", "Fioletowy", "Różowy", "Żółty", "Limonkowy"]
+
+
+# Kategorie „Innych kosztów”. W bazie (inne_koszty.kategoria) leży ETYKIETA,
+# a nie klucz — dokładnie tak, jak zapisywało to od zawsze
+# oznacz_zaplacony_wydatek_cykliczny („Cykliczne”). Dzięki temu stare wpisy nie
+# wymagają żadnej migracji, a filtr kategorii i wyszukiwarka, które czytają tę
+# kolumnę jako tekst, działają bez zmian.
+#
+# Powód wydzielenia opłat drogowych: winieta, przejazd autostradą i mandat to
+# koszt WYMUSZONY trasą, nie decyzją o utrzymaniu auta. Wrzucone do wspólnego
+# worka z myjnią i wyposażeniem znikały w jednej sumie i nie dało się
+# powiedzieć, ile kosztuje samo jeżdżenie po płatnych drogach.
+KATEGORIA_INNE_DOMYSLNA = "Ogólne"
+
+KATEGORIA_INNE_DROGOWE = "Mandaty i opłaty drogowe"
+
+KATEGORIE_INNYCH_KOSZTOW = [
+    KATEGORIA_INNE_DOMYSLNA,
+    KATEGORIA_INNE_DROGOWE,
+    "Ubezpieczenie",
+    "Myjnia i kosmetyka",
+    "Parking i garaż",
+    "Wyposażenie i akcesoria",
+    "Opłaty urzędowe",
+    "Cykliczne",
+]
 
 
 KATEGORIE_MAGAZYNU = ["Płyny eksploatacyjne", "Oleje i smary", "Żarówki i bezpieczniki", "Filtry", "Akcesoria", "Inne"]
@@ -203,11 +265,39 @@ TYPY_ZDJECIA = ["Brak", "Przed naprawą", "Po naprawie"]
 OSIE_MONTAZU = ["Wszystkie", "Przód", "Tył"]
 
 
+# Sezony zestawów opon. Mieszkały dotąd wyłącznie w views/garage_view.py, ale od
+# kiedy przypomnienie o sezonowej zmianie samo przełącza zamontowany komplet
+# (patrz przelacz_zestaw_sezonowy), potrzebuje ich także warstwa danych.
+SEZONY_OPON = ["Letnie", "Zimowe", "Całoroczne"]
+
+
+# Tylko te dwa sezony da się wymieniać między sobą — „Całoroczne” z definicji
+# nie mają pary, więc nie biorą udziału w automatycznym przełączaniu.
+SEZONY_PRZELACZALNE = ("Letnie", "Zimowe")
+
+
+# Miesiące (1-12), w których domyślnie jeździ się na zimówkach. Używane tylko
+# wtedy, gdy nie ma zamontowanego zestawu i nie ma z czego wywnioskować kierunku
+# zmiany — w Polsce zmiana wypada mniej więcej w okolicach października i marca.
+MIESIACE_ZIMOWE = {11, 12, 1, 2, 3}
+
+
+# Status pojazdu (samochody.status). Sprzedane auto NIE jest usuwane i nie
+# trafia do kosza: znika tylko z przełącznika i showroomu, a cała historia
+# zostaje na miejscu — do wglądu i eksportu z ekranu Archiwum. Kolumna z
+# wartością domyślną „aktywny” oznacza, że wszystkie istniejące zapytania
+# działają dalej bez filtra; filtrują tylko cztery miejsca wypisujące garaż.
+STATUS_POJAZDU_AKTYWNY = "aktywny"
+
+STATUS_POJAZDU_SPRZEDANY = "sprzedany"
+
+
 KOLEJNOSC_TRYBOW_MOTYWU = ["jasny", "ciemny", "system"]
 
 
 __all__ = [
     "BAZA_DANYCH",
+    "CHECKLISTA_PRZEDWYJAZDOWA",
     "DNI_KOSZA_DOMYSLNIE",
     "DNI_KOSZA_OPCJE",
     "DOMYSLNE_ZADANIA",
@@ -220,6 +310,9 @@ __all__ = [
     "JEDNOSTKI_MAGAZYNU",
     "JEDNOSTKI_SPALANIA",
     "JEDNOSTKI_ZUZYCIA_EV",
+    "KATEGORIA_INNE_DOMYSLNA",
+    "KATEGORIA_INNE_DROGOWE",
+    "KATEGORIE_INNYCH_KOSZTOW",
     "KATEGORIE_MAGAZYNU",
     "KLUCZE_TERMINOW",
     "KOLEJNOSC_PRIORYTETU",
@@ -227,6 +320,8 @@ __all__ = [
     "KOLORY_MOTYWU",
     "MAKS_BACKOFF_MINUT_SYNC",
     "MAKS_DLUGOSC_NOTATKI",
+    "MIESIACE_ZIMOWE",
+    "OKRES_ZMIANY_OPON_DNI",
     "OPISY_LADOWANIA",
     "OSIE_MONTAZU",
     "PAKIETY_SERWISOWE",
@@ -240,6 +335,10 @@ __all__ = [
     "PROG_KM_POWIADOMIEN",
     "RODZAJE_ENERGII",
     "ROK_MIN",
+    "SEZONY_OPON",
+    "SEZONY_PRZELACZALNE",
+    "STATUS_POJAZDU_AKTYWNY",
+    "STATUS_POJAZDU_SPRZEDANY",
     "STORAGE_PATH",
     "STREFY_KAROSERII",
     "TABELE_NOTATKI_Z_PODPISEM",
@@ -250,7 +349,10 @@ __all__ = [
     "TYPY_PALIWA",
     "TYPY_PALIWA_DWUZRODLOWE",
     "TYPY_PALIWA_ELEKTRYCZNE",
+    "TYPY_CYKLICZNE",
     "TYPY_ZDJECIA",
+    "TYP_CYKLICZNY_OPONY",
+    "TYP_CYKLICZNY_WYDATEK",
     "WALUTY",
     "ZRODLA_ODCZYTU",
     "ZRODLA_PRZEBIEGU",

@@ -76,8 +76,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "odczyty_rok", wpisy, "data")
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "odczyty_mc", wpisy, "data")
 
-            elementy.append(ft.Row([sort_ui, filtr_zrodlo_ui, filtr_rok_ui, filtr_mc_ui],
-                                   spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            elementy.append(utils.pasek_zawijany([sort_ui, filtr_zrodlo_ui, filtr_rok_ui, filtr_mc_ui]))
 
             def filtruj_odczyty(e):
                 zapytanie = e.control.value.lower().strip()
@@ -85,6 +84,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 for k in self.wszystkie_karty:
                     if zapytanie in k["szukaj"]:
                         self.lista_kart.controls.append(k["karta"])
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
                 self.update()
 
             elementy.append(
@@ -114,6 +114,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                     self.wszystkie_karty.append(karta)
                     self.lista_kart.controls.append(karta["karta"])
 
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
             elementy.append(self.lista_kart)
 
         elementy.append(utils.dol_bezpieczny(10))
@@ -355,7 +356,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         dlg = ft.AlertDialog(
             modal=True,
             title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY),
-                          ft.Text("Edycja odczytu" if edycja else "Nowy odczyt", weight="bold")], spacing=8),
+                          ft.Text("Edycja odczytu" if edycja else "Nowy odczyt", weight="bold", expand=True)], spacing=8),
             content=ft.Column([
                 e_data,
                 e_przebieg,

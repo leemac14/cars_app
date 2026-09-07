@@ -27,12 +27,12 @@ class WspoldzielenieView(ft.View):
 
             # 1. Status współdzielenia
             elementy.append(utils.karta_formularza([
-                ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_700), ft.Text("Ten pojazd jest współdzielony", weight="bold")]),
+                ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_700), ft.Text("Ten pojazd jest współdzielony", weight="bold", expand=True)]),
                 ft.Text("Podaj ten kod partnerowi/rodzinie — po wpisaniu go w ich aplikacji zobaczą ten pojazd i dopiszą tankowania.", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Container(
                     padding=15, border_radius=10, bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
                     content=ft.Row([
-                        ft.Text(kod or "-", size=22, weight="bold", color=ft.Colors.PRIMARY, selectable=True),
+                        ft.Text(kod or "-", size=22, weight="bold", color=ft.Colors.PRIMARY, selectable=True, expand=True),
                         ft.IconButton(ft.Icons.COPY, tooltip="Kopiuj kod", on_click=_kopiuj)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                 ),

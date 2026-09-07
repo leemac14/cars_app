@@ -478,6 +478,50 @@ def init_db():
             # automatyczna lista „Ostatnio używane”.
             """
             CREATE TABLE IF NOT EXISTS ekrany_uzycie (ekran_id TEXT PRIMARY KEY, licznik INTEGER NOT NULL DEFAULT 0, ostatnio TEXT, przypiety INTEGER NOT NULL DEFAULT 0, kolejnosc INTEGER NOT NULL DEFAULT 0);
+            """,
+            # Wersja 39: pięć rzeczy, których dotąd nie było gdzie zapisać.
+            #
+            # (a) `wydatki_cykliczne.typ` — sezonowa zmiana opon przestaje być
+            #     zwykłym wpisem w kalendarzu. Wpis typu 'opony' w chwili
+            #     wykonania przestawia zamontowany komplet w magazynie opon
+            #     (patrz przelacz_zestaw_sezonowy), czyli robi to, po co się go
+            #     zakłada. Domyślne 'wydatek' zostawia wszystkie istniejące
+            #     wpisy dokładnie tam, gdzie były.
+            #
+            # (b) `trasy_szablony` — trasa „Do teściów” liczona co miesiąc od
+            #     nowa to za każdym razem te same 180 km wpisywane ręcznie.
+            #     Szablon trzyma komplet parametrów kalkulatora poza ceną
+            #     paliwa i spalaniem, bo TE mają się brać z aktualnych danych.
+            #
+            # (c) `checklisty` + `checklisty_pozycje` — lista wielokrotnego
+            #     użytku, odhaczana przed wyjazdem i zerowana po powrocie.
+            #     Osobno od `do_zrobienia`, gdzie pozycja znika po wykonaniu.
+            #     Stan ptaszka siedzi w pozycji, bo to stan BIEŻĄCEGO przejścia.
+            #
+            # (d) `samochody.status` + data i cena sprzedaży — sprzedane auto
+            #     znika z garażu, ale historia zostaje do wglądu i eksportu.
+            #     Kolumna z DEFAULT 'aktywny' oznacza, że żadne z dziesiątek
+            #     istniejących zapytań nie wymaga dopisania filtra — filtrują
+            #     tylko cztery miejsca, które wypisują listę pojazdów.
+            #     Cena sprzedaży domyka rachunek posiadania: to ona, a nie
+            #     szacunek, mówi ile auto naprawdę kosztowało.
+            """
+            ALTER TABLE wydatki_cykliczne ADD COLUMN typ TEXT DEFAULT 'wydatek';
+
+            CREATE TABLE IF NOT EXISTS trasy_szablony (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, dystans REAL NOT NULL DEFAULT 0, powrot INTEGER NOT NULL DEFAULT 0, osoby INTEGER NOT NULL DEFAULT 1, oplaty REAL NOT NULL DEFAULT 0, notatki TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_trasy_szablony_auto ON trasy_szablony(auto_id);
+            CREATE INDEX IF NOT EXISTS idx_trasy_szablony_auto_zdalne ON trasy_szablony(auto_id, zdalne_id);
+
+            CREATE TABLE IF NOT EXISTS checklisty (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, opis TEXT, ostatnie_uzycie TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_checklisty_auto ON checklisty(auto_id);
+            CREATE INDEX IF NOT EXISTS idx_checklisty_auto_zdalne ON checklisty(auto_id, zdalne_id);
+
+            CREATE TABLE IF NOT EXISTS checklisty_pozycje (id INTEGER PRIMARY KEY AUTOINCREMENT, checklista_id INTEGER NOT NULL, tresc TEXT NOT NULL, kolejnosc INTEGER NOT NULL DEFAULT 0, odhaczone INTEGER NOT NULL DEFAULT 0, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (checklista_id) REFERENCES checklisty(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_checklisty_pozycje_lista ON checklisty_pozycje(checklista_id);
+
+            ALTER TABLE samochody ADD COLUMN status TEXT DEFAULT 'aktywny';
+            ALTER TABLE samochody ADD COLUMN data_sprzedazy TEXT;
+            ALTER TABLE samochody ADD COLUMN cena_sprzedazy REAL;
             """
         ]
 
@@ -526,6 +570,14 @@ def init_db():
                             "INSERT INTO ustawienia (klucz, wartosc) VALUES ('ostatnia_podzakladka_kosztow', '1') "
                             "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc"
                         )
+
+            # Kolumna status dodana ALTER-em ma DEFAULT, ale istniejące wiersze
+            # zostają z NULL-em w części wersji SQLite. NULL w statusie znaczyłby
+            # „pojazd bez przynależności”, więc dopisujemy go wprost — tak samo
+            # jak rodzaj energii w migracji 33.
+            if i == 38:
+                cursor.execute("UPDATE samochody SET status='aktywny' WHERE status IS NULL OR TRIM(status)=''")
+                cursor.execute("UPDATE wydatki_cykliczne SET typ='wydatek' WHERE typ IS NULL OR TRIM(typ)=''")
 
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")

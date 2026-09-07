@@ -3,9 +3,14 @@
 import db
 import flet as ft
 
-from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, ikona_z_mapy
+from datetime import datetime
+
+from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
+from .format import parsuj_float, symbol_waluty
+from .zgodnosc import ustaw_blad
 from .wyglad import powierzchnia_karty
-from .dialogi import otworz_dno, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dno
+from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
+from .formularze import pole_daty, styl_pola
 from .wykresy import kolor_kondycji_plynny
 
 
@@ -45,6 +50,78 @@ def usun_auto(page: ft.Page, state):
         wykonaj,
         tekst_potwierdzenia="Przenieś do kosza",
     )
+
+
+def sprzedaj_auto(page: ft.Page, state):
+    """Wyprowadza pojazd z aktywnego garażu bez kasowania czegokolwiek.
+
+    Dlaczego to NIE jest kosz: kosz trzyma migawkę JSON i istnieje po to, żeby
+    cofnąć pomyłkę. Sprzedane auto to nie pomyłka — jego historia ma zostać
+    czytelna i możliwa do wyeksportowania (rozliczenie z kupującym, gwarancje
+    na części, porównanie z następnym autem), a nie zamrożona w archiwum.
+    """
+    if not state.auto_id:
+        return
+    auto_id = state.auto_id
+    nazwa = state.auto_nazwa
+    metryki = db.pobierz_metryki_pojazdu(auto_id) or {}
+
+    e_data = pole_daty(page, "Data sprzedaży", datetime.now().strftime("%d.%m.%Y"))
+    e_cena = ft.TextField(
+        label=f"Cena sprzedaży ({symbol_waluty()}) — opcjonalnie",
+        keyboard_type=ft.KeyboardType.NUMBER, **styl_pola()
+    )
+
+    podpowiedz = ["Auto zniknie z przełącznika pojazdów, ale cała historia zostaje — otworzysz ją w Archiwum."]
+    if metryki.get("cena_zakupu"):
+        podpowiedz.append(
+            f"Cena zakupu: {formatuj_liczba(metryki['cena_zakupu'])} {symbol_waluty()}. "
+            "Po podaniu ceny sprzedaży aplikacja policzy rzeczywistą utratę wartości zamiast szacunku."
+        )
+
+    def wykonaj(e):
+        ustaw_blad(e_cena)
+        cena = parsuj_float(e_cena.value, None) if (e_cena.value or "").strip() else None
+        if cena is not None and cena < 0:
+            ustaw_blad(e_cena, "Cena nie może być ujemna")
+            page.update()
+            return
+        wynik = db.oznacz_pojazd_sprzedany(auto_id, e_data.value, cena)
+        zamknij_dialog(page, dlg)
+        if not wynik:
+            return
+
+        oryg_cofnij = wynik["cofnij"]
+
+        def nowe_cofnij():
+            oryg_cofnij()
+            state.auto_id = auto_id
+            db.zainicjuj_domyslne_auto(state)
+            przejdz(page, "/")
+        wynik["cofnij"] = nowe_cofnij
+
+        # Po sprzedaży stoimy na aucie, którego nie ma już w garażu — przenosimy
+        # się na pierwsze aktywne (albo na „Brak pojazdów”, jeśli to było ostatnie).
+        state.auto_id = None
+        db.zainicjuj_domyslne_auto(state)
+        przejdz(page, "/")
+        pokaz_komunikat_cofnij(page, f"„{nazwa}” przeniesiony do archiwum sprzedanych.", wynik)
+
+    dlg = ft.AlertDialog(
+        title=ft.Text(f"Sprzedaj „{nazwa}”?", weight="bold"),
+        content=ft.Column(
+            [e_data, e_cena] + [
+                ft.Text(t, size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT) for t in podpowiedz
+            ],
+            tight=True, spacing=10,
+        ),
+        actions=[
+            ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
+            ft.ElevatedButton("Przenieś do archiwum", on_click=wykonaj,
+                              bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+        ],
+    )
+    otworz_dialog(page, dlg)
 
 
 def ikona_nadwozia(nadwozie):
@@ -332,6 +409,7 @@ __all__ = [
     "opis_dni_terminu",
     "pasek_terminu",
     "pokaz_panel_kondycji",
+    "sprzedaj_auto",
     "tablica_rejestracyjna",
     "usun_auto",
     "wskaznik_kondycji",

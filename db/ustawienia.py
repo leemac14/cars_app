@@ -144,6 +144,32 @@ def zapisz_moje_imie(imie):
     zapisz_ustawienie("moje_imie", (imie or "").strip() or "Kierowca")
 
 
+# Zwinięte sekcje szuflady — lista identyfikatorów grup po przecinku. Trzymamy
+# ZWINIĘTE, a nie rozwinięte, bo domyślnie wszystko jest otwarte: nowa grupa
+# dołożona do rejestru ekranów ma być widoczna od razu, a nie ukryta dlatego, że
+# nie było jej na starej liście.
+def pobierz_zwiniete_grupy_szuflady():
+    zapisane = pobierz_ustawienie("szuflada_zwiniete", "") or ""
+    return [g.strip() for g in zapisane.split(",") if g.strip()]
+
+
+def zapisz_zwiniete_grupy_szuflady(grupy):
+    zapisz_ustawienie("szuflada_zwiniete", ",".join(dict.fromkeys(g for g in grupy if g)))
+
+
+def przelacz_grupe_szuflady(grupa_id):
+    """Zwija albo rozwija jedną sekcję. Zwraca stan PO zmianie (True = zwinięta)."""
+    grupy = pobierz_zwiniete_grupy_szuflady()
+    if grupa_id in grupy:
+        grupy = [g for g in grupy if g != grupa_id]
+        zwinieta = False
+    else:
+        grupy.append(grupa_id)
+        zwinieta = True
+    zapisz_zwiniete_grupy_szuflady(grupy)
+    return zwinieta
+
+
 # Same podpisy — ikony dobiera warstwa UI (utils.IKONY_KOKPITU), bo db.py
 # celowo nie zna Fleta (korzysta z niego też eksport PDF i synchronizacja).
 KOKPIT_WIDGETY = {
@@ -160,6 +186,11 @@ KOKPIT_WIDGETY = {
     "budzet": "Budżet",
     "zasieg_bak": "Zasięg na baku",
     "prognoza_rok": "Prognoza roczna",
+    "opony": "Opony na aucie",
+    "checklist": "Checklista przed trasą",
+    "oplaty_drogowe": "Opłaty drogowe i mandaty",
+    "do_zrobienia": "Do zrobienia",
+    "magazyn": "Magazyn — niski stan",
 }
 
 KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
@@ -271,6 +302,9 @@ __all__ = [
     "_przywroc_ustawienia_pojazdu",
     "_usun_ustawienia_pojazdu",
     "czy_kokpit_wlasny",
+    "pobierz_zwiniete_grupy_szuflady",
+    "przelacz_grupe_szuflady",
+    "zapisz_zwiniete_grupy_szuflady",
     "pobierz_czysta_czern",
     "pobierz_jednostke_spalania",
     "pobierz_jednostke_zuzycia_ev",

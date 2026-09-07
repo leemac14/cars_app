@@ -2,7 +2,7 @@
 
 import flet as ft
 
-from .formularze import wysokosc_listy
+from .formularze import dopasuj_wysokosc_listy
 
 
 class ZaznaczanieGrupowe:
@@ -13,23 +13,33 @@ class ZaznaczanieGrupowe:
 
     def dostosuj_wysokosc_listy(self):
         """Metoda wywoływana przy zdarzeniu on_resized ekranu.
-        Dynamicznie przelicza wysokość dla wszystkich list wirtualizowanych w widoku."""
+        Dynamicznie przelicza wysokość dla wszystkich list wirtualizowanych w widoku.
+
+        Liczy DOKŁADNIE tak samo jak dopasuj_wysokosc_listy przy budowie widoku
+        (bierze pod uwagę liczbę kart), więc obrót ekranu nie przywraca pustego
+        prostokąta pod krótką listą."""
         if not getattr(self, "uzyj_wirtualizacji", False):
             return
-            
+
         try:
             # Flet View ma domyślnie właściwość .page, ale wspieramy też Twoje self._page
             strona = getattr(self, "page", None) or getattr(self, "_page", None)
             if not strona: return
-            
-            nowa_wysokosc = wysokosc_listy(strona)
-            
+
             # Magia Pythona: dynamicznie szukamy atrybutów, które nazwałeś jako 'lista_kart...'
             for nazwa_atrybutu in dir(self):
                 if nazwa_atrybutu.startswith("lista_kart"):
                     lista = getattr(self, nazwa_atrybutu)
-                    if hasattr(lista, "height") and lista.height != nowa_wysokosc:
-                        lista.height = nowa_wysokosc
+                    if not hasattr(lista, "height"):
+                        continue
+                    poprzednia = lista.height
+                    dopasuj_wysokosc_listy(
+                        lista, strona,
+                        wysokosc_pozycji=getattr(lista, "_wys_pozycji", 175),
+                        na_wiersz=getattr(lista, "_na_wiersz", 1),
+                        udzial=getattr(lista, "_udzial_ekranu", 0.5),
+                    )
+                    if lista.height != poprzednia:
                         lista.update()
         except Exception:
             pass

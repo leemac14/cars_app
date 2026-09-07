@@ -24,6 +24,11 @@ class MiksinZakladkiInne:
             c.execute("SELECT * FROM inne_koszty WHERE auto_id=?", (self.state.auto_id,))
             baza_lista = [dict(row) for row in c.fetchall()]
 
+        # Pusta kategoria (wpisy sprzed słownika) czyta się jako „Ogólne” — inaczej
+        # filtr pokazywałby bezimienną pozycję, a karta pusty chip.
+        for w in baza_lista:
+            w["kategoria"] = db.etykieta_kategorii_innych(w.get("kategoria"))
+
         if not baza_lista:
             self.elementy.append(utils.ekran_braku_danych(
                 ikona=ft.Icons.RECEIPT_LONG,
@@ -50,7 +55,7 @@ class MiksinZakladkiInne:
                     utils.przycisk_filtrowania_autora(self._page, self.state, "inne_autor", baza_lista, "dodane_przez")
                 )
 
-            self.elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            self.elementy.append(utils.pasek_zawijany(filtry_ui))
 
             def filtruj_inne(e):
                 zapytanie = e.control.value.lower().strip()
@@ -58,6 +63,7 @@ class MiksinZakladkiInne:
                 for k in self.wszystkie_karty_inne:
                     if zapytanie in k["szukaj"]:
                         self.lista_kart_inne.controls.append(k["karta"])
+                utils.dopasuj_wysokosc_listy(self.lista_kart_inne, self._page, wysokosc_pozycji=190)
                 self.update()
 
             self.elementy.append(
@@ -128,14 +134,24 @@ class MiksinZakladkiInne:
                     iid = w.get('id')
                     tresc_i = [
                         ft.Row([
-                            ft.Text(str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                             ft.Row([
                                 utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Koszt"),
                                 ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
                             ], spacing=6)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(str(w.get('nazwa')) if w.get('nazwa') else "Brak opisu", size=16, weight="bold"),
-                        utils.wizualizacja_tagow(w.get('tagi') or w.get('kategoria'), self.state.auto_id, mapa_tagow)
+                        # Kategoria ma własny chip z ikoną i stoi PRZED tagami:
+                        # to ona odpowiada na pytanie „co to za wydatek”, tagi są
+                        # dodatkiem. Wcześniej jedno i drugie leciało do tej samej
+                        # linijki tagów, więc opłata drogowa wyglądała jak tag.
+                        ft.Row([
+                            utils.odznaka_kategorii_innych(w.get('kategoria')),
+                            ft.Container(
+                                content=utils.wizualizacja_tagow(w.get('tagi'), self.state.auto_id, mapa_tagow),
+                                expand=True,
+                            ),
+                        ], spacing=6, wrap=False, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     ]
                     tresc_i.append(utils.podglad_notatki(
                         self._page, w.get('notatka'), w.get('notatka_autor'), w.get('notatka_data'),
@@ -158,6 +174,7 @@ class MiksinZakladkiInne:
                     self.wszystkie_karty_inne.append({"karta": karta_i, "szukaj": tekst_szukaj})
                     self.lista_kart_inne.controls.append(karta_i)
 
+                utils.dopasuj_wysokosc_listy(self.lista_kart_inne, self._page, wysokosc_pozycji=190)
                 self.elementy.append(self.lista_kart_inne)
 
         self.fab = self._buduj_fab_szybkich_akcji()

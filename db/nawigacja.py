@@ -278,19 +278,29 @@ def pobierz_ostatni_pojazd():
 
 
 def zainicjuj_domyslne_auto(state):
+    """Ustala, na którym aucie stoi aplikacja.
+
+    Auto SPRZEDANE nadal da się tu podstawić — archiwum otwiera jego historię
+    przez zwykłe przełączenie state.auto_id i bez tego wyjątku wracalibyśmy
+    natychmiast na pierwsze auto z garażu. Sprzedany pojazd nie zostanie za to
+    NIGDY wybrany automatycznie: ani jako zapamiętany, ani jako awaryjny."""
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT id, nazwa FROM samochody ORDER BY nazwa")
-        auta = c.fetchall()
+        c.execute("SELECT id, nazwa, COALESCE(status, 'aktywny') FROM samochody ORDER BY nazwa")
+        wszystkie = c.fetchall()
+
+    aktualne_id = state.auto_id
+    for a_id, a_nazwa, _status in wszystkie:
+        if a_id == aktualne_id:
+            state.auto_nazwa = str(a_nazwa)
+            return
+
+    auta = [(a_id, a_nazwa) for a_id, a_nazwa, status in wszystkie if status != "sprzedany"]
     if not auta:
         state.auto_id = None
         state.auto_nazwa = "Brak pojazdów"
         return
-    aktualne_id = state.auto_id
-    for a_id, a_nazwa in auta:
-        if a_id == aktualne_id:
-            state.auto_nazwa = str(a_nazwa)
-            return
+
     # Brak dopasowania to albo świeży start aplikacji, albo zniknięcie
     # dotychczasowego auta. W pierwszym przypadku wracamy tam, gdzie użytkownik
     # skończył ostatnim razem — pierwsze auto alfabetycznie zostaje dopiero

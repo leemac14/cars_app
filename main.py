@@ -33,6 +33,7 @@ from views.timeline_view import TimelineView
 from views.search_view import SzukajView
 from views.podzial_view import PodzialKosztowView
 from views.kosz_view import KoszView
+from views.archiwum_view import ArchiwumView
 from views.budzet_view import BudzetView
 from views.pojazd_view import PojazdView
 from views.rok_view import RokWPigulceView
@@ -506,6 +507,8 @@ def main(page: ft.Page):
             page.views.append(UstawieniaView(page, app_state))
         elif segmenty[0] == "kosz":
             page.views.append(KoszView(page, app_state))
+        elif segmenty[0] == "archiwum":
+            page.views.append(ArchiwumView(page, app_state))
         elif segmenty[0] == "porownanie":
             page.views.append(PorownanieView(page, app_state))
         elif segmenty[0] == "wspoldzielenie":

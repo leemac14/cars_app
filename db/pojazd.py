@@ -4,7 +4,7 @@ import sqlite3
 from date import parsuj_date
 from datetime import date as date_cls, datetime
 
-from .stale import ROK_MIN
+from .stale import ROK_MIN, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, parsuj_int_bezpiecznie
 from .ustawienia import pobierz_prog_dni_dokumentu
@@ -35,6 +35,111 @@ TERMINY_POJAZDU = [
     ("gasnica", "gasnica_data", "Gaśnica"),
     ("apteczka", "apteczka_data", "Apteczka"),
 ]
+
+
+# ==================== STATUS POJAZDU: AKTYWNY / SPRZEDANY ====================
+# Sprzedaż auta nie jest usunięciem: przestaje ono jeździć, ale historia
+# tankowań, serwisów i kosztów dopiero teraz jest KOMPLETNA i najbardziej warta
+# zachowania — do rozliczenia z kupującym, do porównania z następnym autem, do
+# gwarancji na części. Kosz się do tego nie nadaje, bo trzyma migawkę JSON, a nie
+# dane, które da się otworzyć i wyeksportować.
+#
+# Dlatego zwykła kolumna `status` z domyślną wartością 'aktywny'. Filtrowanie
+# dopisujemy TYLKO w miejscach, które wypisują garaż (przełącznik pojazdu,
+# showroom, porównanie, wybór auta na starcie) — cała reszta zapytań pracuje na
+# konkretnym auto_id i nie ma powodu wiedzieć o statusie.
+
+WARUNEK_AKTYWNE = "COALESCE(status, 'aktywny') <> 'sprzedany'"
+
+
+def czy_pojazd_sprzedany(auto_id):
+    if not auto_id:
+        return False
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT status FROM samochody WHERE id=?", (auto_id,))
+        w = c.fetchone()
+    return bool(w) and str(w[0] or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_SPRZEDANY
+
+
+def pobierz_pojazdy(tylko_aktywne=True):
+    """(id, nazwa) pojazdów w kolejności alfabetycznej — jedno miejsce dla
+    wszystkiego, co wypisuje garaż."""
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        warunek = f" WHERE {WARUNEK_AKTYWNE}" if tylko_aktywne else ""
+        c.execute(f"SELECT id, nazwa FROM samochody{warunek} ORDER BY nazwa")
+        return c.fetchall()
+
+
+def pobierz_sprzedane_pojazdy():
+    """Lista sprzedanych aut z podsumowaniem, którego szuka się w archiwum:
+    ile wpisów zostało, ile auto łącznie kosztowało i na jakim liczniku odeszło."""
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, nazwa, nr_rej, marka, model, zdjecie_glowne, nadwozie, kolor_motywu, "
+            "data_sprzedazy, cena_sprzedazy, cena_zakupu, data_zakupu "
+            "FROM samochody WHERE COALESCE(status, 'aktywny') = ? ORDER BY data_sprzedazy DESC, nazwa",
+            (STATUS_POJAZDU_SPRZEDANY,)
+        )
+        auta = [dict(w) for w in c.fetchall()]
+
+        for a in auta:
+            aid = a["id"]
+            c.execute(
+                "SELECT (SELECT COUNT(*) FROM tankowania WHERE auto_id=:a) "
+                "     + (SELECT COUNT(*) FROM inne_koszty WHERE auto_id=:a) "
+                "     + (SELECT COUNT(*) FROM wizyty WHERE auto_id=:a) "
+                "     + (SELECT COUNT(*) FROM historia h JOIN zadania z ON h.zadanie_id=z.id WHERE z.auto_id=:a)",
+                {"a": aid}
+            )
+            a["liczba_wpisow"] = int(c.fetchone()[0] or 0)
+
+    for a in auta:
+        a["koszt_razem"] = koszty_w_okresie(a["id"])["razem"]
+        a["przebieg"] = pobierz_aktualny_przebieg(a["id"])
+    return auta
+
+
+def oznacz_pojazd_sprzedany(auto_id, data_sprzedazy=None, cena_sprzedazy=None):
+    """Wyprowadza auto z garażu. Zwraca słownik zgodny z utils.pokaz_komunikat_cofnij
+    — pomyłka przy wyborze auta ma być odwracalna jednym kliknięciem, tak samo
+    jak przy usuwaniu wpisu."""
+    if not auto_id:
+        return None
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT nazwa, status, data_sprzedazy, cena_sprzedazy FROM samochody WHERE id=?", (auto_id,))
+        w = c.fetchone()
+        if not w:
+            return None
+        poprzedni = (w[1], w[2], w[3])
+        conn.execute(
+            "UPDATE samochody SET status=?, data_sprzedazy=?, cena_sprzedazy=? WHERE id=?",
+            (STATUS_POJAZDU_SPRZEDANY, data_sprzedazy or None, cena_sprzedazy, auto_id)
+        )
+        nazwa = str(w[0] or "Pojazd")
+
+    def cofnij():
+        with polacz_baze() as conn2:
+            conn2.execute(
+                "UPDATE samochody SET status=?, data_sprzedazy=?, cena_sprzedazy=? WHERE id=?",
+                (poprzedni[0] or STATUS_POJAZDU_AKTYWNY, poprzedni[1], poprzedni[2], auto_id)
+            )
+
+    return {"cofnij": cofnij, "finalizuj": lambda: None, "nazwa": nazwa, "auto_id": auto_id}
+
+
+def przywroc_pojazd_do_garazu(auto_id):
+    """Powrót do aktywnego garażu. Daty i ceny sprzedaży NIE kasujemy — auto
+    mogło wrócić z niedoszłej transakcji, a wpisane liczby są informacją, nie
+    śmieciem. Wyzeruje je dopiero ponowna edycja."""
+    if not auto_id:
+        return
+    with polacz_baze() as conn:
+        conn.execute("UPDATE samochody SET status=? WHERE id=?", (STATUS_POJAZDU_AKTYWNY, auto_id))
 
 
 def pobierz_dane_pojazdu(auto_id):
@@ -136,7 +241,13 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
 
     # --- wartość i amortyzacja ---
     cena_zakupu = _liczba_lub_none(dane.get("cena_zakupu"))
-    wartosc = _liczba_lub_none(dane.get("wartosc_szacowana"))
+    # Po sprzedaży utrata wartości przestaje być szacunkiem: znamy kwotę, za
+    # którą auto faktycznie odeszło. Bierzemy ją zamiast pola „wartość
+    # szacowana”, żeby koszt posiadania sprzedanego auta był rachunkiem
+    # zamkniętym, a nie prognozą.
+    cena_sprzedazy = _liczba_lub_none(dane.get("cena_sprzedazy"))
+    sprzedany = str(dane.get("status") or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_SPRZEDANY
+    wartosc = cena_sprzedazy if (sprzedany and cena_sprzedazy is not None) else _liczba_lub_none(dane.get("wartosc_szacowana"))
     utrata = (cena_zakupu - wartosc) if (cena_zakupu and wartosc is not None) else None
     utrata_rocznie = (
         utrata / (dni_posiadania / 365.25)
@@ -156,6 +267,9 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
 
     return {
         "przebieg": przebieg,
+        "sprzedany": sprzedany,
+        "data_sprzedazy": dane.get("data_sprzedazy"),
+        "cena_sprzedazy": cena_sprzedazy,
         "wiek_lat": wiek_lat,
         "dni_wieku": dni_wieku,
         "data_wieku": data_rej.strftime("%d.%m.%Y") if data_rej else (str(rok_prod) if rok_prod else None),
@@ -264,9 +378,15 @@ def pobierz_dane_do_porownania(auto_id):
 __all__ = [
     "NORMA_PRZEBIEGU_ROCZNEGO",
     "TERMINY_POJAZDU",
+    "WARUNEK_AKTYWNE",
+    "czy_pojazd_sprzedany",
     "najblizszy_termin_pojazdu",
+    "oznacz_pojazd_sprzedany",
     "pobierz_dane_do_porownania",
     "pobierz_dane_pojazdu",
     "pobierz_metryki_pojazdu",
+    "pobierz_pojazdy",
+    "pobierz_sprzedane_pojazdy",
+    "przywroc_pojazd_do_garazu",
     "terminy_pojazdu",
 ]

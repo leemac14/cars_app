@@ -69,6 +69,27 @@ class KalkulatorTrasyView(ft.View):
         )
         self.e_dodatkowe = ft.TextField(label=f"Opłaty (autostrady, winiety) ({utils.symbol_waluty()})", value="0", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
 
+        # --- Zapisane trasy ---
+        # Trasy się powtarzają: „do teściów” to zawsze te same 180 km, ta sama
+        # ekipa i ta sama winieta. Szablon zapamiętuje WYŁĄCZNIE te parametry —
+        # spalanie i cena paliwa zostają wyliczone z aktualnych tankowań, żeby
+        # trasa zapisana rok temu nie liczyła po zeszłorocznych cenach.
+        self.rzad_tras = ft.Row(spacing=6, run_spacing=6, wrap=True,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        self.karta_tras = ft.Container(
+            padding=utils.SPACING["md"], border_radius=utils.RADIUS["lg"],
+            bgcolor=utils.tlo_karty(page, poziom=1),
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.BOOKMARKS, size=16, color=ft.Colors.PRIMARY),
+                    ft.Text("Zapisane trasy", weight="bold", size=13, color=ft.Colors.PRIMARY, expand=True),
+                    ft.TextButton("Zapisz obecną", icon=ft.Icons.BOOKMARK_ADD, on_click=lambda e: self._okno_zapisu()),
+                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                self.rzad_tras,
+            ], spacing=8),
+        )
+        self._odswiez_trasy()
+
         # Dynamiczne teksty wyników
         self.t_koszt_paliwa = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.PRIMARY)
         self.t_koszt_calkowity = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.RED_700)
@@ -110,11 +131,128 @@ class KalkulatorTrasyView(ft.View):
             ], spacing=10)
         )
 
-        elementy = [k1, k2, k3, utils.dol_bezpieczny(30)]
+        elementy = [self.karta_tras, k1, k2, k3, utils.dol_bezpieczny(30)]
 
         super().__init__(
             route="/kalkulator", padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    # ==================== ZAPISANE TRASY ====================
+
+    def _odswiez_trasy(self):
+        """Przebudowuje pasek chipów. Wołane po każdym zapisie i usunięciu —
+        lista trzymana w bazie, nie w polu klasy, żeby nie rozjechała się
+        z rzeczywistością po powrocie z innego ekranu."""
+        trasy = db.pobierz_trasy_szablony(self.state.auto_id)
+        self.rzad_tras.controls.clear()
+
+        if not trasy:
+            self.rzad_tras.controls.append(ft.Text(
+                "Ustaw trasę poniżej i dotknij „Zapisz obecną”, żeby nie przeliczać jej za każdym razem.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+            ))
+        else:
+            for t in trasy:
+                self.rzad_tras.controls.append(self._chip_trasy(t))
+        try:
+            self.karta_tras.update()
+        except Exception:
+            # Kontener nie jest jeszcze w drzewie strony (budowa widoku) —
+            # pierwszy render i tak pokaże aktualny stan.
+            pass
+
+    def _chip_trasy(self, trasa):
+        opis = f"{utils.formatuj_liczba(trasa['dystans'], 0)} km"
+        if trasa["powrot"]:
+            opis += " ×2"
+        return ft.Container(
+            padding=ft.Padding(12, 7, 12, 7), border_radius=utils.RADIUS["pill"],
+            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY), ink=True,
+            tooltip="Dotknij, aby wczytać • przytrzymaj, aby zarządzać",
+            on_click=lambda e, t=trasa: self._wczytaj_trase(t),
+            on_long_press=lambda e, t=trasa: self._menu_trasy(t),
+            content=ft.Row([
+                ft.Icon(ft.Icons.ROUTE, size=15, color=ft.Colors.PRIMARY),
+                ft.Text(trasa["nazwa"], size=13, weight="bold", color=ft.Colors.PRIMARY, no_wrap=True),
+                ft.Text(opis, size=11, color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True),
+            ], spacing=6, tight=True),
+        )
+
+    def _wczytaj_trase(self, trasa):
+        self.e_dystans.value = utils.formatuj_liczba(trasa["dystans"], 0)
+        self.c_powrot.value = bool(trasa["powrot"])
+        self.e_osoby.value = str(trasa["osoby"])
+        self.e_dodatkowe.value = utils.formatuj_liczba(trasa["oplaty"], 2)
+        self.przelicz(None)
+        utils.pokaz_komunikat(self._page, f"Wczytano trasę „{trasa['nazwa']}”.")
+
+    def _okno_zapisu(self, trasa=None):
+        """Jeden dialog do zapisu nowej trasy i do zmiany nazwy istniejącej.
+        Zapisujemy stan pól z ekranu, a nie przekazane wartości — użytkownik
+        mógł je poprawić tuż przed kliknięciem."""
+        e_nazwa = ft.TextField(
+            label="Nazwa trasy (np. Do teściów)",
+            value=str(trasa["nazwa"]) if trasa else "",
+            **utils.styl_pola()
+        )
+        dystans = self._pobierz_float(self.e_dystans)
+        podsumowanie = ft.Text(
+            f"Zapamiętam: {utils.formatuj_liczba(dystans, 0)} km"
+            + (" (tam i z powrotem)" if self.c_powrot.value else "")
+            + f" • {int(utils.parsuj_float(self.e_osoby.value, 1.0)) or 1} os."
+            + f" • opłaty {utils.formatuj_liczba(self._pobierz_float(self.e_dodatkowe), 2)} {utils.symbol_waluty()}",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+
+        def zapisz(e):
+            utils.ustaw_blad(e_nazwa)
+            nazwa = (e_nazwa.value or "").strip()
+            if not nazwa:
+                utils.ustaw_blad(e_nazwa, "Podaj nazwę trasy")
+                self._page.update()
+                return
+            if dystans <= 0:
+                utils.ustaw_blad(e_nazwa, "Najpierw podaj dystans trasy")
+                self._page.update()
+                return
+            db.zapisz_trase_szablon(
+                self.state.auto_id, nazwa, dystans,
+                powrot=self.c_powrot.value,
+                osoby=int(utils.parsuj_float(self.e_osoby.value, 1.0)) or 1,
+                oplaty=self._pobierz_float(self.e_dodatkowe),
+                trasa_id=trasa["id"] if trasa else None,
+            )
+            utils.zamknij_dialog(self._page, dlg)
+            self._odswiez_trasy()
+            utils.pokaz_komunikat(self._page, f"Zapisano trasę „{nazwa}”.")
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Zaktualizuj trasę" if trasa else "Zapisz trasę", weight="bold"),
+            content=ft.Column([e_nazwa, podsumowanie], tight=True, spacing=10),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
+                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+            ],
+        )
+        utils.otworz_dialog(self._page, dlg)
+
+    def _menu_trasy(self, trasa):
+        def usun():
+            db.usun_trase_szablon(trasa["id"])
+            self._odswiez_trasy()
+            utils.pokaz_komunikat(self._page, f"Usunięto trasę „{trasa['nazwa']}”.")
+
+        utils.pokaz_menu_kontekstowe(self._page, f"Trasa: {trasa['nazwa']}", [
+            {"ikona": ft.Icons.PLAY_ARROW, "tekst": "Wczytaj do kalkulatora",
+             "akcja": lambda: self._wczytaj_trase(trasa)},
+            {"ikona": ft.Icons.SAVE_AS, "tekst": "Nadpisz obecnymi wartościami",
+             "opis": "Zapisze dystans, powrót, liczbę osób i opłaty z ekranu",
+             "akcja": lambda: self._okno_zapisu(trasa)},
+            {"ikona": ft.Icons.DELETE, "tekst": "Usuń trasę", "kolor": ft.Colors.RED,
+             "akcja": lambda: utils.potwierdz(
+                 self._page, "Usunąć trasę?",
+                 f"Czy na pewno usunąć zapisaną trasę „{trasa['nazwa']}”?", usun)},
+        ])
 
     def _pobierz_float(self, kontrolka):
         return utils.parsuj_float(kontrolka.value, 0.0)

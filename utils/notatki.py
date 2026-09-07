@@ -33,7 +33,7 @@ def pokaz_notatke(page: ft.Page, tresc, autor=None, data=None, tytul="Notatka", 
 
     dlg = ft.AlertDialog(
         title=ft.Row([ft.Icon(ft.Icons.STICKY_NOTE_2_OUTLINED, size=20, color=ft.Colors.PRIMARY),
-                      ft.Text(tytul, weight="bold")], spacing=SPACING["sm"]),
+                      ft.Text(tytul, weight="bold", expand=True)], spacing=SPACING["sm"]),
         content=ft.Column(tresc_dialogu, tight=True, spacing=0),
         shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
     )
@@ -114,7 +114,7 @@ def szybka_notatka(page: ft.Page, tabela, rekord_id, po_zapisie_callback=None, t
     dlg = ft.AlertDialog(
         modal=True,
         title=ft.Row([ft.Icon(ft.Icons.STICKY_NOTE_2_OUTLINED, size=20, color=ft.Colors.PRIMARY),
-                      ft.Text(tytul, weight="bold")], spacing=SPACING["sm"]),
+                      ft.Text(tytul, weight="bold", expand=True)], spacing=SPACING["sm"]),
         content=ft.Container(width=420, content=ft.Column(zawartosc, tight=True, spacing=SPACING["sm"])),
         shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
     )

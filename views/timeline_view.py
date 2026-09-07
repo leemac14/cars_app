@@ -70,7 +70,7 @@ class TimelineView(ft.View):
                     utils.przycisk_filtrowania_autora(self._page, self.state, "timeline_autor", zdarzenia, 8)
                 )
 
-            elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            elementy.append(utils.pasek_zawijany(filtry_ui))
 
             def filtruj_timeline(e):
                 zapytanie = e.control.value.lower().strip()
@@ -82,6 +82,7 @@ class TimelineView(ft.View):
                 # a nie na pierwszym/ostatnim w ogóle — inaczej po wyszukaniu
                 # linia wystaje w pustkę nad i pod listą.
                 self._popraw_koncowki_osi(widoczne)
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
                 self.update()
 
             elementy.append(
@@ -120,6 +121,7 @@ class TimelineView(ft.View):
                     self.lista_kart.controls.append(wiersz["karta"])
                 self._popraw_koncowki_osi(self.wszystkie_karty)
 
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
             elementy.append(self.lista_kart)
 
         elementy.append(utils.dol_bezpieczny(10))

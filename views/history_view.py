@@ -52,7 +52,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "historia_rok", wpisy, 1)
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "historia_mc", wpisy, 1)
 
-            elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            elementy.append(utils.pasek_zawijany([sort_ui, filtr_rok_ui, filtr_mc_ui]))
 
             # --- POPRAWNA INICJALIZACJA WYSZUKIWARKI ---
             self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
@@ -65,6 +65,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 for k in self.wszystkie_karty:
                     if zapytanie in k["szukaj"]:
                         self.lista_kart.controls.append(k["karta"])
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
                 self.update()
 
             self.pole_wyszukiwarki = ft.TextField(
@@ -145,7 +146,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
 
                 tresc_h = [
                     ft.Row([
-                        ft.Text(str(data), weight="bold", size=16), 
+                        ft.Text(str(data), weight="bold", size=16, expand=True), 
                         ft.Row([
                             utils.wskaznik_zalacznika(self._page, zalacznik, "Wpis historii"),
                             ft.Text(k_str, color=ft.Colors.RED_700, weight="bold")
@@ -193,6 +194,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
                 self.lista_kart.controls.append(karta)
 
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
             elementy.append(self.lista_kart)
 
         # To jest linijka poza blokiem else (już ją masz)
@@ -372,7 +374,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.przycisk_filtrowania_autora(self._page, self.state, "wizyty_autor", wizyty_lista, 8)
             )
 
-        elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
+        elementy.append(utils.pasek_zawijany(filtry_ui))
 
         wizyty_lista = utils.filtruj_po_roku(wizyty_lista, self.state, "wizyty_rok", 1)
         wizyty_lista = utils.filtruj_po_miesiacu(wizyty_lista, self.state, "wizyty_mc", 1)
@@ -389,6 +391,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             for k in self.wszystkie_karty:
                 if zapytanie in k["szukaj"]:
                     self.lista_kart.controls.append(k["karta"])
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
             self.update()
 
         self.pole_wyszukiwarki = ft.TextField(
@@ -467,7 +470,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
                 tresc_karty = [
                     ft.Row([
-                        ft.Text(str(data), weight="bold", size=16),
+                        ft.Text(str(data), weight="bold", size=16, expand=True),
                         ft.Row([
                             utils.wskaznik_zalacznika(self._page, zalacznik, "Wizyta"),
                             ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))}  {utils.symbol_waluty()}", color=ft.Colors.RED_700, weight="bold")
@@ -475,7 +478,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Row([
                         ft.Icon(ft.Icons.SPEED, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(f"{utils.formatuj_liczba(int(prz or 0), 0)} km", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(f"{utils.formatuj_liczba(int(prz or 0), 0)} km", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=4),
                     ft.Text(f"Części: {czesci}", size=13, color=ft.Colors.PRIMARY),
                 ]
@@ -525,6 +528,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
             # Lista dokładana TYLKO gdy są wizyty — pusty ListView ma stałą wysokość
             # i zostawiał pod komunikatem „Brak wizyt…” pół ekranu pustki.
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
             elementy.append(self.lista_kart)
 
         super().__init__(

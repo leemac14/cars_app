@@ -41,12 +41,16 @@ def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta, iko
     if len(pokazywany_tekst) > 9:
         pokazywany_tekst = pokazywany_tekst[:7] + ".."
 
+    # tight=True jest tu KONIECZNE. Bez niego wiersz ma mainAxisSize.max i bierze
+    # całą szerokość, jaką dostanie. W pasku przewijanym poziomo szerokość była
+    # nieograniczona, więc chip i tak kurczył się do treści — ale w pasku
+    # ZAWIJANYM dostaje szerokość ekranu i każdy filtr ląduje w osobnej linijce.
     popup = ft.PopupMenuButton(
         items=elementy_menu,
         content=ft.Row([
             ft.Icon(ikona_aktywna if jest_aktywny else ikona_nieaktywna, size=13, color=kolor_glowny),
             ft.Text(pokazywany_tekst, size=11, weight="bold", color=kolor_glowny),
-        ], spacing=2),
+        ], spacing=2, tight=True),
         tooltip=f"Filtruj po: {etykieta}"
     )
 

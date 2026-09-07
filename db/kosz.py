@@ -36,13 +36,17 @@ KOSZ_TABELE_POTOMNE = [
     "zadania", "wizyty", "magazyn_czesci", "tagi", "tankowania",
     "inne_koszty", "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
     "warsztaty", "wydatki_cykliczne", "pakiety_serwisowe_wlasne",
+    "trasy_szablony", "checklisty",
     "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
+    "checklisty_pozycje",
     "budzety",
 ]
 
 
 # Tabele bez kolumny auto_id — z pojazdem związane wyłącznie pośrednio.
-KOSZ_TABELE_BEZ_AUTO_ID = {"historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu"}
+KOSZ_TABELE_BEZ_AUTO_ID = {
+    "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu", "checklisty_pozycje",
+}
 
 
 KOSZ_ZAPYTANIA_POSREDNIE = {
@@ -52,6 +56,9 @@ KOSZ_ZAPYTANIA_POSREDNIE = {
         "SELECT hcm.* FROM historia_czesci_magazynu hcm "
         "JOIN historia h ON hcm.historia_id = h.id "
         "JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id=?"
+    ),
+    "checklisty_pozycje": (
+        "SELECT p.* FROM checklisty_pozycje p JOIN checklisty l ON p.checklista_id = l.id WHERE l.auto_id=?"
     ),
 }
 
@@ -64,6 +71,7 @@ KOSZ_KLUCZE_OBCE = {
     "historia": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
     "wizyta_czesci_magazynu": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"},
     "historia_czesci_magazynu": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"},
+    "checklisty_pozycje": {"checklista_id": "checklisty"},
 }
 
 
@@ -75,6 +83,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
     "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
     "do_zrobienia", "historia", "tagi", "wizyta_czesci_magazynu",
     "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
+    "trasy_szablony", "checklisty", "checklisty_pozycje",
 ]
 
 

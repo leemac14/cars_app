@@ -98,6 +98,28 @@ IKONY_KOKPITU = {
     "budzet": ft.Icons.SAVINGS,
     "zasieg_bak": ft.Icons.LOCAL_GAS_STATION,
     "prognoza_rok": ft.Icons.QUERY_STATS,
+    "opony": ft.Icons.TIRE_REPAIR,
+    "checklist": ft.Icons.FACT_CHECK,
+    "oplaty_drogowe": ft.Icons.TOLL,
+    "do_zrobienia": ft.Icons.CHECKLIST_RTL,
+    "magazyn": ft.Icons.INVENTORY_2,
+}
+
+
+# Sezony zestawów opon (db.SEZONY_OPON). Ta sama para ikon obsługuje kartę
+# zestawu w magazynie, kafelek kokpitu i komunikat po sezonowej zmianie, więc
+# „Zimowe” wyglądają wszędzie tak samo.
+IKONY_SEZONU_OPON = {
+    "Letnie": ft.Icons.WB_SUNNY,
+    "Zimowe": ft.Icons.AC_UNIT,
+    "Całoroczne": ft.Icons.CALENDAR_MONTH,
+}
+
+
+KOLORY_SEZONU_OPON = {
+    "Letnie": ft.Colors.AMBER_700,
+    "Zimowe": ft.Colors.LIGHT_BLUE_700,
+    "Całoroczne": ft.Colors.BLUE_GREY_600,
 }
 
 
@@ -188,6 +210,41 @@ IKONY_KATEGORII_KOSZTOW = {
 }
 
 
+# Kategorie WEWNĄTRZ „Innych kosztów” (db.KATEGORIE_INNYCH_KOSZTOW). Klucz to
+# etykieta, bo taka wartość leży w bazie. Kategoria spoza słownika (import CSV,
+# wpis ze starszej wersji) dostaje domyślny paragon — nie znika i nie psuje listy.
+IKONY_KATEGORII_INNYCH = {
+    "Ogólne": ft.Icons.RECEIPT_LONG,
+    "Mandaty i opłaty drogowe": ft.Icons.TOLL,
+    "Ubezpieczenie": ft.Icons.SHIELD,
+    "Myjnia i kosmetyka": ft.Icons.LOCAL_CAR_WASH,
+    "Parking i garaż": ft.Icons.LOCAL_PARKING,
+    "Wyposażenie i akcesoria": ft.Icons.SHOPPING_BAG,
+    "Opłaty urzędowe": ft.Icons.ACCOUNT_BALANCE,
+    "Cykliczne": ft.Icons.AUTORENEW,
+}
+
+
+KOLORY_KATEGORII_INNYCH = {
+    "Ogólne": ft.Colors.BLUE_GREY_600,
+    "Mandaty i opłaty drogowe": ft.Colors.DEEP_ORANGE_700,
+    "Ubezpieczenie": ft.Colors.INDIGO_400,
+    "Myjnia i kosmetyka": ft.Colors.CYAN_700,
+    "Parking i garaż": ft.Colors.BLUE_GREY_500,
+    "Wyposażenie i akcesoria": ft.Colors.TEAL_600,
+    "Opłaty urzędowe": ft.Colors.BROWN_500,
+    "Cykliczne": ft.Colors.PURPLE_300,
+}
+
+
+def ikona_kategorii_innych(kategoria):
+    return IKONY_KATEGORII_INNYCH.get(str(kategoria or "").strip() or "Ogólne", ft.Icons.RECEIPT_LONG)
+
+
+def kolor_kategorii_innych(kategoria):
+    return KOLORY_KATEGORII_INNYCH.get(str(kategoria or "").strip() or "Ogólne", ft.Colors.BLUE_GREY_600)
+
+
 def ikona_z_mapy(mapa, klucz, domyslna=ft.Icons.CIRCLE_OUTLINED):
     """Bezpieczne wyszukanie ikony po kluczu z warstwy danych."""
     return mapa.get(str(klucz or ""), domyslna)
@@ -213,12 +270,16 @@ __all__ = [
     "FS",
     "IKONY_AKTYWNOSCI",
     "IKONY_EKSPORTU",
+    "IKONY_KATEGORII_INNYCH",
     "IKONY_KATEGORII_KOSZTOW",
     "IKONY_KOKPITU",
     "IKONY_NADWOZIA",
     "IKONY_OBSERWACJI",
     "IKONY_PODZRODEL_ODCZYTU",
+    "IKONY_SEZONU_OPON",
     "IKONY_ZRODEL_PRZEBIEGU",
+    "KOLORY_KATEGORII_INNYCH",
+    "KOLORY_SEZONU_OPON",
     "KOLORY_TONU",
     "KOLORY_ZRODEL_PRZEBIEGU",
     "KOLOR_STATUS",
@@ -228,6 +289,8 @@ __all__ = [
     "SPACING",
     "bezpieczna_nazwa_pliku",
     "formatuj_liczba",
+    "ikona_kategorii_innych",
     "ikona_z_mapy",
+    "kolor_kategorii_innych",
     "rgb_koloru_motywu",
 ]

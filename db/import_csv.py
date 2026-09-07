@@ -5,7 +5,7 @@ import io
 from date import parsuj_date
 from datetime import datetime
 
-from .stale import ENERGIA_PALIWO, ENERGIA_PRAD
+from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, KATEGORIA_INNE_DOMYSLNA
 from .polaczenie import polacz_baze
 from .pomocnicze import _parsuj_liczbe_csv
 from .ustawienia import pobierz_moje_imie
@@ -350,7 +350,10 @@ def zaimportuj_inne_koszty(auto_id, gotowe):
             conn.execute(
                 "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, dodane_przez) "
                 "VALUES (?,?,?,?,?,?,?)",
-                (auto_id, g["data"], "", g["nazwa"], g["kwota"], g["tagi"] or None, kto)
+                # Kolumna z pliku trafia do TAGÓW (tak było od zawsze), a kategoria
+                # dostaje wartość domyślną — importowany wydatek nie ma skąd
+                # wiedzieć, czy był mandatem, czy myjnią.
+                (auto_id, g["data"], KATEGORIA_INNE_DOMYSLNA, g["nazwa"], g["kwota"], g["tagi"] or None, kto)
             )
     return len(gotowe)
 

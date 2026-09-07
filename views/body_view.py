@@ -43,6 +43,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                 self.lista_kart.controls.clear()
                 for k in self.wszystkie_karty:
                     if zapytanie in k["szukaj"]: self.lista_kart.controls.append(k["karta"])
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=260, na_wiersz=2)
                 self.update()
 
             pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)...", prefix_icon=ft.Icons.SEARCH, on_change=utils.z_opoznieniem(self._page, filtruj_galerie), **utils.styl_pola())
@@ -94,6 +95,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                 self.wszystkie_karty.append({"karta": karta, "szukaj": f"{z_strefa} {z_opis} {z_typ} {z_data}".lower()})
                 self.lista_kart.controls.append(karta)
 
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=260, na_wiersz=2)
             elementy.append(self.lista_kart)
 
         elementy.append(utils.dol_bezpieczny(10))
@@ -160,7 +162,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
 
         dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Row([ft.Icon(ft.Icons.EDIT, color=ft.Colors.PRIMARY), ft.Text(f"Edycja zbiorcza ({ile})", weight="bold")], spacing=8),
+            title=ft.Row([ft.Icon(ft.Icons.EDIT, color=ft.Colors.PRIMARY), ft.Text(f"Edycja zbiorcza ({ile})", weight="bold", expand=True)], spacing=8),
             content=ft.Column([
                 ft.Text("Zmień wybrane pola dla wszystkich zaznaczonych zdjęć naraz. Pozostaw „Bez zmian”, aby nie ruszać danego pola.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                 e_strefa,

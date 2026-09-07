@@ -84,7 +84,7 @@ class RokWPigulceView(ft.View):
             bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
             content=ft.Column([
                 ft.Row([
-                    ft.Text(str(d["rok"]), size=44, weight="bold", color=ft.Colors.PRIMARY),
+                    ft.Text(str(d["rok"]), size=44, weight="bold", color=ft.Colors.PRIMARY, expand=True),
                     ft.Container(
                         padding=ft.Padding(10, 3, 10, 3), border_radius=utils.RADIUS["pill"],
                         bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.ON_SURFACE),

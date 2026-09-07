@@ -102,7 +102,7 @@ class MiksinZakladkiTankowania:
                     utils.przycisk_filtrowania_autora(self._page, self.state, "tankowania_autor", baza_lista, "dodane_przez")
                 )
 
-            self.elementy.append(ft.Row(filtry_ui, spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            self.elementy.append(utils.pasek_zawijany(filtry_ui))
 
             def filtruj_tankowania(e):
                 zapytanie = e.control.value.lower().strip()
@@ -110,6 +110,7 @@ class MiksinZakladkiTankowania:
                 for k in self.wszystkie_karty_tankowania:
                     if zapytanie in k["szukaj"]:
                         self.lista_kart_tankowania.controls.append(k["karta"])
+                utils.dopasuj_wysokosc_listy(self.lista_kart_tankowania, self._page, wysokosc_pozycji=200)
                 self.update()
 
             self.elementy.append(
@@ -185,7 +186,7 @@ class MiksinZakladkiTankowania:
                     tid = w.get('id')
                     tresc_karty = [
                         ft.Row([
-                            ft.Text(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.Text(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                             ft.Row([
                                 # Odznaka źródła tylko przy plug-inie — przy aucie
                                 # jednoźródłowym byłaby tą samą etykietą przy każdym wpisie.
@@ -236,6 +237,7 @@ class MiksinZakladkiTankowania:
                     self.wszystkie_karty_tankowania.append({"karta": karta_t, "szukaj": tekst_szukaj})
                     self.lista_kart_tankowania.controls.append(karta_t)
 
+                utils.dopasuj_wysokosc_listy(self.lista_kart_tankowania, self._page, wysokosc_pozycji=200)
                 self.elementy.append(self.lista_kart_tankowania)
 
         self.fab = self._buduj_fab_szybkich_akcji()

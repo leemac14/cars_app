@@ -123,8 +123,10 @@ class PodzialKosztowView(ft.View):
                         content=ft.Column([
                             ft.Row([
                                 ft.Row([ft.Icon(ft.Icons.PERSON, color=ft.Colors.PRIMARY, size=18),
-                                        ft.Text(d["osoba"], weight="bold", size=16)], spacing=6),
-                                ft.Text(f"{utils.formatuj_liczba(d['razem'])} {waluta}", weight="bold", size=16, color=ft.Colors.RED_700)
+                                        ft.Text(d["osoba"], weight="bold", size=16, expand=True,
+                                                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)],
+                                       spacing=6, expand=True),
+                                ft.Text(f"{utils.formatuj_liczba(d['razem'])} {waluta}", weight="bold", size=16, color=ft.Colors.RED_700, no_wrap=True)
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                             ft.ProgressBar(value=max(0.03, proporcja), color=ft.Colors.PRIMARY,
                                            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=8, border_radius=4),

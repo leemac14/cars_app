@@ -172,7 +172,7 @@ class MiksinKokpitu:
             zawartosc.append(
                 ft.Row([
                     ft.Icon(t_ikona, size=13, color=t_kolor),
-                    ft.Text(t_tekst, size=utils.FS["caption"], color=t_kolor, no_wrap=True),
+                    ft.Text(t_tekst, size=utils.FS["caption"], color=t_kolor, no_wrap=True, expand=True),
                 ], spacing=4)
             )
 
@@ -200,7 +200,7 @@ class MiksinKokpitu:
                     ft.Text(str(p["tytul"]), size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Row([
                         ft.Icon(ikona_p, size=13, color=kolor_p),
-                        ft.Text(p["opis"], size=utils.FS["caption"], color=kolor_p, no_wrap=True),
+                        ft.Text(p["opis"], size=utils.FS["caption"], color=kolor_p, no_wrap=True, expand=True),
                     ], spacing=4),
                 ], spacing=4)
 
@@ -490,6 +490,224 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        def widget_opony():
+            """Co stoi na aucie i kiedy zmiana. Dotąd tę informację trzymał
+            wyłącznie ekran Magazynu, więc przez pół roku nikt do niej nie
+            zaglądał — a to jedyna rzecz w aucie, która zmienia się w kalendarzu
+            i której zaniedbanie widać od razu na hamowaniu."""
+            def idz_do_opon(e):
+                # Magazyn ma dwie podzakładki — kafelek ma otwierać TĘ z oponami,
+                # a nie tę, którą użytkownik oglądał ostatnio.
+                self.state.magazyn_zakladka = 0
+                utils.przejdz(self._page, "/magazyn")
+
+            stan = db.pobierz_stan_opon(self.state.auto_id)
+            if not stan:
+                return kafel_wartosci(
+                    ft.Icons.TIRE_REPAIR, ft.Colors.BLUE_GREY_700, "Opony",
+                    "Brak zestawów", idz_do_opon,
+                )
+
+            sezon = stan["sezon"]
+            kolor_sezonu = utils.KOLORY_SEZONU_OPON.get(sezon or "", ft.Colors.BLUE_GREY_700)
+            ikona_sezonu = utils.IKONY_SEZONU_OPON.get(sezon or "", ft.Icons.TIRE_REPAIR)
+
+            # Termin bierzemy z przypomnienia typu „opony”, jeśli takie istnieje —
+            # to ono jest w tej aplikacji źródłem prawdy o dacie zmiany.
+            terminy = [w for w in db.pobierz_wydatki_cykliczne(self.state.auto_id)
+                       if w[6] == db.TYP_CYKLICZNY_OPONY]
+            stopka = None
+            if terminy:
+                _, tekst_terminu = utils.kolor_i_tekst_terminu(terminy[0][4])
+                stopka = f"Zmiana: {tekst_terminu or terminy[0][4]}"
+            elif stan["docelowy_sezon"]:
+                stopka = f"Następne: {stan['docelowy_sezon'].lower()}"
+
+            bieznik = stan["bieznik"]
+            if bieznik is not None:
+                # 1,6 mm to minimum prawne, 3 mm — próg, przy którym opona
+                # przestaje sensownie odprowadzać wodę.
+                kolor_bieznika = (ft.Colors.RED_700 if bieznik < 1.6
+                                  else ft.Colors.ORANGE_700 if bieznik < 3 else ft.Colors.GREEN_700)
+                wiersz_bieznika = ft.Row([
+                    ft.Icon(ft.Icons.STRAIGHTEN, size=13, color=kolor_bieznika),
+                    ft.Text(f"bieżnik {utils.formatuj_liczba(bieznik, 1)} mm", size=utils.FS["caption"],
+                            color=kolor_bieznika, no_wrap=True, expand=True),
+                ], spacing=4)
+            else:
+                wiersz_bieznika = ft.Text("bieżnik niezmierzony", size=utils.FS["caption"],
+                                          color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True)
+
+            tresc = [
+                ft.Row([
+                    ft.Icon(ft.Icons.TIRE_REPAIR, size=15, color=kolor_sezonu),
+                    ft.Text("Opony", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                ], spacing=6),
+                ft.Row([
+                    ft.Icon(ikona_sezonu, size=17, color=kolor_sezonu),
+                    ft.Text(sezon or "Nic nie zamontowane", size=utils.FS["title"], weight="bold",
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                ], spacing=6),
+                wiersz_bieznika,
+            ]
+            if stopka:
+                tresc.append(ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                                     no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
+
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=idz_do_opon,
+                tooltip="Zamontowany zestaw i najbliższa sezonowa zmiana",
+                content=ft.Column(tresc, spacing=4),
+            )
+
+        def widget_checklist():
+            """Postęp listy przedwyjazdowej. Kafelek ma sens dokładnie wtedy,
+            kiedy lista jest ZACZĘTA, ale nie skończona — dlatego podsumowanie
+            wybiera właśnie taką (patrz db.podsumowanie_checklist)."""
+            stan = db.podsumowanie_checklist(self.state.auto_id)
+            if not stan:
+                return kafel_wartosci(
+                    ft.Icons.FACT_CHECK, ft.Colors.BLUE_GREY_700, "Checklista",
+                    "Brak listy", lambda e: utils.przejdz(self._page, "/do-zrobienia"),
+                )
+
+            kolor = ft.Colors.GREEN_700 if stan["gotowa"] else ft.Colors.PRIMARY
+            stopka = ("wszystko sprawdzone" if stan["gotowa"]
+                      else f"zostało {stan['razem'] - stan['zrobione']} do sprawdzenia")
+
+            def otworz(e):
+                self.state.do_zrobienia_podzakladka = 1
+                utils.przejdz(self._page, "/do-zrobienia")
+
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=otworz,
+                tooltip=stan["nazwa"],
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.FACT_CHECK, size=15, color=kolor),
+                        ft.Text("Przed trasą", size=utils.FS["caption"],
+                                color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(f"{stan['zrobione']} / {stan['razem']}", size=utils.FS["title"], weight="bold"),
+                    ft.ProgressBar(
+                        value=(stan["zrobione"] / stan["razem"]) if stan["razem"] else 0,
+                        color=kolor, bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                        height=6, border_radius=3,
+                    ),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            )
+
+        def widget_oplaty_drogowe():
+            """Winiety, przejazdy i mandaty od początku roku. Osobno od reszty
+            „innych kosztów”, bo ta pozycja rośnie z KILOMETRAMI, a nie z wiekiem
+            auta — i tylko wtedy da się zauważyć, że tanie paliwo na trasie
+            zjadła bramka."""
+            poczatek_roku = dzisiaj.replace(month=1, day=1).date()
+            stan = db.suma_kategorii_innych(
+                self.state.auto_id, db.KATEGORIA_INNE_DROGOWE, poczatek_roku, dzisiaj.date()
+            )
+            wartosc = f"{utils.formatuj_liczba(stan['suma'], 0)} {utils.symbol_waluty()}"
+            stopka = (f"{stan['liczba']} wpisów w {dzisiaj.year}" if stan["liczba"]
+                      else f"brak wpisów w {dzisiaj.year}")
+            return ft.Container(
+                width=SZER_KAFLA + 20, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=idz_do_kosztow(1),
+                tooltip="Suma kategorii „Mandaty i opłaty drogowe” od początku roku",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.TOLL, size=15, color=ft.Colors.DEEP_ORANGE_700),
+                        ft.Text("Opłaty drogowe", size=utils.FS["caption"],
+                                color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(wartosc, size=utils.FS["title"], weight="bold",
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=4),
+            )
+
+        def widget_do_zrobienia():
+            stan = db.podsumowanie_do_zrobienia(self.state.auto_id)
+            if not stan or not stan["otwarte"]:
+                return kafel_wartosci(
+                    ft.Icons.CHECKLIST_RTL, ft.Colors.GREEN_700, "Do zrobienia",
+                    "Nic nie czeka", lambda e: utils.przejdz(self._page, "/do-zrobienia"),
+                )
+
+            kolor = ft.Colors.RED_700 if stan["po_terminie"] else ft.Colors.PRIMARY
+            if stan["najblizsze"]:
+                dni = stan["najblizsze"]["dni"]
+                if dni < 0:
+                    opis = f"{stan['najblizsze']['tytul']} — {abs(dni)} dni po terminie"
+                elif dni == 0:
+                    opis = f"{stan['najblizsze']['tytul']} — dziś"
+                else:
+                    opis = f"{stan['najblizsze']['tytul']} — za {dni} dni"
+            else:
+                opis = "bez terminów"
+
+            return ft.Container(
+                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=lambda e: utils.przejdz(self._page, "/do-zrobienia"),
+                tooltip="Otwarte pozycje z listy Do zrobienia",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.CHECKLIST_RTL, size=15, color=kolor),
+                        ft.Text("Do zrobienia", size=utils.FS["caption"],
+                                color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Row([
+                        ft.Text(str(stan["otwarte"]), size=utils.FS["title"], weight="bold"),
+                        ft.Text(f"• {stan['po_terminie']} po terminie" if stan["po_terminie"] else "",
+                                size=utils.FS["caption"], color=ft.Colors.RED_700, no_wrap=True),
+                    ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.END),
+                    ft.Text(opis, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=4),
+            )
+
+        def widget_magazyn():
+            def idz_do_czesci(e):
+                self.state.magazyn_zakladka = 1
+                utils.przejdz(self._page, "/magazyn")
+
+            stan = db.pobierz_stan_magazynu(self.state.auto_id)
+            if not stan["razem"]:
+                return kafel_wartosci(
+                    ft.Icons.INVENTORY_2, ft.Colors.BLUE_GREY_700, "Magazyn",
+                    "Pusty", idz_do_czesci,
+                )
+            niski = stan["niski"]
+            kolor = ft.Colors.ORANGE_700 if niski else ft.Colors.GREEN_700
+            stopka = (", ".join(stan["nazwy_niskich"][:2]) if niski
+                      else f"{stan['razem']} pozycji na stanie")
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15, border_radius=utils.RADIUS["lg"],
+                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                ink=True, on_click=idz_do_czesci,
+                tooltip="Pozycje magazynu poniżej własnego progu ostrzegawczego",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.INVENTORY_2, size=15, color=kolor),
+                        ft.Text("Magazyn", size=utils.FS["caption"],
+                                color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ], spacing=6),
+                    ft.Text(f"{niski} do uzupełnienia" if niski else "Stan w porządku",
+                            size=utils.FS["title"], weight="bold",
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=4),
+            )
+
         self._kokpit_budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
@@ -504,6 +722,11 @@ class MiksinKokpitu:
             "budzet": widget_budzet,
             "zasieg_bak": widget_zasieg_bak,
             "prognoza_rok": widget_prognoza_rok,
+            "opony": widget_opony,
+            "checklist": widget_checklist,
+            "oplaty_drogowe": widget_oplaty_drogowe,
+            "do_zrobienia": widget_do_zrobienia,
+            "magazyn": widget_magazyn,
         }
 
         self.kokpit_kontener = ft.Container(content=self._zawartosc_kokpitu())
@@ -562,11 +785,10 @@ class MiksinKokpitu:
             content=ft.Icon(ft.Icons.DRAG_INDICATOR, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
         )
 
-        return ft.Row(
-            kafelki + [przycisk_ukladania],
-            spacing=10, scroll=ft.ScrollMode.AUTO,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        )
+        # Suwak ZAWSZE widoczny i z własnym marginesem pod kafelkami: przy
+        # ukrytym pasku nic nie mówiło, że karuzela ma ciąg dalszy, a myszą nie
+        # dało się jej przeciągnąć (Flutter nie przewija zawartości kursorem).
+        return utils.pasek_przewijany(kafelki + [przycisk_ukladania], spacing=10)
 
     def _kokpit_ukladanie(self, wlaczone):
         """Tryb układania: kafelki zamieniają się w przeciągalne „klocki”
@@ -748,19 +970,24 @@ class MiksinKokpitu:
         else:
             # Siatka, a nie karuzela: skróty mają być widoczne WSZYSTKIE naraz,
             # inaczej znowu trzeba by szukać — tym razem przewijaniem w bok.
-            try:
-                szer = self._page.width or getattr(self._page.window, "width", None) or 400
-            except Exception:
-                szer = 400
-            kolumny = 5 if szer >= 720 else (4 if szer >= 480 else 3)
-            szer_kafla = max(88, int((szer - 2 * 15 - (kolumny - 1) * 10) / kolumny))
-            tresc = ft.Row(
+            #
+            # Szerokość kafelka liczy Flet, a nie my. Poprzednia wersja dzieliła
+            # zgadniętą szerokość ekranu przez liczbę kolumn — a przy PIERWSZYM
+            # uruchomieniu aplikacji page.width nie jest jeszcze znane i kafelki
+            # wychodziły tak szerokie, że mieścił się jeden w wierszu. Dopiero
+            # zmiana rozmiaru okna przebudowywała widok poprawnie.
+            #
+            # ResponsiveRow rozdziela 12 kolumn wg RZECZYWISTEJ szerokości:
+            # col=4 → trzy kafelki w rzędzie na telefonie, cztery na tablecie,
+            # sześć na szerokim ekranie. Nic tu nie zależy od pomiaru w Pythonie.
+            tresc = ft.ResponsiveRow(
                 [
                     utils.kafel_skrotu(self._page, self.state, ekran, self.akcje_nawigacji,
-                                       self.liczniki_nawigacji, szerokosc=szer_kafla)
+                                       self.liczniki_nawigacji,
+                                       col={"xs": 4, "sm": 3, "md": 2})
                     for ekran in przypiete
                 ],
-                spacing=10, run_spacing=10, wrap=True,
+                spacing=10, run_spacing=10,
             )
 
         return ft.Column([naglowek, tresc], spacing=8)

@@ -8,7 +8,7 @@ from state import MIESIACE_NAZWY
 
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
 from .format import _odmiana_liczby, symbol_waluty
-from .wyglad import _mieszaj_kolory, powierzchnia_karty
+from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia_karty
 from .formularze import karta_formularza
 
 
@@ -161,10 +161,11 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False):
     gorny = ft.Row([
         ft.Row([
             ft.Icon(ft.Icons.LOCAL_GAS_STATION, size=16, color=kolor),
-            ft.Text("Szacowany zasięg", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT),
-        ], spacing=6),
+            ft.Text("Szacowany zasięg", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT,
+                    expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+        ], spacing=6, expand=True),
         ft.Text(f"{formatuj_liczba(zasieg, 0)} km" if zasieg is not None else "—",
-                size=FS["title"], weight="bold", color=kolor),
+                size=FS["title"], weight="bold", color=kolor, no_wrap=True),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
     elementy = [gorny]
@@ -236,7 +237,7 @@ def karta_analizy(page: ft.Page, tytul, ikona, zawartosc, kolor=None):
         content=ft.Column([
             ft.Row([
                 ft.Icon(ikona, size=18, color=kolor),
-                ft.Text(tytul, size=FS["title"], weight="bold"),
+                ft.Text(tytul, size=FS["title"], weight="bold", expand=True),
             ], spacing=SPACING["sm"]),
             ft.Column(zawartosc if isinstance(zawartosc, list) else [zawartosc], spacing=SPACING["sm"]),
         ], spacing=SPACING["sm"]),
@@ -418,6 +419,9 @@ def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
     else:
         ikona, kolor, tekst = ft.Icons.TRENDING_FLAT, KOLOR_STATUS["neutral"], "Stabilnie"
 
+    # ŚWIADOMIE bez expand: ten wiersz trafia jako element do INNEGO wiersza
+    # (stopka kafelka kokpitu), gdzie szerokość jest nieograniczona — expand
+    # w takim miejscu wywala układ Fluttera. Tekst to zawsze krótkie „−12%”.
     return ft.Row([
         ft.Icon(ikona, size=13, color=kolor),
         ft.Text(tekst, size=rozmiar, color=kolor, no_wrap=True),
@@ -496,7 +500,11 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53):
 
     # Odwracamy kolejność kolumn — najnowszy tydzień ma być widoczny od razu
     # (po lewej), bez przewijania w prawo, żeby go zobaczyć.
-    siatka = ft.Row(list(reversed(kolumny_tygodni)), spacing=3, scroll=ft.ScrollMode.AUTO)
+    # Rok kwadracików nie zmieści się na żadnym telefonie, więc mapa MUSI jechać
+    # w bok — dostaje więc widoczny suwak z własnym marginesem, zamiast paska,
+    # który pojawiał się dopiero w trakcie przewijania i leżał na komórkach.
+    siatka = pasek_przewijany(list(reversed(kolumny_tygodni)), spacing=3,
+                              wyrownanie=ft.CrossAxisAlignment.START)
 
     def kw_legendy(poziom, kolor_bazowy=None):
         return ft.Container(width=WYM, height=WYM, border_radius=3, bgcolor=ft.Colors.with_opacity(poziom, kolor_bazowy or ft.Colors.PRIMARY))

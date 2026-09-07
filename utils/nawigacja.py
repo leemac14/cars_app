@@ -5,10 +5,10 @@ import flet as ft
 
 from .stale import FS, RADIUS
 from .format import bez_ogonkow
-from .wyglad import dol_bezpieczny, tlo_karty
+from .wyglad import dol_bezpieczny, pasek_zawijany, tlo_karty
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_menu_grupowane, przejdz, zamknij_dialog, zamknij_dno
 from .zalaczniki import abs_zalacznik
-from .pojazd import ikona_nadwozia, usun_auto
+from .pojazd import ikona_nadwozia, sprzedaj_auto, usun_auto
 from .powiadomienia import pokaz_panel_wydatkow_cyklicznych, przycisk_dzwonka
 
 
@@ -73,13 +73,26 @@ EKRANY = [
      "slowa": ["warsztat", "mechanik", "naprawa", "przegląd", "wizyta"]},
     {"id": "do-zrobienia", "tytul": "Do zrobienia", "opis": "Lista rzeczy do załatwienia w aucie",
      "ikona": ft.Icons.CHECKLIST_RTL, "grupa": "serwis", "trasa": "/do-zrobienia",
+     "stan": {"do_zrobienia_podzakladka": 0},
      "slowa": ["todo", "zadania", "lista", "plan", "przypomnienia"]},
+    # Checklisty i opony mieszkają w PODZAKŁADKACH innych ekranów, więc bez
+    # własnego wpisu nie dało się do nich trafić ani z szuflady, ani
+    # z wyszukiwarki — a to osobne rzeczy, nie warianty tego samego widoku.
+    {"id": "checklisty", "tytul": "Checklisty", "opis": "Listy kontrolne odhaczane przed wyjazdem",
+     "ikona": ft.Icons.FACT_CHECK, "grupa": "serwis", "trasa": "/do-zrobienia",
+     "stan": {"do_zrobienia_podzakladka": 1},
+     "slowa": ["checklista", "przed trasą", "przed wyjazdem", "lista kontrolna", "sprawdzić"]},
     # Magazyn stoi przy serwisie, a nie przy pojeździe: części schodzą z półki
     # na wizytach (patrz tabela wizyta_czesci_magazynu), więc myśli się o nim
     # razem z naprawami, a nie razem z dokumentami auta.
     {"id": "magazyn", "tytul": "Magazyn", "opis": "Opony, części i płyny na półce",
      "ikona": ft.Icons.INVENTORY_2, "grupa": "serwis", "trasa": "/magazyn",
-     "slowa": ["opony", "części", "płyny", "olej", "zapas", "półka", "stan magazynowy"]},
+     "stan": {"magazyn_zakladka": 1},
+     "slowa": ["części", "płyny", "olej", "zapas", "półka", "stan magazynowy"]},
+    {"id": "opony", "tytul": "Opony", "opis": "Zestawy, bieżnik i sezonowa zmiana",
+     "ikona": ft.Icons.TIRE_REPAIR, "grupa": "serwis", "trasa": "/magazyn",
+     "stan": {"magazyn_zakladka": 0},
+     "slowa": ["opony", "koła", "zimowe", "letnie", "bieżnik", "felgi", "sezon", "wymiana opon"]},
 
     {"id": "paliwo", "tytul": "Tankowania", "opis": "Paliwo, prąd i spalanie",
      "ikona": ft.Icons.LOCAL_GAS_STATION, "grupa": "koszty", "zakladka": 2, "podzakladka": 0,
@@ -117,9 +130,15 @@ EKRANY = [
     {"id": "wspoldzielenie", "tytul": "Współdziel pojazd", "opis": "Zaproś domownika i synchronizuj dane",
      "ikona": ft.Icons.PEOPLE, "grupa": "garaz", "trasa": "/wspoldzielenie",
      "slowa": ["udostępnij", "rodzina", "partner", "synchronizacja", "chmura", "wspólne auto"]},
+    {"id": "archiwum", "tytul": "Archiwum pojazdów", "opis": "Sprzedane auta z pełną historią",
+     "ikona": ft.Icons.INVENTORY, "grupa": "garaz", "trasa": "/archiwum", "wymaga_pojazdu": False,
+     "slowa": ["sprzedane", "archiwum", "byłe auta", "poprzedni samochód", "historia sprzedanych"]},
     {"id": "kosz", "tytul": "Kosz", "opis": "Przywróć usunięty pojazd z historią",
      "ikona": ft.Icons.DELETE_SWEEP, "grupa": "garaz", "trasa": "/kosz", "wymaga_pojazdu": False,
      "slowa": ["usunięte", "przywróć", "odzyskaj", "kosz"]},
+    {"id": "auto-sprzedaj", "tytul": "Sprzedaj pojazd", "opis": "Auto znika z garażu, historia zostaje",
+     "ikona": ft.Icons.SELL, "grupa": "garaz", "akcja": "sprzedaj_pojazd",
+     "slowa": ["sprzedaż", "sprzedane", "zbyłem", "oddałem auto", "archiwizuj"]},
     {"id": "auto-usun", "tytul": "Usuń pojazd", "opis": "Bieżące auto trafi do kosza",
      "ikona": ft.Icons.DELETE_OUTLINE, "grupa": "garaz", "akcja": "usun_pojazd",
      "kolor": ft.Colors.RED_700, "slowa": ["skasuj auto", "wyrzuć pojazd"]},
@@ -178,13 +197,29 @@ for _e in EKRANY:
         EKRANY_WG_SEGMENTU.setdefault(_segmenty[0], _e["id"])
 
 
+# Ekrany rozpoznawane po adresie ORAZ po stanie (Checklisty = /do-zrobienia
+# z podzakładką 1). Bez tego „Ostatnio” zapisywałoby zawsze pozycję nadrzędną.
+EKRANY_ZE_STANEM = [e for e in EKRANY if e.get("stan") and e.get("trasa")]
+
+
+def _ekran_po_stanie(segment, state):
+    """Wariant ekranu pasujący do BIEŻĄCEGO stanu — albo None, jeśli żaden."""
+    for ekran in EKRANY_ZE_STANEM:
+        segmenty_e = [s for s in ekran["trasa"].split("/") if s]
+        if len(segmenty_e) != 1 or segmenty_e[0] != segment:
+            continue
+        if all(getattr(state, pole, None) == wartosc for pole, wartosc in ekran["stan"].items()):
+            return ekran["id"]
+    return None
+
+
 def zanotuj_ekran_dla_trasy(state, segmenty):
     """Jedno miejsce, w którym zapisuje się „byłem tu”. Woła je router (patrz
     main.trasa_zmieniona), więc historia jest kompletna niezależnie od tego,
     czy ekran otwarto z szuflady, z kafelka, czy z linku wewnątrz innego ekranu."""
     try:
         if segmenty:
-            ekran_id = EKRANY_WG_SEGMENTU.get(segmenty[0])
+            ekran_id = _ekran_po_stanie(segmenty[0], state) or EKRANY_WG_SEGMENTU.get(segmenty[0])
         else:
             ekran_id = EKRAN_ZAKLADKI.get(
                 (int(getattr(state, "zakladka", 0) or 0),
@@ -237,6 +272,16 @@ def otworz_ekran(page: ft.Page, state, ekran, akcje=None):
         if obsluga:
             obsluga()
         return
+
+    # Ekrany mieszkające w PODZAKŁADCE innego widoku (Checklisty, Opony) niosą
+    # w rejestrze pola stanu, które trzeba ustawić przed nawigacją. Dzięki temu
+    # jeden wpis w EKRANY wystarczy, żeby taka pozycja działała w szufladzie,
+    # w skrótach, w „Ostatnio” i w wyszukiwarce naraz.
+    for pole, wartosc in (ekran.get("stan") or {}).items():
+        try:
+            setattr(state, pole, wartosc)
+        except Exception:
+            pass
 
     if ekran.get("zakladka") is not None:
         state.zakladka = int(ekran["zakladka"])
@@ -328,13 +373,34 @@ def _wiersz_szuflady(ekran, liczniki, aktywny, po_kliknieciu):
     )
 
 
-def _naglowek_grupy_szuflady(grupa):
+def _naglowek_grupy_szuflady(grupa, liczba=None, zwinieta=False, on_click=None, ikona=None):
+    """Nagłówek sekcji szuflady. Z `on_click` staje się przełącznikiem zwijania:
+    dostaje strzałkę, licznik pozycji i ikonę grupy, żeby po zwinięciu dało się
+    poznać, co siedzi w środku, bez rozwijania."""
+    tresc = []
+    if ikona:
+        tresc.append(ft.Icon(ikona, size=15, color=ft.Colors.with_opacity(0.7, ft.Colors.ON_SURFACE_VARIANT)))
+    tresc.append(ft.Text(
+        grupa["tytul"].upper(), size=10, weight="bold", expand=True,
+        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+        color=ft.Colors.with_opacity(0.7, ft.Colors.ON_SURFACE_VARIANT),
+    ))
+    if liczba:
+        tresc.append(ft.Text(str(liczba), size=10, weight="bold",
+                             color=ft.Colors.with_opacity(0.55, ft.Colors.ON_SURFACE_VARIANT)))
+    if on_click:
+        tresc.append(ft.Icon(
+            ft.Icons.KEYBOARD_ARROW_DOWN if zwinieta else ft.Icons.KEYBOARD_ARROW_UP,
+            size=16, color=ft.Colors.with_opacity(0.7, ft.Colors.ON_SURFACE_VARIANT),
+        ))
+
     return ft.Container(
-        padding=ft.Padding(14, 14, 14, 4),
-        content=ft.Text(
-            grupa["tytul"].upper(), size=10, weight="bold",
-            color=ft.Colors.with_opacity(0.7, ft.Colors.ON_SURFACE_VARIANT),
-        ),
+        padding=ft.Padding(14, 12, 10, 6),
+        border_radius=RADIUS["sm"],
+        ink=bool(on_click),
+        on_click=(lambda e: on_click()) if on_click else None,
+        tooltip="Zwiń / rozwiń sekcję" if on_click else None,
+        content=ft.Row(tresc, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
     )
 
 
@@ -342,9 +408,12 @@ def zbuduj_szuflade(page: ft.Page, state, akcje=None, aktywny_ekran=None, on_poj
     """Boczna szuflada — GŁÓWNA mapa aplikacji. Cztery zakładki na dole zostają
     dla rzeczy robionych codziennie; szuflada odpowiada na pytanie „gdzie to
     było”, bo pokazuje WSZYSTKIE ekrany naraz, pogrupowane i zawsze w tej samej
-    kolejności. Nic tu nie jest ukryte za drugim kliknięciem: sekcje są rozwinięte,
-    bo szukając czegoś raz na miesiąc chce się przewinąć wzrokiem, a nie zgadywać,
-    w której zwiniętej sekcji to siedzi.
+    kolejności. Sekcje są rozwinięte DOMYŚLNIE — szukając czegoś raz na miesiąc
+    chce się przewinąć wzrokiem, a nie zgadywać, w której zwiniętej sekcji to
+    siedzi. Ale przy kilkunastu ekranach lista zrobiła się dłuższa niż ekran, więc
+    każdą sekcję da się zwinąć dotknięciem nagłówka, a wybór jest zapamiętywany
+    (klucz `szuflada_zwiniete`). Zwinięty nagłówek niesie ikonę grupy i licznik
+    pozycji, żeby dało się poznać, co w środku.
 
     `widok` to widok, w którym szuflada zamieszka — potrzebny do jej zasunięcia.
     Podaje go wołający, bo w chwili budowania widok nie jest jeszcze wpięty
@@ -352,6 +421,16 @@ def zbuduj_szuflade(page: ft.Page, state, akcje=None, aktywny_ekran=None, on_poj
     akcje = akcje or {}
     ma_pojazd = bool(state.auto_id)
     liczniki = db.liczniki_nawigacji(state.auto_id) if ma_pojazd else {}
+
+    # Szufladę tworzymy PUSTĄ i wypełniamy w odbuduj(): zwinięcie sekcji podmienia
+    # jej zawartość w miejscu, bez przeładowania całego ekranu i bez zamykania
+    # panelu, w którym użytkownik właśnie szuka.
+    szuflada = ft.NavigationDrawer(
+        controls=[],
+        bgcolor=ft.Colors.SURFACE,
+        tile_padding=ft.Padding(4, 0, 4, 0),
+    )
+    grupa_aktywnego = (EKRANY_WG_ID.get(aktywny_ekran) or {}).get("grupa")
 
     async def przejdz_do(ekran):
         # Najpierw zasuwamy panel, DOPIERO potem przełączamy ekran. Odwrotna
@@ -366,49 +445,75 @@ def zbuduj_szuflade(page: ft.Page, state, akcje=None, aktywny_ekran=None, on_poj
             aktywny=(ekran["id"] == aktywny_ekran), po_kliknieciu=przejdz_do,
         )
 
-    elementy = [_naglowek_szuflady(page, state, on_pojazdy, widok)]
+    def przelacz(grupa_id):
+        db.przelacz_grupe_szuflady(grupa_id)
+        odbuduj()
 
-    # Kokpit stoi zaraz pod nagłówkiem, przed wszystkim innym — to punkt powrotu,
-    # a nie jedna z pozycji którejś kategorii.
-    elementy.extend(wiersz(e) for e in ekrany_grupy("start", akcje, ma_pojazd))
+    def odbuduj():
+        zwiniete = set(db.pobierz_zwiniete_grupy_szuflady())
+        elementy = [_naglowek_szuflady(page, state, on_pojazdy, widok)]
 
-    if ma_pojazd:
-        # Zakładki są odległe o jedno dotknięcie dolnego paska, więc trzymanie
-        # ich w „Ostatnio” tylko zapychałoby miejsce ekranom, które NAPRAWDĘ
-        # trudno znaleźć.
-        ostatnie = [
-            EKRANY_WG_ID[eid] for eid in db.pobierz_ostatnie_ekrany(8)
-            if eid in EKRANY_WG_ID
-            and EKRANY_WG_ID[eid]["id"] != aktywny_ekran
-            and EKRANY_WG_ID[eid].get("zakladka") is None
-        ][:4]
-        ostatnie = [e for e in ostatnie if not (e.get("akcja") and not akcje.get(e["akcja"]))]
-        if len(ostatnie) >= 2:
-            elementy.append(_naglowek_grupy_szuflady({"tytul": "Ostatnio"}))
-            elementy.append(ft.Container(
-                padding=ft.Padding(12, 0, 12, 0),
-                content=ft.Row(
-                    [_chip_ekranu(e, przejdz_do) for e in ostatnie],
-                    spacing=6, scroll=ft.ScrollMode.HIDDEN, wrap=False,
-                ),
+        # Kokpit stoi zaraz pod nagłówkiem, przed wszystkim innym — to punkt
+        # powrotu, a nie jedna z pozycji którejś kategorii.
+        elementy.extend(wiersz(e) for e in ekrany_grupy("start", akcje, ma_pojazd))
+
+        if ma_pojazd:
+            # Zakładki są odległe o jedno dotknięcie dolnego paska, więc trzymanie
+            # ich w „Ostatnio” tylko zapychałoby miejsce ekranom, które NAPRAWDĘ
+            # trudno znaleźć.
+            ostatnie = [
+                EKRANY_WG_ID[eid] for eid in db.pobierz_ostatnie_ekrany(8)
+                if eid in EKRANY_WG_ID
+                and EKRANY_WG_ID[eid]["id"] != aktywny_ekran
+                and EKRANY_WG_ID[eid].get("zakladka") is None
+            ][:4]
+            ostatnie = [e for e in ostatnie if not (e.get("akcja") and not akcje.get(e["akcja"]))]
+            if len(ostatnie) >= 2:
+                zwinieta_ost = "ostatnio" in zwiniete
+                elementy.append(_naglowek_grupy_szuflady(
+                    {"tytul": "Ostatnio"}, liczba=len(ostatnie), zwinieta=zwinieta_ost,
+                    on_click=lambda: przelacz("ostatnio"), ikona=ft.Icons.HISTORY,
+                ))
+                if not zwinieta_ost:
+                    # Chipy ZAWIJAJĄ się do drugiej linijki zamiast jechać w bok:
+                    # cztery pozycje i tak nie mieściły się w szerokości szuflady,
+                    # a przewijania w poziomie nie było jak zauważyć — brakowało
+                    # suwaka, a myszą nie da się przeciągnąć zawartości.
+                    elementy.append(ft.Container(
+                        padding=ft.Padding(12, 0, 12, 4),
+                        content=pasek_zawijany(
+                            [_chip_ekranu(e, przejdz_do) for e in ostatnie], spacing=6),
+                    ))
+
+        for grupa in GRUPY_EKRANOW:
+            if grupa["id"] == "start":
+                continue   # narysowany wyżej, bez nagłówka
+            pozycje = ekrany_grupy(grupa["id"], akcje, ma_pojazd)
+            if not pozycje:
+                continue
+            # Grupa z aktualnie otwartym ekranem zostaje rozwinięta ZAWSZE —
+            # zwinięta sekcja z podświetloną pozycją w środku byłaby jedynym
+            # miejscem, w którym szuflada gubi odpowiedź na „gdzie ja jestem”.
+            zwinieta = grupa["id"] in zwiniete and grupa["id"] != grupa_aktywnego
+            elementy.append(_naglowek_grupy_szuflady(
+                grupa, liczba=len(pozycje), zwinieta=zwinieta,
+                on_click=lambda gid=grupa["id"]: przelacz(gid), ikona=grupa.get("ikona"),
             ))
+            if not zwinieta:
+                elementy.extend(wiersz(ekran) for ekran in pozycje)
 
-    for grupa in GRUPY_EKRANOW:
-        if grupa["id"] == "start":
-            continue   # narysowany wyżej, bez nagłówka
-        pozycje = ekrany_grupy(grupa["id"], akcje, ma_pojazd)
-        if not pozycje:
-            continue
-        elementy.append(_naglowek_grupy_szuflady(grupa))
-        elementy.extend(wiersz(ekran) for ekran in pozycje)
+        elementy.append(dol_bezpieczny(16))
 
-    elementy.append(dol_bezpieczny(16))
+        szuflada.controls = elementy
+        try:
+            szuflada.update()
+        except Exception:
+            # Szuflada nie jest jeszcze w drzewie strony (pierwsze budowanie) —
+            # przy otwarciu i tak pokaże aktualny stan.
+            pass
 
-    return ft.NavigationDrawer(
-        controls=elementy,
-        bgcolor=ft.Colors.SURFACE,
-        tile_padding=ft.Padding(4, 0, 4, 0),
-    )
+    odbuduj()
+    return szuflada
 
 
 def _chip_ekranu(ekran, po_kliknieciu):
@@ -501,8 +606,12 @@ def pokaz_nawigacje_awaryjna(page: ft.Page, state, akcje=None):
                          podtytul=state.auto_nazwa if state.auto_id else "Brak pojazdów")
 
 
-def kafel_skrotu(page: ft.Page, state, ekran, akcje=None, liczniki=None, szerokosc=None):
-    """Kafelek w siatce skrótów na Kokpicie."""
+def kafel_skrotu(page: ft.Page, state, ekran, akcje=None, liczniki=None, szerokosc=None, col=None):
+    """Kafelek w siatce skrótów na Kokpicie.
+
+    `col` podaje się przy układzie ResponsiveRow — wtedy szerokość wylicza Flet
+    z faktycznej szerokości okna, a nie my z wartości zgadniętej przed pierwszym
+    pomiarem ekranu (patrz MiksinKokpitu._buduj_skroty)."""
     kolor = kolor_ekranu(ekran)
     licznik = (liczniki or {}).get(ekran["id"])
 
@@ -521,13 +630,15 @@ def kafel_skrotu(page: ft.Page, state, ekran, akcje=None, liczniki=None, szeroko
         ))
 
     return ft.Container(
-        width=szerokosc, padding=ft.Padding(10, 12, 10, 12), border_radius=RADIUS["lg"],
+        width=szerokosc, col=col,
+        padding=ft.Padding(10, 12, 10, 12), border_radius=RADIUS["lg"],
         bgcolor=tlo_karty(page, poziom=1), ink=True, tooltip=ekran.get("opis"),
         on_click=lambda e, ek=ekran: otworz_ekran(page, state, ek, akcje),
         content=ft.Column([
             ft.Stack(warstwy, width=38, height=38),
             ft.Text(ekran["tytul"], size=FS["caption"], weight="w500",
-                    max_lines=2, text_align=ft.TextAlign.CENTER),
+                    max_lines=2, text_align=ft.TextAlign.CENTER,
+                    overflow=ft.TextOverflow.ELLIPSIS),
         ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True),
     )
 
@@ -568,14 +679,16 @@ def karta_sekcji(page: ft.Page, state, ekran, akcje=None, liczniki=None, szeroko
 
 
 def pasek_sekcji(page: ft.Page, state, identyfikatory, akcje=None, liczniki=None, szerokosc=190):
-    """Pozioma, przewijalna wstęga kart sekcji."""
+    """Wstęga kart sekcji. ZAWIJA się zamiast jechać w bok — kart jest zwykle
+    dwie-trzy, a te za prawą krawędzią były po prostu niewidoczne: bez suwaka nic
+    nie sygnalizowało, że pasek da się przesunąć."""
     karty = [
         karta_sekcji(page, state, EKRANY_WG_ID[eid], akcje, liczniki, szerokosc)
         for eid in identyfikatory if eid in EKRANY_WG_ID
     ]
     if not karty:
         return ft.Container()
-    return ft.Row(karty, spacing=10, scroll=ft.ScrollMode.HIDDEN, wrap=False)
+    return pasek_zawijany(karty, spacing=10, run_spacing=10)
 
 
 def pokaz_edytor_skrotow(page: ft.Page, state, po_zapisie=None):
@@ -670,6 +783,7 @@ def akcje_nawigacji(page: ft.Page, state, cb_export=None, cb_import=None, cb_the
     z listy zamiast prowadzić donikąd."""
     akcje = {
         "usun_pojazd": (lambda: usun_auto(page, state)) if state.auto_id else None,
+        "sprzedaj_pojazd": (lambda: sprzedaj_auto(page, state)) if state.auto_id else None,
         "cykliczne": (lambda: pokaz_panel_wydatkow_cyklicznych(page, state)) if state.auto_id else None,
         "edytuj_pojazd": (lambda: przejdz(page, f"/auto/edytuj/{state.auto_id}")) if state.auto_id else None,
     }

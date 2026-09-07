@@ -3,6 +3,7 @@
 from date import parsuj_date
 from datetime import datetime
 
+from .stale import KATEGORIA_INNE_DOMYSLNA, KATEGORIE_INNYCH_KOSZTOW
 from .polaczenie import polacz_baze
 
 KATEGORIE_BUDZETU = {
@@ -37,6 +38,63 @@ def _wiersze_kosztow(conn, auto_id):
     c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
     wiersze += [(d, k, "inne") for d, k in c.fetchall()]
     return wiersze
+
+
+# ---------------------------------------------------------------------------
+# Kategorie wewnątrz „Innych kosztów”
+# ---------------------------------------------------------------------------
+# Trzy wiadra budżetu (paliwo / serwis / inne) odpowiadają na pytanie „na co
+# idą pieniądze”, ale „inne” to worek, w którym mandat za prędkość leży obok
+# winiety, myjni i wymiany dywaników. Rozbicie poniżej pozwala wyciągnąć
+# z tego worka konkretną pozycję — przede wszystkim opłaty drogowe, bo one
+# rosną z KILOMETRAMI, a nie z wiekiem auta, i mieszanie ich z resztą zaciera
+# jedyny wniosek, jaki dałoby się z nich wyciągnąć.
+
+
+def etykieta_kategorii_innych(wartosc):
+    """Kategoria wpisu w formie do pokazania. Puste pole (tak zapisywały wpisy
+    przed wprowadzeniem słownika) czyta się jako „Ogólne”; wartość spoza
+    słownika zostaje, jaka jest — może pochodzić z importu CSV albo ze starszej
+    wersji i nie ma powodu jej gubić."""
+    tekst = str(wartosc or "").strip()
+    return tekst or KATEGORIA_INNE_DOMYSLNA
+
+
+def pobierz_koszty_innych_wg_kategorii(auto_id, od_data=None, do_data=None):
+    """[(kategoria, suma, liczba_wpisow)] posortowane malejąco po sumie.
+    Kategorie bez ani jednego wpisu w okresie się nie pojawiają — pusta pozycja
+    w rozbiciu tylko rozprasza."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT data, kwota, kategoria FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        wiersze = c.fetchall()
+
+    sumy, liczby = {}, {}
+    for data_str, kwota, kategoria in wiersze:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date():
+            continue
+        if (od_data and d < od_data) or (do_data and d > do_data):
+            continue
+        etykieta = etykieta_kategorii_innych(kategoria)
+        sumy[etykieta] = sumy.get(etykieta, 0.0) + float(kwota or 0.0)
+        liczby[etykieta] = liczby.get(etykieta, 0) + 1
+
+    kolejnosc = {k: i for i, k in enumerate(KATEGORIE_INNYCH_KOSZTOW)}
+    return sorted(
+        ((k, v, liczby[k]) for k, v in sumy.items()),
+        key=lambda p: (-p[1], kolejnosc.get(p[0], len(kolejnosc)), p[0]),
+    )
+
+
+def suma_kategorii_innych(auto_id, kategoria, od_data=None, do_data=None):
+    """Suma i liczba wpisów jednej kategorii — dla kafelka kokpitu."""
+    for nazwa, suma, liczba in pobierz_koszty_innych_wg_kategorii(auto_id, od_data, do_data):
+        if nazwa == kategoria:
+            return {"kategoria": nazwa, "suma": suma, "liczba": liczba}
+    return {"kategoria": kategoria, "suma": 0.0, "liczba": 0}
 
 
 def koszty_w_okresie(auto_id, od_data=None, do_data=None):
@@ -328,11 +386,14 @@ __all__ = [
     "DNI_W_MIESIACU",
     "KATEGORIE_BUDZETU",
     "_wiersze_kosztow",
+    "etykieta_kategorii_innych",
     "klucz_stacji",
     "koszty_w_okresie",
     "pobierz_koszt_miesiaca_do_dnia",
+    "pobierz_koszty_innych_wg_kategorii",
     "pobierz_koszty_miesieczne",
     "pobierz_podzial_kosztow",
     "pobierz_stacje_paliw",
     "pobierz_trend_cen_paliwa",
+    "suma_kategorii_innych",
 ]

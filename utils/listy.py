@@ -38,7 +38,7 @@ def przycisk_sortowania(page: ft.Page, state, klucz_stanu, opcje):
         content=ft.Row([
             ft.Icon(ft.Icons.SORT_ROUNDED, size=14, color=ft.Colors.PRIMARY),  # Mniejsza ikona
             ft.Text(etykieta_akt, size=11, weight="bold", color=ft.Colors.PRIMARY),  # Mniejszy tekst
-        ], spacing=2),
+        ], spacing=2, tight=True),
         tooltip="Wybierz pole sortowania"
     )
 
@@ -61,7 +61,7 @@ def przycisk_sortowania(page: ft.Page, state, klucz_stanu, opcje):
                 height=24,
                 style=ft.ButtonStyle(padding=0)
             )
-        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        ], spacing=6, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
     )
 
 

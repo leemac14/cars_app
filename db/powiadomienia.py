@@ -119,7 +119,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
         # liczy się jak dla dokumentów, ale akcją jest "Zapłacone", nie przejście
         # do formularza (stąd "trasa": None).
         c.execute(
-            "SELECT id, nazwa, nastepna_data, okres_dni, czy_koszt FROM wydatki_cykliczne WHERE auto_id=?",
+            "SELECT id, nazwa, nastepna_data, okres_dni, czy_koszt, typ FROM wydatki_cykliczne WHERE auto_id=?",
             (auto_id,)
         )
         for wc in c.fetchall():
@@ -137,10 +137,14 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
             if zost_dni <= prog_efektywny:
                 s = "przeterminowane" if zost_dni < 0 else "pilne"
                 opis = f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni"
+                # "typ_cykliczny" niesie rodzaj wpisu (wydatek / opony), żeby panel
+                # mógł dać sezonowej zmianie opon własną ikonę i własny podpis
+                # przycisku ("Zmieniono") zamiast "Zapłacone".
                 wyniki.append({
                     "typ": "cykliczny", "tytul": wc["nazwa"], "opis": opis,
                     "status": s, "trasa": None, "wydatek_id": wc["id"],
                     "czy_koszt": bool(wc["czy_koszt"]),
+                    "typ_cykliczny": str(wc["typ"] or "wydatek").strip() or "wydatek",
                     "klucz": f"cykliczny:{wc['id']}",
                 })
 

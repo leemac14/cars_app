@@ -19,6 +19,7 @@ from .energia import *
 from .notatki import *
 from .zalaczniki import *
 from .magazyn import *
+from .checklisty import *
 from .przebieg import *
 from .koszty import *
 from .powiadomienia import *
@@ -49,6 +50,7 @@ from . import (
     notatki,
     zalaczniki,
     magazyn,
+    checklisty,
     przebieg,
     koszty,
     powiadomienia,

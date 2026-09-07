@@ -3,12 +3,12 @@ import db
 import sync
 import utils
 
-SEZONY = ["Letnie", "Zimowe", "Całoroczne"]
-IKONY_SEZONU = {
-    "Letnie": ft.Icons.WB_SUNNY,
-    "Zimowe": ft.Icons.AC_UNIT,
-    "Całoroczne": ft.Icons.AUTORENEW,
-}
+# Lista sezonów i ich ikony przeniosły się do wspólnych stałych: te same
+# wartości czyta teraz warstwa danych (przelacz_zestaw_sezonowy) i kafelek
+# kokpitu, a trzy kopie tego samego słownika prędzej czy później by się
+# rozjechały.
+SEZONY = db.SEZONY_OPON
+IKONY_SEZONU = utils.IKONY_SEZONU_OPON
 
 IKONY_KATEGORII_MAGAZYNU = {
     "Płyny eksploatacyjne": ft.Icons.WATER_DROP,
@@ -115,6 +115,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             elementy.append(ft.Text("Brak zapisanych zestawów opon. Kliknij + poniżej, aby dodać pierwszy zestaw.", color=ft.Colors.ON_SURFACE_VARIANT))
             return elementy
 
+        # Karta sezonu stoi NAD listą, bo odpowiada na pytanie zadawane tu
+        # najczęściej: co mam na aucie i kiedy zmiana. Sama lista zestawów tego
+        # nie mówi — trzeba było czytać, przy którym z nich stoi znacznik.
+        elementy.append(self._karta_sezonu_opon())
+
         sort_opcje = [
             ("Zamontowane", "zamontowane", lambda x: int(x[8] or 0)),
             ("Sezon", "sezon", lambda x: str(x[1]).lower()),
@@ -123,7 +128,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "zestawy_opon", sort_opcje)
         filtr_sezon_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "opony_sezon", zestawy, 1, "Sezon")
         
-        elementy.append(ft.Row([sort_ui, filtr_sezon_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+        elementy.append(utils.pasek_zawijany([sort_ui, filtr_sezon_ui]))
 
         def filtruj_opony(e):
             zapytanie = e.control.value.lower().strip()
@@ -131,6 +136,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             for k in self.wszystkie_karty_opony:
                 if zapytanie in k["szukaj"]:
                     self.lista_kart_opony.controls.append(k["karta"])
+            utils.dopasuj_wysokosc_listy(self.lista_kart_opony, self._page, wysokosc_pozycji=210)
             self.update()
 
         elementy.append(
@@ -155,8 +161,81 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             self.wszystkie_karty_opony.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_opony.controls.append(karta)
 
+        utils.dopasuj_wysokosc_listy(self.lista_kart_opony, self._page, wysokosc_pozycji=210)
         elementy.append(self.lista_kart_opony)
         return elementy
+
+    def _karta_sezonu_opon(self):
+        """Sterowanie sezonową zmianą opon wprost z magazynu.
+
+        Do tej pory zmiana kompletu żyła w dwóch miejscach naraz: przypomnienie
+        w panelu wydatków cyklicznych przesuwało termin, a montaż trzeba było
+        odklikać osobno w menu zestawu — albo odwrotnie. Ten przycisk robi obie
+        rzeczy jednym dotknięciem (db.wykonaj_sezonowa_zmiane_opon)."""
+        stan = db.pobierz_stan_opon(self.state.auto_id) or {}
+        przypomnienia = db.pobierz_przypomnienia_o_oponach(self.state.auto_id)
+
+        sezon = stan.get("sezon")
+        docelowy = stan.get("docelowy_sezon")
+        kolor = utils.KOLORY_SEZONU_OPON.get(sezon or "", ft.Colors.BLUE_GREY_600)
+
+        naglowek = ft.Row([
+            ft.Icon(utils.IKONY_SEZONU_OPON.get(sezon or "", ft.Icons.TIRE_REPAIR), size=20, color=kolor),
+            ft.Text(f"Na aucie: {sezon}" if sezon else "Żaden zestaw nie jest zamontowany",
+                    weight="bold", size=15, expand=True,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        podpis = []
+        if stan.get("bieznik") is not None:
+            podpis.append(f"bieżnik {utils.formatuj_liczba(stan['bieznik'], 1)} mm")
+        if przypomnienia:
+            _, tekst_terminu = utils.kolor_i_tekst_terminu(przypomnienia[0][4])
+            podpis.append(f"następna zmiana: {tekst_terminu or przypomnienia[0][4]}")
+        else:
+            podpis.append("bez przypomnienia o zmianie")
+
+        def zmien(e):
+            wynik = db.wykonaj_sezonowa_zmiane_opon(self.state.auto_id)
+            utils.przejdz(self._page, "/magazyn")
+            komunikat = utils.komunikat_zmiany_opon(wynik)
+            if wynik.get("termin_przesuniety"):
+                komunikat += " Termin następnej zmiany przesunięty."
+            utils.pokaz_komunikat(
+                self._page, komunikat,
+                kolor=ft.Colors.GREEN_700 if wynik.get("ok") else ft.Colors.ORANGE_800,
+            )
+
+        def ustaw_przypomnienie(e):
+            db.dodaj_przypomnienie_o_oponach(self.state.auto_id)
+            utils.przejdz(self._page, "/magazyn")
+            utils.pokaz_komunikat(self._page, "Dodano przypomnienie o sezonowej zmianie opon (co pół roku).")
+
+        akcje = []
+        if stan.get("ma_para"):
+            akcje.append(ft.FilledButton(
+                f"Zmień na {str(docelowy or '').lower()}", icon=ft.Icons.SWAP_HORIZ, on_click=zmien,
+            ))
+        else:
+            podpis.append(f"brak wolnego kompletu ({str(docelowy or '').lower()})")
+        if not przypomnienia:
+            akcje.append(ft.TextButton(
+                "Ustaw przypomnienie", icon=ft.Icons.NOTIFICATIONS_ACTIVE, on_click=ustaw_przypomnienie,
+            ))
+
+        tresc = [
+            naglowek,
+            ft.Text(" • ".join(podpis), size=utils.FS["caption"],
+                    color=ft.Colors.ON_SURFACE_VARIANT),
+        ]
+        if akcje:
+            tresc.append(utils.pasek_zawijany(akcje, spacing=4))
+
+        return ft.Container(
+            padding=utils.SPACING["md"], border_radius=utils.RADIUS["lg"],
+            bgcolor=ft.Colors.with_opacity(0.10, kolor),
+            content=ft.Column(tresc, spacing=8),
+        )
 
     def _karta_zestawu(self, z):
         z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, zalacznik = z
@@ -218,8 +297,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.Text(podtytul, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Row([
                     ft.Text("Bieżnik:", size=13, weight="bold"),
-                    ft.Text(tekst_gl, size=13, weight="bold", color=kol_gl),
-                    ft.Text(f"|  DOT: {dot_tekst}", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(tekst_gl, size=13, weight="bold", color=kol_gl, no_wrap=True),
+                    # Numer DOT bywa długi — to on ma ustąpić, a nie wypchnąć
+                    # wiersz poza kartę.
+                    ft.Text(f"|  DOT: {dot_tekst}", size=13, color=ft.Colors.ON_SURFACE_VARIANT,
+                            expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
                 ft.Text(stopka, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
             ], spacing=4),
@@ -234,10 +316,18 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
     def _pokaz_menu(self, zid, sezon, zalacznik=None):
         def zamontuj(os):
+            poprzedni = (db.pobierz_stan_opon(self.state.auto_id) or {}).get("sezon")
             db.oznacz_zamontowany_zestaw(self.state.auto_id, zid, os)
-            utils.przejdz(self._page, "/magazyn")
             etykieta = {"Wszystkie": "na całym aucie", "Przód": "na przedniej osi", "Tył": "na tylnej osi"}[os]
-            utils.pokaz_komunikat(self._page, f"Zestaw „{sezon}” oznaczono jako zamontowany {etykieta}.")
+            komunikat = f"Zestaw „{sezon}” oznaczono jako zamontowany {etykieta}."
+            # Ręczny montaż drugiego sezonu to ta sama czynność, co odhaczenie
+            # przypomnienia — więc też przesuwa termin. Bez tego przypomnienie
+            # dobijało się o coś, co zostało już zrobione.
+            if sezon != poprzedni and sezon in db.SEZONY_PRZELACZALNE and os == "Wszystkie":
+                if db.przesun_przypomnienie_o_oponach(self.state.auto_id):
+                    komunikat += " Termin następnej zmiany przesunięty."
+            utils.przejdz(self._page, "/magazyn")
+            utils.pokaz_komunikat(self._page, komunikat)
 
         def usun_zestaw():
             def wykonaj():
@@ -290,7 +380,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "magazyn_czesci", sort_opcje)
         filtr_kat_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "magazyn_kategoria", czesci, 2, "Kategoria")
 
-        elementy.append(ft.Row([sort_ui, filtr_kat_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+        elementy.append(utils.pasek_zawijany([sort_ui, filtr_kat_ui]))
 
         def filtruj_czesci(e):
             zapytanie = e.control.value.lower().strip()
@@ -298,6 +388,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             for k in self.wszystkie_karty_czesci:
                 if zapytanie in k["szukaj"]:
                     self.lista_kart_czesci.controls.append(k["karta"])
+            utils.dopasuj_wysokosc_listy(self.lista_kart_czesci, self._page, wysokosc_pozycji=180)
             self.update()
 
         elementy.append(
@@ -322,6 +413,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             self.wszystkie_karty_czesci.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_czesci.controls.append(karta)
 
+        utils.dopasuj_wysokosc_listy(self.lista_kart_czesci, self._page, wysokosc_pozycji=180)
         elementy.append(self.lista_kart_czesci)
         return elementy
 

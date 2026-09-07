@@ -6,7 +6,10 @@ import flet as ft
 import inspect
 import urllib.parse
 
-from .stale import FS, IKONY_OBSERWACJI, KOLORY_TONU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, ikona_z_mapy
+from .stale import (
+    FS, IKONY_OBSERWACJI, KOLORY_TONU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING,
+    ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych,
+)
 from .wyglad import powierzchnia_karty, tlo_karty
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
@@ -255,6 +258,23 @@ def wizualizacja_tagow(tagi_str, auto_id, mapa_kolorow=None):
     return ft.Row(chipy, wrap=True, spacing=4)
 
 
+def odznaka_kategorii_innych(kategoria, rozmiar_ikony=14):
+    """Chip kategorii innego kosztu: ikona + nazwa. Celowo wygląda inaczej niż
+    tagi (ikona, stonowane tło) — kategoria jest jedna i wybierana ze słownika,
+    tagi są dowolne i może ich być wiele, więc nie powinny się zlewać."""
+    etykieta = str(kategoria or "").strip() or "Ogólne"
+    kolor = kolor_kategorii_innych(etykieta)
+    return ft.Container(
+        padding=ft.Padding(8, 3, 10, 3),
+        border_radius=RADIUS["pill"],
+        bgcolor=ft.Colors.with_opacity(0.12, kolor),
+        content=ft.Row([
+            ft.Icon(ikona_kategorii_innych(etykieta), size=rozmiar_ikony, color=kolor),
+            ft.Text(etykieta, size=FS["caption"], weight="bold", color=kolor),
+        ], spacing=5, tight=True),
+    )
+
+
 def znacznik_atrybucji(dodane_przez, zmodyfikowane_przez=None, data_modyfikacji=None):
     """Dyskretny 'chip' pokazujący kto dodał wpis i — jeśli był edytowany —
     kto i kiedy go ostatnio zmienił. Używany tylko przy współdzielonych
@@ -272,7 +292,7 @@ def znacznik_atrybucji(dodane_przez, zmodyfikowane_przez=None, data_modyfikacji=
     return ft.Container(
         content=ft.Row([
             ft.Icon(ft.Icons.PERSON_OUTLINE, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Text(" | ".join(fragmenty), size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(" | ".join(fragmenty), size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
         ], spacing=4),
     )
 
@@ -911,6 +931,7 @@ __all__ = [
     "komponent_wyboru_koloru",
     "komponent_wyboru_stacji",
     "komponent_wyboru_warsztatu",
+    "odznaka_kategorii_innych",
     "segmented_control",
     "tytul_sekcji",
     "wiersz_danych",

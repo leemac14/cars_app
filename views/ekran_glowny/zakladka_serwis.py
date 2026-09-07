@@ -75,7 +75,7 @@ class MiksinZakladkiSerwis:
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "serwis_rok", baza_lista, "data")
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "serwis_mc", baza_lista, "data")
 
-            self.elementy.append(ft.Row([sort_ui, filtr_rok_ui, filtr_mc_ui], spacing=6, scroll=ft.ScrollMode.HIDDEN))
+            self.elementy.append(utils.pasek_zawijany([sort_ui, filtr_rok_ui, filtr_mc_ui]))
 
             def filtruj_zadania(e):
                 zapytanie = e.control.value.lower().strip()
@@ -85,6 +85,7 @@ class MiksinZakladkiSerwis:
                         self.lista_kart_serwis.controls.append(k["karta"])
 
                 self.tekst_licznik_zadan.value = f"Śledzone podzespoły ({len(self.lista_kart_serwis.controls)})"
+                utils.dopasuj_wysokosc_listy(self.lista_kart_serwis, self._page, wysokosc_pozycji=190)
                 self.update()
 
             self.elementy.append(
@@ -205,6 +206,7 @@ class MiksinZakladkiSerwis:
                     self.wszystkie_karty_serwis.append({"karta": karta_z, "szukaj": tekst_szukaj})
                     self.lista_kart_serwis.controls.append(karta_z)
 
+                utils.dopasuj_wysokosc_listy(self.lista_kart_serwis, self._page, wysokosc_pozycji=190)
                 self.elementy.append(self.lista_kart_serwis)
 
         self.fab = self._buduj_fab_szybkich_akcji()
