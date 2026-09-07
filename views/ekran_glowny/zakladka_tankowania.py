@@ -102,7 +102,13 @@ class MiksinZakladkiTankowania:
                     utils.przycisk_filtrowania_autora(self._page, self.state, "tankowania_autor", baza_lista, "dodane_przez")
                 )
 
-            self.elementy.append(utils.pasek_zawijany(filtry_ui))
+            self.elementy.append(
+                ft.Row(
+                    controls=filtry_ui,
+                    scroll=ft.ScrollMode.ADAPTIVE,
+                    spacing=8
+                )
+            )
 
             def filtruj_tankowania(e):
                 zapytanie = e.control.value.lower().strip()

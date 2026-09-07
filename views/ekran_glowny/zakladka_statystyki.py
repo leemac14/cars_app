@@ -893,7 +893,11 @@ class MiksinZakladkiStatystyki:
                 filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "stat_miesiace_mc", wiersze_mc_wszystkie, 9)
 
                 self.elementy.append(
-                    utils.pasek_zawijany([sort_ui, filtr_rok_ui, filtr_mc_ui])
+                    ft.Row(
+                        controls=[sort_ui, filtr_rok_ui, filtr_mc_ui],
+                        scroll=ft.ScrollMode.ADAPTIVE,
+                        spacing=8
+                    )
                 )
 
                 def filtruj_okresy(e):
@@ -942,7 +946,13 @@ class MiksinZakladkiStatystyki:
                     ("Koszt", "koszt", lambda x: x[6]),
                 ]
                 sort_ui_rok = utils.przycisk_sortowania(self._page, self.state, "stat_lata", opcje_sort_rok)
-                self.elementy.append(utils.pasek_zawijany([sort_ui_rok]))
+                self.elementy.append(
+                    ft.Row(
+                        controls=[sort_ui_rok],
+                        scroll=ft.ScrollMode.ADAPTIVE,
+                        spacing=8
+                    )
+                )
 
                 utils.posortuj_liste(wiersze_rok_wszystkie, self.state, "stat_lata", opcje_sort_rok)
                 self.elementy.append(ft.Column([karta_okresu(w) for w in wiersze_rok_wszystkie], spacing=15))

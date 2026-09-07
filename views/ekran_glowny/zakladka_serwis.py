@@ -75,7 +75,13 @@ class MiksinZakladkiSerwis:
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "serwis_rok", baza_lista, "data")
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "serwis_mc", baza_lista, "data")
 
-            self.elementy.append(utils.pasek_zawijany([sort_ui, filtr_rok_ui, filtr_mc_ui]))
+            self.elementy.append(
+                ft.Row(
+                    controls=[sort_ui, filtr_rok_ui, filtr_mc_ui],
+                    scroll=ft.ScrollMode.ADAPTIVE,
+                    spacing=8
+                )
+            )
 
             def filtruj_zadania(e):
                 zapytanie = e.control.value.lower().strip()
