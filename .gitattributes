@@ -1,2 +1,39 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Końce linii — jedna polityka dla całego projektu.
+#
+# Projekt jest na LF. Wszędzie, u każdego, na każdym systemie.
+#
+# Nie chodzi o gust, tylko o to, że KAŻDE narzędzie zapisujące pliki — skrypty,
+# generator próbek baz, CI, edytory — pisze domyślnie LF. Projekt trzymany na
+# CRLF zmusza do konwersji przy każdym takim zapisie, a pominięcie konwersji
+# pokazuje cały plik jako zmieniony i robi diff bezużytecznym. Uwaga „pamiętaj
+# o CRLF" wróciła w czterech notatkach z rzędu; to był problem konfiguracyjny
+# udający problem warsztatowy.
+#
+# `eol=lf` nadpisuje `core.autocrlf` na Windowsie, więc nie trzeba niczego
+# ustawiać na maszynie ani pamiętać o niczym. Pilnuje tego test:
+#     tests/test_konce_linii.py          (a `--napraw` naprawia)
+
+* text=auto eol=lf
+
+# Pliki, których git NIE ma prawa dotykać — normalizacja zepsułaby bajty.
+*.db      binary
+*.db-wal  binary
+*.db-shm  binary
+*.bak     binary
+*.zip     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.webp    binary
+*.ico     binary
+*.pdf     binary
+*.ttf     binary
+*.otf     binary
+*.woff    binary
+*.woff2   binary
+
+# Zrzuty próbek baz to zwykły tekst i mają się diffować — ale są GENEROWANE
+# (python tests/test_migracje.py --zapisz), więc GitHub może je domyślnie zwijać
+# w widoku zmian zamiast zalewać nimi przegląd.
+tests/probki/*.sql  text eol=lf linguist-generated=true

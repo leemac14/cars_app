@@ -399,7 +399,8 @@ def zapisz_probki(katalog=None, drabinka=None):
                 "-- nie kodem: gdyby dało się go odświeżyć razem z poprawioną migracją,\n"
                 "-- przestałby cokolwiek udowadniać.\n"
             )
-            cel.write_text(naglowek + _zrzut(str(robocza)), encoding="utf-8")
+            # newline="\n": próbki są na LF jak cały projekt (.gitattributes).
+            cel.write_text(naglowek + _zrzut(str(robocza)), encoding="utf-8", newline="\n")
             dopisane.append(wersja)
 
     return dopisane

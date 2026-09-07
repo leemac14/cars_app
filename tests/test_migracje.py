@@ -289,11 +289,11 @@ if __name__ == "__main__":
 
     os.environ.setdefault("FLET_APP_STORAGE_DATA", tempfile.mkdtemp(prefix="wzorce_"))
 
-    # newline domyślny (nie "\n"): na Windowsie plik dostaje CRLF, tak jak reszta
-    # roboczej kopii. Inaczej każde odświeżenie zamka pokazywałoby się jako
-    # zmiana całego pliku — dokładnie ta pułapka, na którą narzeka T-05.
+    # newline="\n" jawnie: projekt jest na LF (patrz .gitattributes oraz
+    # tests/test_konce_linii.py), a domyślny newline dałby na Windowsie CRLF
+    # i pokazał cały plik jako zmieniony.
     bylo = len(_zapisane_odciski())
-    PLIK_ODCISKOW.write_text(_tresc_pliku_odciskow(), encoding="utf-8")
+    PLIK_ODCISKOW.write_text(_tresc_pliku_odciskow(), encoding="utf-8", newline="\n")
     print(f"{PLIK_ODCISKOW.name}: dopisano {len(DRABINKA) - bylo} migracji (razem {len(DRABINKA)}).")
 
     dopisane = probki_baz.zapisz_probki(drabinka=DRABINKA)

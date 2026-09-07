@@ -28,6 +28,7 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `test_kosz.py` | Round-trip pojazdu bit w bit: każdy wiersz, każda wartość, suma kontrolna każdego zdjęcia. Kolizja wszystkich ID i nazwy. Nagrobki dopiero przy trwałym kasowaniu. Retencja i sieroty. |
 | `test_schemat.py` | `KONFIGURACJA_SYNC`, `KOLUMNY_POJAZDU`, `KOSZ_TABELE_*`, `KOLUMNY_ZE_SCIEZKAMI`, `POLA_NOTATKI` kontra `PRAGMA table_info`. Zapytania pośrednie i `reset_where` jako poprawny SQL. |
 | `test_widoki.py` | Wszystkie widoki budują się bez okna, na dziewięciu układach danych: pusty garaż, auto bez wpisów, komplet, auto z historią, elektryk, hybryda plug-in, auto sprzedane, cudze auto w podglądzie, pełny kosz. Ekran główny osobno w każdej zakładce. |
+| `test_konce_linii.py` | Cały projekt na LF, bez BOM-ów, z jawną polityką w `.gitattributes`. Umie też naprawiać. |
 | `test_audyty.py` | Trzy audyty interfejsu: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`. Plus testy samych audytów. |
 | `audyty.py` | Silniki tych trzech audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
 
@@ -125,6 +126,33 @@ znajdować i nikt tego nie zauważa, bo zielono.
 
 Świadome wyjątki mieszkają w `audyty.py` jako `DOZWOLONE_POLA`
 i `NIEROZSTRZYGNIETE_RUN_TASK` — każdy wpis to decyzja, nie przeoczenie.
+
+## Końce linii
+
+Projekt jest na **LF** — wszędzie, u każdego, na każdym systemie. `.gitattributes`
+wymusza `eol=lf`, co nadpisuje `core.autocrlf` na Windowsie, więc nie trzeba nic
+ustawiać na maszynie ani o niczym pamiętać.
+
+Powód nie jest estetyczny. Każde narzędzie zapisujące pliki — skrypty,
+generator próbek baz, CI, edytory — pisze domyślnie LF. Projekt trzymany na CRLF
+zmusza do konwersji przy każdym takim zapisie, a pominięcie jej pokazuje cały
+plik jako zmieniony i robi diff bezużytecznym. Uwaga „pamiętaj o CRLF" wróciła
+w czterech notatkach z rzędu; to był problem konfiguracyjny udający warsztatowy.
+
+Gdyby kiedyś wrócił (świeży `clone` bez `.gitattributes`, edytor, wklejka):
+
+```
+python tests/test_konce_linii.py            # raport: które pliki i ile razy
+python tests/test_konce_linii.py --napraw   # przepisanie na LF
+```
+
+Test pilnuje trzech rzeczy naraz: braku CRLF, braku samotnego CR i braku UTF-8
+BOM (dokłada go Notatnik i przekierowanie `>` w PowerShellu). Czwarty test
+sprawdza sam `.gitattributes` — bez niego polityka nie przetrwa `git clone`.
+
+Sam naprawiacz też ma testy: pomija pliki binarne i katalogi z danymi
+(`.venv`, `zalaczniki`, `kosz_zalaczniki`), żeby w dniu, w którym będzie
+potrzebny, nie okazał się pusty albo zbyt gorliwy.
 
 ## Dodawanie testów
 
