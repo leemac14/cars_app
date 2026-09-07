@@ -76,7 +76,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "odczyty_rok", wpisy, "data")
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "odczyty_mc", wpisy, "data")
 
-            elementy.append(utils.pasek_zawijany([sort_ui, filtr_zrodlo_ui, filtr_rok_ui, filtr_mc_ui]))
+            elementy.append(ft.Row(controls=[sort_ui, filtr_zrodlo_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
             def filtruj_odczyty(e):
                 zapytanie = e.control.value.lower().strip()

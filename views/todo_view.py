@@ -85,7 +85,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 filtr_status_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_status", dane, 9, "Status")
                 filtr_priorytet_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_priorytet", dane, 3, "Priorytet")
 
-                elementy.append(utils.pasek_zawijany([sort_ui, filtr_status_ui, filtr_priorytet_ui]))
+                elementy.append(ft.Row(controls=[sort_ui, filtr_status_ui, filtr_priorytet_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
                 def filtruj_pozycje(e):
                     zapytanie = e.control.value.lower().strip()

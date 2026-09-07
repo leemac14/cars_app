@@ -52,7 +52,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "historia_rok", wpisy, 1)
             filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "historia_mc", wpisy, 1)
 
-            elementy.append(utils.pasek_zawijany([sort_ui, filtr_rok_ui, filtr_mc_ui]))
+            elementy.append(ft.Row(controls=[sort_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
             # --- POPRAWNA INICJALIZACJA WYSZUKIWARKI ---
             self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
@@ -374,7 +374,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.przycisk_filtrowania_autora(self._page, self.state, "wizyty_autor", wizyty_lista, 8)
             )
 
-        elementy.append(utils.pasek_zawijany(filtry_ui))
+        elementy.append(ft.Row(controls=filtry_ui, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
         wizyty_lista = utils.filtruj_po_roku(wizyty_lista, self.state, "wizyty_rok", 1)
         wizyty_lista = utils.filtruj_po_miesiacu(wizyty_lista, self.state, "wizyty_mc", 1)

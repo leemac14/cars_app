@@ -5,7 +5,7 @@ import flet as ft
 
 from .stale import FS, RADIUS
 from .format import bez_ogonkow
-from .wyglad import dol_bezpieczny, pasek_zawijany, tlo_karty
+from .wyglad import dol_bezpieczny, pasek_przewijany, pasek_zawijany, tlo_karty
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_menu_grupowane, przejdz, zamknij_dialog, zamknij_dno
 from .zalaczniki import abs_zalacznik
 from .pojazd import ikona_nadwozia, sprzedaj_auto, usun_auto
@@ -679,16 +679,17 @@ def karta_sekcji(page: ft.Page, state, ekran, akcje=None, liczniki=None, szeroko
 
 
 def pasek_sekcji(page: ft.Page, state, identyfikatory, akcje=None, liczniki=None, szerokosc=190):
-    """Wstęga kart sekcji. ZAWIJA się zamiast jechać w bok — kart jest zwykle
-    dwie-trzy, a te za prawą krawędzią były po prostu niewidoczne: bez suwaka nic
-    nie sygnalizowało, że pasek da się przesunąć."""
+    """Wstęga kart sekcji. PRZEWIJA się w bok — przy szerokości karty (190 px)
+    na telefonie i tak mieści się najwyżej jedna w rzędzie, więc zawijanie
+    (wrap) zamieniało pasek w kolumnę pojedynczych kart zamiast rzędu obok
+    siebie. Ten sam wzorzec co karuzela kokpitu (pasek_przewijany)."""
     karty = [
         karta_sekcji(page, state, EKRANY_WG_ID[eid], akcje, liczniki, szerokosc)
         for eid in identyfikatory if eid in EKRANY_WG_ID
     ]
     if not karty:
         return ft.Container()
-    return pasek_zawijany(karty, spacing=10, run_spacing=10)
+    return pasek_przewijany(karty, spacing=10)
 
 
 def pokaz_edytor_skrotow(page: ft.Page, state, po_zapisie=None):

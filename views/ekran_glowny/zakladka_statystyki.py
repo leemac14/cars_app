@@ -918,7 +918,7 @@ class MiksinZakladkiStatystyki:
                     )
                 )
 
-                self.lista_kart_stat = ft.Column(spacing=15)
+                self.lista_kart_stat = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 self.wszystkie_karty_stat = []
 
                 wiersze_mc_f = utils.filtruj_po_roku(wiersze_mc_wszystkie, self.state, "stat_miesiace_rok", 9)
