@@ -1,0 +1,57 @@
+# Testy przy każdym wrzuceniu zmian na GitHuba.
+#
+# Bez tego każdy test jest testem tylko wtedy, gdy ktoś go uruchomi — a uruchamia
+# się je najrzadziej wtedy, gdy zmiana wygląda na drobną. Tu uruchamiają się same,
+# na czystej maszynie, z samego `requirements.txt`. „U mnie działa" przestaje być
+# argumentem: jeśli coś zależy od pliku, którego nie ma w repozytorium, wyjdzie tutaj.
+#
+# Trzy audyty interfejsu (expand, chipy, pola kontrolek Fleta) NIE mają osobnego
+# kroku — siedzą w `tests/test_audyty.py` i lecą razem z resztą. Osobny raport
+# do oka: `python tests/audyty.py`.
+
+name: Testy
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:   # pozwala odpalić ręcznie z zakładki Actions
+
+# Nowy push na tę samą gałąź anuluje poprzedni przebieg — po co czekać na wynik
+# dla kodu, którego już nie ma.
+concurrency:
+  group: testy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          # Ta sama wersja, co w .venv na komputerze — inaczej CI sprawdzałby
+          # coś innego, niż uruchamiasz u siebie.
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Zależności
+        # Osobny krok, żeby na czerwono było od razu widać, czy poległa
+        # instalacja (problem z zależnością), czy dopiero testy (problem z kodem).
+        # pytest nie jest w requirements.txt, bo to narzędzie, nie zależność aplikacji.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Składnia wszystkich plików
+        # Łapie błąd składni także w pliku, którego żaden test nie importuje —
+        # a takich jest w projekcie sporo (pojedyncze widoki, moduły pomocnicze).
+        run: python -m compileall -q -x '(^|/)\.venv/' .
+
+      - name: Testy i audyty
+        run: python -m pytest

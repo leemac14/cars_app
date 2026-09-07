@@ -179,7 +179,10 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
             kontener_tagow.controls.append(chip)
             
         btn_dodaj = ft.Container(
-            content=ft.Row([ft.Icon(ft.Icons.ADD, size=14, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text("Nowy", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT)], spacing=4),
+            # tight=True — chip siedzi w pasku zawijanym (kontener_tagow ma
+            # wrap=True), a wiersz bez tight bierze mainAxisSize.max i zajmuje
+            # CAŁĄ linijkę, spychając tagi jeden pod drugi.
+            content=ft.Row([ft.Icon(ft.Icons.ADD, size=14, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text("Nowy", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT)], spacing=4, tight=True),
             padding=ft.Padding(12, 6, 12, 6),
             border_radius=RADIUS["pill"],
             bgcolor=tlo_karty(page, poziom=2),

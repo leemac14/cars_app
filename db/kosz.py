@@ -78,12 +78,15 @@ KOSZ_KLUCZE_OBCE = {
 # Tabele, których zdalne odpowiedniki trzeba oznaczyć jako usunięte na serwerze.
 # CELOWO używane dopiero przy TRWAŁYM kasowaniu z kosza — dopóki auto siedzi w
 # koszu, u współdzielących nadal istnieje.
+# Lista MUSI pokrywać się z sync.KONFIGURACJA_SYNC — pilnuje tego
+# tests/test_schemat.py. Tabela synchronizowana, której tu brakuje, zostaje
+# u współdzielących na zawsze, bo nikt nie zgłasza jej usunięcia na serwer.
 KOSZ_TABELE_SYNCHRONIZOWANE = [
     "zadania", "wizyty", "magazyn_czesci", "tankowania", "inne_koszty",
     "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
     "do_zrobienia", "historia", "tagi", "wizyta_czesci_magazynu",
     "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
-    "trasy_szablony", "checklisty", "checklisty_pozycje",
+    "trasy_szablony", "checklisty", "checklisty_pozycje", "budzety",
 ]
 
 

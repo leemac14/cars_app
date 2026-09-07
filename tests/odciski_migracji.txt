@@ -1,0 +1,51 @@
+# Odciski wydanych migracji. Plik jest zamkiem, nie kopią schematu.
+#
+# Migracja, która raz poszła do ludzi, jest u nich WYKONANA — zmiana jej
+# treści nie zmienia niczego w ich bazie, a zmienia wszystko w bazie
+# założonej od zera. Tak powstaje różnica, której nie widać na własnym
+# komputerze: świeża instalacja dostaje kolumnę, zaktualizowana nie.
+#
+# Nową migrację dopisuje się NA KOŃCU drabinki i tutaj:
+#     python tests/test_migracje.py --zapisz
+# Zmiana odcisku istniejącego wiersza to sygnał, że ktoś poprawił
+# przeszłość — i musi to potwierdzić świadomie.
+01 7b6f95360a14ead0
+02 dfcb5467c54f5b81
+03 deecda54fd131240
+04 d5953ad514d8d8be
+05 448dcc1219e81688
+06 588186ad13a57c9e
+07 f0a0b0e2bb9d1ed2
+08 dbb158de13158b44
+09 efc57c6563201d24
+10 73386b447641f832
+11 3ea59fc7d1212472
+12 6c71949a95114c94
+13 5abf9db62b6616da
+14 56e3c29473d7d815
+15 d6a0199e3bddc0c4
+16 d4f320b20d6f1fb2
+17 d02d23af95ce145e
+18 5e75e0d7c21d15a1
+19 d4dce48b319b11b8
+20 70a8d2991172954c
+21 d2351bbcd75a9f41
+22 5c50a96c60e33a3f
+23 d073396d951d1cb4
+24 f671b9b86b61bf92
+25 bc9161e83126814c
+26 50306cd8372766ca
+27 1fcc579053b5eddd
+28 ffd2a8c601387442
+29 8e48425aa6cef942
+30 0c40ebf8fbab7c17
+31 99340c140d6cc1ca
+32 0bb5beac55cf5a1e
+33 89da7260d4d27123
+34 34bff1dcde7e07bf
+35 d3f1d25f8634335e
+36 6a702e807331f0ba
+37 234eb7652fe98936
+38 d726c07eaed4365d
+39 0178ec2eca297c27
+40 05b103a413e0409c

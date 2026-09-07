@@ -100,16 +100,18 @@ class EksportView(ft.View):
         # --- Format ---
         pdf_dostepny = db.FPDF is not None
         self.e_format = ft.RadioGroup(
+            # tight=True na obu wierszach: pasek zawija się (wrap=True), a wiersz
+            # bez tight zajmuje całą linijkę — oba formaty lądowały jeden pod drugim.
             content=ft.Row([
                 ft.Row([
                     ft.Icon(ft.Icons.TABLE_CHART, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Radio(value="csv", label="CSV (arkusz kalkulacyjny)"),
-                ], spacing=4),
+                ], spacing=4, tight=True),
                 ft.Row([
                     ft.Icon(ft.Icons.PICTURE_AS_PDF, size=18,
                             color=ft.Colors.ON_SURFACE_VARIANT if pdf_dostepny else ft.Colors.with_opacity(0.4, ft.Colors.ON_SURFACE)),
                     ft.Radio(value="pdf", label="PDF (czytelny raport)", disabled=not pdf_dostepny),
-                ], spacing=4),
+                ], spacing=4, tight=True),
             ], wrap=True, spacing=15),
             value="pdf" if pdf_dostepny else "csv"
         )
