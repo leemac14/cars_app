@@ -22,7 +22,7 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 
 | Plik | Pilnuje |
 |---|---|
-| `test_migracje.py` | Baza w KAŻDEJ wersji schematu dochodzi po `init_db()` do tego samego stanu, co świeża. Dane starych wpisów przeżywają awans (rodzaj energii, status, rola, przeliczenie zakładek). Zamek na migracje już wydane. Próbki baz. |
+| `test_migracje.py` | Baza w KAŻDEJ wersji schematu dochodzi po `init_db()` do tego samego stanu, co świeża. Dane starych wpisów przeżywają awans (rodzaj energii, status, rola, przeliczenie zakładek). Zamek na migracje już wydane. Próbki baz. Odmowa wczytania kopii z nowszym schematem. |
 | `probki_baz.py` | Budowanie, zasiew i zrzut próbek. Bez pytesta. |
 | `probki/schemat_NN.sql` | Zamrożone bazy — po jednej na wersję schematu, z danymi. |
 | `test_kosz.py` | Round-trip pojazdu bit w bit: każdy wiersz, każda wartość, suma kontrolna każdego zdjęcia. Kolizja wszystkich ID i nazwy. Nagrobki dopiero przy trwałym kasowaniu. Retencja i sieroty. |
@@ -143,6 +143,25 @@ znajdować i nikt tego nie zauważa, bo zielono.
 
 Świadome wyjątki mieszkają w `audyty.py` jako `DOZWOLONE_POLA`
 i `NIEROZSTRZYGNIETE_RUN_TASK` — każdy wpis to decyzja, nie przeoczenie.
+
+## Kopia z nowszej wersji aplikacji
+
+Migracje idą tylko w przód i nigdy nie pójdą w tył. Kopia zrobiona na telefonie
+z nowszą wersją aplikacji, wczytana na komputerze ze starszą, zostawiłaby bazę
+z kolumnami, o których ten kod nie wie: nowe pola przestałyby się wypełniać
+i nie jechałyby do chmury — a nic by się przy tym nie wywaliło.
+
+`db.sprawdz_kopie_przed_wczytaniem()` czyta numer schematu z pliku albo wprost
+z archiwum (wypakowując SAM plik bazy) i odmawia, zanim `wykonaj_import` ruszy
+choćby kopię bezpieczeństwa. Plik otwierany jest w trybie **tylko do odczytu** —
+sprawdzany nie ma prawa się przy tym zmienić, co pilnuje osobny test.
+
+Blokowana jest wyłącznie kopia NOWSZA. Starsza przechodzi bez słowa, bo
+dociągnięcie jej drabinką to normalna droga; nieczytelna też przechodzi, bo od
+zgłaszania uszkodzonego pliku jest sam import, razem z przywróceniem bazy sprzed
+próby. Numer wersji aplikacji bierze się z `len(migracje)` zapamiętanego przez
+`init_db()` i jest porównywany z drabinką odczytaną z AST — dopisana migracja
+przesuwa obie liczby naraz albo test robi się czerwony.
 
 ## Kształt wyników `db` — dwie połowy jednej kontroli
 

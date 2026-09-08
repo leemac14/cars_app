@@ -291,6 +291,26 @@ def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str |
     otworz_dno(page, bs)
 
 
+def pokaz_ostrzezenie(page: ft.Page, tytul, tresc, ikona=ft.Icons.WARNING_AMBER):
+    """Modalne okno z jednym przyciskiem — do rzeczy, których nie wolno przegapić.
+
+    Snackbar znika po kilku sekundach i nadaje się do potwierdzeń („Zapisano").
+    Odmowa wczytania kopii zapasowej potwierdzeniem nie jest: człowiek ma się
+    dowiedzieć, CZEMU nic się nie stało, i mieć czas to przeczytać."""
+    dlg = ft.AlertDialog(
+        modal=True,
+        shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
+        title=ft.Row([
+            ft.Icon(ikona, color=ft.Colors.ORANGE_800),
+            ft.Text(tytul, weight="bold", expand=True),
+        ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        content=ft.Text(tresc, size=FS["body_strong"]),
+    )
+    dlg.actions = [ft.TextButton("Rozumiem", on_click=lambda e: zamknij_dialog(page, dlg))]
+    dlg.actions_alignment = ft.MainAxisAlignment.END
+    otworz_dialog(page, dlg)
+
+
 def potwierdz(page: ft.Page, tytul, tresc, po_potwierdzeniu, tekst_potwierdzenia="Usuń"):
     dlg = ft.AlertDialog(
         modal=True, title=ft.Text(tytul, weight="bold"), content=ft.Text(tresc),
@@ -323,6 +343,7 @@ __all__ = [
     "pokaz_ladowanie",
     "pokaz_menu_grupowane",
     "pokaz_menu_kontekstowe",
+    "pokaz_ostrzezenie",
     "potwierdz",
     "przejdz",
     "ukryj_ladowanie",

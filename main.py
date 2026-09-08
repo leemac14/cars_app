@@ -273,6 +273,15 @@ def main(page: ft.Page):
                 utils.pokaz_komunikat(page, "Nie można odczytać wybranego pliku.", ft.Colors.RED_700)
                 return
 
+            # PRZED kopią bezpieczeństwa i przed czymkolwiek innym: migracje idą
+            # tylko w przód, więc kopia z nowszej wersji aplikacji nie ma jak się
+            # cofnąć. Odmowa na tym etapie nie rusza ani jednego pliku na dysku.
+            wolno, powod = db.sprawdz_kopie_przed_wczytaniem(sciezka_zrodlowa)
+            if not wolno:
+                log.ostrzezenie(f"Odmowa wczytania kopii: {powod}")
+                utils.pokaz_ostrzezenie(page, "Kopia z nowszej wersji aplikacji", powod)
+                return
+
             if os.path.exists(db.BAZA_DANYCH):
                 shutil.copyfile(db.BAZA_DANYCH, baza_bak)
             for folder in FOLDERY_KOPII:

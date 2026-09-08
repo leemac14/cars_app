@@ -1,13 +1,23 @@
 """Tworzenie schematu bazy i drabinka migracji (init_db)."""
 
+import os
+import pathlib
 import sqlite3
+import tempfile
+import zipfile
 
 import log
 
+from .stale import BAZA_DANYCH
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .zalaczniki import _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki
 from .kosz import posprzataj_kosz
+
+
+# Najwyższy numer migracji, jaki zna ta wersja aplikacji. Wypełnia go init_db()
+# — patrz wersja_schematu_aplikacji() na dole pliku.
+WERSJA_SCHEMATU = None
 
 
 def init_db():
@@ -566,6 +576,12 @@ def init_db():
             """
         ]
 
+        # Zapamiętane dla wersja_schematu_aplikacji(): `migracje` jest zmienną
+        # lokalną, więc poza tym miejscem nikt tej liczby nie zobaczy. Ustawiamy
+        # ją PRZED pętlą, bo przy bazie już aktualnej pętla nie wykona ani obrotu.
+        global WERSJA_SCHEMATU
+        WERSJA_SCHEMATU = len(migracje)
+
         for i in range(wersja, len(migracje)):
             for stmt in migracje[i].split(';'):
                 stmt = stmt.strip()
@@ -662,6 +678,117 @@ def init_db():
         zapisz_ustawienie("naprawa_sciezek_zalacznikow_v1", "1")
 
 
+
+
+# ============================================================================
+#  WERSJA SCHEMATU PRZY WCZYTYWANIU KOPII
+# ============================================================================
+# Migracje idą tylko w przód. Kopia zrobiona na telefonie z nowszą wersją
+# aplikacji, wczytana na komputerze ze starszą, to cicha katastrofa: baza ma
+# kolumny, o których ten kod nie wie, więc nowe pola przestają się wypełniać
+# i nie jadą do chmury — a nic się przy tym nie wywala. Numer wersji jest
+# w bazie od zawsze; wystarczy go przeczytać PRZED nadpisaniem.
+
+
+def wersja_schematu_aplikacji() -> int:
+    """Najwyższy numer schematu, jaki zna TA wersja aplikacji.
+
+    Ustawiany przez `init_db()`, bo `migracje` jest zmienną lokalną w jego
+    wnętrzu i nie da się jej zaimportować (patrz `tests/test_migracje.py`, które
+    czyta ją z AST). Zanim `init_db()` pójdzie choć raz, zostaje odczyt z bazy;
+    zero znaczy „nie wiadomo" i wtedy nic nie blokujemy."""
+    if WERSJA_SCHEMATU is not None:
+        return WERSJA_SCHEMATU
+    zapisana = str(pobierz_ustawienie("schema_version", "") or "").strip()
+    return int(zapisana) if zapisana.isdigit() else 0
+
+
+def wersja_schematu_pliku(sciezka) -> int | None:
+    """Numer schematu bazy leżącej w PLIKU — bez otwierania jej jako bieżącej.
+
+    Otwieramy w trybie tylko do odczytu: plik, który dopiero sprawdzamy, nie ma
+    prawa się przy tym zmienić ani powstać. None znaczy „nie do odczytania" —
+    bardzo stara kopia bez tabeli ustawień, plik, który nie jest bazą SQLite,
+    albo brak dostępu. To rozróżnienie jest istotne: przy zerze migracje puszczą
+    całą drabinkę, a przy „nie wiem" nie wolno zakładać niczego."""
+    try:
+        adres = pathlib.Path(sciezka).resolve().as_uri() + "?mode=ro"
+        polaczenie = sqlite3.connect(adres, uri=True)
+    except (sqlite3.Error, ValueError, OSError):
+        return None
+
+    try:
+        kursor = polaczenie.cursor()
+        kursor.execute("SELECT wartosc FROM ustawienia WHERE klucz='schema_version'")
+        wiersz = kursor.fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        polaczenie.close()
+
+    zapisana = str(wiersz[0] if wiersz else "").strip()
+    return int(zapisana) if zapisana.isdigit() else None
+
+
+def wersja_schematu_kopii(sciezka) -> int | None:
+    """Numer schematu kopii zapasowej — pliku `.db` albo archiwum `.zip`.
+
+    Z archiwum wypakowujemy SAM plik bazy: zdjęcia potrafią ważyć dziesiątki
+    megabajtów, a do odczytania jednej liczby są niepotrzebne."""
+    if not str(sciezka).lower().endswith(".zip"):
+        return wersja_schematu_pliku(sciezka)
+
+    nazwa_bazy = os.path.basename(BAZA_DANYCH)
+    try:
+        with zipfile.ZipFile(sciezka, "r") as archiwum:
+            if nazwa_bazy not in archiwum.namelist():
+                return None
+            with tempfile.TemporaryDirectory() as katalog:
+                archiwum.extract(nazwa_bazy, katalog)
+                return wersja_schematu_pliku(os.path.join(katalog, nazwa_bazy))
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return None
+
+
+def sprawdz_kopie_przed_wczytaniem(sciezka) -> tuple[bool, str]:
+    """(czy wolno wczytać, powód odmowy). Powód jest pusty, gdy wolno.
+
+    Kopia STARSZA przechodzi bez słowa — dociągnięcie jej drabinką migracji to
+    normalna, przewidziana droga. Blokujemy wyłącznie kopię NOWSZĄ, bo tej nie
+    da się cofnąć: migracji w tył nie ma i nigdy nie będzie.
+
+    Nieczytelnego pliku też nie blokujemy: od zgłaszania uszkodzonej kopii jest
+    sam import, razem z przywróceniem bazy sprzed próby. Diagnostyka nie ma
+    prawa zamknąć drogi, której nie potrafi ocenić."""
+    try:
+        wersja_pliku = wersja_schematu_kopii(sciezka)
+    except Exception:
+        log.polkniety("odczyt wersji schematu z wybranej kopii")
+        return True, ""
+
+    wersja_aplikacji = wersja_schematu_aplikacji()
+
+    if wersja_pliku is None or not wersja_aplikacji:
+        return True, ""
+
+    if wersja_pliku > wersja_aplikacji:
+        return False, (
+            f"Ta kopia pochodzi z nowszej wersji aplikacji — ma schemat bazy "
+            f"{wersja_pliku}, a ta aplikacja zna {wersja_aplikacji}. Wczytanie "
+            "zostawiłoby bazę z polami, o których ten kod nie wie: przestałyby "
+            "się wypełniać i nie jechałyby do chmury, a nic by tego nie zgłosiło. "
+            "Zaktualizuj aplikację i spróbuj ponownie."
+        )
+
+    return True, ""
+
+
+
 __all__ = [
+    "WERSJA_SCHEMATU",
     "init_db",
+    "sprawdz_kopie_przed_wczytaniem",
+    "wersja_schematu_aplikacji",
+    "wersja_schematu_kopii",
+    "wersja_schematu_pliku",
 ]

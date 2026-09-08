@@ -71,6 +71,7 @@ WYWOLANIA = {
     "pobierz_warsztaty": lambda k: (k["id"]["auto_id"],),
     "pobierz_wydatki_cykliczne": lambda k: (k["id"]["auto_id"],),
     "przelicz_zuzycie": lambda k: (7.5,),
+    "sprawdz_kopie_przed_wczytaniem": lambda k: (db.BAZA_DANYCH,),
     "stan_budzetow": lambda k: (k["id"]["auto_id"],),
     "utworz_wizyte_z_do_zrobienia": lambda k: (k["id"]["auto_id"], [k["id"]["do_zrobienia"]]),
     "wczytaj_plik_csv": lambda k: (str(k["csv"]),),
