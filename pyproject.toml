@@ -1,8 +1,34 @@
 [tool.flet.app]
+# Co NIE ma trafić do paczki. Ścieżki dopasowują się dokładnie (bez masek),
+# katalogi rekurencyjnie. `build/` Flet wyklucza sam.
 exclude = [
     ".venv", ".git", ".github", "__pycache__", ".pytest_cache",
     "tests", "pytest.ini",
     "zalaczniki", "zalaczniki_bak", "zalaczniki_odroczone", "kosz_zalaczniki",
-    "flota_zadania.db", "flota_zadania.db.bak", "kopia_baza.zip", "flota.log",
+    "flota_zadania.db", "flota_zadania.db.bak", "kopia_baza.zip",
+    # Log rotuje się na trzy pliki, a maski tu nie działają — stąd wypisane co do jednego.
+    "flota.log", "flota.log.1", "flota.log.2",
     "supabase",
 ]
+
+[tool.flet.android]
+# Bez tego Flet buduje jeden „gruby" APK z TRZEMA architekturami naraz — czyli
+# trzy komplety bibliotek natywnych (cryptography, pydantic_core, Pillow,
+# fontTools, runtime Pythona, silnik Fluttera). Same pakiety Pythona to 37 MB
+# na architekturę.
+#
+# arm64-v8a ma każdy telefon wydany po mniej więcej 2019 roku. armeabi-v7a to
+# 32-bitowe urządzenia sprzed tamtej daty, x86_64 wyłącznie emulatory. Jeśli
+# druga osoba ma stary telefon, dopisz tu "armeabi-v7a" — APK urośnie o tyle,
+# ile waży drugi komplet.
+target_arch = ["arm64-v8a"]
+
+# Domyślne („nowoczesne") pakowanie trzyma biblioteki .so NIESKOMPRESOWANE:
+# szybszy start, ale surowy plik .apk jest z grubsza dwa razy większy. Ma to
+# sens przy Google Play, które pakuje po swojemu przed wysłaniem na telefon.
+# Przy APK-u wysyłanym drugiej osobie na WhatsAppie liczy się rozmiar pliku,
+# więc wracamy do kompresji.
+#
+# Gdybyś kiedyś wystawiał aplikację w Google Play: zbuduj `flet build aab`
+# i USUŃ tę linijkę — tam nowoczesne pakowanie daje mniejsze pobranie.
+legacy_packaging = true
