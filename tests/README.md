@@ -1,6 +1,6 @@
 # tests/
 
-Dziewięć rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
+Dziesięć rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
 zapisanych raz, uruchamianych zawsze.
 
 ## Uruchomienie
@@ -26,11 +26,12 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `probki_baz.py` | Budowanie, zasiew i zrzut próbek. Bez pytesta. |
 | `probki/schemat_NN.sql` | Zamrożone bazy — po jednej na wersję schematu, z danymi. |
 | `test_kosz.py` | Round-trip pojazdu bit w bit: każdy wiersz, każda wartość, suma kontrolna każdego zdjęcia. Kolizja wszystkich ID i nazwy. Nagrobki dopiero przy trwałym kasowaniu. Retencja i sieroty. |
-| `test_schemat.py` | `KONFIGURACJA_SYNC`, `KOLUMNY_POJAZDU`, `KOSZ_TABELE_*`, `KOLUMNY_ZE_SCIEZKAMI`, `POLA_NOTATKI` kontra `PRAGMA table_info`. Zapytania pośrednie i `reset_where` jako poprawny SQL. |
+| `test_schemat.py` | `KONFIGURACJA_SYNC`, `KOLUMNY_POJAZDU`, `KOSZ_TABELE_*`, `KOLUMNY_ZE_SCIEZKAMI`, `POLA_NOTATKI` kontra `PRAGMA table_info` — w OBIE strony. Zapytania pośrednie i `reset_where` jako poprawny SQL. |
 | `test_widoki.py` | Wszystkie widoki budują się bez okna, na dziewięciu układach danych: pusty garaż, auto bez wpisów, komplet, auto z historią, elektryk, hybryda plug-in, auto sprzedane, cudze auto w podglądzie, pełny kosz. Ekran główny osobno w każdej zakładce. |
 | `test_konce_linii.py` | Cały projekt na LF, bez BOM-ów, z jawną polityką w `.gitattributes`. Umie też naprawiać. |
-| `test_audyty.py` | Cztery audyty: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`, ciche `except …: pass`. Plus testy samych audytów. |
-| `audyty.py` | Silniki tych czterech audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
+| `test_audyty.py` | Pięć audytów: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`, ciche `except …: pass`, kształt wyników `db` kontra adnotacje. Plus testy samych audytów. |
+| `audyty.py` | Silniki tych pięciu audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
+| `test_typy_db.py` | Adnotacje zwrotu warstwy danych kontra to, co funkcje naprawdę zwracają — wołane na bazie testowej. |
 | `ciche_wyjatki.txt` | Zamrożona liczba cichych `except …: pass` w każdym pliku. |
 | `test_log.py` | Rotujący log błędów: co łapie (połknięty wyjątek, wątek, porzucona korutyna asyncio, cudze ostrzeżenia), czego nie łapie (cudze INFO), rotacja, raport do wysłania i to, że brak miejsca na log nie wywala aplikacji. |
 
@@ -142,6 +143,56 @@ znajdować i nikt tego nie zauważa, bo zielono.
 
 Świadome wyjątki mieszkają w `audyty.py` jako `DOZWOLONE_POLA`
 i `NIEROZSTRZYGNIETE_RUN_TASK` — każdy wpis to decyzja, nie przeoczenie.
+
+## Kształt wyników `db` — dwie połowy jednej kontroli
+
+`pobierz_dane_timeline` urosło kiedyś z ośmiu elementów krotki do dziewięciu.
+Rozpakowanie w innym pliku wywaliło się dopiero w czasie działania
+(`too many values to unpack`) — u kogoś, kto akurat wszedł na ten ekran mając
+dane. Publiczne funkcje `db` zwracające krotki i słowniki mają dziś adnotacje
+zwrotu, ale sama adnotacja niczego nie egzekwuje: nieaktualna kłamie równie
+gładko, jak kłamał komentarz w docstringu. Dlatego pilnują jej dwie rzeczy:
+
+**`test_typy_db.py` — od strony źródła.** Woła każdą opisaną funkcję na bazie
+testowej i porównuje wynik z adnotacją. Arność krotki sprawdzana twardo, typy
+elementów miękko (`None` przechodzi zawsze — w SQLite prawie każda kolumna może
+być NULL, więc test sprawdzałby wtedy dane, a nie kod). Krotka, która urosła,
+zapala ten test w tej samej chwili.
+
+**Audyt kształtu — od strony konsumentów.** Czyta AST i porównuje z adnotacją
+każde `for a, b, c in db.f(…)`, każde `a, b = db.f()` i każdy `wiersz[i]`.
+Śledzi tylko zmienne wiązane w swoim zakresie dokładnie raz — ta sama ostrożność,
+co w audycie pól kontrolek, i jedyny powód, dla którego wynik nadaje się do
+czytania. Nie zobaczy wiersza, który poszedł do funkcji pomocniczej albo do
+metody jako argument; od tej strony pilnuje go test wykonania.
+
+Razem zamykają obieg: krotka rośnie → czerwony test wykonania → poprawiasz
+adnotację → czerwony audyt na każdym miejscu, które trzeba dostosować.
+
+Trzeci test, `test_kazda_konsumowana_funkcja_db_ma_adnotacje`, pilnuje żeby
+pokrycie nie kurczyło się po cichu: nowa funkcja, której wynik ktoś już
+rozpakowuje, musi powiedzieć, jak ten wynik wygląda.
+
+## Schemat kontra kod — dwa kierunki
+
+`test_schemat.py` porównuje cztery listy z prawdziwym schematem, ale to nie jest
+jedno sprawdzenie, tylko dwa o zupełnie różnym ciężarze.
+
+**Lista → schemat** (kolumna z listy istnieje w bazie) jest kierunkiem tanim.
+Usunięta kolumna wywala zapytanie od razu, więc i bez testu nikt tego nie
+przegapi.
+
+**Schemat → lista** (każda kolumna w bazie jest przez kod rozstrzygnięta) jest
+tym, po co ten plik naprawdę powstał. Dopisujesz migracją kolumnę, zapominasz
+dopisać ją do `KONFIGURACJA_SYNC` — i nic się nie dzieje. Aplikacja działa,
+testy są zielone, a dane po prostu nie jadą do chmury. Wychodzi to dopiero
+wtedy, gdy druga osoba pyta, czemu u niej tego nie ma.
+
+Ten kierunek ma cztery zbiory świadomych wyjątków (`POZA_SYNC_SWIADOMIE`,
+`POZA_POJAZDEM_SWIADOMIE`, `POZA_SCIEZKAMI_SWIADOMIE`, `POZA_KOSZEM_SWIADOMIE`) —
+każdy wpis z powodem wpisanym obok. Pilnuje ich `test_wyjatki_nie_gnija`: wpis,
+który przestał być potrzebny, jest gorszy od braku wpisu, bo wygląda jak
+decyzja, a jest śmieciem po zmianie sprzed pół roku.
 
 ## Końce linii
 

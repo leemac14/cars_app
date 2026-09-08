@@ -2,6 +2,7 @@
 
 from date import parsuj_date
 from datetime import datetime, timedelta
+from typing import Any
 
 from .stale import (
     KATEGORIA_INNE_DOMYSLNA, OKRES_ZMIANY_OPON_DNI,
@@ -16,7 +17,7 @@ from .nazwy import klucz_nazwy, normalizuj_nazwe
 
 # ==================== WARSZTATY ====================
 
-def pobierz_warsztaty(auto_id):
+def pobierz_warsztaty(auto_id) -> list[tuple[int, str, str | None, str | None, str | None]]:
     if not auto_id:
         return []
     with polacz_baze() as conn:
@@ -57,7 +58,7 @@ def _poprawny_typ(typ):
     return typ if typ in TYPY_CYKLICZNE else TYP_CYKLICZNY_WYDATEK
 
 
-def pobierz_wydatki_cykliczne(auto_id):
+def pobierz_wydatki_cykliczne(auto_id) -> list[tuple[int, str, float, int, str, int, str]]:
     """Krotki (id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ).
     `typ` doklejony NA KOŃCU celowo — rozpakowania w istniejącym kodzie, które
     biorą sześć pierwszych pól, dalej działają."""
@@ -153,7 +154,7 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
     }
 
 
-def pobierz_przypomnienia_o_oponach(auto_id):
+def pobierz_przypomnienia_o_oponach(auto_id) -> list[tuple[int, str, float, int, str, int, str]]:
     """Wpisy cykliczne typu 'opony' danego pojazdu (zwykle zero albo jeden)."""
     return [w for w in pobierz_wydatki_cykliczne(auto_id) if w[6] == TYP_CYKLICZNY_OPONY]
 
@@ -199,7 +200,7 @@ def wykonaj_sezonowa_zmiane_opon(auto_id, docelowy_sezon=None):
 # pojazdu, inaczej zapisana trasa z zeszłego roku liczyłaby po starych cenach.
 
 
-def pobierz_trasy_szablony(auto_id):
+def pobierz_trasy_szablony(auto_id) -> list[dict[str, Any]]:
     if not auto_id:
         return []
     with polacz_baze() as conn:
@@ -263,7 +264,7 @@ def usun_trase_szablon(trasa_id):
 
 # ==================== WŁASNE PAKIETY SERWISOWE ====================
 
-def pobierz_pakiety_wlasne(auto_id):
+def pobierz_pakiety_wlasne(auto_id) -> list[tuple[int, str, list[str]]]:
     """Zwraca listę (id, nazwa, [lista_pozycji]) własnych pakietów użytkownika
     dla danego pojazdu, obok wbudowanych PAKIETY_SERWISOWE."""
     if not auto_id:

@@ -24,7 +24,7 @@ def _sparsuj_datetime(tekst):
     return None
 
 
-def pobierz_ostatnia_aktywnosc(auto_id, limit=5):
+def pobierz_ostatnia_aktywnosc(auto_id, limit=5) -> list[tuple[str, str, str, datetime, str, str]]:
     """Zwraca listę ostatnich zdarzeń (dodań i edycji) z tankowań, serwisu,
     wizyt i innych kosztów — dla widżetu 'Ostatnia aktywność' w kokpicie
     (patrz MainView._buduj_kokpit). Każde zdarzenie to krotka:
@@ -151,7 +151,7 @@ def zanotuj_uzycie_ekranu(ekran_id):
         pass
 
 
-def pobierz_ostatnie_ekrany(limit=5, pomin=()):
+def pobierz_ostatnie_ekrany(limit=5, pomin=()) -> list[str]:
     """Ostatnio otwierane ekrany, najświeższy pierwszy. `pomin` odsiewa te, które
     i tak są już widoczne (np. przypięte kafelki), żeby nie dublować wejść."""
     try:
@@ -167,7 +167,7 @@ def pobierz_ostatnie_ekrany(limit=5, pomin=()):
         return []
 
 
-def pobierz_przypiete_ekrany():
+def pobierz_przypiete_ekrany() -> list[str]:
     """Kafelki skrótów na Kokpicie. Pusty wynik oznacza „użytkownik jeszcze nic
     nie wybrał” — wtedy dostaje sensowny zestaw startowy, a nie pustą sekcję.
     Świadomie odpięcie wszystkiego zapisujemy jako znacznik, żeby odróżnić je

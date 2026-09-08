@@ -60,7 +60,7 @@ def etykieta_kategorii_innych(wartosc):
     return tekst or KATEGORIA_INNE_DOMYSLNA
 
 
-def pobierz_koszty_innych_wg_kategorii(auto_id, od_data=None, do_data=None):
+def pobierz_koszty_innych_wg_kategorii(auto_id, od_data=None, do_data=None) -> list[tuple[str, float, int]]:
     """[(kategoria, suma, liczba_wpisow)] posortowane malejąco po sumie.
     Kategorie bez ani jednego wpisu w okresie się nie pojawiają — pusta pozycja
     w rozbiciu tylko rozprasza."""
@@ -122,7 +122,7 @@ def koszty_w_okresie(auto_id, od_data=None, do_data=None):
     return wynik
 
 
-def pobierz_koszty_miesieczne(auto_id, liczba_miesiecy=6):
+def pobierz_koszty_miesieczne(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, float]]:
     """Suma kosztów (paliwo + serwis + inne) dla ostatnich `liczba_miesiecy`
     miesięcy, włącznie z bieżącym — używane przez mini-wykres na dashboardzie
     startowym (patrz MainView._buduj_kokpit). Zwraca listę (rok, miesiac, suma)
@@ -212,7 +212,7 @@ def klucz_stacji(nazwa):
     return tekst.strip(" .,;:-")
 
 
-def pobierz_stacje_paliw(auto_id):
+def pobierz_stacje_paliw(auto_id) -> list[str]:
     """Słownik stacji budowany w locie z dotychczasowych tankowań pojazdu — bez
     osobnej tabeli, bo dane już są w 'tankowania'. Warianty zapisu tej samej
     stacji są scalane; jako kanoniczna wygrywa forma użyta najczęściej, a przy

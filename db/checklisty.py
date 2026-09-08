@@ -1,6 +1,7 @@
 """Checklisty — listy kontrolne odhaczane przed wyjazdem."""
 
 from datetime import datetime
+from typing import Any
 
 from .stale import CHECKLISTA_PRZEDWYJAZDOWA
 from .polaczenie import polacz_baze
@@ -23,7 +24,7 @@ from .synchronizacja import zarejestruj_nagrobek
 # zapisujemy, wystarczy `ostatnie_uzycie` w nagłówku.
 
 
-def pobierz_checklisty(auto_id):
+def pobierz_checklisty(auto_id) -> list[dict[str, Any]]:
     """Wszystkie checklisty pojazdu razem z pozycjami — jednym zapytaniem na
     tabelę, bez N+1. Zwraca listę słowników gotowych do wyświetlenia."""
     if not auto_id:

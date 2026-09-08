@@ -1,8 +1,8 @@
-"""Cztery audyty, które do tej pory były jednorazowymi skryptami.
+"""Pięć audytów, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
-konstruktor widoku naprawdę poskładał. Dwa ostatnie czytają AST, bo dotyczą
+konstruktor widoku naprawdę poskładał. Trzy ostatnie czytają AST, bo dotyczą
 rzeczy, których w drzewie już nie widać.
 
 Moduł da się uruchomić wprost, żeby zobaczyć raport:
@@ -14,9 +14,13 @@ Asercje siedzą w test_audyty.py; tutaj są same silniki.
 """
 
 import ast
+import collections
 import dataclasses
+import inspect
 import pathlib
 import sys
+import types
+import typing
 
 sys.path[:0] = [str(pathlib.Path(__file__).resolve().parent), str(pathlib.Path(__file__).resolve().parents[1])]
 
@@ -496,6 +500,287 @@ def porownaj_ciche_wyjatki(znalezione=None, zapisane=None):
 
 
 # ============================================================================
+#  AUDYT 5 — kształt wyniku funkcji `db` (AST)
+# ============================================================================
+# `pobierz_dane_timeline` urosło kiedyś z ośmiu elementów krotki do dziewięciu.
+# Rozpakowanie w innym pliku wywaliło się dopiero W CZASIE DZIAŁANIA, komunikatem
+# „too many values to unpack" — czyli po wejściu na ekran, u kogoś, kto akurat
+# miał dane. Adnotacje zwrotu na publicznych funkcjach `db` opisują ten kształt;
+# ten audyt sprawdza, czy miejsca konsumpcji się z nim zgadzają.
+#
+# To nie jest kontrola typów, tylko kontrola ARNOŚCI — jedynej rzeczy, którą da
+# się złamać cicho: `a, b, c = f()` przy czteroelementowej krotce, `w[7]` przy
+# siedmiu polach, `w[0]` na słowniku.
+#
+# Zasada ostrożności jest ta sama, co w audycie pól kontrolek: śledzimy tylko
+# zmienne wiązane w swoim zakresie DOKŁADNIE RAZ. Zmienna nadpisywana w pętli
+# albo pod warunkiem może w danym miejscu trzymać cokolwiek, a audyt, który
+# sypie fałszywkami, przestaje być czytany.
+#
+# Czego audyt NIE zobaczy: wiersza, który poszedł do funkcji pomocniczej
+# (`utils.filtruj_po_kategorii(zdarzenia, …)`) albo do metody jako argument.
+# Od tej strony pilnuje tego test wykonania — `tests/test_typy_db.py` woła
+# funkcje na bazie testowej i sprawdza, czy naprawdę zwracają to, co deklarują.
+# Razem zamykają obieg: zmiana kształtu zapala test wykonania, a poprawiona
+# adnotacja zapala ten audyt na każdym miejscu, które trzeba dostosować.
+
+
+def _rozbierz_adnotacje(adnotacja):
+    """Adnotacja zwrotu -> (rodzaj, arność).
+
+    rodzaj: 'krotka' (funkcja zwraca samą krotkę), 'lista-krotek',
+    'lista-slownikow' albo 'inny'. Arność ma sens tylko dla dwóch pierwszych;
+    None znaczy „nie wiadomo" (np. `tuple[int, ...]`)."""
+    def bez_none(a):
+        # `tuple[…] | None` — interesuje nas kształt, nie to, że bywa pusto.
+        if typing.get_origin(a) in (types.UnionType, typing.Union):
+            warianty = [x for x in typing.get_args(a) if x is not type(None)]
+            return warianty[0] if len(warianty) == 1 else None
+        return a
+
+    adnotacja = bez_none(adnotacja)
+    if adnotacja is None:
+        return "inny", None
+
+    zrodlo = typing.get_origin(adnotacja)
+    argumenty = typing.get_args(adnotacja)
+
+    if zrodlo is tuple:
+        return ("krotka", None if Ellipsis in argumenty else len(argumenty))
+
+    if zrodlo is list and argumenty:
+        element = bez_none(argumenty[0])
+        if element is not None:
+            zrodlo_elementu = typing.get_origin(element)
+            if zrodlo_elementu is tuple:
+                argumenty_elementu = typing.get_args(element)
+                return ("lista-krotek",
+                        None if Ellipsis in argumenty_elementu else len(argumenty_elementu))
+            if zrodlo_elementu is dict or element is dict:
+                return "lista-slownikow", None
+
+    return "inny", None
+
+
+def funkcje_db():
+    """Nazwy wszystkich publicznych funkcji pakietu `db`."""
+    import db
+
+    return {n for n in dir(db)
+            if not n.startswith("_") and inspect.isfunction(getattr(db, n))}
+
+
+def ksztalty_db():
+    """{funkcja: (rodzaj, arność)} — z adnotacji zwrotu, tylko dla tych,
+    z których w ogóle da się odczytać kształt."""
+    import db
+
+    ksztalty = {}
+    for nazwa in funkcje_db():
+        adnotacja = getattr(getattr(db, nazwa), "__annotations__", {}).get("return")
+        if adnotacja is None:
+            continue
+        rodzaj, arnosc = _rozbierz_adnotacje(adnotacja)
+        if rodzaj != "inny":
+            ksztalty[nazwa] = (rodzaj, arnosc)
+    return ksztalty
+
+
+def _wezly_zakresu(zakres):
+    """Węzły należące do TEGO zakresu — bez wnętrza zagnieżdżonych funkcji i klas.
+
+    `ast.walk` zszedłby do funkcji wewnętrznych i policzył ich zmienne jako
+    nasze; przy nazwach w rodzaju `w`, `t`, `r` to gwarancja fałszywek."""
+    do_odwiedzenia = list(ast.iter_child_nodes(zakres))
+    while do_odwiedzenia:
+        wezel = do_odwiedzenia.pop()
+        if isinstance(wezel, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        yield wezel
+        do_odwiedzenia.extend(ast.iter_child_nodes(wezel))
+
+
+def _zakresy(drzewo):
+    yield drzewo
+    for wezel in ast.walk(drzewo):
+        if isinstance(wezel, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield wezel
+
+
+def _wiazania(zakres):
+    """Ile razy każda nazwa jest w tym zakresie wiązana — przypisaniem, pętlą,
+    wyrażeniem listowym, `with … as`, `except … as` albo jako argument."""
+    licznik = collections.Counter()
+
+    def policz(cel):
+        if isinstance(cel, ast.Name):
+            licznik[cel.id] += 1
+        elif isinstance(cel, (ast.Tuple, ast.List)):
+            for element in cel.elts:
+                policz(element)
+        elif isinstance(cel, ast.Starred):
+            policz(cel.value)
+
+    if isinstance(zakres, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for grupa in (zakres.args.posonlyargs, zakres.args.args, zakres.args.kwonlyargs):
+            for argument in grupa:
+                licznik[argument.arg] += 1
+
+    for wezel in _wezly_zakresu(zakres):
+        if isinstance(wezel, ast.Assign):
+            for cel in wezel.targets:
+                policz(cel)
+        elif isinstance(wezel, (ast.AugAssign, ast.AnnAssign, ast.NamedExpr)):
+            policz(wezel.target)
+        elif isinstance(wezel, (ast.For, ast.AsyncFor)):
+            policz(wezel.target)
+        elif isinstance(wezel, ast.comprehension):
+            policz(wezel.target)
+        elif isinstance(wezel, ast.withitem) and wezel.optional_vars is not None:
+            policz(wezel.optional_vars)
+        elif isinstance(wezel, ast.ExceptHandler) and wezel.name:
+            licznik[wezel.name] += 1
+
+    return licznik
+
+
+def _wywolanie_db(wezel, znane):
+    """`db.cokolwiek(...)` -> 'cokolwiek', o ile to nazwa z `znane`."""
+    if not isinstance(wezel, ast.Call) or not isinstance(wezel.func, ast.Attribute):
+        return None
+    cel = wezel.func
+    if isinstance(cel.value, ast.Name) and cel.value.id == "db" and cel.attr in znane:
+        return cel.attr
+    return None
+
+
+def konsumpcje_db(sciezki=None, korzen=None, znane=None):
+    """Miejsca, w których wynik `db.*` jest rozpakowywany albo indeksowany.
+
+    Zwraca listę słowników {plik, linia, funkcja, rodzaj, liczba}:
+    'rozpakowanie-wiersza' (liczba = ile nazw po lewej), 'rozpakowanie-wyniku'
+    (funkcja zwraca samą krotkę) albo 'indeks' (liczba = użyty indeks)."""
+    korzen = korzen or KORZEN_PROJEKTU
+    znane = znane if znane is not None else funkcje_db()
+    konsumpcje = []
+
+    for sciezka in sciezki if sciezki is not None else _pliki_projektu():
+        wzgledna = sciezka.relative_to(korzen).as_posix()
+        drzewo = ast.parse(sciezka.read_text(encoding="utf-8"), filename=str(sciezka))
+
+        for zakres in _zakresy(drzewo):
+            raz = {n for n, ile in _wiazania(zakres).items() if ile == 1}
+            wynik = {}    # zmienna -> funkcja db (trzyma CAŁY wynik)
+            wiersz = {}   # zmienna -> funkcja db (trzyma JEDEN element listy)
+
+            def zrodlo(wezel):
+                nazwa = _wywolanie_db(wezel, znane)
+                if nazwa:
+                    return nazwa
+                if isinstance(wezel, ast.Name) and wezel.id in raz:
+                    return wynik.get(wezel.id)
+                return None
+
+            # 1. `zmienna = db.f(...)`
+            for wezel in _wezly_zakresu(zakres):
+                if (isinstance(wezel, ast.Assign) and len(wezel.targets) == 1
+                        and isinstance(wezel.targets[0], ast.Name)
+                        and wezel.targets[0].id in raz):
+                    nazwa = _wywolanie_db(wezel.value, znane)
+                    if nazwa:
+                        wynik[wezel.targets[0].id] = nazwa
+
+            # 2. pętle, wyrażenia listowe i rozpakowania
+            for wezel in _wezly_zakresu(zakres):
+                iteracje = []
+                if isinstance(wezel, (ast.For, ast.AsyncFor)):
+                    iteracje.append((wezel.target, wezel.iter, wezel.lineno))
+                elif isinstance(wezel, ast.comprehension):
+                    iteracje.append((wezel.target, wezel.iter, getattr(wezel.iter, "lineno", 0)))
+
+                for cel, iterowane, linia in iteracje:
+                    nazwa = zrodlo(iterowane)
+                    if not nazwa:
+                        continue
+                    if isinstance(cel, ast.Name):
+                        if cel.id in raz:
+                            wiersz[cel.id] = nazwa
+                    elif isinstance(cel, (ast.Tuple, ast.List)):
+                        if not any(isinstance(e, ast.Starred) for e in cel.elts):
+                            konsumpcje.append({"plik": wzgledna, "linia": linia, "funkcja": nazwa,
+                                               "rodzaj": "rozpakowanie-wiersza", "liczba": len(cel.elts)})
+
+                if (isinstance(wezel, ast.Assign) and len(wezel.targets) == 1
+                        and isinstance(wezel.targets[0], (ast.Tuple, ast.List))):
+                    nazwa = _wywolanie_db(wezel.value, znane)
+                    cele = wezel.targets[0].elts
+                    if nazwa and not any(isinstance(e, ast.Starred) for e in cele):
+                        konsumpcje.append({"plik": wzgledna, "linia": wezel.lineno, "funkcja": nazwa,
+                                           "rodzaj": "rozpakowanie-wyniku", "liczba": len(cele)})
+
+            # 3. `wiersz[i]`
+            for wezel in _wezly_zakresu(zakres):
+                if not (isinstance(wezel, ast.Subscript) and isinstance(wezel.value, ast.Name)):
+                    continue
+                nazwa = wiersz.get(wezel.value.id)
+                indeks = wezel.slice
+                if not nazwa or not isinstance(indeks, ast.Constant):
+                    continue
+                if not isinstance(indeks.value, int) or isinstance(indeks.value, bool):
+                    continue
+                konsumpcje.append({"plik": wzgledna, "linia": wezel.lineno, "funkcja": nazwa,
+                                   "rodzaj": "indeks", "liczba": indeks.value})
+
+    return konsumpcje
+
+
+def audyt_ksztaltu_wynikow(sciezki=None, korzen=None, ksztalty=None):
+    """Konsumpcje wyników `db` niezgodne z adnotacją zwrotu."""
+    ksztalty = ksztalty if ksztalty is not None else ksztalty_db()
+    znaleziska = []
+
+    for uzycie in konsumpcje_db(sciezki, korzen, znane=set(ksztalty)):
+        rodzaj, arnosc = ksztalty[uzycie["funkcja"]]
+        miejsce = {"plik": uzycie["plik"], "linia": uzycie["linia"]}
+        wolane = f"db.{uzycie['funkcja']}()"
+
+        if uzycie["rodzaj"] == "rozpakowanie-wiersza":
+            if rodzaj == "lista-slownikow":
+                znaleziska.append({**miejsce,
+                    "opis": f"{wolane} zwraca słowniki, a wiersz jest rozpakowywany na {uzycie['liczba']} nazwy"})
+            elif rodzaj == "lista-krotek" and arnosc is not None and uzycie["liczba"] != arnosc:
+                znaleziska.append({**miejsce,
+                    "opis": f"{wolane} zwraca krotki {arnosc}-elementowe, a rozpakowanie bierze {uzycie['liczba']}"})
+
+        elif uzycie["rodzaj"] == "rozpakowanie-wyniku":
+            if rodzaj == "krotka" and arnosc is not None and uzycie["liczba"] != arnosc:
+                znaleziska.append({**miejsce,
+                    "opis": f"{wolane} zwraca krotkę {arnosc}-elementową, a rozpakowanie bierze {uzycie['liczba']}"})
+
+        elif uzycie["rodzaj"] == "indeks":
+            if rodzaj == "lista-slownikow":
+                znaleziska.append({**miejsce,
+                    "opis": f"{wolane} zwraca słowniki, a wiersz jest indeksowany liczbą [{uzycie['liczba']}]"})
+            elif rodzaj == "lista-krotek" and arnosc is not None and not -arnosc <= uzycie["liczba"] < arnosc:
+                znaleziska.append({**miejsce,
+                    "opis": f"{wolane} zwraca krotki {arnosc}-elementowe, a odczyt sięga po [{uzycie['liczba']}]"})
+
+    return znaleziska
+
+
+def funkcje_db_konsumowane_bez_adnotacji(sciezki=None, korzen=None):
+    """Funkcje `db`, których wynik ktoś rozpakowuje albo indeksuje, a które nie
+    mówią, jaki ten wynik ma kształt.
+
+    Bez tego lista adnotacji po cichu przestaje nadążać za kodem: nowa funkcja
+    zwracająca krotki nie zapala niczego, dopóki komuś nie wywali się przy
+    rozpakowaniu — czyli w czasie działania, u użytkownika."""
+    ksztalty = ksztalty_db()
+    return sorted({u["funkcja"] for u in konsumpcje_db(sciezki, korzen)
+                   if u["funkcja"] not in ksztalty})
+
+
+# ============================================================================
 #  RAPORT
 # ============================================================================
 
@@ -525,6 +810,16 @@ if __name__ == "__main__":
         print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
     for z in nierozstrzygniete:
         print(f"  [?] {z['plik']}:{z['linia']} — {z['cel']}")
+
+    print("\n== Audyt kształtu wyników db ==")
+    ksztalty = ksztalty_db()
+    print(f"  funkcji z opisanym kształtem: {len(ksztalty)}")
+    print(f"  sprawdzonych miejsc konsumpcji: {len(konsumpcje_db(znane=set(ksztalty)))}")
+    for z in audyt_ksztaltu_wynikow(ksztalty=ksztalty):
+        print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
+    bez_adnotacji = funkcje_db_konsumowane_bez_adnotacji()
+    for nazwa in bez_adnotacji:
+        print(f"  [bez adnotacji] db.{nazwa}()")
 
     nowe, przybylo, ubylo = porownaj_ciche_wyjatki()
     print("\n== Audyt cichych `except: pass` ==")

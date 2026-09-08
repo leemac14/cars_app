@@ -3,6 +3,7 @@
 import sqlite3
 from date import parsuj_date
 from datetime import datetime
+from typing import Any
 
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, ZRODLA_ODCZYTU, ZRODLA_PRZEBIEGU, ZRODLO_ODCZYTU_DOMYSLNE
 from .polaczenie import polacz_baze
@@ -209,7 +210,7 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
     return km_roznica / dni_roznica
 
 
-def pobierz_historie_przebiegu(auto_id):
+def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
     """Chronologiczna historia stanu licznika złożona ze wszystkich źródeł
     (tankowania, wizyty, historia bez wizyty, ręczne odczyty) — do wykresu
     przebiegu w paszporcie pojazdu. Dla każdej daty zostaje zapisany najwyższy
@@ -300,7 +301,7 @@ KROTNOSC_SKOKU_PRZEBIEGU = 6
 MIN_SKOK_PRZEBIEGU_NA_DZIEN = 400
 
 
-def pobierz_pelna_historie_przebiegu(auto_id):
+def pobierz_pelna_historie_przebiegu(auto_id) -> list[dict[str, Any]]:
     """WSZYSTKIE znane stany licznika pojazdu, nie tylko ręczne odczyty.
 
     Każde tankowanie, każda wizyta i każdy wpis serwisowy niosą przebieg — do tej

@@ -5,7 +5,7 @@ from .synchronizacja import zarejestruj_nagrobek
 from .nazwy import klucz_nazwy, normalizuj_nazwe
 
 
-def pobierz_tagi(auto_id):
+def pobierz_tagi(auto_id) -> list[tuple[int, str, str]]:
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute("SELECT id, nazwa, kolor FROM tagi WHERE auto_id=?", (auto_id,))

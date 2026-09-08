@@ -1,4 +1,4 @@
-"""Cztery audyty wpięte w pytest — plus testy samych audytów.
+"""Pięć audytów wpiętych w pytest — plus testy samych audytów.
 
 Do tej pory były jednorazowymi skryptami: napisane, uruchomione raz, wyrzucone.
 Każdy z nich wykrył prawdziwy błąd (24 rozciągnięte chipy po cofnięciu
@@ -310,6 +310,123 @@ def test_porownanie_rozpoznaje_nowy_plik_i_przyrost():
 
 
 # ============================================================================
+#  1e. TESTY AUDYTU kształtu wyników `db`
+# ============================================================================
+
+KSZTALTY_PROBNE = {
+    "pobierz_wiersze": ("lista-krotek", 3),
+    "pobierz_slowniki": ("lista-slownikow", None),
+    "policz": ("krotka", 2),
+}
+
+
+def _audyt_ksztaltu(tmp_path, kod):
+    sciezka = _plik(tmp_path, "moj.py", kod)
+    return audyty.audyt_ksztaltu_wynikow([sciezka], korzen=tmp_path, ksztalty=KSZTALTY_PROBNE)
+
+
+def test_audyt_ksztaltu_lapie_rozpakowanie_o_zlej_arnosci(tmp_path):
+    znaleziska = _audyt_ksztaltu(tmp_path, """
+        def f(auto_id):
+            for a, b in db.pobierz_wiersze(auto_id):
+                print(a, b)
+    """)
+
+    assert len(znaleziska) == 1
+    assert "3-elementowe" in znaleziska[0]["opis"] and "bierze 2" in znaleziska[0]["opis"]
+
+
+def test_audyt_ksztaltu_lapie_indeks_poza_krotka(tmp_path):
+    znaleziska = _audyt_ksztaltu(tmp_path, """
+        def f(auto_id):
+            wiersze = db.pobierz_wiersze(auto_id)
+            for w in wiersze:
+                print(w[3])
+    """)
+
+    assert len(znaleziska) == 1
+    assert "[3]" in znaleziska[0]["opis"]
+
+
+def test_audyt_ksztaltu_przepuszcza_poprawny_indeks_i_ujemny(tmp_path):
+    assert _audyt_ksztaltu(tmp_path, """
+        def f(auto_id):
+            wiersze = db.pobierz_wiersze(auto_id)
+            for w in wiersze:
+                print(w[2], w[-1])
+    """) == []
+
+
+def test_audyt_ksztaltu_lapie_slownik_indeksowany_liczba(tmp_path):
+    znaleziska = _audyt_ksztaltu(tmp_path, """
+        def f(auto_id):
+            for s in db.pobierz_slowniki(auto_id):
+                print(s[0])
+    """)
+
+    assert len(znaleziska) == 1
+    assert "indeksowany liczbą" in znaleziska[0]["opis"]
+
+
+def test_audyt_ksztaltu_lapie_rozpakowanie_samego_wyniku(tmp_path):
+    znaleziska = _audyt_ksztaltu(tmp_path, """
+        def f():
+            a, b, c = db.policz()
+    """)
+
+    assert len(znaleziska) == 1
+    assert "krotkę 2-elementową" in znaleziska[0]["opis"]
+
+
+def test_audyt_ksztaltu_milczy_przy_zmiennej_nadpisywanej(tmp_path):
+    """Zmienna wiązana w zakresie dwa razy może trzymać cokolwiek. To jest ta
+    sama ostrożność, co przy audycie pól kontrolek — i jedyny powód, dla którego
+    audyt nadaje się do czytania."""
+    assert _audyt_ksztaltu(tmp_path, """
+        def f(auto_id, cos_innego):
+            for w in db.pobierz_wiersze(auto_id):
+                print(w[9])
+            for w in cos_innego:
+                print(w[9])
+    """) == []
+
+
+def test_audyt_ksztaltu_nie_schodzi_do_funkcji_wewnetrznej(tmp_path):
+    """`w` w funkcji zagnieżdżonej to inna zmienna, choć nazywa się tak samo."""
+    assert _audyt_ksztaltu(tmp_path, """
+        def f(auto_id):
+            wiersze = db.pobierz_wiersze(auto_id)
+
+            def rysuj(cokolwiek):
+                for w in cokolwiek:
+                    return w[7]
+
+            for w in wiersze:
+                print(w[2])
+    """) == []
+
+
+def test_audyt_ksztaltu_pomija_gwiazdke(tmp_path):
+    """`a, *reszta = ...` jest poprawne przy dowolnej arności."""
+    assert _audyt_ksztaltu(tmp_path, """
+        def f(auto_id):
+            for a, *reszta in db.pobierz_wiersze(auto_id):
+                print(a, reszta)
+    """) == []
+
+
+def test_odczyt_ksztaltu_z_adnotacji():
+    """Sam czytnik adnotacji — bez niego audyt milczałby na wszystkim."""
+    assert audyty._rozbierz_adnotacje(list[tuple[int, str, float]]) == ("lista-krotek", 3)
+    assert audyty._rozbierz_adnotacje(tuple[int, int]) == ("krotka", 2)
+    assert audyty._rozbierz_adnotacje(list[dict[str, int]]) == ("lista-slownikow", None)
+    assert audyty._rozbierz_adnotacje(tuple[int, int] | None) == ("krotka", 2)
+    assert audyty._rozbierz_adnotacje(tuple[int, ...]) == ("krotka", None)
+    assert audyty._rozbierz_adnotacje(list[str]) == ("inny", None)
+    assert audyty._rozbierz_adnotacje(int) == ("inny", None)
+
+
+# ============================================================================
 #  2. AUDYTY NA PRAWDZIWYM KODZIE
 # ============================================================================
 
@@ -398,6 +515,18 @@ def test_projekt_podaje_run_task_prawdziwe_korutyny():
         "sprawdź ręcznie i dopisz do NIEROZSTRZYGNIETE_RUN_TASK w tests/audyty.py:\n"
         + "\n".join(f"{z['plik']}:{z['linia']} — {z['cel']}" for z in nierozstrzygniete)
     )
+
+def test_projekt_konsumuje_wyniki_db_zgodnie_z_adnotacjami():
+    """Rozpakowania i indeksy kontra adnotacje zwrotu warstwy danych.
+
+    Drugą połowę tej kontroli robi `tests/test_typy_db.py`: tam funkcje `db` są
+    wołane naprawdę i sprawdzane, czy zwracają to, co deklarują. Tu sprawdzamy,
+    czy konsumenci się z deklaracją zgadzają."""
+    znaleziska = audyty.audyt_ksztaltu_wynikow()
+    assert znaleziska == [], "\n".join(
+        f"{z['plik']}:{z['linia']} — {z['opis']}" for z in znaleziska
+    )
+
 
 def test_ciche_wyjatki_nie_przybywaja():
     """Zamek na `except …: pass`, w duchu zamka na odciskach migracji.

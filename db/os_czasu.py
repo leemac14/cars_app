@@ -6,7 +6,7 @@ from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 
 
-def pobierz_dane_timeline(auto_id):
+def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float | None, str | None, str, str | None, str | None]]:
     """Zbiorcza, chronologiczna lista zdarzeń pojazdu ze wszystkich modułów
     (tankowania, historia serwisowa, wizyty zbiorcze, inne koszty, galeria
     karoserii, odczyty przebiegu) — używana przez widok /timeline ("dziennik

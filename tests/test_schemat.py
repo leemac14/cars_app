@@ -8,11 +8,15 @@ lepiej niż człowiek po każdej migracji.
 
 Testy czytają PRAGMA z prawdziwej, zmigrowanej bazy — nie z kopii schematu
 przepisanej do testu, bo taka kopia rozjeżdża się przy pierwszej migracji.
+
+Plik ma dwie części. Pierwsza sprawdza, czy lista w kodzie nie wskazuje na
+kolumnę, której nie ma — kierunek łatwiejszy, bo usunięta kolumna wywala
+zapytanie od razu. Druga (na dole) sprawdza kierunek ODWROTNY: czy każda
+kolumna w bazie jest przez kod rozstrzygnięta. To ten kierunek psuje się po
+cichu.
 """
 
 import sqlite3
-
-import pytest
 
 import db
 import pomoce
@@ -31,10 +35,79 @@ POZA_KOSZEM_SWIADOMIE = {
 }
 
 
-@pytest.fixture(scope="module")
-def _schemat_modulu(tmp_path_factory):
-    """Jedna zmigrowana baza na cały plik — testy schematu tylko z niej czytają."""
-    return None
+
+# ============================================================================
+#  KIERUNEK ODWROTNY: schemat -> kod
+# ============================================================================
+# Testy powyżej pilnują, żeby lista w kodzie nie wskazywała na kolumnę, której
+# nie ma. To jest kierunek ŁATWIEJSZY i mniej groźny: usunięta kolumna wywala
+# zapytanie od razu.
+#
+# Groźny jest kierunek odwrotny. Dopisujesz migracją kolumnę, zapominasz dopisać
+# ją do listy — i nic się nie dzieje. Aplikacja działa, testy są zielone, a dane
+# po prostu nie jadą do chmury. Wychodzi to dopiero wtedy, gdy druga osoba pyta,
+# czemu u niej tego nie ma; czyli tygodnie później i bez wskazania winowajcy.
+#
+# Poniższe zbiory są zamkiem tego kierunku: każda kolumna spoza listy musi być
+# wpisana tutaj ŚWIADOMIE, z powodem. `test_wyjatki_nie_gnija` pilnuje, żeby
+# wpis, który przestał być potrzebny, nie został tu na zawsze.
+
+
+# Kolumny księgowe każdej synchronizowanej tabeli — klucz własny, powiązanie
+# z pojazdem i para znaczników wysyłki. Nigdy nie są DANYMI.
+KOLUMNY_TECHNICZNE_SYNC = {"id", "auto_id", "zdalne_id", "zdalny_hash"}
+
+
+POZA_SYNC_SWIADOMIE = {
+    # Zdjęcia nadal nie jadą do chmury (pomysł N-06, dług zapisany wprost
+    # w notatce o współdzieleniu). Kolumna `zalacznik` niesie ścieżkę do pliku,
+    # który istnieje wyłącznie na tym urządzeniu — wysłanie samej ścieżki dałoby
+    # drugiej osobie odsyłacz donikąd.
+    ("tankowania", "zalacznik"),
+    ("wizyty", "zalacznik"),
+    ("historia", "zalacznik"),
+    ("magazyn_czesci", "zalacznik"),
+    ("zestawy_opon", "zalacznik"),
+    ("inne_koszty", "zalacznik"),
+    # WYLICZANE, nie wpisywane: `aktualizuj_najnowszy_wpis` przepisuje tu datę
+    # i przebieg najnowszego wpisu z `historia`, a synchronizacja woła
+    # `przelicz_wszystkie_zadania` po KAŻDYM pobraniu. Wysyłanie ich znaczyłoby
+    # wysyłanie tego samego dwa razy — i produkowanie konfliktów tam, gdzie
+    # źródło prawdy (`historia`) i tak przyjeżdża komplet.
+    ("zadania", "data"),
+    ("zadania", "przebieg"),
+}
+
+
+# Kolumny `samochody`, które opisują WSPÓŁDZIELENIE, a nie pojazd. Z definicji
+# lokalne: to one prowadzą rozmowę z chmurą, więc nie mogą w niej jechać.
+KOLUMNY_KSIEGOWE_POJAZDU = {
+    "id", "wspolny_pojazd_id", "kod_zaproszenia", "kod_wspolautora",
+    "kod_podgladu", "rola_wspoldzielenia", "info_zdalne_id", "zdalny_hash_info",
+    "znacznik_delty",
+}
+
+
+POZA_POJAZDEM_SWIADOMIE = {
+    # Jak wyżej: sama ścieżka bez pliku jest dla drugiej strony bezużyteczna.
+    "zdjecie_glowne",
+    # DECYZJA, nie przeoczenie: kolor interfejsu przy tym aucie zostaje lokalny.
+    # Argument za wysyłaniem istnieje (kolor jest cechą pojazdu, tak jak
+    # nadwozie), więc gdyby kiedyś przeważył, wystarczy przenieść tę nazwę do
+    # KOLUMNY_POJAZDU — test przypomni się sam.
+    "kolor_motywu",
+}
+
+
+# Kolumna, której nazwa brzmi jak ścieżka do pliku, a nią nie jest.
+POZA_SCIEZKAMI_SWIADOMIE = {
+    ("kosz_pojazdy", "pliki"),           # lista nazw plików migawki, w JSON
+    ("kosz_pojazdy", "rozmiar_plikow"),  # liczba bajtów
+}
+
+# Po tych cząstkach nazwy poznajemy kolumnę niosącą ścieżkę. Heurystyka, i to
+# jest w porządku: jej zadaniem jest ZAPYTAĆ przy nowej kolumnie, a nie wyrokować.
+CZASTKI_NAZW_SCIEZEK = ("sciezka", "zalacznik", "zdjecie", "foto", "plik", "obraz")
 
 
 def kolumny_tabeli(tabela):
@@ -290,3 +363,104 @@ def test_kolumny_terminow_dokumentow_istnieja(baza):
     istniejace = kolumny_tabeli("samochody")
     for _, kolumna, _ in db.TERMINY_DOKUMENTOW:
         assert kolumna in istniejace, f"samochody.{kolumna} nie istnieje"
+
+# ------------------------------------------------- kierunek odwrotny
+
+
+def test_kazda_kolumna_synchronizowanej_tabeli_jest_rozstrzygnieta(baza):
+    """Nowa kolumna w synchronizowanej tabeli albo jedzie, albo jest wyjątkiem.
+
+    Trzeciej możliwości nie ma — a dziś trzecia możliwość jest domyślna i cicha."""
+    nierozstrzygniete = []
+    for konfig in sync.KONFIGURACJA_SYNC:
+        tabela = konfig["tabela"]
+        opisane = set(konfig["kolumny"]) | set(konfig.get("fk") or {}) | KOLUMNY_TECHNICZNE_SYNC
+        for kolumna in kolumny_tabeli(tabela):
+            if kolumna in opisane or (tabela, kolumna) in POZA_SYNC_SWIADOMIE:
+                continue
+            nierozstrzygniete.append(f"{tabela}.{kolumna}")
+
+    assert nierozstrzygniete == [], (
+        "kolumny, które NIE jadą do chmury i nikt tego nie zadeklarował:\n  "
+        + "\n  ".join(nierozstrzygniete)
+        + "\n\nDopisz je do `kolumny` w KONFIGURACJA_SYNC (sync.py) albo, jeśli mają "
+        "zostać lokalne, do POZA_SYNC_SWIADOMIE w tym pliku — z powodem."
+    )
+
+
+def test_kazda_kolumna_samochodu_jest_rozstrzygnieta(baza):
+    """To samo dla pojazdu. Pominięta kolumna znaczy: druga osoba nie zobaczy
+    daty przeglądu, telefonu do assistance albo tego, że auto zostało sprzedane."""
+    rozstrzygniete = set(sync.KOLUMNY_POJAZDU) | KOLUMNY_KSIEGOWE_POJAZDU | POZA_POJAZDEM_SWIADOMIE
+    nierozstrzygniete = [k for k in kolumny_tabeli("samochody") if k not in rozstrzygniete]
+
+    assert nierozstrzygniete == [], (
+        "kolumny `samochody`, które nie jadą do chmury i nikt tego nie zadeklarował: "
+        + ", ".join(nierozstrzygniete)
+        + "\n\nDopisz je do KOLUMNY_POJAZDU (sync.py) albo do POZA_POJAZDEM_SWIADOMIE "
+        "w tym pliku — z powodem."
+    )
+
+
+def test_kazda_kolumna_wygladajaca_na_sciezke_jest_rozstrzygnieta(baza):
+    """Kolumna ze ścieżką, której nie ma w KOLUMNY_ZE_SCIEZKAMI, jest niewidzialna
+    dla `napraw_sciezki_zalacznikow` — czyli po przeniesieniu kopii na inne
+    urządzenie wskazuje w pustkę i nikt tego nie naprawi."""
+    znane = set(db.KOLUMNY_ZE_SCIEZKAMI)
+    nierozstrzygniete = []
+    for tabela in sorted(wszystkie_tabele()):
+        for kolumna in kolumny_tabeli(tabela):
+            if not any(czastka in kolumna.lower() for czastka in CZASTKI_NAZW_SCIEZEK):
+                continue
+            if (tabela, kolumna) in znane or (tabela, kolumna) in POZA_SCIEZKAMI_SWIADOMIE:
+                continue
+            nierozstrzygniete.append(f"{tabela}.{kolumna}")
+
+    assert nierozstrzygniete == [], (
+        "kolumny wyglądające na ścieżkę pliku, o których nie wie naprawa ścieżek: "
+        + ", ".join(nierozstrzygniete)
+        + "\n\nDopisz je do KOLUMNY_ZE_SCIEZKAMI (db/stale.py) albo, jeśli mimo nazwy "
+        "nie niosą ścieżki, do POZA_SCIEZKAMI_SWIADOMIE w tym pliku."
+    )
+
+
+def test_wyjatki_nie_gnija(baza):
+    """Wyjątek, który przestał być potrzebny, jest gorszy od braku wyjątku:
+    wygląda jak decyzja, a jest śmieciem po zmianie sprzed pół roku.
+
+    Sprawdzamy dwie rzeczy naraz — czy wskazywana kolumna jeszcze istnieje
+    i czy nadal jest poza listą, do której wyjątek się odnosi."""
+    bledy = []
+
+    opisane_w_sync = {
+        k["tabela"]: set(k["kolumny"]) | set(k.get("fk") or {})
+        for k in sync.KONFIGURACJA_SYNC
+    }
+    for tabela, kolumna in sorted(POZA_SYNC_SWIADOMIE):
+        if tabela not in opisane_w_sync:
+            bledy.append(f"POZA_SYNC_SWIADOMIE: {tabela} nie jest już synchronizowana")
+        elif kolumna not in kolumny_tabeli(tabela):
+            bledy.append(f"POZA_SYNC_SWIADOMIE: {tabela}.{kolumna} nie istnieje w bazie")
+        elif kolumna in opisane_w_sync[tabela]:
+            bledy.append(f"POZA_SYNC_SWIADOMIE: {tabela}.{kolumna} JEDZIE już do chmury")
+
+    kolumny_samochodow = kolumny_tabeli("samochody")
+    for kolumna in sorted(POZA_POJAZDEM_SWIADOMIE | KOLUMNY_KSIEGOWE_POJAZDU):
+        if kolumna not in kolumny_samochodow:
+            bledy.append(f"wyjątki pojazdu: samochody.{kolumna} nie istnieje w bazie")
+        elif kolumna in sync.KOLUMNY_POJAZDU:
+            bledy.append(f"wyjątki pojazdu: samochody.{kolumna} JEDZIE już do chmury")
+
+    for tabela, kolumna in sorted(POZA_SCIEZKAMI_SWIADOMIE):
+        if tabela not in wszystkie_tabele() or kolumna not in kolumny_tabeli(tabela):
+            bledy.append(f"POZA_SCIEZKAMI_SWIADOMIE: {tabela}.{kolumna} nie istnieje w bazie")
+        elif (tabela, kolumna) in set(db.KOLUMNY_ZE_SCIEZKAMI):
+            bledy.append(f"POZA_SCIEZKAMI_SWIADOMIE: {tabela}.{kolumna} jest już w KOLUMNY_ZE_SCIEZKAMI")
+
+    for tabela in sorted(POZA_KOSZEM_SWIADOMIE):
+        if tabela not in wszystkie_tabele():
+            bledy.append(f"POZA_KOSZEM_SWIADOMIE: {tabela} nie istnieje w bazie")
+        elif tabela in db.KOSZ_TABELE_POTOMNE:
+            bledy.append(f"POZA_KOSZEM_SWIADOMIE: {tabela} jest już zabierana do kosza")
+
+    assert bledy == [], "nieaktualne wpisy na listach świadomych wyjątków:\n  " + "\n  ".join(bledy)

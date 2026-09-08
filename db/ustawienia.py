@@ -148,7 +148,7 @@ def zapisz_moje_imie(imie):
 # ZWINIĘTE, a nie rozwinięte, bo domyślnie wszystko jest otwarte: nowa grupa
 # dołożona do rejestru ekranów ma być widoczna od razu, a nie ukryta dlatego, że
 # nie było jej na starej liście.
-def pobierz_zwiniete_grupy_szuflady():
+def pobierz_zwiniete_grupy_szuflady() -> list[str]:
     zapisane = pobierz_ustawienie("szuflada_zwiniete", "") or ""
     return [g.strip() for g in zapisane.split(",") if g.strip()]
 
@@ -226,7 +226,7 @@ def _odczytaj_kolejnosc_kokpitu(zapisane):
     return kolejnosc
 
 
-def pobierz_widgety_kokpitu(auto_id=None):
+def pobierz_widgety_kokpitu(auto_id=None) -> list[str]:
     """Zwraca listę ID widżetów kokpitu wybranych przez użytkownika (patrz
     MainView._buduj_kokpit) — W KOLEJNOŚCI, W JAKIEJ ZOSTAŁY ZAPISANE, bo tę
     kolejność użytkownik ustawia sam, przeciągając kafelki w trybie edycji

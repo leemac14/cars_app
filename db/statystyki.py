@@ -3,6 +3,7 @@
 import sqlite3
 from date import parsuj_date
 from datetime import datetime
+from typing import Any
 
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE
 from .polaczenie import polacz_baze
@@ -111,7 +112,7 @@ def oblicz_kondycje_pojazdu(auto_id):
     return pobierz_rozbicie_kondycji(auto_id)["wynik"]
 
 
-def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None):
+def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, float]]:
     """Spalanie liczone ODCINKAMI między kolejnymi tankowaniami „do pełna” —
     dokładnie ta sama metoda, co wykres trendu w Statystykach, tylko bez
     uśredniania po miesiącach (jeden punkt = jeden odcinek między pełnymi
@@ -163,7 +164,7 @@ def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None):
     return seria
 
 
-def pobierz_serie_dziennego_przebiegu(auto_id, limit=12, min_dni=7):
+def pobierz_serie_dziennego_przebiegu(auto_id, limit=12, min_dni=7) -> list[tuple[str, float]]:
     """Średni przebieg dzienny w kolejnych odcinkach czasu — punkty do sparkline
     przy kafelku „Śr. dzienny” w kokpicie. Odcinki sklejamy tak, aby każdy miał
     co najmniej `min_dni` dni; bez tego dwa odczyty licznika z sąsiednich dni
@@ -195,7 +196,7 @@ def pobierz_serie_dziennego_przebiegu(auto_id, limit=12, min_dni=7):
     return seria
 
 
-def pobierz_przebieg_miesieczny(auto_id, liczba_miesiecy=6):
+def pobierz_przebieg_miesieczny(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, int]]:
     """Kilometry przejechane w kolejnych miesiącach — liczone z tych samych
     źródeł, co pobierz_historie_przebiegu(). Zwraca [(rok, miesiac, km)] w tej
     samej siatce miesięcy, co pobierz_koszty_miesieczne(), więc obie listy da
@@ -240,7 +241,7 @@ def pobierz_przebieg_miesieczny(auto_id, liczba_miesiecy=6):
     return wynik
 
 
-def pobierz_serie_kosztu_km(auto_id, liczba_miesiecy=6):
+def pobierz_serie_kosztu_km(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, float]]:
     """Koszt eksploatacji na kilometr w kolejnych miesiącach — punkty do
     sparkline przy kafelku „Koszt / km”. Miesiące bez przejechanych kilometrów
     są pomijane (dzielenie przez zero, a i tak nic nie mówią o koszcie jazdy).
@@ -262,7 +263,7 @@ def pobierz_serie_kosztu_km(auto_id, liczba_miesiecy=6):
     return seria
 
 
-def pobierz_statystyki_energii(auto_id):
+def pobierz_statystyki_energii(auto_id) -> list[dict[str, Any]]:
     """Zużycie i koszty rozbite NA KAŻDE ŹRÓDŁO ENERGII osobno.
 
     Przy hybrydzie plug-in jedna uśredniona liczba nie mówi nic sensownego —

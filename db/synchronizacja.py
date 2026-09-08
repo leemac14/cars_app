@@ -222,7 +222,7 @@ def usun_z_kolejki_sync(auto_id):
         conn.execute("DELETE FROM kolejka_sync WHERE auto_id=?", (auto_id,))
 
 
-def pobierz_kolejke_sync(limit=5, tylko_wymagalne=True):
+def pobierz_kolejke_sync(limit=5, tylko_wymagalne=True) -> list[tuple[int, str, int]]:
     """Zwraca [(auto_id, powod, proby)] zaległych synchronizacji. Domyślnie tylko
     te, których czas ponowienia (nastepna_proba) już minął — format ISO, żeby
     porównanie tekstowe było poprawne chronologicznie."""
@@ -304,7 +304,7 @@ def usun_nagrobek(zdalny_id):
         conn.execute("DELETE FROM zdalne_nagrobki WHERE zdalny_id=?", (zdalny_id,))
 
 
-def pobierz_nagrobki(auto_id=None):
+def pobierz_nagrobki(auto_id=None) -> list[tuple[int, str, str]]:
     """Nagrobki do wysłania przy synchronizacji danego pojazdu: jego własne plus
     te bez przypisania (starsze, sprzed migracji 40). Pomija te, które serwer
     odrzucił już MAKS_PROB_NAGROBKA razy."""

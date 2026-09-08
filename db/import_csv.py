@@ -80,7 +80,7 @@ def _prawda_csv(tekst):
     return _normalizuj_naglowek(tekst) in ("1", "tak", "yes", "true", "y", "t", "prawda", "x")
 
 
-def wczytaj_plik_csv(sciezka):
+def wczytaj_plik_csv(sciezka) -> tuple[list[str], list[list[str]]]:
     """Czyta plik CSV/TSV odporny na kodowanie (UTF-8 z BOM, CP1250, Latin-1)
     i separator (';', ',', tabulator). Zwraca (naglowki, wiersze) — wiersze to
     listy stringów wyrównane do długości nagłówka."""

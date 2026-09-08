@@ -3,6 +3,7 @@
 import sqlite3
 from date import parsuj_date
 from datetime import datetime, timedelta
+from typing import Any
 
 from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, TERMINY_DOKUMENTOW
 from .polaczenie import polacz_baze
@@ -10,7 +11,7 @@ from .ustawienia import pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_pr
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 
 
-def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=True):
+def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=True) -> list[dict[str, Any]]:
     """Każde powiadomienie niesie 'klucz' — stabilny identyfikator (typ + ID
     źródła), po którym rozpoznajemy je między odświeżeniami. Treść się do tego
     nie nadaje, bo opis zmienia się z każdym dniem („Zostało 12 dni”).
@@ -241,7 +242,7 @@ def pobierz_wyciszone_klucze(auto_id):
         return {r[0] for r in c.fetchall()}
 
 
-def pobierz_odlozone_powiadomienia(auto_id):
+def pobierz_odlozone_powiadomienia(auto_id) -> list[dict[str, Any]]:
     """Lista odłożonych powiadomień do sekcji „Odkładane” w panelu:
     [{klucz, tytul, do_dnia, data_tekst, dni_do_powrotu}] posortowana po dacie
     powrotu. Tytuł bierzemy z żywego powiadomienia, jeśli nadal istnieje —

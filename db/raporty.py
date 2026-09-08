@@ -56,7 +56,7 @@ def _znajdz_czcionki_grafiki():
     return None, None
 
 
-def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)):
+def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
     """PNG 1080×1440 z podsumowaniem roku. `dane` to wynik podsumowanie_roku().
     Zwraca bajty pliku albo rzuca RuntimeError, gdy Pillow jest niedostępne."""
     if Image is None:

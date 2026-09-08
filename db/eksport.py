@@ -285,7 +285,7 @@ def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
     }
 
 
-def generuj_csv(naglowki, wiersze):
+def generuj_csv(naglowki, wiersze) -> bytes:
     """Bajty pliku CSV (BOM UTF-8, separator ';') — ';' i przecinek dziesiętny
     (patrz formatuj_liczba_eksport) pasują do polskiego Excela."""
     bufor = io.StringIO()
@@ -296,7 +296,7 @@ def generuj_csv(naglowki, wiersze):
     return ('\ufeff' + bufor.getvalue()).encode('utf-8')
 
 
-def generuj_eksport_csv(dane_eksportu):
+def generuj_eksport_csv(dane_eksportu) -> tuple[bytes, str]:
     """
     dane_eksportu: {klucz: (naglowki, wiersze)} z pobierz_dane_eksportu().
     1 kategoria -> (bajty, 'csv'). Więcej -> każda kategoria jako osobny .csv

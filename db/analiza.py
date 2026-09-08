@@ -3,6 +3,7 @@
 import sqlite3
 from date import parsuj_date
 from datetime import date as date_cls, datetime, timedelta
+from typing import Any
 
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD
 from .polaczenie import polacz_baze
@@ -50,7 +51,7 @@ _DYSTANSE_ODNIESIENIA = [
 
 # -------------------- BUDŻETY --------------------
 
-def pobierz_budzety(auto_id):
+def pobierz_budzety(auto_id) -> list[dict[str, Any]]:
     """Ustawione limity pojazdu: [{kategoria, okres, kwota}] w stałej kolejności
     (kategorie jak w KATEGORIE_BUDZETU, miesięczne przed rocznymi)."""
     if not auto_id:
@@ -124,7 +125,7 @@ def _granice_okresu(okres, dzis=None):
     return poczatek, koniec, dni_okresu, dni_minione
 
 
-def stan_budzetow(auto_id, dzis=None):
+def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
     """Stan wykorzystania każdego ustawionego limitu. Dla każdego zwraca m.in.:
     wydano, limit, procent, pozostalo, tempo (prognoza całego okresu przy
     dotychczasowym tempie), status ('ok' / 'uwaga' / 'przekroczony') oraz
@@ -663,7 +664,7 @@ def podsumowanie_roku(auto_id, rok=None):
     }
 
 
-def lata_z_danymi(auto_id):
+def lata_z_danymi(auto_id) -> list[int]:
     """Lata, w których pojazd ma jakikolwiek wpis — malejąco. Selektor roku w
     „Roku w pigułce” pokazuje tylko te, dla których jest co pokazywać."""
     if not auto_id:

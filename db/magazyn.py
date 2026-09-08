@@ -84,7 +84,7 @@ def _rozlicz_czesci(zrodlo, rekord_id, uzyte, conn=None):
 
 
 # --- Wizyta zbiorcza (nazwy zachowane, bo używa ich formularz wizyty) ---
-def pobierz_uzyte_czesci_wizyty(wizyta_id):
+def pobierz_uzyte_czesci_wizyty(wizyta_id) -> list[tuple[int, float]]:
     return _pobierz_uzyte_czesci("wizyty", wizyta_id)
 
 
@@ -97,7 +97,7 @@ def rozlicz_czesci_z_magazynu(wizyta_id, uzyte, conn=None):
 
 
 # --- Pojedynczy wpis serwisowy (poza wizytą) ---
-def pobierz_uzyte_czesci_wpisu(historia_id):
+def pobierz_uzyte_czesci_wpisu(historia_id) -> list[tuple[int, float]]:
     return _pobierz_uzyte_czesci("historia", historia_id)
 
 

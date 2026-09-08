@@ -37,7 +37,7 @@ def przytnij_notatke(tresc):
     return (tresc or "").strip()[:MAKS_DLUGOSC_NOTATKI]
 
 
-def pobierz_notatke(tabela, rekord_id):
+def pobierz_notatke(tabela, rekord_id) -> tuple[str, str | None, str | None]:
     """(treść, autor, data) notatki wpisu. Autor i data są puste dla tabel,
     które notatkę trzymają w starym polu opisowym bez podpisu."""
     kolumna = POLA_NOTATKI.get(tabela)

@@ -31,7 +31,7 @@ def _na_liczbe(tekst):
         return None
 
 
-def parsuj_zapytanie_kwotowe(zapytanie):
+def parsuj_zapytanie_kwotowe(zapytanie) -> tuple[float | None, float | None, str] | None:
     """Rozpoznaje zapytanie o kwotę i zwraca (min, max, opis) albo None.
 
     Obsługiwane formy: „450” (±2%), „>1000”, „>=1000”, „<50”, „<=50”,

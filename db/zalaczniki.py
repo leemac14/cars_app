@@ -19,7 +19,7 @@ from .polaczenie import polacz_baze
 KOLUMNY_ZE_SCIEZKAMI = [("samochody", "zdjecie_glowne")] + [(t, "zalacznik") for t in sorted(TABELE_Z_ZALACZNIKIEM)]
 
 
-def napraw_sciezki_zalacznikow():
+def napraw_sciezki_zalacznikow() -> tuple[int, int]:
     """Przepisuje ścieżki załączników na tutejsze i zwraca (naprawione, brakujace).
 
     Ścieżka zapisuje się jako `os.path.join(FOLDER_ZALACZNIKI, nazwa)`, a

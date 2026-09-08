@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 import uuid
 from datetime import datetime, timedelta
+from typing import Any
 
 from .stale import DNI_KOSZA_DOMYSLNIE, DNI_KOSZA_OPCJE, FOLDER_KOSZ, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
@@ -234,7 +235,7 @@ def usun_auto_do_kosza(auto_id):
     return wynik
 
 
-def pobierz_kosz():
+def pobierz_kosz() -> list[dict[str, Any]]:
     """Pozycje kosza, najświeższe u góry. 'dni_do_usuniecia' to None przy
     retencji bez limitu, a 0 oznacza 'zniknie przy najbliższym starcie'."""
     dni_retencji = pobierz_dni_kosza()

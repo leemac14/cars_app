@@ -5,6 +5,7 @@ import shutil
 import sqlite3
 import uuid
 from datetime import datetime
+from typing import Any
 
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_moje_imie
@@ -15,7 +16,7 @@ from .przebieg import pobierz_aktualny_przebieg, przelicz_wszystkie_zadania
 from .nazwy import klucz_nazwy
 
 
-def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False):
+def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> tuple[int | None, list[str], dict[str, Any] | None]:
     """Zwraca (wizyta_id, duplikaty, wynik_cofniecia). wynik_cofniecia to słownik
     {"cofnij": fn, "finalizuj": fn} analogiczny do pozostałych operacji usuwających —
     pozwala pokazać snackbar z możliwością cofnięcia całej operacji."""
@@ -99,7 +100,7 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False):
     return wizyta_id, duplikaty, {"cofnij": cofnij, "finalizuj": lambda: None}
 
 
-def pobierz_pozycje_wizyty(wizyta_id):
+def pobierz_pozycje_wizyty(wizyta_id) -> list[dict[str, Any]]:
     """Pozycje wizyty nadające się do zwrotu na listę Do zrobienia — czyli wpisy
     historii podpięte pod tę wizytę, razem z nazwą podzespołu i ceną."""
     if not wizyta_id:

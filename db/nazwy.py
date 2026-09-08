@@ -1,5 +1,7 @@
 """Normalizacja i scalanie duplikatów nazw (stacje, warsztaty, tagi)."""
 
+from typing import Any
+
 from .polaczenie import polacz_baze
 from .pomocnicze import bez_emoji
 from .synchronizacja import zarejestruj_nagrobek
@@ -64,7 +66,7 @@ def dopasuj_istniejaca_nazwe(auto_id, tabela, nazwa):
     return czysta
 
 
-def znajdz_duplikaty_nazw(auto_id):
+def znajdz_duplikaty_nazw(auto_id) -> list[dict[str, Any]]:
     """Grupy nazw, które po normalizacji są tym samym, a w bazie siedzą jako
     osobne wiersze. Zwraca listę słowników gotowych do pokazania w Ustawieniach:
     {tabela, etykieta, klucz, kanoniczna, warianty:[(id, nazwa, ile_uzyc)]}.

@@ -6,7 +6,7 @@ from .pomocnicze import formatuj_liczba_eksport
 from .ustawienia import pobierz_jednostke_spalania, pobierz_jednostke_zuzycia_ev
 
 
-def przelicz_zuzycie(wartosc_na_100km, elektryczny=False):
+def przelicz_zuzycie(wartosc_na_100km, elektryczny=False) -> tuple[float, str]:
     """(wartość w jednostce wybranej w Ustawieniach, nazwa jednostki). Wejściem
     ZAWSZE jest zużycie na 100 km — dokładnie to, co liczy reszta aplikacji.
     Jedno miejsce na to przeliczenie, bo korzysta z niego i interfejs

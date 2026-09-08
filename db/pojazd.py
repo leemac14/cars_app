@@ -3,6 +3,7 @@
 import sqlite3
 from date import parsuj_date
 from datetime import date as date_cls, datetime
+from typing import Any
 
 from .stale import ROK_MIN, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
@@ -62,7 +63,7 @@ def czy_pojazd_sprzedany(auto_id):
     return bool(w) and str(w[0] or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_SPRZEDANY
 
 
-def pobierz_pojazdy(tylko_aktywne=True):
+def pobierz_pojazdy(tylko_aktywne=True) -> list[tuple[int, str]]:
     """(id, nazwa) pojazdów w kolejności alfabetycznej — jedno miejsce dla
     wszystkiego, co wypisuje garaż."""
     with polacz_baze() as conn:
@@ -72,7 +73,7 @@ def pobierz_pojazdy(tylko_aktywne=True):
         return c.fetchall()
 
 
-def pobierz_sprzedane_pojazdy():
+def pobierz_sprzedane_pojazdy() -> list[dict[str, Any]]:
     """Lista sprzedanych aut z podsumowaniem, którego szuka się w archiwum:
     ile wpisów zostało, ile auto łącznie kosztowało i na jakim liczniku odeszło."""
     with polacz_baze() as conn:
