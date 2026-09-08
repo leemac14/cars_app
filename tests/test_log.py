@@ -17,6 +17,7 @@ import gc
 import logging
 import sys
 import threading
+import time
 
 import pytest
 
@@ -295,6 +296,52 @@ def test_formatowanie_rozmiaru():
     assert log.formatuj_rozmiar(512) == "512 B"
     assert log.formatuj_rozmiar(2048) == "2,0 kB"
     assert log.formatuj_rozmiar(3 * 1024 * 1024) == "3,0 MB"
+
+
+
+
+# ============================================================ POMIAR CZASU
+
+
+def test_pomiar_zapisuje_czas_do_logu(dziennik):
+    log.wyczysc_pomiary()
+
+    with log.zmierz("init_db"):
+        time.sleep(0.01)
+
+    assert "czas: init_db" in log.tresc()
+    assert log.pomiary()["init_db"] >= 10
+
+
+def test_pomiar_nie_polyka_wyjatku(dziennik):
+    """Pomiar jest obserwatorem, nie uczestnikiem — wyjątek z mierzonego bloku
+    ma polecieć dalej nietknięty, a czas i tak ma zostać zapisany."""
+    log.wyczysc_pomiary()
+
+    with pytest.raises(ValueError):
+        with log.zmierz("blok, który pada"):
+            raise ValueError("leci dalej")
+
+    assert "blok, który pada" in log.pomiary()
+
+
+def test_podsumowanie_pomiarow_zbiera_wszystko(dziennik):
+    log.wyczysc_pomiary()
+
+    with log.zmierz("init_db"):
+        pass
+    with log.zmierz("pierwszy ekran"):
+        pass
+
+    podsumowanie = log.podsumowanie_pomiarow()
+    assert "init_db" in podsumowanie and "pierwszy ekran" in podsumowanie and "razem" in podsumowanie
+
+
+def test_podsumowanie_bez_pomiarow_nie_wywala_sie(dziennik):
+    log.wyczysc_pomiary()
+
+    assert log.podsumowanie_pomiarow() == "brak pomiarów"
+
 
 
 # ============================================================ ODPORNOŚĆ

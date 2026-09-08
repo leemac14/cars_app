@@ -1,6 +1,6 @@
 # tests/
 
-Dziesięć rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
+Jedenaście rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
 zapisanych raz, uruchamianych zawsze.
 
 ## Uruchomienie
@@ -33,6 +33,7 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `audyty.py` | Silniki tych pięciu audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
 | `test_typy_db.py` | Adnotacje zwrotu warstwy danych kontra to, co funkcje naprawdę zwracają — wołane na bazie testowej. |
 | `ciche_wyjatki.txt` | Zamrożona liczba cichych `except …: pass` w każdym pliku. |
+| `test_start.py` | Podział startu: `init_db()` robi tylko schemat, `porzadki_startowe()` sprząta kosz, odroczone załączniki i (raz) ścieżki. |
 | `test_log.py` | Rotujący log błędów: co łapie (połknięty wyjątek, wątek, porzucona korutyna asyncio, cudze ostrzeżenia), czego nie łapie (cudze INFO), rotacja, raport do wysłania i to, że brak miejsca na log nie wywala aplikacji. |
 
 Listy widoków ani migracji nie ma tu przepisanej ręcznie — pierwsza bierze się
@@ -143,6 +144,25 @@ znajdować i nikt tego nie zauważa, bo zielono.
 
 Świadome wyjątki mieszkają w `audyty.py` jako `DOZWOLONE_POLA`
 i `NIEROZSTRZYGNIETE_RUN_TASK` — każdy wpis to decyzja, nie przeoczenie.
+
+## Start aplikacji: co jest przed pierwszym pikselem
+
+`init_db()` robiło przy każdym uruchomieniu cztery rzeczy: drabinkę migracji,
+kasowanie odroczonych załączników, sprzątanie wygasłego kosza i (raz) naprawę
+ścieżek. Tylko pierwsza jest potrzebna do narysowania ekranu; trzy pozostałe
+rosną razem z danymi, bo chodzą po plikach. Zostały wyniesione do
+`db.porzadki_startowe()`, które `main.py` woła w wątku w tle po pierwszym
+renderze.
+
+`test_start.py` pilnuje podziału z obu stron — że `init_db()` już tego nie robi
+(inaczej przeniesienie byłoby pozorne) i że `porzadki_startowe()` robi to
+naprawdę (inaczej sprzątanie przestałoby się dziać w ogóle). Osobno sprawdzana
+jest jednorazowość naprawy ścieżek: chodzi po WSZYSTKICH załącznikach w bazie,
+więc znacznik jest tu całą treścią.
+
+Czas mierzy `log.zmierz()` i zapisuje do dziennika, więc profil startu jedzie
+razem z „Wyślij log" — z prawdziwego telefonu i prawdziwych danych, zamiast
+z komputera, na którym wszystko jest szybkie.
 
 ## Kopia z nowszej wersji aplikacji
 

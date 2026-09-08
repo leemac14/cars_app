@@ -40,6 +40,8 @@ import os
 import re
 import sys
 import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime
 
 
@@ -218,6 +220,52 @@ def polkniety(kontekst):
         _zapisz(f"{kontekst}: nie powiodło się", logging.WARNING)
         return
     _zapisz(f"{kontekst}: {typ.__name__}: {wartosc}", logging.WARNING, True)
+
+
+
+
+# ============================================================================
+#  POMIAR CZASU
+# ============================================================================
+# Start aplikacji to jedyne miejsce, w którym czas widać gołym okiem, i jedyne,
+# którego nie da się zmierzyć u siebie: na komputerze deweloperskim wszystko
+# jest szybkie. Pomiar zapisany do logu jedzie razem z „Wyślij log", więc mówi,
+# ile to trwało NA TYM telefonie i przy TYCH danych — zamiast zgadywania.
+
+_pomiary = {}
+
+
+@contextmanager
+def zmierz(nazwa):
+    """Mierzy czas bloku, zapisuje do logu i zapamiętuje do podsumowania.
+
+    `finally`, nie `except`: wyjątek z mierzonego bloku ma polecieć dalej
+    nietknięty. Pomiar jest obserwatorem, nie uczestnikiem."""
+    poczatek = time.perf_counter()
+    try:
+        yield
+    finally:
+        milisekundy = (time.perf_counter() - poczatek) * 1000
+        _pomiary[nazwa] = round(milisekundy, 1)
+        _zapisz(f"czas: {nazwa} {milisekundy:.0f} ms", logging.INFO)
+
+
+def pomiary() -> dict:
+    """Kopia zebranych pomiarów: {nazwa: milisekundy}."""
+    return dict(_pomiary)
+
+
+def wyczysc_pomiary():
+    _pomiary.clear()
+
+
+def podsumowanie_pomiarow() -> str:
+    """Jedna linijka: „init_db 2 ms · motyw 0 ms · pierwszy ekran 31 ms (razem 33 ms)"."""
+    if not _pomiary:
+        return "brak pomiarów"
+    czesci = " · ".join(f"{nazwa} {ms:.0f} ms" for nazwa, ms in _pomiary.items())
+    return f"{czesci} (razem {sum(_pomiary.values()):.0f} ms)"
+
 
 
 # ============================================================================
@@ -402,12 +450,16 @@ __all__ = [
     "ostatnie_linie",
     "ostrzezenie",
     "podsumowanie",
+    "podsumowanie_pomiarow",
     "polkniety",
+    "pomiary",
     "rozmiar",
     "sciezki_logu",
     "tresc",
     "wlacz",
     "wyczysc",
+    "wyczysc_pomiary",
+    "zmierz",
     "zapisz",
     "zbierz_raport",
 ]

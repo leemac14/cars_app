@@ -21,8 +21,13 @@ WERSJA_SCHEMATU = None
 
 
 def init_db():
+    """Foldery i schemat bazy — wyłącznie to, bez czego nie da się narysować
+    pierwszego ekranu.
+
+    Sprzątanie (kosz, odroczone załączniki, jednorazowa naprawa ścieżek)
+    przeniosło się do `porzadki_startowe()`, bo pierwszy piksel na nie nie czeka
+    — patrz komentarz przy tamtej funkcji."""
     _upewnij_folder_zalacznikow()
-    posprzataj_odroczone_zalaczniki()
     with polacz_baze() as conn:
         cursor = conn.cursor()
         
@@ -659,9 +664,28 @@ def init_db():
                 (str(i + 1),)
             )
 
-    # Dopiero PO migracjach — tabela kosza musi już istnieć. Poza tym wygasłe
-    # pozycje kasujemy raz, przy starcie aplikacji, a nie przy każdym wejściu na
-    # ekran kosza: retencja liczona jest w dniach, więc częściej nie ma sensu.
+
+def porzadki_startowe() -> tuple[int, int]:
+    """Sprzątanie, na które pierwszy piksel nie czeka. Zwraca wynik naprawy
+    ścieżek: (dopasowane, brakujące) — zera, gdy naprawa już kiedyś poszła.
+
+    Wszystkie trzy rzeczy rosną razem z danymi, a żadna nie jest potrzebna do
+    narysowania ekranu: kasowanie odroczonych załączników i wygasłych pozycji
+    kosza chodzi po plikach, a naprawa ścieżek — po wszystkich załącznikach
+    w bazie. Dlatego `main.py` woła to w wątku w tle, PO pierwszym renderze.
+
+    Cena jest jedna i policzalna: przez chwilę po starcie licznik kosza może
+    pokazywać pozycję, która właśnie wygasła. Retencja liczona jest w dniach,
+    więc sekunda opóźnienia nie znaczy nic.
+
+    Wołane osobno, nie z `init_db()`, także dlatego, że `init_db()` chodzi
+    również przy wczytywaniu kopii — a tam sprzątanie zdąży się przy następnym
+    starcie."""
+    posprzataj_odroczone_zalaczniki()
+
+    # Tabela kosza musi już istnieć, więc dopiero po migracjach. Wygasłe pozycje
+    # kasujemy raz przy starcie, a nie przy każdym wejściu na ekran kosza:
+    # retencja liczona jest w dniach, więc częściej nie ma sensu.
     posprzataj_kosz()
 
     # Jednorazowa naprawa ścieżek załączników przeniesionych z innego urządzenia.
@@ -669,13 +693,17 @@ def init_db():
     # main.wykonaj_import) — ten blok jest dla baz, które przyjechały z telefonu,
     # zanim naprawa w ogóle powstała, i mają w sobie ścieżki
     # /data/user/0/<pakiet>/files/data/zalaczniki/... wskazujące donikąd.
-    if pobierz_ustawienie("naprawa_sciezek_zalacznikow_v1") != "1":
-        try:
-            napraw_sciezki_zalacznikow()
-        except Exception:
-            # Brak zdjęć nie może uniemożliwić uruchomienia aplikacji.
-            log.polkniety("jednorazowa naprawa ścieżek załączników")
-        zapisz_ustawienie("naprawa_sciezek_zalacznikow_v1", "1")
+    if pobierz_ustawienie("naprawa_sciezek_zalacznikow_v1") == "1":
+        return 0, 0
+
+    naprawione = brakujace = 0
+    try:
+        naprawione, brakujace = napraw_sciezki_zalacznikow()
+    except Exception:
+        # Brak zdjęć nie może uniemożliwić uruchomienia aplikacji.
+        log.polkniety("jednorazowa naprawa ścieżek załączników")
+    zapisz_ustawienie("naprawa_sciezek_zalacznikow_v1", "1")
+    return naprawione, brakujace
 
 
 
@@ -787,6 +815,7 @@ def sprawdz_kopie_przed_wczytaniem(sciezka) -> tuple[bool, str]:
 __all__ = [
     "WERSJA_SCHEMATU",
     "init_db",
+    "porzadki_startowe",
     "sprawdz_kopie_przed_wczytaniem",
     "wersja_schematu_aplikacji",
     "wersja_schematu_kopii",

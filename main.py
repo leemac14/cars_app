@@ -145,7 +145,12 @@ def main(page: ft.Page):
     page.padding = 0
     page.spacing = 0
 
-    db.init_db()
+    # Mierzone, bo start to jedyny moment, w którym czas widać gołym okiem —
+    # i jedyny, którego nie da się zmierzyć u siebie: na komputerze wszystko
+    # jest szybkie. Pomiar jedzie w logu razem z „Wyślij log", więc mówi, ile to
+    # trwało NA TYM telefonie i przy TYCH danych.
+    with log.zmierz("init_db"):
+        db.init_db()
 
     kolor_ustawiony = db.pobierz_kolor_motywu()
 
@@ -157,8 +162,9 @@ def main(page: ft.Page):
     # Motywy budujemy przez utils.zastosuj_motywy — tam mieszka też wariant
     # „czysta czerń (OLED)”, więc nie trzeba go powtarzać w każdym z miejsc,
     # w których przebudowujemy motyw.
-    utils.zastosuj_motywy(page, kolor_ustawiony)
-    zastosuj_tryb_motywu()
+    with log.zmierz("motyw"):
+        utils.zastosuj_motywy(page, kolor_ustawiony)
+        zastosuj_tryb_motywu()
 
     # Zapamiętujemy ostatnio zastosowany kolor motywu i auto, dla którego go
     # policzyliśmy — każdy pojazd może mieć teraz własny kolor interfejsu.
@@ -724,12 +730,38 @@ def main(page: ft.Page):
             log.polkniety("ciche dociąganie zmian przy starcie")
     page.run_task(_nadgon_kolejke_sync)
 
+    async def _porzadki_po_starcie():
+        """Sprzątanie przeniesione z init_db(): kosz, odroczone załączniki
+        i jednorazowa naprawa ścieżek.
+
+        `run_task` oddaje sterowanie dopiero, gdy pętla zdarzeń je dostanie —
+        czyli po wyjściu z main(), a więc po pierwszym renderze. Do tego samo
+        sprzątanie idzie na osobny wątek, żeby nie blokowało interfejsu nawet
+        wtedy, gdy w koszu leżą setki zdjęć."""
+        try:
+            with log.zmierz("porządki w tle"):
+                naprawione, brakujace = await asyncio.to_thread(db.porzadki_startowe)
+        except Exception:
+            log.polkniety("porządki po starcie")
+            return
+
+        # Naprawa ścieżek idzie raz w życiu instalacji, ale gdy coś dopasuje,
+        # pierwszy render zdążył już narysować zdjęcia jako brakujące.
+        if naprawione:
+            log.zapisz(f"Naprawa ścieżek: dopasowano {naprawione} załączników, brakuje {brakujace}")
+            utils.przejdz(page, page.route)
+
+    page.run_task(_porzadki_po_starcie)
+
     # Cykliczne dociąganie w tle plus jedno przy powrocie aplikacji z tła.
     try:
         utils.uruchom_auto_synchronizacje(page, app_state)
     except Exception:
         log.polkniety("uruchomienie automatycznej synchronizacji")
 
-    utils.przejdz(page, page.route or "/")
+    with log.zmierz("pierwszy ekran"):
+        utils.przejdz(page, page.route or "/")
+
+    log.zapisz(f"=== Start gotowy: {log.podsumowanie_pomiarow()} ===")
 
 ft.run(main)
