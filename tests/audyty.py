@@ -1,13 +1,14 @@
-"""Trzy audyty, które do tej pory były jednorazowymi skryptami.
+"""Cztery audyty, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
-konstruktor widoku naprawdę poskładał. Trzeci czyta AST, bo dotyczy rzeczy,
-których w drzewie już nie widać.
+konstruktor widoku naprawdę poskładał. Dwa ostatnie czytają AST, bo dotyczą
+rzeczy, których w drzewie już nie widać.
 
 Moduł da się uruchomić wprost, żeby zobaczyć raport:
 
     python tests/audyty.py
+    python tests/audyty.py --zapisz   # odświeża zamek na cichych `except: pass`
 
 Asercje siedzą w test_audyty.py; tutaj są same silniki.
 """
@@ -409,6 +410,92 @@ def audyt_run_task(sciezki=None, korzen=None):
 
 
 # ============================================================================
+#  AUDYT 4 — ciche `except: pass` (AST)
+# ============================================================================
+# `except Exception: pass` jest w tym projekcie świadomą techniką i najczęściej
+# słuszną: kontrolki nie ma jeszcze w drzewie strony, starsza wersja Fleta nie
+# zna zdarzenia. Każde takie miejsce jest jednak potencjalnym „nie działa",
+# którego nie da się zdiagnozować — a od czasu `log.py` alternatywa kosztuje
+# jedną linijkę: `log.polkniety("opis")`.
+#
+# Audyt nie zabrania cichych bloków. Liczy je per plik i porównuje z zamrożoną
+# listą, dokładnie tak jak zamek na odciskach pilnuje wydanych migracji: nowe
+# ciche miejsce ma być decyzją zapisaną w pliku, a nie odruchem, który przeszedł
+# niezauważony.
+
+PLIK_CICHYCH_WYJATKOW = KORZEN_PROJEKTU / "tests" / "ciche_wyjatki.txt"
+
+
+def znajdz_ciche_wyjatki(sciezki=None, korzen=None):
+    """{plik: liczba} — bloki `except …:` z samym `pass` w środku.
+
+    Kluczem jest PLIK, nie numer linii: numer zmienia się przy każdej edycji
+    powyżej i lista wymagałaby odświeżania po każdej zmianie, czyli dokładnie
+    tego odruchu, którego ma nie być."""
+    korzen = korzen or KORZEN_PROJEKTU
+    wynik = {}
+
+    for sciezka in sciezki if sciezki is not None else _pliki_projektu():
+        drzewo = ast.parse(sciezka.read_text(encoding="utf-8"), filename=str(sciezka))
+        ile = sum(
+            1 for wezel in ast.walk(drzewo)
+            if isinstance(wezel, ast.ExceptHandler)
+            and len(wezel.body) == 1
+            and isinstance(wezel.body[0], ast.Pass)
+        )
+        if ile:
+            wynik[sciezka.relative_to(korzen).as_posix()] = ile
+
+    return dict(sorted(wynik.items()))
+
+
+def wczytaj_ciche_wyjatki(plik=None):
+    """Zamrożona lista jako {plik: liczba}. Brak pliku = pusta lista."""
+    plik = pathlib.Path(plik or PLIK_CICHYCH_WYJATKOW)
+    if not plik.exists():
+        return {}
+
+    zapisane = {}
+    for linia in plik.read_text(encoding="utf-8").splitlines():
+        linia = linia.split("#")[0].strip()
+        if not linia:
+            continue
+        nazwa, _, liczba = linia.rpartition(" ")
+        zapisane[nazwa.strip()] = int(liczba)
+    return zapisane
+
+
+def tresc_pliku_cichych_wyjatkow(znalezione=None):
+    znalezione = znalezione if znalezione is not None else znajdz_ciche_wyjatki()
+    szerokosc = max((len(n) for n in znalezione), default=0)
+    naglowek = [
+        "# Ciche `except …: pass` — zamrożony stan, plik po pliku.",
+        "#",
+        "# Nie jest to lista wstydu: te bloki są w większości słuszne. Jest to",
+        "# zamek — nowy cichy blok zapala test, żeby był decyzją, a nie odruchem.",
+        "# Alternatywa kosztuje jedną linijkę: log.polkniety(\"opis\").",
+        "#",
+        "# Odświeżenie po świadomej zmianie: python tests/audyty.py --zapisz",
+        "",
+    ]
+    wiersze = [f"{nazwa:<{szerokosc}} {ile}" for nazwa, ile in znalezione.items()]
+    return "\n".join(naglowek + wiersze) + "\n"
+
+
+def porownaj_ciche_wyjatki(znalezione=None, zapisane=None):
+    """Zwraca (nowe, przybylo, ubylo) — po jednej liście na rodzaj rozjazdu."""
+    znalezione = znalezione if znalezione is not None else znajdz_ciche_wyjatki()
+    zapisane = zapisane if zapisane is not None else wczytaj_ciche_wyjatki()
+
+    nowe = [(n, ile) for n, ile in znalezione.items() if n not in zapisane]
+    przybylo = [(n, zapisane[n], ile) for n, ile in znalezione.items()
+                if n in zapisane and ile > zapisane[n]]
+    ubylo = [(n, zapisane[n], znalezione.get(n, 0)) for n in zapisane
+             if znalezione.get(n, 0) < zapisane[n]]
+    return nowe, przybylo, ubylo
+
+
+# ============================================================================
 #  RAPORT
 # ============================================================================
 
@@ -417,6 +504,16 @@ if __name__ == "__main__":
     import tempfile
 
     os.environ.setdefault("FLET_APP_STORAGE_DATA", tempfile.mkdtemp(prefix="audyt_"))
+
+    if "--zapisz" in sys.argv:
+        # newline="\n" jawnie: projekt jest na LF (patrz .gitattributes oraz
+        # tests/test_konce_linii.py), a domyślny newline dałby na Windowsie CRLF.
+        znalezione = znajdz_ciche_wyjatki()
+        PLIK_CICHYCH_WYJATKOW.write_text(tresc_pliku_cichych_wyjatkow(znalezione),
+                                         encoding="utf-8", newline="\n")
+        print(f"{PLIK_CICHYCH_WYJATKOW.name}: zapisano {sum(znalezione.values())} "
+              f"cichych bloków w {len(znalezione)} plikach.")
+        raise SystemExit(0)
 
     print("== Audyt pól kontrolek Fleta ==")
     for z in audyt_pol_kontrolek():
@@ -428,6 +525,18 @@ if __name__ == "__main__":
         print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
     for z in nierozstrzygniete:
         print(f"  [?] {z['plik']}:{z['linia']} — {z['cel']}")
+
+    nowe, przybylo, ubylo = porownaj_ciche_wyjatki()
+    print("\n== Audyt cichych `except: pass` ==")
+    print(f"  razem: {sum(znajdz_ciche_wyjatki().values())} bloków")
+    for nazwa, ile in nowe:
+        print(f"  [nowy plik] {nazwa} — {ile}")
+    for nazwa, bylo, jest in przybylo:
+        print(f"  [przybyło]  {nazwa} — {bylo} -> {jest}")
+    for nazwa, bylo, jest in ubylo:
+        print(f"  [ubyło]     {nazwa} — {bylo} -> {jest}")
+    if not (nowe or przybylo or ubylo):
+        print("  zgodne z zamkiem")
 
     print("\nAudyty drzewa kontrolek (expand, chipy) uruchamia pytest:")
     print("  python -m pytest tests/test_audyty.py -q")

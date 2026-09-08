@@ -42,10 +42,11 @@ STALE_SCIEZEK = (
     "FOLDER_ZALACZNIKI",
     "FOLDER_ODROCZONE",
     "FOLDER_KOSZ",
+    "PLIK_LOGU",
 )
 
 # Pakiety aplikacji, w których takie stałe mogą siedzieć.
-PRZEDROSTKI_MODULOW = ("db", "utils", "views", "sync", "main", "state")
+PRZEDROSTKI_MODULOW = ("db", "utils", "views", "sync", "main", "state", "log")
 
 
 def _moduly_aplikacji():
@@ -70,6 +71,7 @@ def magazyn(tmp_path, monkeypatch):
         "FOLDER_ZALACZNIKI": str(katalog / "zalaczniki"),
         "FOLDER_ODROCZONE": str(katalog / "zalaczniki_odroczone"),
         "FOLDER_KOSZ": str(katalog / "kosz_zalaczniki"),
+        "PLIK_LOGU": str(katalog / "flota.log"),
     }
 
     monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(katalog))

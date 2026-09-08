@@ -2,6 +2,8 @@
 
 import dataclasses
 
+import flet as ft
+
 
 # ==================== ZGODNOŚĆ Z WERSJAMI FLETA ====================
 # Kontrolki Fleta to dataclassy BEZ __slots__, więc `pole.cokolwiek = x` nigdy
@@ -48,6 +50,20 @@ def ustaw_tekst_przycisku(przycisk, tekst):
     setattr(przycisk, _nazwa_pola(przycisk, "text", "content"), tekst)
 
 
+def wersja_fleta():
+    """Numer wersji Fleta albo „?”.
+
+    Pierwsza rzecz, o którą trzeba by dopytywać przy każdym zgłoszeniu błędu —
+    połowa dziwnych zachowań w tym projekcie to różnice między wydaniami. Sam
+    sposób podania wersji też się zmieniał, więc pytamy po kolei zamiast
+    zakładać jedną nazwę."""
+    zrodlo = getattr(ft, "version", None)
+    for kandydat in (getattr(zrodlo, "version", None), zrodlo, getattr(ft, "__version__", None)):
+        if isinstance(kandydat, str) and kandydat.strip():
+            return kandydat.strip()
+    return "?"
+
+
 __all__ = [
     "_CACHE_POL",
     "_nazwa_pola",
@@ -55,4 +71,5 @@ __all__ = [
     "ustaw_blad",
     "ustaw_ikone",
     "ustaw_tekst_przycisku",
+    "wersja_fleta",
 ]

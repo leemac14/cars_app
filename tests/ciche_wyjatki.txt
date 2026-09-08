@@ -1,0 +1,35 @@
+# Ciche `except …: pass` — zamrożony stan, plik po pliku.
+#
+# Nie jest to lista wstydu: te bloki są w większości słuszne. Jest to
+# zamek — nowy cichy blok zapala test, żeby był decyzją, a nie odruchem.
+# Alternatywa kosztuje jedną linijkę: log.polkniety("opis").
+#
+# Odświeżenie po świadomej zmianie: python tests/audyty.py --zapisz
+
+date.py                             1
+db/kosz.py                          9
+db/magazyn.py                       2
+db/nawigacja.py                     4
+db/przebieg.py                      1
+db/raporty.py                       2
+db/usuwanie.py                      5
+db/wizyty.py                        4
+db/zalaczniki.py                    5
+log.py                              5
+sync.py                             1
+utils/dialogi.py                    1
+utils/filtry.py                     6
+utils/formularze.py                 1
+utils/komponenty.py                 11
+utils/nawigacja.py                  5
+utils/powiadomienia.py              5
+utils/system.py                     1
+utils/zaznaczanie.py                1
+views/ekran_glowny/kokpit.py        3
+views/ekran_glowny/naglowek_auta.py 1
+views/eksport_view.py               1
+views/formularze/auto.py            5
+views/formularze/tankowanie.py      3
+views/formularze/wizyta.py          5
+views/kalkulator_view.py            1
+views/todo_view.py                  1

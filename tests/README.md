@@ -1,6 +1,6 @@
 # tests/
 
-Osiem rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
+Dziewięć rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
 zapisanych raz, uruchamianych zawsze.
 
 ## Uruchomienie
@@ -29,8 +29,10 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `test_schemat.py` | `KONFIGURACJA_SYNC`, `KOLUMNY_POJAZDU`, `KOSZ_TABELE_*`, `KOLUMNY_ZE_SCIEZKAMI`, `POLA_NOTATKI` kontra `PRAGMA table_info`. Zapytania pośrednie i `reset_where` jako poprawny SQL. |
 | `test_widoki.py` | Wszystkie widoki budują się bez okna, na dziewięciu układach danych: pusty garaż, auto bez wpisów, komplet, auto z historią, elektryk, hybryda plug-in, auto sprzedane, cudze auto w podglądzie, pełny kosz. Ekran główny osobno w każdej zakładce. |
 | `test_konce_linii.py` | Cały projekt na LF, bez BOM-ów, z jawną polityką w `.gitattributes`. Umie też naprawiać. |
-| `test_audyty.py` | Trzy audyty interfejsu: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`. Plus testy samych audytów. |
-| `audyty.py` | Silniki tych trzech audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
+| `test_audyty.py` | Cztery audyty: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`, ciche `except …: pass`. Plus testy samych audytów. |
+| `audyty.py` | Silniki tych czterech audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
+| `ciche_wyjatki.txt` | Zamrożona liczba cichych `except …: pass` w każdym pliku. |
+| `test_log.py` | Rotujący log błędów: co łapie (połknięty wyjątek, wątek, porzucona korutyna asyncio, cudze ostrzeżenia), czego nie łapie (cudze INFO), rotacja, raport do wysłania i to, że brak miejsca na log nie wywala aplikacji. |
 
 Listy widoków ani migracji nie ma tu przepisanej ręcznie — pierwsza bierze się
 z przejścia pakietu `views`, druga z odczytu AST z `db/migracje.py`. Nowy ekran
@@ -95,10 +97,11 @@ Format to zrzut SQL, a nie plik `.db`: tekst zamiast bajtów, więc diff coś zn
 dzisiaj — nie są zapisem archeologicznym tego, co naprawdę wyszło do ludzi rok
 temu. Od dziś są jednak punktem odniesienia, którego nie da się zmienić mimochodem.
 
-## Trzy audyty
+## Cztery audyty
 
-Były jednorazowymi skryptami: napisane, uruchomione raz, wyrzucone. Każdy wykrył
-prawdziwy błąd, więc każdy zasługuje na to, żeby działać przy każdej zmianie.
+Trzy pierwsze były jednorazowymi skryptami: napisane, uruchomione raz,
+wyrzucone. Każdy wykrył prawdziwy błąd, więc każdy zasługuje na to, żeby
+działać przy każdej zmianie.
 
 **Audyt `expand`** — chodzi po FAKTYCZNIE zbudowanym drzewie kontrolek i szuka
 `expand` tam, gdzie szerokość jest nieograniczona: w pasku przewijanym,
@@ -119,6 +122,19 @@ nie czyta. Audyt porównuje przypisania i argumenty konstruktorów z
 o jednoznacznie ustalonym typie (przypisane dokładnie raz przez `ft.Coś(...)`).
 Osobno sprawdza `run_task`: argument musi być prawdziwym `async def`, bo lambda
 i zwykła funkcja są odrzucane i korutyna przepada bez śladu.
+
+**Audyt cichych `except: pass` (AST)** — liczy bloki, w których jedyną
+instrukcją jest `pass`, i porównuje wynik z zamrożoną listą w
+`ciche_wyjatki.txt`. Nie zabrania ich: większość jest słuszna (kontrolki nie ma
+jeszcze w drzewie strony, starsza wersja Fleta nie zna zdarzenia). Chodzi o to,
+żeby NOWY cichy blok był decyzją, a nie odruchem — od czasu `log.py` zapisanie,
+co zostało połknięte, kosztuje jedną linijkę: `log.polkniety("opis")`. Kluczem
+jest plik, nie numer linii, bo numer zmienia się przy każdej edycji powyżej.
+
+```
+python tests/audyty.py            # raport, w tym rozjazd z zamkiem
+python tests/audyty.py --zapisz   # odświeżenie zamku po świadomej zmianie
+```
 
 Każdy audyt ma WŁASNE testy na syntetycznych drzewkach i plikach — audyt bez
 testów jest wart tyle, co jego ostatnie uruchomienie: cicho przestaje cokolwiek

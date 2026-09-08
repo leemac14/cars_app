@@ -3,6 +3,7 @@
 import asyncio
 import db
 import flet as ft
+import log
 import os
 
 from .dialogi import otworz_dialog, pokaz_komunikat, zamknij_dialog
@@ -78,7 +79,7 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
         try:
             page.update()
         except Exception:
-            pass
+            log.polkniety("odświeżenie podglądu załącznika")
 
     def _obsluz_wybrane(pliki):
         """Wspólna logika dla on_result i ścieżki await — działa i dla 1, i dla wielu plików."""
@@ -192,7 +193,7 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
             lista_podgladow.update()
             licznik.update()
         except Exception:
-            pass
+            log.polkniety("odświeżenie listy wybranych zdjęć")
 
     def dodaj_pliki(pliki):
         if not pliki:
@@ -258,7 +259,7 @@ def pokaz_podglad_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik
                             await wynik
                     return
                 except Exception:
-                    pass
+                    log.polkniety("udostępnianie załącznika przez system")
 
             # Fallback dla środowisk bez usługi Share (np. desktop)
             try:

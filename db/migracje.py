@@ -2,6 +2,8 @@
 
 import sqlite3
 
+import log
+
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .zalaczniki import _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki
@@ -655,7 +657,8 @@ def init_db():
         try:
             napraw_sciezki_zalacznikow()
         except Exception:
-            pass  # brak zdjęć nie może uniemożliwić uruchomienia aplikacji
+            # Brak zdjęć nie może uniemożliwić uruchomienia aplikacji.
+            log.polkniety("jednorazowa naprawa ścieżek załączników")
         zapisz_ustawienie("naprawa_sciezek_zalacznikow_v1", "1")
 
 

@@ -1,5 +1,6 @@
 import flet as ft
 import db
+import log
 import utils
 
 
@@ -318,11 +319,174 @@ class UstawieniaView(ft.View):
             "Duplikaty nazw", ft.Icons.MERGE_TYPE, domyslnie_otwarte=bool(liczba_duplikatow), page=page
         )
 
-        elementy = [k1, k2, k3, k_kokpit, k_kosz, k_duplikaty, info, utils.przyciski_akcji(page, "Zapisz ustawienia", self.zapisz, "/")]
+        # --- DZIENNIK BŁĘDÓW ---
+        # Karta jest domyślnie zwinięta, dopóki w logu nie ma ani jednego błędu.
+        # Sekcja diagnostyczna, która sama się otwiera przy każdym wejściu do
+        # Ustawień, uczy oko, żeby ją pomijać — a wtedy nie zadziała w dniu,
+        # w którym będzie potrzebna.
+        #
+        # Ikonę podaje się pozycyjnie: pole nazywa się `icon` albo `name`
+        # zależnie od wersji Fleta, a podmienia je potem utils.ustaw_ikone.
+        self.ikona_logu = ft.Icon(ft.Icons.HISTORY, size=18)
+        self.opis_logu = ft.Text(size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True)
+        self.opis_ostatniego_bledu = ft.Text(
+            size=11, italic=True, color=ft.Colors.ORANGE_800, visible=False
+        )
+        dane_logu = self._odswiez_stan_logu(aktualizuj=False)
+
+        k_log = utils.karta_formularza(
+            [
+                ft.Text(
+                    "Aplikacja w dziesiątkach miejsc świadomie idzie dalej mimo błędu — inaczej "
+                    "jedna nieodświeżona kontrolka potrafiłaby zabić cały ekran. Log zapisuje, "
+                    "co przy tym zostało połknięte, razem z nazwą otwartego wtedy ekranu. To on "
+                    "zamienia „u mnie nie działa” w informację, z którą da się cokolwiek zrobić.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+                ft.Row([self.ikona_logu, self.opis_logu], spacing=6,
+                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                self.opis_ostatniego_bledu,
+                ft.Row([
+                    ft.FilledTonalButton("Wyślij log", icon=ft.Icons.SHARE, on_click=self._wyslij_log),
+                    ft.OutlinedButton("Podgląd", icon=ft.Icons.VISIBILITY_OUTLINED,
+                                      on_click=self._podglad_logu),
+                    ft.TextButton("Wyczyść", icon=ft.Icons.DELETE_OUTLINE,
+                                  style=ft.ButtonStyle(color=ft.Colors.RED_700),
+                                  on_click=self._wyczysc_log),
+                ], wrap=True, spacing=8, run_spacing=8),
+                ft.Text(
+                    "Wysyłany plik ma nagłówek z wersją Fleta, platformą i wersją schematu bazy — "
+                    "czyli tym, o co przy każdym zgłoszeniu trzeba dopytywać osobno. Nie ma w nim "
+                    "VIN-ów, numerów polis, telefonów ani kwot.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+            ],
+            "Dziennik błędów", ft.Icons.BUG_REPORT,
+            domyslnie_otwarte=bool(dane_logu["bledy"]), page=page
+        )
+
+        elementy = [k1, k2, k3, k_kokpit, k_kosz, k_duplikaty, k_log, info, utils.przyciski_akcji(page, "Zapisz ustawienia", self.zapisz, "/")]
 
         super().__init__(
             route="/ustawienia",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
+        )
+
+    # ================= DZIENNIK BŁĘDÓW =================
+
+    def _naglowek_logu(self):
+        """Kontekst dokładany do wysyłanego pliku. Wersja Fleta i wersja schematu
+        to pierwsze dwa pytania przy każdym zgłoszeniu — niech przyjadą razem
+        z logiem, zamiast być przedmiotem osobnej wymiany wiadomości."""
+        dane = {
+            "Flet": utils.wersja_fleta(),
+            "Platforma": str(getattr(self._page, "platform", "?")),
+        }
+        try:
+            dane["Wersja schematu"] = str(db.pobierz_ustawienie("schema_version", "?"))
+            dane["Pojazdy"] = str(len(db.pobierz_pojazdy(tylko_aktywne=False) or []))
+        except Exception:
+            log.polkniety("odczyt danych do nagłówka logu")
+        return dane
+
+    def _odswiez_stan_logu(self, aktualizuj=True):
+        """Jedno miejsce, w którym karta bierze swój stan — wołane przy budowie
+        widoku i po wyczyszczeniu logu."""
+        dane = log.podsumowanie()
+
+        if not dane["wpisy"]:
+            utils.ustaw_ikone(self.ikona_logu, ft.Icons.CHECK_CIRCLE_OUTLINE)
+            self.ikona_logu.color = ft.Colors.GREEN_700
+            self.opis_logu.value = "Log jest pusty — nic się jeszcze nie zapisało."
+        else:
+            ma_bledy = bool(dane["bledy"])
+            utils.ustaw_ikone(self.ikona_logu, ft.Icons.BUG_REPORT if ma_bledy else ft.Icons.HISTORY)
+            self.ikona_logu.color = ft.Colors.RED_700 if ma_bledy else ft.Colors.ON_SURFACE_VARIANT
+            self.opis_logu.value = (
+                f"{dane['wpisy']} {log.odmien(dane['wpisy'], 'wpis', 'wpisy', 'wpisów')} · "
+                f"{dane['bledy']} {log.odmien(dane['bledy'], 'błąd', 'błędy', 'błędów')}, "
+                f"{dane['ostrzezenia']} {log.odmien(dane['ostrzezenia'], 'ostrzeżenie', 'ostrzeżenia', 'ostrzeżeń')} · "
+                f"{log.formatuj_rozmiar(dane['rozmiar'])}"
+            )
+
+        ostatni = dane["ostatni_blad"]
+        self.opis_ostatniego_bledu.value = f"Ostatni błąd: {ostatni[0]} — {ostatni[1][:100]}" if ostatni else ""
+        self.opis_ostatniego_bledu.visible = bool(ostatni)
+
+        if aktualizuj:
+            try:
+                self._page.update()
+            except Exception:
+                log.polkniety("odświeżenie karty dziennika błędów")
+        return dane
+
+    def _podglad_logu(self, e=None):
+        """Ostatnie wpisy w arkuszu dolnym. Podgląd jest tu warunkiem wysyłki,
+        nie ozdobą: nikt nie wysyła pliku, którego nie widział na oczy."""
+        tekst = log.ostatnie_linie(200).strip() or "Log jest pusty."
+        powierzchnia = utils.powierzchnia_karty(self._page, "sm")
+
+        bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
+        bs.content.content = ft.Column([
+            ft.Row([
+                ft.Icon(ft.Icons.BUG_REPORT, size=22, color=ft.Colors.PRIMARY),
+                ft.Column([
+                    ft.Text("Dziennik błędów", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                    ft.Text("Ostatnie wpisy, od najstarszego", size=utils.FS["caption"],
+                            color=ft.Colors.ON_SURFACE_VARIANT),
+                ], spacing=0, tight=True, expand=True),
+                ft.IconButton(
+                    icon=ft.Icons.CONTENT_COPY, icon_size=20, tooltip="Kopiuj do schowka",
+                    on_click=lambda e, t=tekst: utils.kopiuj_do_schowka(self._page, t, "Log skopiowany"),
+                ),
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Divider(height=14),
+            ft.Container(
+                padding=10,
+                border_radius=utils.RADIUS["md"],
+                bgcolor=powierzchnia["bgcolor"],
+                border=powierzchnia["border"],
+                content=ft.Column(
+                    [ft.Text(tekst, size=10, font_family="monospace",
+                             color=ft.Colors.ON_SURFACE_VARIANT)],
+                    scroll=ft.ScrollMode.AUTO, height=320, spacing=0,
+                ),
+            ),
+        ], tight=True, spacing=8)
+        utils.otworz_dno(self._page, bs)
+
+    async def _wyslij_log(self, e=None):
+        """Nagłówek diagnostyczny plus cała treść logu, wysłane tą samą drogą co
+        eksport danych: na telefonie systemowe „Udostępnij”, na komputerze okno
+        zapisu pliku. Mechanizm siedzi w main.py i jest już przetestowany na
+        CSV, PDF-ie i grafice „Rok w pigułce”."""
+        zapisywacz = getattr(self._page, "zapisz_bajty_pliku", None)
+        if zapisywacz is None:
+            utils.pokaz_komunikat(self._page, "Zapis pliku jest niedostępny w tej wersji aplikacji.",
+                                  ft.Colors.RED_700)
+            return
+
+        try:
+            raport = log.zbierz_raport(self._naglowek_logu())
+        except Exception as ex:
+            log.blad("nie udało się zebrać raportu z logu")
+            utils.pokaz_komunikat(self._page, f"Nie udało się przygotować logu: {ex}", ft.Colors.RED_700)
+            return
+
+        await zapisywacz(log.nazwa_pliku_raportu(), raport.encode("utf-8"))
+
+    def _wyczysc_log(self, e=None):
+        def wykonaj():
+            log.wyczysc()
+            log.zapisz("Dziennik wyczyszczony z Ustawień")
+            self._odswiez_stan_logu()
+            utils.pokaz_komunikat(self._page, "Dziennik błędów wyczyszczony.")
+
+        utils.potwierdz(
+            self._page, "Wyczyścić dziennik?",
+            "Zapisane błędy przepadną — także te, których jeszcze nikt nie widział. "
+            "Nowe wpisy zapisują się dalej.",
+            wykonaj, tekst_potwierdzenia="Wyczyść",
         )
 
     def _okno_duplikatow(self, e=None):

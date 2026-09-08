@@ -1,4 +1,4 @@
-"""Trzy audyty wpięte w pytest — plus testy samych audytów.
+"""Cztery audyty wpięte w pytest — plus testy samych audytów.
 
 Do tej pory były jednorazowymi skryptami: napisane, uruchomione raz, wyrzucone.
 Każdy z nich wykrył prawdziwy błąd (24 rozciągnięte chipy po cofnięciu
@@ -239,6 +239,77 @@ def test_audyt_run_task_widzi_metody_klasy(tmp_path):
 
 
 # ============================================================================
+#  1d. TESTY AUDYTU cichych `except: pass`
+# ============================================================================
+
+def _plik(tmp_path, nazwa, kod):
+    sciezka = tmp_path / nazwa
+    sciezka.write_text(textwrap.dedent(kod), encoding="utf-8")
+    return sciezka
+
+
+def test_audyt_cichych_liczy_tylko_bloki_z_samym_pass(tmp_path):
+    sciezka = _plik(tmp_path, "moj.py", """
+        def f():
+            try:
+                a()
+            except Exception:
+                pass
+            try:
+                b()
+            except Exception:
+                log.polkniety("b")
+            try:
+                c()
+            except ValueError:
+                pass
+            try:
+                d()
+            except Exception:
+                zapisz()
+                pass
+    """)
+
+    # Trzeci blok liczy się też: wąski `except ValueError` bywa świadomy, ale
+    # równie dobrze bywa przeoczeniem — audyt melduje, decyzję podejmuje człowiek.
+    # Czwarty NIE, bo `pass` po instrukcji nic nie ucisza.
+    assert audyty.znajdz_ciche_wyjatki([sciezka], korzen=tmp_path) == {"moj.py": 2}
+
+
+def test_audyt_cichych_pomija_pliki_bez_znalezisk(tmp_path):
+    sciezka = _plik(tmp_path, "czysty.py", """
+        def f():
+            try:
+                a()
+            except Exception:
+                log.polkniety("a")
+    """)
+
+    assert audyty.znajdz_ciche_wyjatki([sciezka], korzen=tmp_path) == {}
+
+
+def test_zamek_cichych_wyjatkow_czyta_to_co_zapisal(tmp_path):
+    """Zapis i odczyt muszą się zgadzać — plik jest tu jedynym punktem odniesienia."""
+    plik = tmp_path / "ciche_wyjatki.txt"
+    znalezione = {"db/kosz.py": 9, "utils/komponenty.py": 11}
+
+    plik.write_text(audyty.tresc_pliku_cichych_wyjatkow(znalezione), encoding="utf-8", newline="\n")
+
+    assert audyty.wczytaj_ciche_wyjatki(plik) == znalezione
+
+
+def test_porownanie_rozpoznaje_nowy_plik_i_przyrost():
+    zapisane = {"a.py": 2, "b.py": 1}
+    znalezione = {"a.py": 3, "c.py": 1}
+
+    nowe, przybylo, ubylo = audyty.porownaj_ciche_wyjatki(znalezione, zapisane)
+
+    assert nowe == [("c.py", 1)]
+    assert przybylo == [("a.py", 2, 3)]
+    assert ubylo == [("b.py", 1, 0)]
+
+
+# ============================================================================
 #  2. AUDYTY NA PRAWDZIWYM KODZIE
 # ============================================================================
 
@@ -327,3 +398,34 @@ def test_projekt_podaje_run_task_prawdziwe_korutyny():
         "sprawdź ręcznie i dopisz do NIEROZSTRZYGNIETE_RUN_TASK w tests/audyty.py:\n"
         + "\n".join(f"{z['plik']}:{z['linia']} — {z['cel']}" for z in nierozstrzygniete)
     )
+
+def test_ciche_wyjatki_nie_przybywaja():
+    """Zamek na `except …: pass`, w duchu zamka na odciskach migracji.
+
+    Nie chodzi o to, żeby cichych bloków nie było — większość z nich jest
+    słuszna. Chodzi o to, żeby NOWY był decyzją: od czasu `log.py` zapisanie,
+    co zostało połknięte, kosztuje jedną linijkę."""
+    zapisane = audyty.wczytaj_ciche_wyjatki()
+    assert zapisane, (
+        f"brak {audyty.PLIK_CICHYCH_WYJATKOW.name} — załóż go poleceniem: "
+        "python tests/audyty.py --zapisz"
+    )
+
+    nowe, przybylo, ubylo = audyty.porownaj_ciche_wyjatki(zapisane=zapisane)
+
+    assert nowe == [] and przybylo == [], (
+        "przybyło cichych `except …: pass`:\n"
+        + "\n".join(f"  {n} — {ile} (plik nie był na liście)" for n, ile in nowe)
+        + "\n".join(f"  {n} — było {bylo}, jest {jest}" for n, bylo, jest in przybylo)
+        + "\n\nZamiast `pass` wystarczy `log.polkniety(\"co robiliśmy\")` — zachowanie "
+        "bez zmian, a po błędzie zostaje ślad. Jeśli cisza jest tu świadoma, "
+        "odśwież zamek: python tests/audyty.py --zapisz"
+    )
+
+    assert ubylo == [], (
+        "ubyło cichych bloków — to dobra wiadomość, ale zamek trzeba odświeżyć, "
+        "inaczej przestaje cokolwiek pilnować:\n"
+        + "\n".join(f"  {n} — było {bylo}, jest {jest}" for n, bylo, jest in ubylo)
+        + "\n\npython tests/audyty.py --zapisz"
+    )
+

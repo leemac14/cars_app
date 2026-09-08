@@ -30,6 +30,7 @@ import hashlib
 import threading
 from datetime import datetime
 import db
+import log
 
 # Kolumna znacznika czasu w tabeli zdalne_rekordy. Jeśli w Twoim projekcie
 # Supabase nazywa się inaczej, wystarczy zmienić TU — moduł i tak sam wykryje
@@ -79,7 +80,7 @@ def _upewnij_sesje():
             klient.postgrest.auth(token=sesja.access_token)
             return klient, sesja.user.id
         except Exception:
-            pass
+            log.polkniety("odtworzenie zapisanej sesji Supabase")
 
     wynik = klient.auth.sign_in_anonymously()
     sesja = wynik.session
@@ -120,7 +121,7 @@ def utworz_udostepniony_pojazd(auto_id, nazwa):
     try:
         utworz_kody_rol(auto_id)
     except Exception:
-        pass
+        log.polkniety("zakładanie kodów ról przy udostępnianiu pojazdu")
 
     synchronizuj_wszystko(auto_id)
     return kod
@@ -180,7 +181,7 @@ def uniewaznij_kody_rol(auto_id):
             try:
                 klient.rpc("wycofaj_kod_dostepu", {"p_kod": kod}).execute()
             except Exception:
-                pass
+                log.polkniety("wycofanie kodu dostępu w Supabase")
     with db.polacz_baze() as conn:
         conn.execute("UPDATE samochody SET kod_wspolautora=NULL, kod_podgladu=NULL WHERE id=?", (auto_id,))
     return utworz_kody_rol(auto_id, odswiez=True)
@@ -218,7 +219,8 @@ def _dolacz_z_rola(klient, kod):
             rola = (w.get("rola") or db.ROLA_PELNA).strip()
             return w["pojazd_id"], w["nazwa"], (rola if rola in db.ETYKIETY_ROL else db.ROLA_PELNA)
     except Exception:
-        pass  # brak funkcji na serwerze albo to nie jest kod roli — próbujemy dalej
+        # Brak funkcji na serwerze albo to nie jest kod roli — próbujemy dalej.
+        log.polkniety("dołączanie do pojazdu kodem roli")
 
     wynik = klient.rpc("dolacz_do_pojazdu", {"p_kod": kod}).execute()
     if not wynik.data:
@@ -655,7 +657,7 @@ def _wylacz_delte():
     try:
         db.zapisz_ustawienie("sync_delta_niedostepna", "1")
     except Exception:
-        pass
+        log.polkniety("zapamiętanie braku synchronizacji przyrostowej")
 
 
 def _pobierz_rekordy(klient, wspolny_id, tabela, znacznik=None, tylko_id=None):

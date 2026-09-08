@@ -8,6 +8,7 @@ import tempfile
 import io
 import asyncio
 import db
+import log
 import sync
 import utils
 from state import AppState
@@ -131,6 +132,13 @@ def _wolno_wejsc(auto_id, segmenty):
 
 
 def main(page: ft.Page):
+    # Log rusza PRZED czymkolwiek innym. Najdroższe błędy tej aplikacji —
+    # nieudana migracja, brak dostępu do katalogu danych, brakująca zależność —
+    # zdarzają się w kilku pierwszych linijkach, czyli dokładnie tam, gdzie
+    # jeszcze nie ma komu pokazać komunikatu.
+    log.wlacz()
+    log.zapisz(f"=== Start aplikacji · Flet {utils.wersja_fleta()} · platforma {page.platform} ===")
+
     page.title = "Flota Mobile"
     page.window.width = 400
     page.window.height = 800
@@ -258,7 +266,7 @@ def main(page: ft.Page):
                 app_state.auto_id = None
                 db.zainicjuj_domyslne_auto(app_state)
             except Exception:
-                pass
+                log.polkniety("przywracanie kopii bezpieczeństwa po nieudanym imporcie")
 
         try:
             if not sciezka_zrodlowa or not os.path.exists(sciezka_zrodlowa):
@@ -389,7 +397,7 @@ def main(page: ft.Page):
                             await res
                     return
                 except Exception:
-                    pass
+                    log.polkniety("udostępnianie kopii zapasowej przez system")
 
             zip_bytes = await asyncio.to_thread(_przygotuj_zip_eksportu)
             _schowaj_ladowanie()
@@ -425,7 +433,7 @@ def main(page: ft.Page):
                         await res
                 return
             except Exception:
-                pass
+                log.polkniety(f"udostępnianie pliku {nazwa_pliku} przez system")
 
         try:
             if hasattr(page, "services") and not hasattr(file_picker, "on_result"):
@@ -535,6 +543,10 @@ def main(page: ft.Page):
             ostatnia_pozycja_zapisana["zakladka"] = app_state.zakladka
 
         trasa = page.route
+        # Okruszek do logu. Sam błąd mówi CO padło; dopiero ostatnie kilka
+        # ekranów mówi, co użytkownik przy tym robił — a to jest ta połowa
+        # zgłoszenia, której nikt nigdy nie pamięta.
+        log.zapisz(f"ekran: {trasa}")
         segmenty = [s for s in trasa.split("/") if s != ""]
 
         # Historia „ostatnio używanych ekranów” zapisuje się TUTAJ, w jednym
@@ -689,7 +701,9 @@ def main(page: ft.Page):
         try:
             await asyncio.to_thread(sync.przetworz_kolejke_sync, 10)
         except Exception:
-            pass  # start aplikacji nigdy nie może się wywalić przez brak sieci
+            # Start aplikacji nigdy nie może się wywalić przez brak sieci — ale
+            # od dziś zostaje po tym ślad, zamiast ciszy.
+            log.polkniety("nadganianie kolejki synchronizacji przy starcie")
         # Po nadgonieniu zaległości dociągamy jeszcze cudze zmiany. Bez tego
         # ktoś, kto tylko OGLĄDA współdzielony pojazd — a przy roli „tylko
         # podgląd” to jedyne, co robi — nie zobaczyłby nic nowego, dopóki sam
@@ -698,14 +712,14 @@ def main(page: ft.Page):
             if db.czy_auto_synchronizacja():
                 await utils.synchronizuj_cicho(page, app_state.auto_id)
         except Exception:
-            pass
+            log.polkniety("ciche dociąganie zmian przy starcie")
     page.run_task(_nadgon_kolejke_sync)
 
     # Cykliczne dociąganie w tle plus jedno przy powrocie aplikacji z tła.
     try:
         utils.uruchom_auto_synchronizacje(page, app_state)
     except Exception:
-        pass
+        log.polkniety("uruchomienie automatycznej synchronizacji")
 
     utils.przejdz(page, page.route or "/")
 

@@ -3,6 +3,7 @@
 import asyncio
 import db
 import flet as ft
+import log
 import sync
 from datetime import datetime, timedelta
 
@@ -249,7 +250,7 @@ def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", p
                 try:
                     page.update()
                 except Exception:
-                    pass
+                    log.polkniety("odświeżenie ekranu po synchronizacji")
         page.run_task(_zrob)
 
     przycisk = ft.Container(
@@ -433,11 +434,11 @@ async def synchronizuj_cicho(page: ft.Page, auto_id, odswiez=True):
             try:
                 przejdz(page, trasa)
             except Exception:
-                pass
+                log.polkniety(f"odświeżenie ekranu {trasa} po dociągnięciu zmian")
         try:
             pokaz_komunikat(page, f"Pobrano {pobrano} zmian od pozostałych użytkowników.")
         except Exception:
-            pass
+            log.polkniety("komunikat o pobranych zmianach")
     return wyslano, pobrano
 
 
@@ -465,7 +466,8 @@ def uruchom_auto_synchronizacje(page: ft.Page, state):
                     continue
                 await synchronizuj_cicho(page, getattr(state, "auto_id", None))
             except Exception:
-                pass  # pętla tła nie ma prawa się wywalić i zabrać ze sobą aplikacji
+                # Pętla tła nie ma prawa się wywalić i zabrać ze sobą aplikacji.
+                log.polkniety("cykl automatycznej synchronizacji")
 
     page.run_task(_petla)
 
@@ -491,12 +493,13 @@ def uruchom_auto_synchronizacje(page: ft.Page, state):
                 return
             page.run_task(_dociagnij_w_tle)
         except Exception:
-            pass
+            log.polkniety("obsługa powrotu aplikacji z tła")
 
     try:
         page.on_app_lifecycle_state_change = _zmiana_stanu
     except Exception:
-        pass  # starsze wersje Fleta nie mają tego zdarzenia — zostaje sama pętla
+        # Starsze wersje Fleta nie mają tego zdarzenia — zostaje sama pętla.
+        log.polkniety("podpięcie zdarzenia stanu aplikacji")
 
 
 __all__ = [
