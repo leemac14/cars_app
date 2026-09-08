@@ -184,6 +184,7 @@ zalaczniki_odroczone/
 zalaczniki_bak/
 zalaczniki/
 supabase/
+build/
 
 flota_zadania.db
 flota_zadania.db.bak

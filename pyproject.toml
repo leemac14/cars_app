@@ -1,0 +1,8 @@
+[tool.flet.app]
+exclude = [
+    ".venv", ".git", ".github", "__pycache__", ".pytest_cache",
+    "tests", "pytest.ini",
+    "zalaczniki", "zalaczniki_bak", "zalaczniki_odroczone", "kosz_zalaczniki",
+    "flota_zadania.db", "flota_zadania.db.bak", "kopia_baza.zip", "flota.log",
+    "supabase",
+]
