@@ -131,8 +131,15 @@ def bez_sieci(monkeypatch):
     """Żaden test nie ma prawa dobić do Supabase.
 
     Bez tego pojedyncza pomyłka (widok, który przy budowie woła synchronizację)
-    zamienia się w test wiszący na timeoucie sieciowym zamiast w czytelny błąd."""
-    import sync
+    zamienia się w test wiszący na timeoucie sieciowym zamiast w czytelny błąd.
+
+    Podmiana leci po WSZYSTKICH modułach — z tego samego powodu, co w `magazyn`.
+    Po rozbiciu sync.py na pakiet `sync/przywracanie.py` i `sync/przebieg.py`
+    mają własne wiązanie `_upewnij_sesje` (z `from .polaczenie import ...`),
+    więc podmiana samego `sync._upewnij_sesje` przestałaby cokolwiek blokować —
+    i to bez żadnego czerwonego testu, bo blokada milczy dopóki działa.
+    Pilnuje tego `test_sync_pakiet.py::test_zakaz_sieci_siega_do_kazdego_modulu`."""
+    import sync  # noqa: F401  (musi być zaimportowany, żeby wejść na listę)
 
     def _zabroniony(*_a, **_k):
         raise AssertionError(
@@ -140,5 +147,7 @@ def bez_sieci(monkeypatch):
             "zdarzyć przy pojeździe, który nie jest współdzielony."
         )
 
-    monkeypatch.setattr(sync, "_pobierz_klient", _zabroniony)
-    monkeypatch.setattr(sync, "_upewnij_sesje", _zabroniony)
+    for modul in _moduly_aplikacji():
+        for nazwa in ("_pobierz_klient", "_upewnij_sesje"):
+            if hasattr(modul, nazwa):
+                monkeypatch.setattr(modul, nazwa, _zabroniony)

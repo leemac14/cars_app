@@ -111,7 +111,7 @@ def pokaz_dialog_konfliktow(page: ft.Page, konflikty, auto_id=None, po_zmianie=N
 
     Gdy podano `auto_id`, okno pozwala też cofnąć nadpisanie: wersje z chmury
     zostały zapamiętane w chwili wykrycia konfliktu (patrz
-    sync._zarejestruj_konflikt), więc jest jeszcze co przywracać. Wcześniej
+    sync/konflikty.py), więc jest jeszcze co przywracać. Wcześniej
     jedynym wyjściem był przycisk „Rozumiem” i ręczne przepisywanie danych."""
     if not konflikty:
         return

@@ -35,6 +35,7 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `test_typy_db.py` | Adnotacje zwrotu warstwy danych kontra to, co funkcje naprawdę zwracają — wołane na bazie testowej. |
 | `ciche_wyjatki.txt` | Zamrożona liczba cichych `except …: pass` w każdym pliku. |
 | `test_start.py` | Podział startu: `init_db()` robi tylko schemat, `porzadki_startowe()` sprząta kosz, odroczone załączniki i (raz) ścieżki. |
+| `test_sync_pakiet.py` | Pakiet `sync/`: zależności tylko w dół, `__init__.py` bez logiki, nazwy przypisywane przez `global` nie wychodzą z modułu, blokada sieci sięga każdego wiązania, aplikacja nie woła nazwy, której pakiet nie wystawia. |
 | `test_log.py` | Rotujący log błędów: co łapie (połknięty wyjątek, wątek, porzucona korutyna asyncio, cudze ostrzeżenia), czego nie łapie (cudze INFO), rotacja, raport do wysłania i to, że brak miejsca na log nie wywala aplikacji. |
 
 Listy widoków ani migracji nie ma tu przepisanej ręcznie — pierwsza bierze się
@@ -256,6 +257,41 @@ Ten kierunek ma cztery zbiory świadomych wyjątków (`POZA_SYNC_SWIADOMIE`,
 każdy wpis z powodem wpisanym obok. Pilnuje ich `test_wyjatki_nie_gnija`: wpis,
 który przestał być potrzebny, jest gorszy od braku wpisu, bo wygląda jak
 decyzja, a jest śmieciem po zmianie sprzed pół roku.
+
+## Pakiet `sync/` — trzy pułapki, z których każda milczy
+
+`sync.py` był piątym i ostatnim dużym plikiem rozbitym na moduły ułożone od
+najmniej zależnych do najbardziej. Przy `db`, `utils` i dwóch pakietach widoków
+najgorszym skutkiem pomyłki był nieotwierający się ekran. Tutaj jest nim
+nadpisanie cudzych danych, więc zasady podziału dostały testy.
+
+**1. `from .modul import nazwa` robi KOPIĘ wiązania.** Dopóki nazwa jest tylko
+czytana albo mutowana w miejscu, kopia i oryginał to jeden obiekt. Ale nazwa
+przypisywana potem przez `global` rozjeżdża się z kopią bezszelestnie —
+`sync._delta_dostepna` pokazywałoby `None` w chwili, gdy `sync.delta` ma już
+`False`. Dlatego `_klient_cache` i `_delta_dostepna` NIE są re-eksportowane,
+a `test_nazwa_przypisywana_globalnie_nie_wychodzi_z_modulu` pyta o to
+z drugiej strony niż intuicja: nie „czy ten moduł ją wystawia", tylko „czy
+ktokolwiek ją wystawia albo importuje". Zamiana `lista.clear()` na `lista = []`
+w module, który tę listę tylko importuje, jest właśnie takim przypadkiem.
+
+**2. Ta sama kopia unieważnia `monkeypatch.setattr(sync, ...)`.** Blokada sieci
+z `conftest.py` podmieniała `sync._upewnij_sesje` — po podziale `przywracanie`,
+`przebieg` i `wspoldzielenie` mają własne wiązanie, więc podmiana samego
+pakietu przestałaby cokolwiek blokować. Bez ani jednego czerwonego testu, bo
+blokada, która działa, jest niema. Dziś podmiana leci po wszystkich modułach
+(tak samo jak ścieżki w fixture `magazyn`), a `WEJSCIA_DO_SIECI` jest zamkiem
+na listę miejsc, w których wejście do Supabase w ogóle istnieje.
+
+**3. Nazwa zapomniana w `__all__`** znika z `import sync` i wraca jako
+`AttributeError` u wołającego — czyli na ekranie, którego nikt nie otworzył
+podczas przeglądu. `test_wszystko_czego_uzywa_aplikacja_jest_pod_sync`
+wyszukuje w AST każdą `sync.cos` napisaną gdziekolwiek w aplikacji i sprawdza,
+czy pakiet ją wystawia.
+
+Sam przenos był mechaniczny i został udowodniony: 49 definicji porównanych
+z oryginałem po `ast.dump` i po surowym tekście. Kod definicji nie zmienił się
+ani o znak — zmieniło się tylko to, w którym pliku mieszka.
 
 ## Końce linii
 

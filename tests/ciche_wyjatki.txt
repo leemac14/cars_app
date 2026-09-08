@@ -16,7 +16,7 @@ db/usuwanie.py                      5
 db/wizyty.py                        4
 db/zalaczniki.py                    5
 log.py                              5
-sync.py                             1
+sync/konflikty.py                   1
 utils/dialogi.py                    1
 utils/filtry.py                     6
 utils/formularze.py                 1

@@ -454,7 +454,7 @@ def usun_z_kosza_trwale(kosz_id):
             if zdalne:
                 zarejestruj_nagrobek(tab, zdalne)
 
-    # Dane opisowe pojazdu mają własny zdalny odpowiednik (sync._synchronizuj_info_pojazdu)
+    # Dane opisowe pojazdu mają własny zdalny odpowiednik (sync/pobieranie.py)
     if dane_auta.get("info_zdalne_id"):
         zarejestruj_nagrobek("info_pojazdu", dane_auta["info_zdalne_id"])
 

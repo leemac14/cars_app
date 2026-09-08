@@ -281,7 +281,7 @@ def zarejestruj_nagrobek(tabela, zdalny_id, auto_id=None):
     """Zapamiętuje lokalnie, że wiersz o danym zdalne_id (z tabeli 'tabela') został
     usunięty na tym urządzeniu — sam rekord znika z lokalnej bazy od razu (jak
     dotychczas), ale info o usunięciu trzeba jeszcze wypchnąć na serwer przy
-    najbliższej synchronizacji (patrz sync._wypchnij_nagrobki).
+    najbliższej synchronizacji (patrz sync/nagrobki.py).
 
     `auto_id` jest opcjonalne: NULL znaczy „nie wiadomo, z którego pojazdu”
     i taki nagrobek leci przy synchronizacji dowolnego auta, dokładnie jak
