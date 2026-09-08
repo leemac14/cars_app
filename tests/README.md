@@ -1,6 +1,6 @@
 # tests/
 
-Jedenaście rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
+Dwanaście rodzajów sprawdzeń, które i tak robiło się ręcznie po każdej zmianie —
 zapisanych raz, uruchamianych zawsze.
 
 ## Uruchomienie
@@ -29,8 +29,9 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `test_schemat.py` | `KONFIGURACJA_SYNC`, `KOLUMNY_POJAZDU`, `KOSZ_TABELE_*`, `KOLUMNY_ZE_SCIEZKAMI`, `POLA_NOTATKI` kontra `PRAGMA table_info` — w OBIE strony. Zapytania pośrednie i `reset_where` jako poprawny SQL. |
 | `test_widoki.py` | Wszystkie widoki budują się bez okna, na dziewięciu układach danych: pusty garaż, auto bez wpisów, komplet, auto z historią, elektryk, hybryda plug-in, auto sprzedane, cudze auto w podglądzie, pełny kosz. Ekran główny osobno w każdej zakładce. |
 | `test_konce_linii.py` | Cały projekt na LF, bez BOM-ów, z jawną polityką w `.gitattributes`. Umie też naprawiać. |
-| `test_audyty.py` | Pięć audytów: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`, ciche `except …: pass`, kształt wyników `db` kontra adnotacje. Plus testy samych audytów. |
-| `audyty.py` | Silniki tych pięciu audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
+| `test_formatowanie.py` | Ekran i eksport składają liczbę tak samo; zaokrąglenia wypisane wprost; rozmiary w bajtach mają jedną postać. |
+| `test_audyty.py` | Sześć audytów: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`, ciche `except …: pass`, kształt wyników `db` kontra adnotacje, ręczne składanie liczb. Plus testy samych audytów. |
+| `audyty.py` | Silniki tych sześciu audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
 | `test_typy_db.py` | Adnotacje zwrotu warstwy danych kontra to, co funkcje naprawdę zwracają — wołane na bazie testowej. |
 | `ciche_wyjatki.txt` | Zamrożona liczba cichych `except …: pass` w każdym pliku. |
 | `test_start.py` | Podział startu: `init_db()` robi tylko schemat, `porzadki_startowe()` sprząta kosz, odroczone załączniki i (raz) ścieżki. |
@@ -144,6 +145,29 @@ znajdować i nikt tego nie zauważa, bo zielono.
 
 Świadome wyjątki mieszkają w `audyty.py` jako `DOZWOLONE_POLA`
 i `NIEROZSTRZYGNIETE_RUN_TASK` — każdy wpis to decyzja, nie przeoczenie.
+
+## Liczby: jedno miejsce na skład
+
+Ekran, eksport CSV, generator grafiki i raport PDF miały po własnej kopii tych
+samych trzech linijek: zaokrąglenie, przecinek dziesiętny, separator tysięcy.
+Zaokrąglenia akurat się zgadzały — ale zgadzały się PRZYPADKIEM, bo nic ich nie
+trzymało razem.
+
+Dziś skład robi `db.liczba_na_tekst` i tylko on. `utils.formatuj_liczba`
+(ekran) i `db.formatuj_liczba_eksport` (pliki) są opakowaniami, które podejmują
+jedną decyzję: co pokazać, gdy wartości NIE MA. Ekran woli zero, arkusz pustą
+komórkę — różnica zamierzona i też opisana testem.
+
+`test_formatowanie.py` porównuje obie drogi na kilkunastu tysiącach wartości
+(z połówkami i ćwiartkami osobno) i dodatkowo wypisuje kilkanaście zaokrągleń
+WPROST, żeby ich zmiana była widoczna w diffie, a nie tylko w wyniku porównania
+dwóch funkcji ze sobą.
+
+`audyt_recznego_formatowania` pilnuje drugiej połowy: szuka separatora tysięcy
+w formacie (`:,`) i podmiany kropki na przecinek poza dwoma miejscami, którym
+wolno — rdzeniem w `db/pomocnicze.py` i świadomą kopią w `log.py` (log nie
+importuje niczego z projektu, więc kopii nie da się usunąć; zgodność obu pilnuje
+osobny test). Idiomów PARSERA (`replace(",", ".")`) audyt nie rusza.
 
 ## Start aplikacji: co jest przed pierwszym pikselem
 

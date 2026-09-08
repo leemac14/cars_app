@@ -1,4 +1,4 @@
-"""Pięć audytów, które do tej pory były jednorazowymi skryptami.
+"""Sześć audytów, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
@@ -781,6 +781,86 @@ def funkcje_db_konsumowane_bez_adnotacji(sciezki=None, korzen=None):
 
 
 # ============================================================================
+#  AUDYT 6 — ręczne składanie liczb (AST)
+# ============================================================================
+# Przecinek dziesiętny i spacja co trzy cyfry to DECYZJA O WYGLĄDZIE, a nie
+# szczegół implementacyjny. Rozsypana po plikach potrafi się rozjechać w sposób,
+# którego nikt nie zgłosi, a każdy zauważy — jak „1.5 MB" na jednym ekranie
+# i „1,5 MB" na drugim, w tej samej aplikacji.
+#
+# Audyt szuka dwóch rzeczy, które nie mają żadnego innego zastosowania niż skład
+# liczby: separatora tysięcy w formacie (`:,`) oraz podmiany kropki na przecinek
+# (i odwrotnie). Nie rusza `:.2f` — ten bywa potrzebny do rzeczy, które nie idą
+# na ekran (pomiary czasu w logu).
+
+# Miejsca, którym wolno składać liczbę samodzielnie. Każde jest decyzją:
+#   db/pomocnicze.py — RDZEŃ, czyli to jedno miejsce, do którego reszta woła;
+#   log.py           — świadoma kopia, bo log nie importuje niczego z projektu
+#                      (zgodności obu pilnuje test w tests/test_formatowanie.py).
+WOLNO_SKLADAC_LICZBY = {"db/pomocnicze.py", "log.py"}
+
+
+def _spec_formatu(wezel):
+    """Tekst specyfikacji formatu z `f"{x:,.2f}"` albo None."""
+    if not isinstance(wezel, ast.FormattedValue) or wezel.format_spec is None:
+        return None
+    czesci = []
+    for kawalek in wezel.format_spec.values:
+        if isinstance(kawalek, ast.Constant) and isinstance(kawalek.value, str):
+            czesci.append(kawalek.value)
+    return "".join(czesci)
+
+
+# Podmiany, które robi się WYŁĄCZNIE po to, żeby złożyć liczbę do pokazania.
+# `replace(",", "")` i `replace(",", ".")` celowo tu nie ma — to idiomy PARSERA
+# (patrz `_parsuj_liczbe_csv`), a audyt, który je zgłasza, sypie fałszywkami.
+PODMIANY_SKLADU_LICZBY = {(".", ","), (",", " ")}
+
+
+def _podmiana_separatora(wezel):
+    """Opis, jeśli węzeł składa liczbę podmianą separatora."""
+    if not (isinstance(wezel, ast.Call) and isinstance(wezel.func, ast.Attribute)
+            and wezel.func.attr == "replace" and len(wezel.args) == 2):
+        return None
+    argumenty = [a.value for a in wezel.args
+                 if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+    if len(argumenty) != 2:
+        return None
+    if tuple(argumenty) in PODMIANY_SKLADU_LICZBY:
+        return f"replace({argumenty[0]!r}, {argumenty[1]!r})"
+    return None
+
+
+def audyt_recznego_formatowania(sciezki=None, korzen=None, dozwolone=None):
+    """Miejsca, w których liczba jest składana z palca zamiast przez rdzeń."""
+    korzen = korzen or KORZEN_PROJEKTU
+    dozwolone = WOLNO_SKLADAC_LICZBY if dozwolone is None else dozwolone
+    znaleziska = []
+
+    for sciezka in sciezki if sciezki is not None else _pliki_projektu():
+        wzgledna = sciezka.relative_to(korzen).as_posix()
+        if wzgledna in dozwolone:
+            continue
+        drzewo = ast.parse(sciezka.read_text(encoding="utf-8"), filename=str(sciezka))
+
+        for wezel in ast.walk(drzewo):
+            spec = _spec_formatu(wezel)
+            if spec and "," in spec:
+                znaleziska.append({
+                    "plik": wzgledna, "linia": wezel.lineno,
+                    "opis": f"separator tysięcy w formacie {{…:{spec}}} zamiast db.liczba_na_tekst",
+                })
+            podmiana = _podmiana_separatora(wezel)
+            if podmiana:
+                znaleziska.append({
+                    "plik": wzgledna, "linia": wezel.lineno,
+                    "opis": f"ręczna podmiana separatora — {podmiana} — zamiast db.liczba_na_tekst",
+                })
+
+    return znaleziska
+
+
+# ============================================================================
 #  RAPORT
 # ============================================================================
 
@@ -832,6 +912,10 @@ if __name__ == "__main__":
         print(f"  [ubyło]     {nazwa} — {bylo} -> {jest}")
     if not (nowe or przybylo or ubylo):
         print("  zgodne z zamkiem")
+
+    print("\n== Audyt ręcznego składania liczb ==")
+    for z in audyt_recznego_formatowania():
+        print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
 
     print("\nAudyty drzewa kontrolek (expand, chipy) uruchamia pytest:")
     print("  python -m pytest tests/test_audyty.py -q")

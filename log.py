@@ -368,6 +368,12 @@ def wyczysc():
 # ============================================================================
 
 def formatuj_rozmiar(bajty):
+    """Rozmiar w bajtach po ludzku. ŚWIADOMA kopia `db.formatuj_rozmiar`.
+
+    Ten moduł nie importuje niczego z projektu — to warunek tego, żeby mógł
+    z niego korzystać `db`, które o `utils` nie ma prawa wiedzieć. Cena jest
+    jedna: dwie kopie sześciu linijek. Trzyma je razem test, który porównuje
+    wynik obu na tym samym zestawie wartości."""
     if bajty < 1024:
         return f"{bajty} B"
     if bajty < 1024 * 1024:

@@ -13,13 +13,12 @@ ETYKIETY_RETENCJI = {
 
 def _formatuj_rozmiar(bajty):
     """Rozmiar zdjęć zalegających w koszu — po to, żeby było widać, kiedy kosz
-    zaczyna realnie zajmować miejsce na dysku."""
+    zaczyna realnie zajmować miejsce na dysku.
+
+    Sam skład rozmiaru robi `db.formatuj_rozmiar`; tutaj zostaje decyzja, że
+    ZERO bajtów to nie „0 B", tylko brak zdania do pokazania."""
     bajty = int(bajty or 0)
-    if bajty <= 0:
-        return None
-    if bajty < 1024 * 1024:
-        return f"{bajty / 1024:.0f} KB"
-    return f"{bajty / (1024 * 1024):.1f} MB"
+    return db.formatuj_rozmiar(bajty) if bajty > 0 else None
 
 
 class KoszView(ft.View):

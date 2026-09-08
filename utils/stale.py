@@ -2,6 +2,11 @@
 
 import flet as ft
 
+# Skład liczby (zaokrąglenie, przecinek, separator) mieszka w warstwie danych,
+# bo korzysta z niego też eksport i generator grafiki — a `db` nie ma prawa
+# importować `utils`, więc wspólny rdzeń może leżeć tylko po tamtej stronie.
+from db.pomocnicze import SEPARATOR_TYSIECY, liczba_na_tekst
+
 
 MAPA_KOLOROW = {
     "Indygo": ft.Colors.INDIGO,
@@ -48,16 +53,17 @@ def bezpieczna_nazwa_pliku(tekst, domyslna="pojazd"):
 
 
 def formatuj_liczba(wartosc, decimale=2):
-    try:
-        wartosc = float(wartosc)
-    except (TypeError, ValueError):
-        wartosc = 0.0
-    if decimale > 0:
-        tekst = f"{wartosc:,.{decimale}f}"
-        czesc_calk, _, czesc_dziesiet = tekst.partition(".")
-        return f"{czesc_calk.replace(',', ' ')},{czesc_dziesiet}"
-    else:
-        return f"{int(round(wartosc)):,}".replace(",", " ")
+    """Liczba na ekran: przecinek dziesiętny i spacja co trzy cyfry.
+
+    Zaokrąglanie i skład tekstu robi `db.liczba_na_tekst` — to samo, z którego
+    korzysta eksport i generator grafiki. Tutaj zostaje wyłącznie decyzja, co
+    pokazać, gdy wartości nie ma: ZERO, bo pusty kafelek na kokpicie myli
+    bardziej niż „0,00". Eksport w tej samej sytuacji zostawia pustą komórkę
+    i to jest różnica zamierzona, nie przeoczenie."""
+    tekst = liczba_na_tekst(wartosc, decimale, SEPARATOR_TYSIECY)
+    if tekst is None:
+        tekst = liczba_na_tekst(0, decimale, SEPARATOR_TYSIECY)
+    return tekst
 
 
 # ============== DESIGN TOKENS ==============

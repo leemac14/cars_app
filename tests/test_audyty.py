@@ -1,4 +1,4 @@
-"""Pięć audytów wpiętych w pytest — plus testy samych audytów.
+"""Sześć audytów wpiętych w pytest — plus testy samych audytów.
 
 Do tej pory były jednorazowymi skryptami: napisane, uruchomione raz, wyrzucone.
 Każdy z nich wykrył prawdziwy błąd (24 rozciągnięte chipy po cofnięciu
@@ -427,6 +427,62 @@ def test_odczyt_ksztaltu_z_adnotacji():
 
 
 # ============================================================================
+#  1f. TESTY AUDYTU ręcznego składania liczb
+# ============================================================================
+
+def _audyt_formatowania(tmp_path, kod, dozwolone=frozenset()):
+    return audyty.audyt_recznego_formatowania(
+        [_plik(tmp_path, "moj.py", kod)], korzen=tmp_path, dozwolone=dozwolone
+    )
+
+
+def test_audyt_formatowania_lapie_separator_tysiecy(tmp_path):
+    znaleziska = _audyt_formatowania(tmp_path, """
+        def pokaz(km):
+            return f"{km:,} km"
+    """)
+
+    assert len(znaleziska) == 1
+    assert "separator tysięcy" in znaleziska[0]["opis"]
+
+
+def test_audyt_formatowania_lapie_podmiane_kropki_na_przecinek(tmp_path):
+    znaleziska = _audyt_formatowania(tmp_path, """
+        def pokaz(kwota):
+            return f"{kwota:.2f}".replace(".", ",")
+    """)
+
+    assert len(znaleziska) == 1
+    assert "replace" in znaleziska[0]["opis"]
+
+
+def test_audyt_formatowania_przepuszcza_zwykle_zaokraglenie(tmp_path):
+    """`:.2f` bez przecinka bywa potrzebne poza ekranem — na przykład
+    w pomiarach czasu zapisywanych do logu."""
+    assert _audyt_formatowania(tmp_path, """
+        def zmierz(ms):
+            zapisz(f"czas: {ms:.0f} ms")
+    """) == []
+
+
+def test_audyt_formatowania_przepuszcza_idiomy_parsera(tmp_path):
+    """`replace(",", ".")` i `replace(",", "")` to CZYTANIE liczby, nie skład —
+    audyt, który je zgłasza, sypie fałszywkami i przestaje być czytany."""
+    assert _audyt_formatowania(tmp_path, """
+        def parsuj(tekst):
+            return float(tekst.replace(",", ".").replace(",", ""))
+    """) == []
+
+
+def test_audyt_formatowania_szanuje_liste_wyjatkow(tmp_path):
+    kod = """
+        def pokaz(km):
+            return f"{km:,} km"
+    """
+    assert _audyt_formatowania(tmp_path, kod, dozwolone={"moj.py"}) == []
+
+
+# ============================================================================
 #  2. AUDYTY NA PRAWDZIWYM KODZIE
 # ============================================================================
 
@@ -526,6 +582,23 @@ def test_projekt_konsumuje_wyniki_db_zgodnie_z_adnotacjami():
     assert znaleziska == [], "\n".join(
         f"{z['plik']}:{z['linia']} — {z['opis']}" for z in znaleziska
     )
+
+
+
+
+def test_projekt_nie_sklada_liczb_recznie():
+    """Przecinek dziesiętny i spacja co trzy cyfry to decyzja o WYGLĄDZIE.
+    Rozsypana po plikach rozjeżdża się w sposób, którego nikt nie zgłosi:
+    „1.5 MB" na jednym ekranie i „1,5 MB" na drugim, w tej samej aplikacji."""
+    znaleziska = audyty.audyt_recznego_formatowania()
+    assert znaleziska == [], (
+        "\n".join(f"{z['plik']}:{z['linia']} — {z['opis']}" for z in znaleziska)
+        + "\n\nSkład liczby robi db.liczba_na_tekst (przez utils.formatuj_liczba na "
+        "ekranie i db.formatuj_liczba_eksport w plikach). Jeśli to miejsce naprawdę "
+        "musi składać liczbę samo, dopisz je do WOLNO_SKLADAC_LICZBY w tests/audyty.py "
+        "— z powodem."
+    )
+
 
 
 def test_ciche_wyjatki_nie_przybywaja():

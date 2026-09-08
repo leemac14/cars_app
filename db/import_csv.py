@@ -7,7 +7,7 @@ from datetime import datetime
 
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, KATEGORIA_INNE_DOMYSLNA
 from .polaczenie import polacz_baze
-from .pomocnicze import _parsuj_liczbe_csv
+from .pomocnicze import _parsuj_liczbe_csv, formatuj_liczba_eksport
 from .ustawienia import pobierz_moje_imie
 from .energia import ETYKIETY_RODZAJU, domyslny_rodzaj_energii
 from .nazwy import klucz_nazwy, normalizuj_nazwe
@@ -416,8 +416,8 @@ TYPY_IMPORTU = {
         "przygotuj": przygotuj_import_tankowan,
         "zapisz": zaimportuj_tankowania,
         "podglad": lambda g, jednostka: (
-            f"{g['data']} • {g['przebieg']} km • {g['litry']:.2f} "
-            f"{'kWh' if g.get('rodzaj_energii') == ENERGIA_PRAD else jednostka} • {g['kwota']:.2f}"
+            f"{g['data']} • {g['przebieg']} km • {formatuj_liczba_eksport(g['litry'])} "
+            f"{'kWh' if g.get('rodzaj_energii') == ENERGIA_PRAD else jednostka} • {formatuj_liczba_eksport(g['kwota'])}"
             + (f" • {g['stacja']}" if g.get("stacja") else "")
             + (f" • {ETYKIETY_RODZAJU.get(g.get('rodzaj_energii'), '')}" if g.get("rodzaj_energii") else "")
         ),
@@ -430,7 +430,7 @@ TYPY_IMPORTU = {
         "przygotuj": przygotuj_import_innych_kosztow,
         "zapisz": zaimportuj_inne_koszty,
         "podglad": lambda g, jednostka: (
-            f"{g['data']} • {g['nazwa']} • {g['kwota']:.2f}"
+            f"{g['data']} • {g['nazwa']} • {formatuj_liczba_eksport(g['kwota'])}"
             + (f" • {g['tagi']}" if g.get("tagi") else "")
         ),
     },

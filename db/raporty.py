@@ -16,7 +16,7 @@ except ImportError:
     ImageOps = None
 
 from .polaczenie import polacz_baze
-from .pomocnicze import formatuj_liczba_eksport
+from .pomocnicze import SEPARATOR_TYSIECY, formatuj_liczba_eksport, liczba_na_tekst
 from .ustawienia import pobierz_walute
 from .energia import formatuj_zuzycie_tekst
 from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu
@@ -268,7 +268,7 @@ def _narysuj_wykres_liniowy(pdf, punkty, x, y, w, h):
     pdf.set_text_color(120, 120, 120)
     for wart, frakcja in ((max_v, 0.0), ((max_v + min_v) / 2, 0.5), (min_v, 1.0)):
         pdf.set_xy(x - 22, y + h * frakcja - 2.5)
-        pdf.cell(20, 5, pdf.t(f"{int(wart):,}".replace(",", " ")), align="R")
+        pdf.cell(20, 5, pdf.t(liczba_na_tekst(wart, 0, SEPARATOR_TYSIECY)), align="R")
 
     n = len(punkty)
 
