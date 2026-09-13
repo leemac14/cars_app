@@ -54,7 +54,7 @@ class MainView(
         self.kokpit_edycja = False       # True = kafelki kokpitu można przeciągać (patrz _buduj_kokpit)
         self.kokpit_kontener = None      # kontener przełączany między karuzelą a trybem układania
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
-        self._scena_kokpitu = None       # animacja wejścia (patrz utils.ScenaWejscia)
+        self._scena_zakladki = None      # animacja wejścia aktywnej zakładki (utils.ScenaWejscia)
         self.przelacznik_zakladek = None # zawartość zakładki żyje w nim (patrz przelacz_zakladke)
         self.pasek_zakladek = None       # ustawiany niżej, razem z dolnym paskiem
         self._przelacznik_pojazdow = None  # ustawiane w buduj_naglowek_auta (showroom aut)
@@ -142,6 +142,7 @@ class MainView(
         Buildery zakładek dopisują do `self.elementy` i ustawiają `self.fab`, więc
         na czas budowy podstawiamy im własną listę. Poza tą chwilą
         `self.elementy` znaczy dokładnie to, co znaczyło."""
+        self._scena_zakladki = self._nowa_scena_zakladki()
         wspolne, self.elementy = self.elementy, []
         self.fab = None
         try:
@@ -163,8 +164,41 @@ class MainView(
         if self.state.auto_id and not utils.wolno_dodawac(self.state.auto_id):
             self.fab = None
 
+        # Scena rusza dopiero, gdy zawartość jest zbudowana — sama odczeka
+        # jeszcze moment, aż widok trafi do drzewa strony.
+        self._scena_zakladki.uruchom(self._page)
+
         # `spacing` odtwarza odstęp, który przy płaskiej liście dawał sam widok.
         return ft.Column(zebrane, spacing=15)
+
+    def _nowa_scena_zakladki(self):
+        """Każda zakładka animuje się po swojemu, więc scenę dobiera się do niej,
+        a nie odwrotnie.
+
+        Kokpit odlicza LICZBY, wspólnym ruchem i tylko przy starcie aplikacji albo
+        po zmianie pojazdu (patrz _czy_animowac_kokpit). Serwis i Analiza to listy
+        PASKÓW — tam sens niesie kaskada: paski ruszają jeden po drugim, więc
+        widać, który dojechał dalej. Koszty nie mają czego animować, dostają więc
+        scenę wyłączoną i nie płacą za nic."""
+        zakladka = int(self.state.zakladka or 0)
+
+        if zakladka == 0:
+            gra = self._czy_animowac_kokpit()
+            if gra:
+                # Znacznik stawiamy w chwili podjęcia decyzji — kolejne wejścia na
+                # kokpit tego pojazdu mają już nie odliczać.
+                self.state.kokpit_animacja_dla = self.state.auto_id
+            return utils.ScenaWejscia(wlaczona=gra)
+
+        if zakladka in (1, 3):
+            klucz = "serwis" if zakladka == 1 else "analiza"
+            return utils.ScenaWejscia(
+                wlaczona=db.czy_animacje_interfejsu()
+                and utils.pierwsze_pokazanie(self.state, klucz, self.state.auto_id),
+                kaskada=True,
+            )
+
+        return utils.ScenaWejscia(wlaczona=False)
 
     def _wyczysc_stan_zakladki(self):
         """Stan, który przy przebudowie ekranu zerował konstruktor: tryb
@@ -183,7 +217,7 @@ class MainView(
         self.kokpit_edycja = False
         self.kokpit_kontener = None
         self._kokpit_budowniczy = {}
-        self._scena_kokpitu = None
+        self._scena_zakladki = None
 
     def _odswiez_szuflade(self):
         """Podświetlenie aktywnego ekranu w szufladzie jedzie za zakładką.

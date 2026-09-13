@@ -45,6 +45,15 @@ class RokWPigulceView(ft.View):
             )
             return
 
+        # Paski „na co poszły pieniądze” najeżdżają od zera, jeden po drugim —
+        # kaskada pokazuje, która kategoria zjadła ile, zanim zdąży się przeczytać
+        # kwoty. Raz na uruchomienie aplikacji.
+        self.scena = utils.ScenaWejscia(
+            wlaczona=db.czy_animacje_interfejsu()
+            and utils.pierwsze_pokazanie(state, "rok", state.auto_id),
+            kaskada=True,
+        )
+
         self.rok = int(rok) if rok and int(rok) in lata else lata[0]
         self.dane = db.podsumowanie_roku(self.state.auto_id, self.rok)
 
@@ -72,6 +81,7 @@ class RokWPigulceView(ft.View):
             route=f"/rok/{self.rok}", padding=15, spacing=15, appbar=appbar,
             controls=[utils.z_odswiezaniem(page, elementy)],
         )
+        self.scena.uruchom(page)
 
     # ================= SEKCJE =================
 
@@ -161,6 +171,7 @@ class RokWPigulceView(ft.View):
 
         def pasek(etykieta, wartosc, kolor):
             procent = wartosc / razem * 100
+            self.scena.nastepny_wiersz()
             return ft.Column([
                 ft.Row([
                     ft.Text(etykieta, size=utils.FS["body_strong"], weight="bold", expand=True),
@@ -168,9 +179,11 @@ class RokWPigulceView(ft.View):
                             f"({utils.formatuj_liczba(procent, 0)}%)",
                             size=utils.FS["body"], weight="bold", color=kolor),
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                ft.ProgressBar(value=max(0.0, min(1.0, procent / 100)), color=kolor,
-                               bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
-                               height=8, border_radius=4),
+                self.scena.wskaznik(ft.ProgressBar(
+                    value=max(0.0, min(1.0, procent / 100)), color=kolor,
+                    bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                    height=8, border_radius=4,
+                )),
             ], spacing=4)
 
         return utils.karta_analizy(self._page, "Na co poszły pieniądze", ft.Icons.PIE_CHART, [

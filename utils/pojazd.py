@@ -5,6 +5,7 @@ import flet as ft
 
 from datetime import datetime
 
+from .animacje import ScenaWejscia
 from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
 from .format import parsuj_float, symbol_waluty
 from .zgodnosc import ustaw_blad
@@ -366,10 +367,17 @@ def opis_dni_terminu(dni):
     return f"za {dni} dni"
 
 
-def pasek_terminu(page: ft.Page, termin, pelny=True):
+def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
     """Wiersz terminu dokumentu z odliczaniem i paskiem. Pasek pokazuje, ile
     z okna ostrzegawczego już minęło — wypełnia się dopiero, gdy termin wchodzi
-    w próg powiadomienia, więc „zielony i pusty” znaczy „jeszcze długo”."""
+    w próg powiadomienia, więc „zielony i pusty” znaczy „jeszcze długo”.
+
+    To dobra decyzja, ale trudna do odczytania z jednego spojrzenia: pusty pasek
+    wygląda jak brak danych. `scena` (utils.ScenaWejscia) każe mu przy wejściu
+    wypełnić się od zera — wtedy widać, GDZIE się zatrzymał, a to jest cała
+    treść. Termin jeszcze odległy nie drgnie wcale i właśnie to o nim mówi."""
+    scena = scena or ScenaWejscia(wlaczona=False)
+    scena.nastepny_wiersz()
     kolor = KOLORY_STATUSU_TERMINU.get(termin["status"], ft.Colors.ON_SURFACE_VARIANT)
     prog = max(1, termin.get("prog") or 30)
     if termin["dni"] < 0:
@@ -386,11 +394,11 @@ def pasek_terminu(page: ft.Page, termin, pelny=True):
 
     elementy = [gorny]
     if pelny:
-        elementy.append(ft.ProgressBar(
+        elementy.append(scena.wskaznik(ft.ProgressBar(
             value=udzial, color=kolor,
             bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
             height=6, border_radius=3,
-        ))
+        )))
         elementy.append(ft.Row([
             ft.Icon(ikona_z_mapy(IKONY_STATUSU_TERMINU, termin["status"], ft.Icons.EVENT),
                     size=12, color=kolor),

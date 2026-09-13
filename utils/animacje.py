@@ -20,6 +20,12 @@ import time
 # ~800 ms kafelek przestaje wyglądać jak kafelek, a zaczyna jak ładowanie.
 CZAS_ANIMACJI_MS = 600
 
+# Pasek w kaskadzie dostaje mniej czasu niż liczba na kafelku. Całe wejście i tak
+# rozciąga się o opóźnienia kolejnych wierszy, więc przy 600 ms na pasek ostatni
+# z sześciu kończyłby dopiero po sekundzie — a to już nie wygląda jak wejście na
+# ekran, tylko jak ładowanie.
+CZAS_PASKA_MS = 450
+
 # Klatki liczymy z ZEGARA, nie z licznika kroków: na wolniejszym telefonie
 # animacja zgubi klatki, ale skończy się w swoim czasie i na dokładnej
 # wartości — zamiast rozciągnąć się na dwie sekundy.
@@ -45,6 +51,35 @@ PRZESUNIECIE_PRZEJSCIA = 0.05
 # początkowym. Gdyby stan początkowy i docelowy poszły jednym patchem, Flutter
 # nie miałby czego animować.
 OPOZNIENIE_KLATKI_S = 0.03
+
+# Kaskada: lista pasków rusza jeden po drugim, nie wszystkie naraz. Przy siedmiu
+# terminach na karcie pojazdu różnice między nimi widać wtedy dużo wyraźniej —
+# oko śledzi paski po kolei, zamiast łapać siedem ruchów w tej samej chwili.
+KROK_KASKADY_MS = 60
+
+# Od pewnego momentu opóźnienie przestaje rosnąć: przy dwudziestu paskach
+# ostatni ruszałby po dwóch sekundach, a to już nie jest wejście na ekran, tylko
+# ładowanie. Dalsze paski startują razem z szóstym.
+MAKS_OPOZNIENIA_KASKADY_MS = 360
+
+
+def pierwsze_pokazanie(state, klucz, auto_id=None):
+    """Czy animacja wejścia ma zagrać na tym ekranie, czy już grała.
+
+    Zwraca True TYLKO za pierwszym razem — i od razu zapisuje, że zagrało, więc
+    wołający nie musi niczego odhaczać. Znacznik siedzi w stanie aplikacji, czyli
+    żyje do zamknięcia programu; zmiana pojazdu liczy się jak nowy ekran, bo to
+    zupełnie inne dane."""
+    pokazane = getattr(state, "animacje_pokazane", None)
+    if pokazane is None:
+        return True
+    # `in` przed porównaniem, bo ekran bez pojazdu zapisuje się pod None —
+    # a samo `.get(klucz) == auto_id` uznałoby wtedy brak wpisu za trafienie
+    # i animacja nie zagrałaby ANI RAZU.
+    if klucz in pokazane and pokazane[klucz] == auto_id:
+        return False
+    pokazane[klucz] = auto_id
+    return True
 
 
 def wygladzenie(t):
@@ -94,13 +129,17 @@ class ScenaWejscia:
     nie ma ani jednego „jeśli animacje włączone”.
     """
 
-    def __init__(self, wlaczona=True, czas_ms=CZAS_ANIMACJI_MS):
+    def __init__(self, wlaczona=True, czas_ms=None, kaskada=False):
         self.wlaczona = bool(wlaczona)
-        self.czas_ms = max(1, int(czas_ms))
-        self._tory = []        # ustaw(postep) — wołane co klatkę
-        self._skoki = []       # ustaw() — wołane raz, na starcie sceny
+        self.kaskada = bool(kaskada)
+        domyslny = CZAS_PASKA_MS if self.kaskada else CZAS_ANIMACJI_MS
+        self.czas_ms = max(1, int(domyslny if czas_ms is None else czas_ms))
+        self._tory = []        # (ustaw(postep), opóźnienie w ms) — wołane co klatkę
+        self._skoki = []       # (ustaw(), opóźnienie w ms) — wołane raz
         self._kontrolki = []   # do page.update(*...) — bez powtórzeń
         self._odtworzona = False
+        self._opoznienie = 0   # dla torów rejestrowanych TERAZ (patrz nastepny_wiersz)
+        self._wierszy = 0
 
     @property
     def pusta(self):
@@ -124,6 +163,19 @@ class ScenaWejscia:
         if kontrolka is not None and all(k is not kontrolka for k in self._kontrolki):
             self._kontrolki.append(kontrolka)
 
+    def nastepny_wiersz(self):
+        """Otwiera kolejny element listy — od tej chwili rejestrowane tory
+        startują o krok później od poprzednich.
+
+        Woła to sam komponent (pasek terminu, pasek budżetu), więc ekran z listą
+        pasków dostaje kaskadę bez jednej dodatkowej linijki u siebie. W scenie
+        bez kaskady metoda nic nie robi."""
+        if not self.kaskada:
+            return 0
+        self._opoznienie = min(self._wierszy * KROK_KASKADY_MS, MAKS_OPOZNIENIA_KASKADY_MS)
+        self._wierszy += 1
+        return self._opoznienie
+
     def tor(self, ustaw, *kontrolki):
         """Własny tor: `ustaw(postep)` dostaje 0.0 → 1.0 i sam decyduje, co z tym
         zrobić. `kontrolki` to te, które po zmianie trzeba odświeżyć."""
@@ -131,7 +183,7 @@ class ScenaWejscia:
             ustaw(1.0)
             return
         ustaw(0.0)
-        self._tory.append(ustaw)
+        self._tory.append((ustaw, self._opoznienie))
         for k in kontrolki:
             self._zapamietaj(k)
 
@@ -145,7 +197,7 @@ class ScenaWejscia:
             ustaw_koniec()
             return
         ustaw_poczatek()
-        self._skoki.append(ustaw_koniec)
+        self._skoki.append((ustaw_koniec, self._opoznienie))
         for k in kontrolki:
             self._zapamietaj(k)
 
@@ -249,20 +301,32 @@ class ScenaWejscia:
             # muszą pokazać swoje właściwe wartości.
             self.zakoncz()
 
+    @property
+    def czas_calosci_ms(self):
+        """Cała scena trwa tyle, co jedno przejście PLUS najdłuższe opóźnienie
+        kaskady — ostatni pasek też musi zdążyć dojechać."""
+        opoznienia = [o for _, o in self._tory] + [o for _, o in self._skoki]
+        return self.czas_ms + (max(opoznienia) if opoznienia else 0)
+
     async def odtworz(self, page):
         await asyncio.sleep(OPOZNIENIE_STARTU_S)
         odstep = 1.0 / KLATEK_NA_SEKUNDE
+        czas_calosci = self.czas_calosci_ms
+        zrobione_skoki = set()
         poczatek = time.monotonic()
         try:
-            for ustaw_koniec in self._skoki:
-                ustaw_koniec()
             while True:
                 uplynelo_ms = (time.monotonic() - poczatek) * 1000
-                if uplynelo_ms >= self.czas_ms:
+                if uplynelo_ms >= czas_calosci:
                     break
-                postep = wygladzenie(uplynelo_ms / self.czas_ms)
-                for ustaw in self._tory:
-                    ustaw(postep)
+                for i, (ustaw_koniec, opoznienie) in enumerate(self._skoki):
+                    if i not in zrobione_skoki and uplynelo_ms >= opoznienie:
+                        ustaw_koniec()
+                        zrobione_skoki.add(i)
+                for ustaw, opoznienie in self._tory:
+                    # Tor przed swoją kolejką dostaje ujemny postęp, a
+                    # `wygladzenie` przycina go do zera — czyli stoi na starcie.
+                    ustaw(wygladzenie((uplynelo_ms - opoznienie) / self.czas_ms))
                 self._odswiez(page)
                 await asyncio.sleep(odstep)
         except asyncio.CancelledError:
@@ -281,9 +345,9 @@ class ScenaWejscia:
         zegarze potrafi wyjść przy 0,98 postępu i bez tego kafelek zostałby
         z liczbą „prawie dobrą” — czyli po prostu złą."""
         try:
-            for ustaw_koniec in self._skoki:
+            for ustaw_koniec, _ in self._skoki:
                 ustaw_koniec()
-            for ustaw in self._tory:
+            for ustaw, _ in self._tory:
                 ustaw(1.0)
         except Exception:
             log.polkniety("dokończenie animacji kokpitu na wartościach docelowych")
@@ -395,8 +459,12 @@ class PrzelacznikEkranow:
 
 __all__ = [
     "CZAS_ANIMACJI_MS",
+    "CZAS_PASKA_MS",
     "CZAS_PRZEJSCIA_MS",
     "KLATEK_NA_SEKUNDE",
+    "KROK_KASKADY_MS",
+    "MAKS_OPOZNIENIA_KASKADY_MS",
+    "pierwsze_pokazanie",
     "OPOZNIENIE_KLATKI_S",
     "OPOZNIENIE_STARTU_S",
     "PRZESUNIECIE_PRZEJSCIA",

@@ -192,7 +192,8 @@ class MiksinZakladkiSerwis:
                     procent_do_paska = max(kandydaci_procent) if kandydaci_procent else None
 
                     wiersz_statusu = (
-                        utils.pasek_postepu(final_status, f"{int(max(0.0, min(1.0, procent_do_paska)) * 100)}%", procent_do_paska, kol)
+                        utils.pasek_postepu(final_status, f"{int(max(0.0, min(1.0, procent_do_paska)) * 100)}%",
+                                            procent_do_paska, kol, scena=self._scena_zakladki)
                         if procent_do_paska is not None
                         else ft.Text(final_status, size=utils.FS["body_strong"], weight="bold", color=kol)
                     )

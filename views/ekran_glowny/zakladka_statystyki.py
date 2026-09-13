@@ -216,6 +216,9 @@ class MiksinZakladkiStatystyki:
             proc_inn = (inn / razem * 100) if razem > 0 else 0
 
             def segment_procentowy(ikona, tytul, kwota, procent, kolor):
+                # Każdy pasek to osobny wiersz kaskady — ruszają jeden po drugim,
+                # więc widać, która kategoria zjadła ile, zanim się je przeczyta.
+                self._scena_zakladki.nastepny_wiersz()
                 return ft.Column([
                     ft.Row([
                         ft.Row([
@@ -228,13 +231,13 @@ class MiksinZakladkiStatystyki:
                             weight="bold", size=13, color=kolor, no_wrap=True,
                         )
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    ft.ProgressBar(
+                    self._scena_zakladki.wskaznik(ft.ProgressBar(
                         value=(procent / 100) if procent > 0 else 0,
                         color=kolor,
                         bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
                         height=8,
                         border_radius=4
-                    )
+                    ))
                 ], spacing=4)
 
             karta_struktury = ft.Container(
@@ -257,6 +260,7 @@ class MiksinZakladkiStatystyki:
                 wiersze_kategorii = []
                 for nazwa_kat, suma_kat, liczba_kat in rozbicie_innych:
                     procent_kat = (suma_kat / inn * 100) if inn > 0 else 0
+                    self._scena_zakladki.nastepny_wiersz()
                     wiersze_kategorii.append(ft.Column([
                         ft.Row([
                             ft.Row([
@@ -270,12 +274,12 @@ class MiksinZakladkiStatystyki:
                                 weight="bold", size=13, color=utils.kolor_kategorii_innych(nazwa_kat), no_wrap=True
                             ),
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        ft.ProgressBar(
+                        self._scena_zakladki.wskaznik(ft.ProgressBar(
                             value=(procent_kat / 100) if procent_kat > 0 else 0,
                             color=utils.kolor_kategorii_innych(nazwa_kat),
                             bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
                             height=6, border_radius=3,
-                        ),
+                        )),
                         ft.Text(f"{liczba_kat} {'wpis' if liczba_kat == 1 else 'wpisy/-ów'}",
                                 size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                     ], spacing=3))

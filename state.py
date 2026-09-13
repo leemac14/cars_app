@@ -25,6 +25,11 @@ class AppState:
         # ekranu — bez tego znacznika animacja wejścia grałaby kilkanaście razy
         # na sesję i z powitania zrobiłaby się zwłoka przy odczycie.
         self.kokpit_animacja_dla = None
+        # Ekrany, na których animacja wejścia już zagrała: klucz ekranu -> pojazd.
+        # Paski terminów i budżetów wypełniają się RAZ na uruchomienie aplikacji
+        # (patrz utils.pierwsze_pokazanie) — przy dziesiątym wejściu na kartę
+        # pojazdu ten sam ruch byłby już tylko zwłoką przed odczytem.
+        self.animacje_pokazane = {}
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
         self.do_zrobienia_podzakladka = 0  # 0 = Do zrobienia, 1 = Checklisty
         self.porownanie_wybrane = []

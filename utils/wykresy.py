@@ -102,6 +102,7 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
     wydawać równo. Bez niego „62% limitu” nic nie mówi: w połowie miesiąca to
     kłopot, a 28. dnia powód do zadowolenia."""
     scena = scena or ScenaWejscia(wlaczona=False)
+    scena.nastepny_wiersz()
     kolor = {
         "przekroczony": ft.Colors.RED_700,
         "uwaga": ft.Colors.ORANGE_700,
@@ -174,6 +175,7 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False, scena=None):
         return ft.Container(width=0, height=0)
 
     scena = scena or ScenaWejscia(wlaczona=False)
+    scena.nastepny_wiersz()
     procent = dane.get("procent_baku")
     zasieg = dane.get("zasieg_pozostaly")
     if procent is None:
@@ -460,17 +462,26 @@ def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
     ], spacing=4)
 
 
-def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8):
+def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8, scena=None):
     """Wspólny 'wiersz postępu': etykieta + wartość nad kolorowym ProgressBar.
     procent: 0.0-1.0 (spoza zakresu jest przycinane). Wydzielone z _pasek_porownania
-    (porownanie_view.py) — używane tam i na kartach zadań serwisowych (buduj_serwis)."""
+    (porownanie_view.py) — używane tam i na kartach zadań serwisowych (buduj_serwis).
+
+    `scena` (utils.ScenaWejscia) każe paskowi wypełnić się przy wejściu od zera —
+    na karcie podzespołu to ta sama informacja, co przy terminie: ile z interwału
+    już minęło."""
+    scena = scena or ScenaWejscia(wlaczona=False)
+    scena.nastepny_wiersz()
     return ft.Column([
         ft.Row([
             ft.Text(etykieta_lewa, size=12, weight="bold", expand=True, no_wrap=True),
             ft.Text(etykieta_prawa, size=12, weight="bold", color=kolor)
         ]),
-        ft.ProgressBar(value=max(0.03, min(1.0, procent)), color=kolor,
-                       bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=wysokosc, border_radius=4)
+        scena.wskaznik(ft.ProgressBar(
+            value=max(0.03, min(1.0, procent)), color=kolor,
+            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+            height=wysokosc, border_radius=4,
+        ))
     ], spacing=4)
 
 

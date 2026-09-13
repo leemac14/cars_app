@@ -40,6 +40,15 @@ class PodzialKosztowView(ft.View):
             )
             return
 
+        # Paski udziałów najeżdżają od zera, jeden po drugim — na tym ekranie
+        # liczy się nie sama kwota, tylko PROPORCJA między domownikami, a tę
+        # widać dopiero, kiedy paski zatrzymają się w różnych miejscach.
+        self.scena = utils.ScenaWejscia(
+            wlaczona=db.czy_animacje_interfejsu()
+            and utils.pierwsze_pokazanie(state, "podzial", state.auto_id),
+            kaskada=True,
+        )
+
         appbar = utils.zbuduj_pasek_z_powrotem(
             page, "Podział kosztów", "/", ikona=ft.Icons.HANDSHAKE,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, self.state.auto_id, "/podzial"))]
@@ -98,6 +107,7 @@ class PodzialKosztowView(ft.View):
             maks = max((d["razem"] for d in dane), default=0)
             for d in dane:
                 proporcja = (d["razem"] / maks) if maks > 0 else 0
+                self.scena.nastepny_wiersz()
                 roznica = d["razem"] - uczciwa_czesc
                 if abs(roznica) < 0.01:
                     tekst_rozliczenia, kolor_rozliczenia = "Dokładnie tyle, ile powinien/powinna.", ft.Colors.ON_SURFACE_VARIANT
@@ -128,8 +138,10 @@ class PodzialKosztowView(ft.View):
                                        spacing=6, expand=True),
                                 ft.Text(f"{utils.formatuj_liczba(d['razem'])} {waluta}", weight="bold", size=16, color=ft.Colors.RED_700, no_wrap=True)
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                            ft.ProgressBar(value=max(0.03, proporcja), color=ft.Colors.PRIMARY,
-                                           bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=8, border_radius=4),
+                            self.scena.wskaznik(ft.ProgressBar(
+                                value=max(0.03, proporcja), color=ft.Colors.PRIMARY,
+                                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                                height=8, border_radius=4)),
                             opis_kategorii,
                             ft.Text(
                                 f"Zatankował(a) {d['tankowania']}x • ok. {utils.formatuj_liczba(d['dystans_km'], 0)} km na liczniku"
@@ -160,3 +172,4 @@ class PodzialKosztowView(ft.View):
             route="/podzial", padding=15, spacing=15, appbar=appbar,
             controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+        self.scena.uruchom(page)

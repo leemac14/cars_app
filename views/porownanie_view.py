@@ -55,6 +55,15 @@ class PorownanieView(ft.View):
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Porównanie pojazdów", "/", ikona=ft.Icons.BALANCE)
 
+        # Cały ten ekran to paski obok siebie — a porównanie polega na tym,
+        # KTÓRY dojechał dalej. Kaskada od zera pokazuje to zanim zdąży się
+        # przeczytać liczby. Ekran nie zależy od aktywnego pojazdu, więc znacznik
+        # też nie: gra raz na uruchomienie aplikacji.
+        self.scena = utils.ScenaWejscia(
+            wlaczona=db.czy_animacje_interfejsu() and utils.pierwsze_pokazanie(state, "porownanie"),
+            kaskada=True,
+        )
+
         with db.polacz_baze() as conn:
             c = conn.cursor()
             # Porównujemy auta z garażu; sprzedane mają zamknięty rachunek
@@ -124,6 +133,7 @@ class PorownanieView(ft.View):
             padding=15, spacing=15, scroll=ft.ScrollMode.AUTO,
             appbar=appbar, controls=elementy
         )
+        self.scena.uruchom(page)
 
     # ================= SELEKTOR POJAZDÓW =================
     def _buduj_selektor(self):
@@ -326,7 +336,8 @@ class PorownanieView(ft.View):
                 pasek_kolor, znacznik = kolor_auta, ""
 
             wiersze.append(utils.pasek_postepu(
-                nazwa, f"{utils.formatuj_liczba(wartosc, decimale)} {jednostka}{znacznik}", proporcja, pasek_kolor
+                nazwa, f"{utils.formatuj_liczba(wartosc, decimale)} {jednostka}{znacznik}", proporcja, pasek_kolor,
+                scena=self.scena,
             ))
 
         return ft.Column([
@@ -645,13 +656,16 @@ class PorownanieView(ft.View):
             else:
                 pasek_kolor = d["kolor"]
 
+            self.scena.nastepny_wiersz()
             wiersze.append(ft.Column([
                 ft.Row([
                     ft.Text(d["nazwa_wyswietlana"], size=12, weight="bold", expand=True, no_wrap=True),
                     ft.Text(utils.formatuj_spalanie(wartosc), size=12, weight="bold", color=pasek_kolor)
                 ]),
-                ft.ProgressBar(value=max(0.03, proporcja), color=pasek_kolor,
-                               bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=8, border_radius=4)
+                self.scena.wskaznik(ft.ProgressBar(
+                    value=max(0.03, proporcja), color=pasek_kolor,
+                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                    height=8, border_radius=4))
             ], spacing=4))
 
         opis = ft.Text("Wymaga min. 2 tankowań „do pełna” dla danego pojazdu.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)

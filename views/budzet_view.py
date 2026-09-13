@@ -29,6 +29,15 @@ class BudzetView(ft.View):
             )
             return
 
+        # Paski limitów najeżdżają od zera, jeden po drugim — na tym ekranie
+        # ustawia się kwoty, a pasek jest jedyną odpowiedzią na pytanie, czy
+        # wpisana liczba ma sens. Raz na uruchomienie aplikacji.
+        self.scena = utils.ScenaWejscia(
+            wlaczona=db.czy_animacje_interfejsu()
+            and utils.pierwsze_pokazanie(state, "budzet", state.auto_id),
+            kaskada=True,
+        )
+
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
         ustawione = {(b["kategoria"], b["okres"]): b["kwota"] for b in db.pobierz_budzety(self.state.auto_id)}
         stany = {(s["kategoria"], s["okres"]): s for s in db.stan_budzetow(self.state.auto_id)}
@@ -54,7 +63,7 @@ class BudzetView(ft.View):
                 if stan:
                     wiersze.append(ft.Container(
                         padding=ft.Padding(2, 0, 2, utils.SPACING["sm"]),
-                        content=utils.pasek_budzetu(self._page, stan),
+                        content=utils.pasek_budzetu(self._page, stan, scena=self.scena),
                     ))
 
             elementy.append(utils.karta_formularza(
@@ -73,6 +82,7 @@ class BudzetView(ft.View):
             route="/budzet", padding=15, spacing=15, appbar=appbar,
             controls=elementy, scroll=ft.ScrollMode.AUTO,
         )
+        self.scena.uruchom(page)
 
     def _naglowek(self, wspolny_id):
         tekst = (

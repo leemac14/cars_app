@@ -243,12 +243,12 @@ def test_animacja_gra_raz_i_nie_wraca_przy_powrocie_na_kokpit(baza):
     db.zapisz_animacje_interfejsu(True)
 
     pierwsze = zbuduj_kokpit(stan)
-    assert pierwsze._scena_kokpitu.wlaczona, "pierwsze wejście po starcie ma animować"
-    assert not pierwsze._scena_kokpitu.pusta, "kokpit z kafelkami ma mieć co animować"
+    assert pierwsze._scena_zakladki.wlaczona, "pierwsze wejście po starcie ma animować"
+    assert not pierwsze._scena_zakladki.pusta, "kokpit z kafelkami ma mieć co animować"
     assert stan.kokpit_animacja_dla == stan.auto_id
 
     drugie = zbuduj_kokpit(stan)
-    assert not drugie._scena_kokpitu.wlaczona, "powrót na kokpit to nie jest nowe wejście"
+    assert not drugie._scena_zakladki.wlaczona, "powrót na kokpit to nie jest nowe wejście"
 
 
 def test_zmiana_pojazdu_wraca_do_animacji(baza):
@@ -260,14 +260,14 @@ def test_zmiana_pojazdu_wraca_do_animacji(baza):
     stan.auto_id = drugi["auto_id"]
     db.zapisz_widgety_kokpitu(list(db.KOKPIT_WIDGETY), stan.auto_id)
 
-    assert zbuduj_kokpit(stan)._scena_kokpitu.wlaczona
+    assert zbuduj_kokpit(stan)._scena_zakladki.wlaczona
 
 
 def test_wylaczone_ustawienie_gasi_animacje(baza):
     stan = kokpit_z_kompletem_kafelkow()
     db.zapisz_animacje_interfejsu(False)
 
-    assert not zbuduj_kokpit(stan)._scena_kokpitu.wlaczona
+    assert not zbuduj_kokpit(stan)._scena_zakladki.wlaczona
 
 
 def test_tryb_ukladania_nie_animuje(baza):

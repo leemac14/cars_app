@@ -22,13 +22,14 @@ class MiksinKokpitu:
         Układ jest WŁASNOŚCIĄ POJAZDU: auto służbowe może mieć inne kafelki niż
         prywatne. Pojazd bez własnego układu dziedziczy wspólny (patrz
         db.pobierz_widgety_kokpitu)."""
-        # Odliczanie liczb przy wejściu na kokpit. JEDNA scena na całą
+        # Odliczanie liczb przy wejściu na kokpit. Scenę dobiera i uruchamia
+        # MainView._nowa_scena_zakladki — tu tylko z niej korzystamy. JEDNA na całą
         # przebudowę, żeby wszystkie kafelki ruszyły w tej samej chwili i stanęły
-        # razem — osobny timer na kafelek dałby osiemnaście animacji
-        # rozjeżdżających się w czasie. Wyłączona scena (patrz
-        # _czy_animowac_kokpit) oddaje kontrolki od razu w stanie docelowym,
-        # więc poniżej nie ma ani jednego „jeśli animacje włączone”.
-        scena = self._scena_kokpitu = utils.ScenaWejscia(wlaczona=self._czy_animowac_kokpit())
+        # razem; osobny timer na kafelek dałby osiemnaście animacji
+        # rozjeżdżających się w czasie. Scena wyłączona oddaje kontrolki od razu
+        # w stanie docelowym, więc poniżej nie ma ani jednego „jeśli animacje
+        # włączone”.
+        scena = self._scena_zakladki or utils.ScenaWejscia(wlaczona=False)
 
         wlaczone = db.pobierz_widgety_kokpitu(self.state.auto_id)
         if not wlaczone:
@@ -807,8 +808,8 @@ class MiksinKokpitu:
         # Przebudowa w locie (tryb układania, nowa kolejność po przeciągnięciu)
         # to NIE jest wejście na ekran — kafelki mają się pojawić od razu ze
         # swoimi wartościami, a nie odliczać od zera po każdym przesunięciu.
-        if self._scena_kokpitu:
-            self._scena_kokpitu.wygas()
+        if self._scena_zakladki:
+            self._scena_zakladki.wygas()
         self.kokpit_kontener.content = self._zawartosc_kokpitu()
         try:
             self.kokpit_kontener.update()
@@ -990,12 +991,6 @@ class MiksinKokpitu:
         self.elementy.append(ft.Row(naglowek, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
         self.elementy.append(self._buduj_kokpit())
-        # Scena rusza dopiero, gdy kafelki są zbudowane (sama odczeka jeszcze
-        # moment, aż widok trafi do drzewa strony). Znacznik w stanie zapisuje,
-        # że dla TEGO pojazdu odliczanie już było.
-        if self._scena_kokpitu:
-            self._scena_kokpitu.uruchom(self._page)
-        self.state.kokpit_animacja_dla = self.state.auto_id
 
         if not db.pobierz_widgety_kokpitu(self.state.auto_id):
             # Pusty kokpit bez słowa wyjaśnienia wyglądałby jak zepsuty ekran,

@@ -42,6 +42,16 @@ class PojazdView(ft.View):
             )
             return
 
+        # Paski terminów wypełniają się przy wejściu od zera, kaskadą — dopiero
+        # ruch pokazuje, GDZIE każdy z nich się zatrzymał. Raz na uruchomienie
+        # aplikacji: przy dziesiątym wejściu ta sama animacja byłaby już tylko
+        # zwłoką przed odczytem.
+        self.scena = utils.ScenaWejscia(
+            wlaczona=db.czy_animacje_interfejsu()
+            and utils.pierwsze_pokazanie(state, "pojazd", state.auto_id),
+            kaskada=True,
+        )
+
         self.dane = db.pobierz_dane_pojazdu(self.state.auto_id) or {}
         self.metryki = db.pobierz_metryki_pojazdu(self.state.auto_id, self.dane) or {}
         self.terminy = db.terminy_pojazdu(self.state.auto_id, self.dane)
@@ -64,6 +74,7 @@ class PojazdView(ft.View):
             route="/pojazd", padding=15, spacing=15, appbar=appbar,
             controls=[utils.z_odswiezaniem(page, elementy)],
         )
+        self.scena.uruchom(page)
 
     # ================= HERO =================
 
@@ -211,7 +222,7 @@ class PojazdView(ft.View):
 
         wiersze = []
         for t in self.terminy:
-            wiersze.append(utils.pasek_terminu(self._page, t))
+            wiersze.append(utils.pasek_terminu(self._page, t, scena=self.scena))
         gw_km = self.dane.get("gwarancja_przebieg")
         if gw_km:
             zostalo = int(gw_km) - (self.metryki.get("przebieg") or 0)
