@@ -7,6 +7,7 @@ module jako miksin; `MainView` poniżej tylko je składa i trzyma wspólny stan.
 import asyncio
 import db
 import flet as ft
+import log
 import sync
 import utils
 
@@ -54,6 +55,8 @@ class MainView(
         self.kokpit_kontener = None      # kontener przełączany między karuzelą a trybem układania
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
         self._scena_kokpitu = None       # animacja wejścia (patrz utils.ScenaWejscia)
+        self.przelacznik_zakladek = None # zawartość zakładki żyje w nim (patrz przelacz_zakladke)
+        self.pasek_zakladek = None       # ustawiany niżej, razem z dolnym paskiem
         self._przelacznik_pojazdow = None  # ustawiane w buduj_naglowek_auta (showroom aut)
         # --------------------------------------
         # --- CZTERY ZAKŁADKI = CZTERY POWODY, DLA KTÓRYCH SIĘ TU WCHODZI ---
@@ -62,19 +65,20 @@ class MainView(
         # (widżety kokpitu) nie miał własnego miejsca i doklejał się do Serwisu.
         # Teraz: Kokpit = „co się dzieje z autem”, Serwis = „co trzeba zrobić”,
         # Koszty = „ile to kosztuje”, Analiza = „jak to wygląda w czasie”.
-        navbar = ft.SafeArea(
-            content=ft.NavigationBar(
-                destinations=[
-                    ft.NavigationBarDestination(icon=ft.Icons.SPACE_DASHBOARD_OUTLINED, selected_icon=ft.Icons.SPACE_DASHBOARD, label="Kokpit"),
-                    ft.NavigationBarDestination(icon=ft.Icons.BUILD_CIRCLE_OUTLINED, selected_icon=ft.Icons.BUILD_CIRCLE, label="Serwis"),
-                    ft.NavigationBarDestination(icon=ft.Icons.PAYMENTS_OUTLINED, selected_icon=ft.Icons.PAYMENTS, label="Koszty"),
-                    ft.NavigationBarDestination(icon=ft.Icons.INSIGHTS, selected_icon=ft.Icons.INSIGHTS, label="Analiza"),
-                ],
-                on_change=self.zmien_zakladke,
-                selected_index=self.state.zakladka,
-            ),
-            avoid_intrusions_top=False,
+        # Referencję do samego paska trzymamy, bo zakładkę zmienia się teraz także
+        # spoza niego (kafelki kokpitu) — a wtedy zaznaczenie trzeba przestawić
+        # ręcznie, skoro ekran nie powstaje od nowa.
+        self.pasek_zakladek = ft.NavigationBar(
+            destinations=[
+                ft.NavigationBarDestination(icon=ft.Icons.SPACE_DASHBOARD_OUTLINED, selected_icon=ft.Icons.SPACE_DASHBOARD, label="Kokpit"),
+                ft.NavigationBarDestination(icon=ft.Icons.BUILD_CIRCLE_OUTLINED, selected_icon=ft.Icons.BUILD_CIRCLE, label="Serwis"),
+                ft.NavigationBarDestination(icon=ft.Icons.PAYMENTS_OUTLINED, selected_icon=ft.Icons.PAYMENTS, label="Koszty"),
+                ft.NavigationBarDestination(icon=ft.Icons.INSIGHTS, selected_icon=ft.Icons.INSIGHTS, label="Analiza"),
+            ],
+            on_change=self.zmien_zakladke,
+            selected_index=self.state.zakladka,
         )
+        navbar = ft.SafeArea(content=self.pasek_zakladek, avoid_intrusions_top=False)
 
         if not self.state.auto_id:
             self.elementy.append(
@@ -94,16 +98,12 @@ class MainView(
             pasek = utils.pasek_roli(page, self.state.auto_id)
             if getattr(pasek, "content", None) is not None:
                 self.elementy.append(pasek)
-            if self.state.zakladka == 0: self.buduj_kokpit_ekran()
-            elif self.state.zakladka == 1: self.buduj_serwis()
-            elif self.state.zakladka == 2: self.buduj_koszty()
-            elif self.state.zakladka == 3: self.buduj_statystyki()
-
-        # Szybkie dodawanie znika u kogoś, kto ma pojazd wyłącznie do wglądu.
-        # FAB składają zakładki (patrz _buduj_fab_szybkich_akcji), więc gasimy go
-        # tutaj — w jednym miejscu, przez które przechodzą wszystkie cztery.
-        if self.state.auto_id and not utils.wolno_dodawac(self.state.auto_id):
-            self.fab = None
+            # Nagłówek auta i oba paski zostają na miejscu przy zmianie zakładki —
+            # zmienia się WYŁĄCZNIE to, co siedzi w przełączniku.
+            self.przelacznik_zakladek = utils.PrzelacznikEkranow(
+                self._zawartosc_zakladki(), wlaczony=db.czy_animacje_interfejsu()
+            )
+            self.elementy.append(self.przelacznik_zakladek.kontrolka)
 
         self.elementy.append(utils.dol_bezpieczny(10))
 
@@ -133,8 +133,129 @@ class MainView(
         )
 
     def zmien_zakladke(self, e):
-        self.state.zakladka = int(e.control.selected_index)
-        utils.przejdz(self._page, "/")
+        self.przelacz_zakladke(int(e.control.selected_index))
+
+    def _zawartosc_zakladki(self):
+        """Zawartość aktywnej zakładki jako JEDNA kontrolka — to ona jedzie przez
+        przełącznik.
+
+        Buildery zakładek dopisują do `self.elementy` i ustawiają `self.fab`, więc
+        na czas budowy podstawiamy im własną listę. Poza tą chwilą
+        `self.elementy` znaczy dokładnie to, co znaczyło."""
+        wspolne, self.elementy = self.elementy, []
+        self.fab = None
+        try:
+            if self.state.zakladka == 1:
+                self.buduj_serwis()
+            elif self.state.zakladka == 2:
+                self.buduj_koszty()
+            elif self.state.zakladka == 3:
+                self.buduj_statystyki()
+            else:
+                self.buduj_kokpit_ekran()
+            zebrane = self.elementy
+        finally:
+            self.elementy = wspolne
+
+        # Szybkie dodawanie znika u kogoś, kto ma pojazd wyłącznie do wglądu.
+        # FAB składają zakładki (patrz _buduj_fab_szybkich_akcji), więc gasimy go
+        # tutaj — w jednym miejscu, przez które przechodzą wszystkie cztery.
+        if self.state.auto_id and not utils.wolno_dodawac(self.state.auto_id):
+            self.fab = None
+
+        # `spacing` odtwarza odstęp, który przy płaskiej liście dawał sam widok.
+        return ft.Column(zebrane, spacing=15)
+
+    def _wyczysc_stan_zakladki(self):
+        """Stan, który przy przebudowie ekranu zerował konstruktor: tryb
+        zaznaczania, referencje kart, wirtualizacja list i cały stan kokpitu.
+
+        Bez tego zaznaczanie zaczęte w Serwisie przeszłoby na Koszty i skasowało
+        nie te wpisy, co trzeba — a to jest dokładnie ta klasa błędu, którą
+        przebudowa całego widoku dotąd maskowała."""
+        self.tryb_zaznaczania = False
+        self.zaznaczone_id = set()
+        self.tabela_cel = ""
+        self.karty_ref = {}
+        self.uzyj_wirtualizacji = False
+        self.zapomnij_listy_kart()
+        self.appbar = self.oryginalny_appbar
+        self.kokpit_edycja = False
+        self.kokpit_kontener = None
+        self._kokpit_budowniczy = {}
+        self._scena_kokpitu = None
+
+    def _odswiez_szuflade(self):
+        """Podświetlenie aktywnego ekranu w szufladzie jedzie za zakładką.
+        Podmieniamy panel w momencie, w którym jest ZAMKNIĘTY — przy samym
+        otwieraniu byłby to wyścig, w którym szuflada czasem się nie pokazuje."""
+        try:
+            self.drawer = utils.zbuduj_szuflade(
+                self._page, self.state, self.akcje_nawigacji,
+                aktywny_ekran=utils.EKRAN_ZAKLADKI.get(
+                    (int(self.state.zakladka or 0),
+                     int(getattr(self.state, "koszty_podzakladka", 0) or 0))
+                ),
+                on_pojazdy=self._pokaz_wybor_pojazdow if self.state.auto_id else None,
+                widok=self,
+            )
+        except Exception:
+            log.polkniety("odświeżenie szuflady po zmianie zakładki")
+
+    def przelacz_zakladke(self, zakladka, podzakladka=None):
+        """Zmiana zakładki BEZ przebudowy całego ekranu.
+
+        Dotąd każde dotknięcie dolnego paska szło przez router: powstawał nowy
+        MainView, z nowym nagłówkiem auta, nowym paskiem górnym i nową szufladą.
+        Cztery zakładki wyglądały wtedy jak cztery ekrany podstawiane pod ten sam
+        pasek — choć jedyne, co naprawdę miało się zmienić, to zawartość.
+
+        Teraz nagłówek i oba paski ZOSTAJĄ, a zawartość ustępuje miejsca nowej
+        przez przełącznik. Przy okazji jest to po prostu mniej pracy."""
+        zakladka = int(zakladka or 0)
+        stara = (int(self.state.zakladka or 0),
+                 int(getattr(self.state, "koszty_podzakladka", 0) or 0))
+        nowa = (zakladka, int(self.state.koszty_podzakladka if podzakladka is None else podzakladka))
+
+        if not self.przelacznik_zakladek:
+            # Ekran bez pojazdu nie ma czego przełączać — wraca stara droga.
+            self.state.zakladka = zakladka
+            utils.przejdz(self._page, "/")
+            return
+        if nowa == stara:
+            # Dotknięcie zakładki, na której już się jest, nic nie zmienia —
+            # dawniej przeładowywało cały ekran.
+            return
+
+        self.state.zakladka = zakladka
+        if podzakladka is not None:
+            self.state.koszty_podzakladka = int(podzakladka)
+
+        self._wyczysc_stan_zakladki()
+        # Liczniki przy skrótach i w szufladzie liczyły się dotąd w konstruktorze,
+        # czyli przy każdym przełączeniu zakładki. Skoro konstruktor już nie
+        # powstaje, przeliczamy je tutaj — inaczej kafelek pokazywałby stan sprzed
+        # odhaczenia zrobionego przed chwilą w poprzedniej zakładce.
+        self.liczniki_nawigacji = db.liczniki_nawigacji(self.state.auto_id) if self.state.auto_id else {}
+        self.przelacznik_zakladek.pokaz(
+            self._page, self._zawartosc_zakladki(),
+            kierunek=utils.PrzelacznikEkranow.kierunek(stara, nowa),
+        )
+        self.floating_action_button = self.fab
+        self._odswiez_szuflade()
+        if self.pasek_zakladek is not None:
+            self.pasek_zakladek.selected_index = zakladka
+
+        # Zapisy, które przy starej drodze robił router (patrz
+        # main.trasa_zmieniona): pamięć startu i historia „ostatnio używanych”.
+        db.zapamietaj_ostatnia_pozycje(self.state.auto_id, zakladka)
+        utils.zanotuj_ekran_dla_trasy(self.state, [])
+        log.zapisz(f"zakładka: {nowa[0]}/{nowa[1]}")
+
+        try:
+            self.update()
+        except Exception:
+            log.polkniety("odświeżenie ekranu po zmianie zakładki")
 
     async def _otworz_nawigacje(self, e=None):
         """Hamburger w pasku górnym. Szuflada jest już zbudowana i wpięta w widok
@@ -216,9 +337,8 @@ class MainView(
         miesiąca. Teraz to jedna zakładka z przełącznikiem — a zwolnione miejsce
         dostał Kokpit."""
         def zmien(idx):
-            self.state.koszty_podzakladka = int(idx)
-            db.zapamietaj_podzakladke_kosztow(self.state.koszty_podzakladka)
-            utils.przejdz(self._page, "/")
+            db.zapamietaj_podzakladke_kosztow(int(idx))
+            self.przelacz_zakladke(2, podzakladka=int(idx))
 
         self.elementy.append(utils.segmented_control(
             self._page,

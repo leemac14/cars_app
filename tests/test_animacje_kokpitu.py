@@ -198,11 +198,11 @@ def test_kokpit_bez_okna_pokazuje_te_same_liczby_z_animacja_i_bez(baza):
     włączeniu animacji pokazuje inne liczby niż bez niej."""
     stan = kokpit_z_kompletem_kafelkow()
 
-    db.zapisz_animacje_kokpitu(False)
+    db.zapisz_animacje_interfejsu(False)
     bez_animacji = teksty(zbuduj_kokpit(stan))
 
     stan.kokpit_animacja_dla = None
-    db.zapisz_animacje_kokpitu(True)
+    db.zapisz_animacje_interfejsu(True)
     z_animacja = teksty(zbuduj_kokpit(stan))
 
     assert z_animacja == bez_animacji
@@ -214,11 +214,11 @@ def test_pelny_przebieg_na_prawdziwym_kokpicie_konczy_na_tych_samych_liczbach(ba
     scena, pełne odtworzenie — i dokładnie te same liczby, co bez animacji."""
     stan = kokpit_z_kompletem_kafelkow(scenariusz)
 
-    db.zapisz_animacje_kokpitu(False)
+    db.zapisz_animacje_interfejsu(False)
     docelowe = teksty(zbuduj_kokpit(stan))
 
     stan.kokpit_animacja_dla = None
-    db.zapisz_animacje_kokpitu(True)
+    db.zapisz_animacje_interfejsu(True)
     zaplanowane = []
     monkeypatch.setattr(utils.animacje, "_petla_dziala", lambda strona: True)
     monkeypatch.setattr(ft.Page, "run_task", lambda self, handler, *a, **k: zaplanowane.append(handler))
@@ -240,7 +240,7 @@ def test_pelny_przebieg_na_prawdziwym_kokpicie_konczy_na_tych_samych_liczbach(ba
 
 def test_animacja_gra_raz_i_nie_wraca_przy_powrocie_na_kokpit(baza):
     stan = kokpit_z_kompletem_kafelkow()
-    db.zapisz_animacje_kokpitu(True)
+    db.zapisz_animacje_interfejsu(True)
 
     pierwsze = zbuduj_kokpit(stan)
     assert pierwsze._scena_kokpitu.wlaczona, "pierwsze wejście po starcie ma animować"
@@ -253,7 +253,7 @@ def test_animacja_gra_raz_i_nie_wraca_przy_powrocie_na_kokpit(baza):
 
 def test_zmiana_pojazdu_wraca_do_animacji(baza):
     stan = kokpit_z_kompletem_kafelkow()
-    db.zapisz_animacje_kokpitu(True)
+    db.zapisz_animacje_interfejsu(True)
     zbuduj_kokpit(stan)
 
     drugi = pomoce.utworz_pojazd("Drugi")
@@ -265,14 +265,14 @@ def test_zmiana_pojazdu_wraca_do_animacji(baza):
 
 def test_wylaczone_ustawienie_gasi_animacje(baza):
     stan = kokpit_z_kompletem_kafelkow()
-    db.zapisz_animacje_kokpitu(False)
+    db.zapisz_animacje_interfejsu(False)
 
     assert not zbuduj_kokpit(stan)._scena_kokpitu.wlaczona
 
 
 def test_tryb_ukladania_nie_animuje(baza):
     stan = kokpit_z_kompletem_kafelkow()
-    db.zapisz_animacje_kokpitu(True)
+    db.zapisz_animacje_interfejsu(True)
     widok = zbuduj_kokpit(stan)
 
     widok.kokpit_edycja = True
@@ -282,10 +282,10 @@ def test_tryb_ukladania_nie_animuje(baza):
 
 
 def test_ustawienie_animacji_domyslnie_wlaczone(baza):
-    assert db.czy_animacje_kokpitu() is True
+    assert db.czy_animacje_interfejsu() is True
 
-    db.zapisz_animacje_kokpitu(False)
-    assert db.czy_animacje_kokpitu() is False
+    db.zapisz_animacje_interfejsu(False)
+    assert db.czy_animacje_interfejsu() is False
 
-    db.zapisz_animacje_kokpitu(True)
-    assert db.czy_animacje_kokpitu() is True
+    db.zapisz_animacje_interfejsu(True)
+    assert db.czy_animacje_interfejsu() is True

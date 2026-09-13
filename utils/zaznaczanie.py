@@ -44,6 +44,18 @@ class ZaznaczanieGrupowe:
         except Exception:
             pass
 
+    def zapomnij_listy_kart(self):
+        """Kasuje atrybuty `lista_kart*` i `wszystkie_karty*` po liście, która
+        właśnie zeszła z ekranu.
+
+        Zostawione wskazywałyby kontrolki spoza drzewa strony, a
+        `dostosuj_wysokosc_listy` przy obrocie ekranu woła na nich `update()` —
+        jeden taki wyjątek przerywa dopasowanie WSZYSTKICH list, także tej, którą
+        widać. Dopóki każda zmiana zakładki budowała widok od zera, problem nie
+        istniał: atrybuty znikały razem z obiektem."""
+        for nazwa in [n for n in list(vars(self)) if n.startswith(("lista_kart", "wszystkie_karty"))]:
+            delattr(self, nazwa)
+
     def zakoncz_zaznaczanie(self, e=None):
         self.tryb_zaznaczania = False
         self.zaznaczone_id.clear()

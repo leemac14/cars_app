@@ -56,17 +56,22 @@ def zapisz_czysta_czern(wlaczona):
     zapisz_ustawienie("czysta_czern", "1" if wlaczona else "0")
 
 
-def czy_animacje_kokpitu():
-    """Czy liczby i wskaźniki na kafelkach kokpitu mają przy wejściu doliczać do
-    swojej wartości. Domyślnie tak: to pół sekundy ruchu raz na wejście, dzięki
-    któremu ekran startowy jest momentem, a nie tablicą. Ale ruch w miejscu,
-    z którego się CZYTA, bywa dla kogoś opóźnieniem odczytu — i wtedy musi dać
-    się zgasić bez zaglądania w kod."""
-    return (pobierz_ustawienie("animacje_kokpitu", "1") or "1") == "1"
+def czy_animacje_interfejsu():
+    """Czy interfejs ma się ruszać: odliczanie liczb na kokpicie i przejścia
+    między zakładkami. JEDNO ustawienie na oba, bo to jedna decyzja — kto gasi
+    ruch, gasi go w całej aplikacji, a nie efekt po efekcie.
+
+    Domyślnie włączone. Stary klucz `animacje_kokpitu` czytamy nadal, dopóki
+    nikt nie dotknie przełącznika: pierwsza wersja obejmowała tylko kokpit i nie
+    ma powodu, żeby aktualizacja włączyła ruch komuś, kto go zgasił."""
+    w = pobierz_ustawienie("animacje_interfejsu")
+    if w is None:
+        w = pobierz_ustawienie("animacje_kokpitu", "1")
+    return (w or "1") == "1"
 
 
-def zapisz_animacje_kokpitu(wlaczone):
-    zapisz_ustawienie("animacje_kokpitu", "1" if wlaczone else "0")
+def zapisz_animacje_interfejsu(wlaczone):
+    zapisz_ustawienie("animacje_interfejsu", "1" if wlaczone else "0")
 
 
 def pobierz_walute():
@@ -356,7 +361,7 @@ __all__ = [
     "zapisz_zwiniete_grupy_szuflady",
     "INTERWAL_AUTO_SYNC_MINUTY",
     "MIN_INTERWAL_AUTO_SYNC_MINUTY",
-    "czy_animacje_kokpitu",
+    "czy_animacje_interfejsu",
     "czy_auto_synchronizacja",
     "interwal_auto_synchronizacji",
     "pobierz_czysta_czern",
@@ -376,7 +381,7 @@ __all__ = [
     "przywroc_kokpit_wspolny",
     "scal_widgety_kokpitu",
     "usun_ustawienie",
-    "zapisz_animacje_kokpitu",
+    "zapisz_animacje_interfejsu",
     "zapisz_auto_synchronizacje",
     "zapisz_czysta_czern",
     "zapisz_interwal_auto_synchronizacji",

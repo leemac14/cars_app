@@ -59,9 +59,10 @@ class MiksinKokpitu:
 
         def idz_do_statystyk(podzakladka=0):
             def handler(e):
-                self.state.zakladka = 3
                 self.state.stat_podzakladka = podzakladka
-                utils.przejdz(self._page, "/")
+                # Analiza jest zakładką TEGO ekranu, więc przełączamy ją u siebie
+                # — z takim samym przejściem, jak przy dotknięciu dolnego paska.
+                self.przelacz_zakladke(3)
             return handler
 
         def idz_do_kosztow(podzakladka=0):
@@ -70,7 +71,8 @@ class MiksinKokpitu:
             układu nie zostawi tu martwego odnośnika."""
             def handler(e):
                 utils.otworz_ekran(self._page, self.state,
-                                   "inne" if podzakladka else "paliwo", self.akcje_nawigacji)
+                                   "inne" if podzakladka else "paliwo", self.akcje_nawigacji,
+                                   widok=self)
             return handler
 
         def styl_wartosci(**nadpisania):
@@ -826,7 +828,7 @@ class MiksinKokpitu:
         który się ogląda."""
         if self.kokpit_edycja or not self.state.auto_id:
             return False
-        if not db.czy_animacje_kokpitu():
+        if not db.czy_animacje_interfejsu():
             return False
         return getattr(self.state, "kokpit_animacja_dla", None) != self.state.auto_id
 

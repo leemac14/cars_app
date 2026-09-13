@@ -1,5 +1,6 @@
 import flet as ft
 import db
+import log
 import sync
 import utils
 
@@ -52,28 +53,23 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         self.uzyj_wirtualizacji = False
         # --------------------------------------
 
-        zakladka = self.state.magazyn_zakladka
+        # Pasek podzakładek zostaje na miejscu, zmienia się tylko to, co pod nim —
+        # tak samo jak przy czterech zakładkach ekranu głównego (patrz
+        # MainView.przelacz_zakladke). Opony i części to dwie połowy jednego
+        # magazynu, a nie dwa ekrany.
+        self.trasa_fab = "/magazyn/opony/nowy"
+        self.pasek_podzakladek = ft.Container(content=self._pasek_podzakladek())
+        self.przelacznik = utils.PrzelacznikEkranow(
+            self._zawartosc_podzakladki(), wlaczony=db.czy_animacje_interfejsu()
+        )
 
-        def zmien_zakladke(idx):
-            self.state.magazyn_zakladka = idx
-            utils.przejdz(self._page, "/magazyn")
+        elementy = [
+            self.pasek_podzakladek,
+            self.przelacznik.kontrolka,
+            utils.dol_bezpieczny(10),
+        ]
 
-        elementy = [utils.segmented_control(
-            page,
-            [("Opony", 0, ft.Icons.TIRE_REPAIR), ("Części i płyny", 1, ft.Icons.HANDYMAN)],
-            zakladka, zmien_zakladke
-        )]
-
-        if zakladka == 0:
-            elementy.extend(self._buduj_opony())
-            trasa_fab = "/magazyn/opony/nowy"
-        else:
-            elementy.extend(self._buduj_czesci())
-            trasa_fab = "/magazyn/czesci/nowa"
-
-        elementy.append(utils.dol_bezpieczny(10))
-
-        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, trasa_fab))
+        fab = self._fab_podzakladki()
 
         super().__init__(
             route="/magazyn",
@@ -85,6 +81,57 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
         )
         
+    # ----- Podzakładki magazynu: Opony / Części i płyny -----
+    def _pasek_podzakladek(self):
+        return utils.segmented_control(
+            self._page,
+            [("Opony", 0, ft.Icons.TIRE_REPAIR), ("Części i płyny", 1, ft.Icons.HANDYMAN)],
+            int(self.state.magazyn_zakladka or 0), self._przelacz_podzakladke,
+        )
+
+    def _fab_podzakladki(self):
+        return utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, self.trasa_fab))
+
+    def _zawartosc_podzakladki(self):
+        """Zawartość aktywnej podzakładki jako JEDNA kontrolka — to ona jedzie
+        przez przełącznik. Przy okazji ustawia trasę „plusa”, bo dodaje się
+        zawsze do tej połowy magazynu, którą się właśnie ogląda."""
+        if int(self.state.magazyn_zakladka or 0) == 1:
+            elementy = self._buduj_czesci()
+            self.trasa_fab = "/magazyn/czesci/nowa"
+        else:
+            elementy = self._buduj_opony()
+            self.trasa_fab = "/magazyn/opony/nowy"
+        return ft.Column(list(elementy), spacing=15)
+
+    def _przelacz_podzakladke(self, idx):
+        stara = int(self.state.magazyn_zakladka or 0)
+        idx = int(idx)
+        if idx == stara:
+            return
+
+        self.state.magazyn_zakladka = idx
+        # Zaznaczanie dotyczy JEDNEJ listy — przeniesione na drugą połowę
+        # magazynu kasowałoby nie te pozycje, co trzeba.
+        self.tryb_zaznaczania = False
+        self.zaznaczone_id = set()
+        self.tabela_cel = ""
+        self.karty_ref = {}
+        self.uzyj_wirtualizacji = False
+        self.zapomnij_listy_kart()
+        self.appbar = self.oryginalny_appbar
+
+        self.pasek_podzakladek.content = self._pasek_podzakladek()
+        self.przelacznik.pokaz(
+            self._page, self._zawartosc_podzakladki(),
+            kierunek=utils.PrzelacznikEkranow.kierunek(stara, idx),
+        )
+        self.floating_action_button = self._fab_podzakladki()
+        try:
+            self.update()
+        except Exception:
+            log.polkniety("odświeżenie magazynu po zmianie podzakładki")
+
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
         tabela = self.tabela_cel

@@ -283,11 +283,15 @@ def uruchom_akcje(page: ft.Page, obsluga):
     page.run_task(_dokoncz)
 
 
-def otworz_ekran(page: ft.Page, state, ekran, akcje=None):
+def otworz_ekran(page: ft.Page, state, ekran, akcje=None, widok=None):
     """Wejście na ekran z rejestru — po jego identyfikatorze albo po całym wpisie.
     Historię „ostatnio używanych” prowadzi router (zanotuj_ekran_dla_trasy), bo
     ekran można otworzyć także zwykłym odnośnikiem; tu zapisujemy tylko AKCJE,
-    których w adresie nie widać."""
+    których w adresie nie widać.
+
+    `widok` podaje ten, kto wie, że ekran główny JEST w tej chwili na wierzchu
+    (kafelek kokpitu). Wtedy zakładka przełącza się u niego w miejscu, z płynnym
+    przejściem, zamiast przebudową całego ekranu przez router."""
     if isinstance(ekran, str):
         ekran = EKRANY_WG_ID.get(ekran)
     if not ekran:
@@ -311,10 +315,18 @@ def otworz_ekran(page: ft.Page, state, ekran, akcje=None):
             pass
 
     if ekran.get("zakladka") is not None:
+        podzakladka = int(ekran["podzakladka"]) if ekran.get("podzakladka") is not None else None
+        if podzakladka is not None:
+            db.zapamietaj_podzakladke_kosztow(podzakladka)
+
+        przelacz = getattr(widok, "przelacz_zakladke", None)
+        if przelacz:
+            przelacz(int(ekran["zakladka"]), podzakladka)
+            return
+
         state.zakladka = int(ekran["zakladka"])
-        if ekran.get("podzakladka") is not None:
-            state.koszty_podzakladka = int(ekran["podzakladka"])
-            db.zapamietaj_podzakladke_kosztow(state.koszty_podzakladka)
+        if podzakladka is not None:
+            state.koszty_podzakladka = podzakladka
         przejdz(page, "/")
         return
 

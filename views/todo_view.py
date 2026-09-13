@@ -1,6 +1,7 @@
 import flet as ft
 from datetime import datetime
 import db
+import log
 import sync
 import utils
 from date import parsuj_date
@@ -13,16 +14,10 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         podzakladka = int(getattr(state, "do_zrobienia_podzakladka", 0) or 0)
         podzakladka = podzakladka if podzakladka in (0, 1) else 0
 
-        wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
-        appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "Do zrobienia" if podzakladka == 0 else "Checklisty", "/",
-            ikona=ft.Icons.CHECKLIST if podzakladka == 0 else ft.Icons.FACT_CHECK,
-            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/do-zrobienia"))] if wspolny_id else None
-        )
-        if podzakladka == 1:
-            fab = utils.fab_animowany(ft.Icons.ADD, lambda e: self._okno_edytora_checklisty(None))
-        else:
-            fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"))
+        state.do_zrobienia_podzakladka = podzakladka
+        self.wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
+        appbar = self._appbar_podzakladki()
+        fab = self._fab_podzakladki()
 
         # --- ZMIENNE DLA GRUPOWEGO ZAZNACZANIA / USUWANIA ---
         self.tryb_zaznaczania = False
@@ -32,23 +27,91 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self.uzyj_wirtualizacji = False
         # ------------------------------------------------------
 
-        elementy = []
-
-        # Ekran ma teraz DWIE listy o różnym cyklu życia: „Do zrobienia”, gdzie
-        # pozycja znika po wykonaniu, i checklisty, które odhacza się przed każdym
+        # Ekran ma DWIE listy o różnym cyklu życia: „Do zrobienia”, gdzie pozycja
+        # znika po wykonaniu, i checklisty, które odhacza się przed każdym
         # wyjazdem i zeruje po powrocie. Trzymanie ich razem zamieniałoby listę
-        # planów w rytuał przepisywania tych samych dziesięciu punktów.
-        def zmien_podzakladke(idx):
-            self.state.do_zrobienia_podzakladka = idx
-            utils.przejdz(self._page, "/do-zrobienia")
+        # planów w rytuał przepisywania tych samych dziesięciu punktów — ale
+        # pasek nad nimi ma zostawać na miejscu, a nie przeładowywać ekran.
+        self.pasek_podzakladek = ft.Container(content=self._pasek_podzakladek())
+        self.przelacznik = utils.PrzelacznikEkranow(
+            self._zawartosc_podzakladki(), wlaczony=db.czy_animacje_interfejsu()
+        )
 
-        elementy.append(utils.segmented_control(
-            page,
+        elementy = [
+            self.pasek_podzakladek,
+            self.przelacznik.kontrolka,
+            utils.dol_bezpieczny(10),
+        ]
+
+        super().__init__(
+            route="/do-zrobienia",
+            padding=15,
+            appbar=appbar,
+            floating_action_button=fab,
+            spacing=15,
+            controls=elementy,
+            scroll=ft.ScrollMode.AUTO,
+        )
+
+    # ----- Podzakładki: Do zrobienia / Checklisty -----
+    def _pasek_podzakladek(self):
+        return utils.segmented_control(
+            self._page,
             [("Do zrobienia", 0, ft.Icons.CHECKLIST_RTL), ("Checklisty", 1, ft.Icons.FACT_CHECK)],
-            podzakladka, zmien_podzakladke,
-        ))
+            int(self.state.do_zrobienia_podzakladka or 0), self._przelacz_podzakladke,
+        )
 
-        if podzakladka == 1:
+    def _appbar_podzakladki(self):
+        czy_checklisty = int(self.state.do_zrobienia_podzakladka or 0) == 1
+        return utils.zbuduj_pasek_z_powrotem(
+            self._page, "Checklisty" if czy_checklisty else "Do zrobienia", "/",
+            ikona=ft.Icons.FACT_CHECK if czy_checklisty else ft.Icons.CHECKLIST,
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(
+                self._page,
+                utils.funkcja_szybkiej_synchronizacji(self._page, self.state.auto_id, "/do-zrobienia"),
+            )] if self.wspolny_id else None,
+        )
+
+    def _fab_podzakladki(self):
+        if int(self.state.do_zrobienia_podzakladka or 0) == 1:
+            return utils.fab_animowany(ft.Icons.ADD, lambda e: self._okno_edytora_checklisty(None))
+        return utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"))
+
+    def _przelacz_podzakladke(self, idx):
+        stara = int(self.state.do_zrobienia_podzakladka or 0)
+        idx = int(idx)
+        if idx == stara:
+            return
+
+        self.state.do_zrobienia_podzakladka = idx
+        # Zaznaczanie dotyczy listy „Do zrobienia”; checklisty odhacza się,
+        # a nie kasuje grupowo — stan nie ma prawa przejść między nimi.
+        self.tryb_zaznaczania = False
+        self.zaznaczone_id = set()
+        self.karty_ref = {}
+        self.uzyj_wirtualizacji = False
+        self.zapomnij_listy_kart()
+
+        self.pasek_podzakladek.content = self._pasek_podzakladek()
+        self.przelacznik.pokaz(
+            self._page, self._zawartosc_podzakladki(),
+            kierunek=utils.PrzelacznikEkranow.kierunek(stara, idx),
+        )
+        # Pasek górny niesie tytuł podzakładki, więc idzie za nią — razem
+        # z kopią, do której wraca się po wyjściu z trybu zaznaczania.
+        self.oryginalny_appbar = self._appbar_podzakladki()
+        self.appbar = self.oryginalny_appbar
+        self.floating_action_button = self._fab_podzakladki()
+        try:
+            self.update()
+        except Exception:
+            log.polkniety("odświeżenie listy Do zrobienia po zmianie podzakładki")
+
+    def _zawartosc_podzakladki(self):
+        """Zawartość aktywnej podzakładki jako JEDNA kontrolka — to ona jedzie
+        przez przełącznik."""
+        elementy = []
+        if int(self.state.do_zrobienia_podzakladka or 0) == 1:
             self._buduj_checklisty(elementy)
         else:
 
@@ -125,17 +188,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=185)
                 elementy.append(self.lista_kart)
 
-        elementy.append(utils.dol_bezpieczny(10))
-
-        super().__init__(
-            route="/do-zrobienia",
-            padding=15,
-            appbar=appbar,
-            floating_action_button=fab,
-            spacing=15,
-            controls=elementy,          # lub self.elementy, w zależności jak masz w tym pliku
-            scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
-        )
+        return ft.Column(elementy, spacing=15)
 
     # ==================== CHECKLISTY ====================
     # Lista przedwyjazdowa różni się od „Do zrobienia” jedną rzeczą, ale

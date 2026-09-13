@@ -30,6 +30,22 @@ KLATEK_NA_SEKUNDE = 30
 # leciałyby w próżnię.
 OPOZNIENIE_STARTU_S = 0.06
 
+# Przejście między zakładkami. Krótsze od odliczania liczb, bo tu ruch ma tylko
+# powiedzieć „to wciąż ta sama aplikacja”, a nie zwrócić na siebie uwagę.
+# Zakładki przełącza się dziesiątki razy dziennie — powyżej ~300 ms każde takie
+# przełączenie zaczyna się dłużyć.
+CZAS_PRZEJSCIA_MS = 200
+
+# Nowa zawartość wjeżdża z tej strony, po której leży w pasku — ale tylko o kilka
+# procent szerokości. Pełny slide czytałby się jak przewracanie stron, a zakładki
+# nie są stronami: mają wyglądać na sąsiadów, nie na kolejne kartki.
+PRZESUNIECIE_PRZEJSCIA = 0.05
+
+# Tyle wystarczy, żeby nowa zawartość zdążyła trafić na ekran w stanie
+# początkowym. Gdyby stan początkowy i docelowy poszły jednym patchem, Flutter
+# nie miałby czego animować.
+OPOZNIENIE_KLATKI_S = 0.03
+
 
 def wygladzenie(t):
     """Cubic ease-out: szybki początek, miękkie dojście do celu. Liczba ma
@@ -286,10 +302,105 @@ class ScenaWejscia:
         page.update(*self._kontrolki)
 
 
+class PrzelacznikEkranow:
+    """Jedna zawartość ustępuje drugiej: przenikanie plus przesunięcie w kierunku
+    ruchu.
+
+    Cztery zakładki przełącza się dziesiątki razy dziennie. Płynne przejście robi
+    z nich JEDNĄ aplikację; twarda podmiana — cztery ekrany podstawiane pod ten
+    sam pasek.
+
+    Flet daje w `AnimatedSwitcher` tylko FADE, SCALE i ROTATION, więc
+    przesunięcie dokładamy sami: opakowanie startuje z `offset` i dojeżdża do
+    zera własnym `animate_offset`. Wychodzi to lepiej niż gotowy slide — obie
+    części przejścia rysuje Flutter, a Python nie liczy tu ani jednej klatki.
+    """
+
+    def __init__(self, zawartosc, wlaczony=True, czas_ms=CZAS_PRZEJSCIA_MS):
+        self.wlaczony = bool(wlaczony)
+        self.czas_ms = max(1, int(czas_ms))
+        self._licznik = 0
+        self._opakowanie = self._opakuj(zawartosc, kierunek=0)
+        self.kontrolka = ft.AnimatedSwitcher(
+            content=self._opakowanie,
+            # Wyłączone animacje = zerowy czas. Jedna ścieżka kodu zamiast dwóch,
+            # a przełącznik i tak zostaje tam, gdzie był.
+            duration=self.czas_ms if self.wlaczony else 0,
+            # Stara zawartość gaśnie szybciej, niż pojawia się nowa — inaczej
+            # przez chwilę widać dwie naraz i przejście robi się mętne.
+            reverse_duration=int(self.czas_ms * 0.6) if self.wlaczony else 0,
+            switch_in_curve=ft.AnimationCurve.EASE_OUT,
+            switch_out_curve=ft.AnimationCurve.EASE_IN,
+            transition=ft.AnimatedSwitcherTransition.FADE,
+        )
+
+    @staticmethod
+    def kierunek(stara_pozycja, nowa_pozycja):
+        """+1, gdy nowa rzecz leży w pasku na PRAWO od poprzedniej (wjeżdża
+        z prawej), -1 gdy na lewo. Pozycją może być numer zakładki albo krotka
+        (zakładka, podzakładka) — porównanie krotek załatwia oba naraz."""
+        if nowa_pozycja == stara_pozycja:
+            return 0
+        return 1 if nowa_pozycja > stara_pozycja else -1
+
+    def _opakuj(self, zawartosc, kierunek):
+        """Każda zawartość dostaje WŁASNY klucz. Bez niego Flutter uznałby nowe
+        dziecko za to samo co poprzednie i przejścia by nie było."""
+        self._licznik += 1
+        przesuniecie = PRZESUNIECIE_PRZEJSCIA * kierunek if self.wlaczony else 0
+        return ft.Container(
+            content=zawartosc,
+            key=f"ekran-{self._licznik}",
+            offset=ft.Offset(przesuniecie, 0),
+            animate_offset=ft.Animation(self.czas_ms, ft.AnimationCurve.EASE_OUT),
+        )
+
+    def pokaz(self, page, zawartosc, kierunek=0):
+        """Podmienia zawartość przełącznika. `kierunek` z `PrzelacznikEkranow.kierunek`."""
+        opakowanie = self._opakuj(zawartosc, kierunek)
+        self._opakowanie = opakowanie
+        self.kontrolka.content = opakowanie
+        try:
+            self.kontrolka.update()
+        except Exception:
+            # Przełącznik nie jest jeszcze w drzewie strony — zawartość i tak
+            # jest podmieniona i pokaże się przy najbliższym renderze.
+            log.polkniety("podmiana zawartości przełącznika ekranów")
+        self._dojedz(page, opakowanie)
+        return opakowanie
+
+    def _dojedz(self, page, opakowanie):
+        """Zerowanie offsetu MUSI pójść osobnym patchem, już po tym, jak nowa
+        zawartość trafi na ekran przesunięta."""
+        if not self.wlaczony or page is None or not opakowanie.offset.x:
+            return
+
+        if not _petla_dziala(page):
+            opakowanie.offset = ft.Offset(0, 0)
+            return
+
+        async def _dojedz_teraz():
+            await asyncio.sleep(OPOZNIENIE_KLATKI_S)
+            opakowanie.offset = ft.Offset(0, 0)
+            try:
+                opakowanie.update()
+            except Exception:
+                log.polkniety("dojazd przejścia między zakładkami")
+
+        try:
+            page.run_task(_dojedz_teraz)
+        except Exception:
+            opakowanie.offset = ft.Offset(0, 0)
+
+
 __all__ = [
     "CZAS_ANIMACJI_MS",
+    "CZAS_PRZEJSCIA_MS",
     "KLATEK_NA_SEKUNDE",
+    "OPOZNIENIE_KLATKI_S",
     "OPOZNIENIE_STARTU_S",
+    "PRZESUNIECIE_PRZEJSCIA",
+    "PrzelacznikEkranow",
     "ScenaWejscia",
     "wygladzenie",
 ]

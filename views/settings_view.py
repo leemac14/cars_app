@@ -149,29 +149,30 @@ class UstawieniaView(ft.View):
             on_change=przelacz_czern,
         )
 
-        # --- ANIMOWANE LICZBY NA KOKPICIE ---
-        # Zapis od razu, jak przy czerni: efekt i tak widać dopiero przy
-        # następnym wejściu na kokpit, więc trzymanie tego w „niezapisanych
-        # zmianach” formularza tylko odsuwałoby sprawdzenie.
+        # --- ANIMACJE W APLIKACJI ---
+        # Zapis od razu, jak przy czerni: efekt widać dopiero na kolejnym
+        # ekranie, więc trzymanie tego w „niezapisanych zmianach” formularza
+        # tylko odsuwałoby sprawdzenie.
         def przelacz_animacje(e):
-            db.zapisz_animacje_kokpitu(bool(self.e_animacje_kokpitu.value))
+            db.zapisz_animacje_interfejsu(bool(self.e_animacje.value))
             # Znacznik „dla tego pojazdu już grało” zerujemy, żeby świeżo
             # włączone odliczanie pokazało się zaraz po powrocie — bez czekania
             # na restart aplikacji albo zmianę auta.
             self.state.kokpit_animacja_dla = None
 
-        self.e_animacje_kokpitu = ft.Switch(
-            label="Animowane liczby na kokpicie",
-            value=db.czy_animacje_kokpitu(),
+        self.e_animacje = ft.Switch(
+            label="Animacje w aplikacji",
+            value=db.czy_animacje_interfejsu(),
             on_change=przelacz_animacje,
         )
 
         animacje_sekcja = ft.Column([
-            self.e_animacje_kokpitu,
+            self.e_animacje,
             ft.Text(
-                "Przy wejściu na kokpit liczby, słupki i wskaźniki na kafelkach doliczają do "
-                "swoich wartości — pół sekundy, raz na wejście. Ruch pojawia się przy starcie "
-                "aplikacji i po zmianie pojazdu, a nie przy każdym powrocie z innego ekranu.",
+                "Dwa efekty pod jednym przełącznikiem. Przy wejściu na kokpit liczby, słupki "
+                "i wskaźniki doliczają do swoich wartości — pół sekundy, raz na wejście (przy "
+                "starcie aplikacji i po zmianie pojazdu, nie przy każdym powrocie). Zakładki "
+                "i podzakładki przechodzą jedna w drugą zamiast przeskakiwać.",
                 size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
             ),
         ], spacing=4)
