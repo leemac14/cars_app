@@ -53,6 +53,7 @@ class MainView(
         self.kokpit_edycja = False       # True = kafelki kokpitu można przeciągać (patrz _buduj_kokpit)
         self.kokpit_kontener = None      # kontener przełączany między karuzelą a trybem układania
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
+        self._scena_kokpitu = None       # animacja wejścia (patrz utils.ScenaWejscia)
         self._przelacznik_pojazdow = None  # ustawiane w buduj_naglowek_auta (showroom aut)
         # --------------------------------------
         # --- CZTERY ZAKŁADKI = CZTERY POWODY, DLA KTÓRYCH SIĘ TU WCHODZI ---

@@ -149,6 +149,33 @@ class UstawieniaView(ft.View):
             on_change=przelacz_czern,
         )
 
+        # --- ANIMOWANE LICZBY NA KOKPICIE ---
+        # Zapis od razu, jak przy czerni: efekt i tak widać dopiero przy
+        # następnym wejściu na kokpit, więc trzymanie tego w „niezapisanych
+        # zmianach” formularza tylko odsuwałoby sprawdzenie.
+        def przelacz_animacje(e):
+            db.zapisz_animacje_kokpitu(bool(self.e_animacje_kokpitu.value))
+            # Znacznik „dla tego pojazdu już grało” zerujemy, żeby świeżo
+            # włączone odliczanie pokazało się zaraz po powrocie — bez czekania
+            # na restart aplikacji albo zmianę auta.
+            self.state.kokpit_animacja_dla = None
+
+        self.e_animacje_kokpitu = ft.Switch(
+            label="Animowane liczby na kokpicie",
+            value=db.czy_animacje_kokpitu(),
+            on_change=przelacz_animacje,
+        )
+
+        animacje_sekcja = ft.Column([
+            self.e_animacje_kokpitu,
+            ft.Text(
+                "Przy wejściu na kokpit liczby, słupki i wskaźniki na kafelkach doliczają do "
+                "swoich wartości — pół sekundy, raz na wejście. Ruch pojawia się przy starcie "
+                "aplikacji i po zmianie pojazdu, a nie przy każdym powrocie z innego ekranu.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+        ], spacing=4)
+
         czern_sekcja = ft.Column([
             self.e_czysta_czern,
             ft.Text(
@@ -165,7 +192,8 @@ class UstawieniaView(ft.View):
         )
 
         k1 = utils.karta_formularza(
-            [self.e_waluta, self.e_jednostka, paleta_sekcja, ft.Divider(height=1), czern_sekcja],
+            [self.e_waluta, self.e_jednostka, paleta_sekcja, ft.Divider(height=1), czern_sekcja,
+             ft.Divider(height=1), animacje_sekcja],
             "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza(

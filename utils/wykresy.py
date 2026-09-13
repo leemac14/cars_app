@@ -6,6 +6,7 @@ from date import parsuj_date
 from datetime import datetime, timedelta
 from state import MIESIACE_NAZWY
 
+from .animacje import ScenaWejscia
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
 from .format import _odmiana_liczby, symbol_waluty
 from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia_karty
@@ -40,11 +41,16 @@ def kolor_kondycji_plynny(wynik):
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
-def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=True):
+def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=True, scena=None):
     """Kołowy wskaźnik kondycji (0-100) — pierścień wypełniony proporcjonalnie do
     wyniku, w kolorze płynnie przechodzącym od czerwieni do zieleni, z liczbą
     w środku. Zastępuje sam tekst „82/100”: wypełnienie i barwa niosą ocenę,
-    więc kafelek da się odczytać jednym spojrzeniem, bez czytania liczby."""
+    więc kafelek da się odczytać jednym spojrzeniem, bez czytania liczby.
+
+    `scena` (utils.ScenaWejscia) sprawia, że przy wejściu na kokpit pierścień
+    napełnia się od zera — razem z liczbą i barwą, więc wskaźnik przejeżdża
+    wtedy przez całą skalę od czerwieni do swojego koloru."""
+    scena = scena or ScenaWejscia(wlaczona=False)
     kolor = kolor_kondycji_plynny(wynik)
     rozmiar_liczby = rozmiar_liczby or max(14, int(rozmiar * 0.30))
 
@@ -53,23 +59,35 @@ def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=
     except (TypeError, ValueError):
         czysty = None
 
-    srodek = [
-        ft.Text(
-            str(czysty) if czysty is not None else "—",
-            size=rozmiar_liczby, weight="bold", color=kolor, no_wrap=True,
-        )
-    ]
+    liczba = ft.Text(
+        str(czysty) if czysty is not None else "—",
+        size=rozmiar_liczby, weight="bold", color=kolor, no_wrap=True,
+    )
+    srodek = [liczba]
     if pokaz_max and czysty is not None:
         srodek.append(ft.Text("/100", size=max(8, int(rozmiar_liczby * 0.42)),
                               color=ft.Colors.ON_SURFACE_VARIANT))
 
+    pierscien = ft.ProgressRing(
+        value=(czysty / 100) if czysty is not None else 0.0,
+        width=rozmiar, height=rozmiar, stroke_width=grubosc,
+        color=kolor, stroke_cap=ft.StrokeCap.ROUND,
+        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+    )
+
+    if czysty is not None:
+        def _prowadz_gauge(postep, _p=pierscien, _l=liczba, _cel=czysty):
+            biezacy = _cel * postep
+            barwa = kolor_kondycji_plynny(biezacy)
+            _p.value = biezacy / 100
+            _p.color = barwa
+            _l.value = str(int(round(biezacy)))
+            _l.color = barwa
+
+        scena.tor(_prowadz_gauge, pierscien, liczba)
+
     return ft.Stack([
-        ft.ProgressRing(
-            value=(czysty / 100) if czysty is not None else 0.0,
-            width=rozmiar, height=rozmiar, stroke_width=grubosc,
-            color=kolor, stroke_cap=ft.StrokeCap.ROUND,
-            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
-        ),
+        pierscien,
         ft.Container(
             width=rozmiar, height=rozmiar, alignment=ft.Alignment.CENTER,
             content=ft.Column(srodek, spacing=0, tight=True,
@@ -78,11 +96,12 @@ def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=
     ], width=rozmiar, height=rozmiar)
 
 
-def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True):
+def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
     """Wykorzystanie jednego limitu. Poza samym paskiem rysujemy pionowy
     ZNACZNIK UPŁYWU OKRESU — miejsce, w którym wypadałoby być dzisiaj, gdyby
     wydawać równo. Bez niego „62% limitu” nic nie mówi: w połowie miesiąca to
     kłopot, a 28. dnia powód do zadowolenia."""
+    scena = scena or ScenaWejscia(wlaczona=False)
     kolor = {
         "przekroczony": ft.Colors.RED_700,
         "uwaga": ft.Colors.ORANGE_700,
@@ -93,19 +112,23 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True):
     udzial_czasu = min(1.0, stan["dni_minione"] / stan["dni_okresu"]) if stan.get("dni_okresu") else 0
 
     WYSOKOSC = 10
+    # Wypełnienie i „reszta” trzymane osobno, bo przy wejściu na kokpit pasek
+    # najeżdża od zera (patrz scena.udzial) — a `expand` jest polem układu,
+    # którego fletowe `animate` nie obejmuje.
+    wypelnienie = ft.Container(
+        height=WYSOKOSC, border_radius=RADIUS["xs"], bgcolor=kolor,
+        expand=max(1, int(udzial * 1000)),
+        animate=ft.Animation(400, ft.AnimationCurve.EASE_OUT),
+    )
+    reszta_paska = ft.Container(expand=max(1, int((1 - udzial) * 1000)))
+    scena.udzial(wypelnienie, reszta_paska, udzial)
+
     pasek = ft.Stack([
         ft.Container(
             height=WYSOKOSC, border_radius=RADIUS["xs"],
             bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
         ),
-        ft.Row([
-            ft.Container(
-                height=WYSOKOSC, border_radius=RADIUS["xs"], bgcolor=kolor,
-                expand=max(1, int(udzial * 1000)),
-                animate=ft.Animation(400, ft.AnimationCurve.EASE_OUT),
-            ),
-            ft.Container(expand=max(1, int((1 - udzial) * 1000))),
-        ], spacing=0),
+        ft.Row([wypelnienie, reszta_paska], spacing=0),
         # Znacznik „gdzie powinieneś być dzisiaj” — cienka kreska w poprzek paska.
         ft.Row([
             ft.Container(expand=max(1, int(udzial_czasu * 1000))),
@@ -118,8 +141,11 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True):
     naglowek = ft.Row([
         ft.Text(stan["etykieta_kategorii"], size=FS["body_strong"], weight="bold", expand=True,
                 no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-        ft.Text(f"{formatuj_liczba(stan['wydano'])} / {formatuj_liczba(stan['limit'])} {symbol_waluty()}",
-                size=FS["body"], weight="bold", color=kolor),
+        scena.liczba(
+            stan["wydano"],
+            lambda v: f"{formatuj_liczba(v)} / {formatuj_liczba(stan['limit'])} {symbol_waluty()}",
+            size=FS["body"], weight="bold", color=kolor,
+        ),
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
     elementy = [naglowek, pasek]
@@ -139,7 +165,7 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True):
     return ft.Column(elementy, spacing=SPACING["xs"])
 
 
-def wskaznik_baku(page: ft.Page, dane, kompaktowy=False):
+def wskaznik_baku(page: ft.Page, dane, kompaktowy=False, scena=None):
     """Poziomy wskaźnik pozostałego paliwa z zasięgiem w kilometrach.
     Zawsze z notą o szacunku — to wyliczenie z licznika i średniego zużycia,
     a nie odczyt z pływaka, i użytkownik musi to wiedzieć, zanim zaufa liczbie
@@ -147,6 +173,7 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False):
     if not dane:
         return ft.Container(width=0, height=0)
 
+    scena = scena or ScenaWejscia(wlaczona=False)
     procent = dane.get("procent_baku")
     zasieg = dane.get("zasieg_pozostaly")
     if procent is None:
@@ -158,23 +185,28 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False):
     else:
         kolor = ft.Colors.GREEN_700
 
+    styl_zasiegu = dict(size=FS["title"], weight="bold", color=kolor, no_wrap=True)
+    if zasieg is None:
+        tekst_zasiegu = ft.Text("—", **styl_zasiegu)
+    else:
+        tekst_zasiegu = scena.liczba(zasieg, lambda v: f"{formatuj_liczba(v, 0)} km", **styl_zasiegu)
+
     gorny = ft.Row([
         ft.Row([
             ft.Icon(ft.Icons.LOCAL_GAS_STATION, size=16, color=kolor),
             ft.Text("Szacowany zasięg", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT,
                     expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
         ], spacing=6, expand=True),
-        ft.Text(f"{formatuj_liczba(zasieg, 0)} km" if zasieg is not None else "—",
-                size=FS["title"], weight="bold", color=kolor, no_wrap=True),
+        tekst_zasiegu,
     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
     elementy = [gorny]
     if procent is not None:
-        elementy.append(ft.ProgressBar(
+        elementy.append(scena.wskaznik(ft.ProgressBar(
             value=max(0.0, min(1.0, procent / 100)), color=kolor,
             bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
             height=8, border_radius=4,
-        ))
+        )))
 
     # Prognoza najbliższego tankowania — to samo tempo (km/dzień), co przy
     # terminach podzespołów. Pokazujemy ją też w kompaktowym kafelku kokpitu:

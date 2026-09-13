@@ -22,6 +22,14 @@ class MiksinKokpitu:
         Układ jest WŁASNOŚCIĄ POJAZDU: auto służbowe może mieć inne kafelki niż
         prywatne. Pojazd bez własnego układu dziedziczy wspólny (patrz
         db.pobierz_widgety_kokpitu)."""
+        # Odliczanie liczb przy wejściu na kokpit. JEDNA scena na całą
+        # przebudowę, żeby wszystkie kafelki ruszyły w tej samej chwili i stanęły
+        # razem — osobny timer na kafelek dałby osiemnaście animacji
+        # rozjeżdżających się w czasie. Wyłączona scena (patrz
+        # _czy_animowac_kokpit) oddaje kontrolki od razu w stanie docelowym,
+        # więc poniżej nie ma ani jednego „jeśli animacje włączone”.
+        scena = self._scena_kokpitu = utils.ScenaWejscia(wlaczona=self._czy_animowac_kokpit())
+
         wlaczone = db.pobierz_widgety_kokpitu(self.state.auto_id)
         if not wlaczone:
             return ft.Container()
@@ -65,6 +73,29 @@ class MiksinKokpitu:
                                    "inne" if podzakladka else "paliwo", self.akcje_nawigacji)
             return handler
 
+        def styl_wartosci(**nadpisania):
+            pola = dict(size=utils.FS["title"], weight="bold", no_wrap=True,
+                        overflow=ft.TextOverflow.ELLIPSIS)
+            pola.update(nadpisania)
+            return pola
+
+        def tekst_wartosci(wartosc, **nadpisania):
+            """Główna wartość kafelka w jednym stylu. `wartosc` bywa gotowym
+            napisem („Brak danych”, nazwa terminu), a bywa kontrolką z animacji
+            wejścia — kafelek przekazuje jedno i drugie dalej bez zaglądania
+            do środka."""
+            if isinstance(wartosc, ft.Control):
+                return wartosc
+            return ft.Text(wartosc, **styl_wartosci(**nadpisania))
+
+        def liczba_kafelka(wartosc, formatuj, zastepnik="Brak danych", **nadpisania):
+            """Liczba, która przy wejściu dolicza do swojej wartości. Brak
+            liczby to `zastepnik` — kafelek bez danych nie ma czego animować
+            i nie udaje, że ma zero."""
+            if wartosc is None:
+                return ft.Text(zastepnik, **styl_wartosci(**nadpisania))
+            return scena.liczba(wartosc, formatuj, **styl_wartosci(**nadpisania))
+
         def kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click):
             return ft.Container(
                 width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
@@ -75,7 +106,7 @@ class MiksinKokpitu:
                         ft.Icon(ikona, size=15, color=kolor_ikony),
                         ft.Text(etykieta, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    tekst_wartosci(wartosc),
                 ], spacing=4),
             )
 
@@ -111,7 +142,7 @@ class MiksinKokpitu:
                         ft.Icon(ikona, size=15, color=kolor_ikony),
                         ft.Text(etykieta, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    tekst_wartosci(wartosc),
                     iskra,
                     stopka,
                 ], spacing=6),
@@ -165,7 +196,8 @@ class MiksinKokpitu:
                     ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=15, color=ft.Colors.PRIMARY),
                     ft.Text("Koszt w mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                 ], spacing=6),
-                ft.Text(f"{utils.formatuj_liczba(koszt_biezacy)} {utils.symbol_waluty()}", size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                liczba_kafelka(koszt_biezacy,
+                               lambda v: f"{utils.formatuj_liczba(v)} {utils.symbol_waluty()}"),
             ]
             if iskra_mc is not None:
                 zawartosc.append(iskra_mc)
@@ -235,12 +267,16 @@ class MiksinKokpitu:
                 biezacy = (rok == dzis.year and mies == dzis.month)
                 slupki.append(
                     ft.Column([
-                        ft.Container(
+                        # Słupek wyrasta od dołu przy wejściu na kokpit. Wysokość
+                        # to jedyna właściwość z tej czwórki, którą Flet potrafi
+                        # animować SAM (Container.animate) — więc tu klatek nie
+                        # liczy Python, tylko Flutter.
+                        scena.wysokosc(ft.Container(
                             width=20, height=wysokosc, border_radius=5,
                             bgcolor=ft.Colors.PRIMARY if biezacy else ft.Colors.with_opacity(0.35, ft.Colors.PRIMARY),
                             tooltip=f"{MIESIACE_NAZWY[mies - 1]} {rok}: {utils.formatuj_liczba(suma)} {utils.symbol_waluty()}",
                             animate=ft.Animation(300, ft.AnimationCurve.EASE_OUT),
-                        ),
+                        ), wysokosc, od=4),
                         ft.Text(f"{mies:02d}", size=10, weight="bold" if biezacy else "normal",
                                 color=ft.Colors.PRIMARY if biezacy else ft.Colors.ON_SURFACE_VARIANT),
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4)
@@ -261,7 +297,10 @@ class MiksinKokpitu:
 
         def widget_koszt_km():
             koszt_km = dane_porownanie.get("koszt_km")
-            wartosc = f"{utils.formatuj_liczba(koszt_km, 2)} {utils.symbol_waluty()}/km" if koszt_km else "Brak danych"
+            wartosc = liczba_kafelka(
+                koszt_km or None,
+                lambda v: f"{utils.formatuj_liczba(v, 2)} {utils.symbol_waluty()}/km",
+            )
             # Liczba jest z całego życia auta, iskra pokazuje ostatnie miesiące —
             # dopiero razem widać, czy jazda ostatnio drożeje, czy tanieje.
             return kafel_z_iskra(
@@ -276,7 +315,16 @@ class MiksinKokpitu:
             # Średnia z odcinków TEGO źródła, a nie ogólna z porównania —
             # przy plug-inie tamta mieszała oba światy.
             spalanie = (sum(wartosci_serii) / len(wartosci_serii)) if wartosci_serii else dane_porownanie.get("spalanie")
-            wartosc = utils.formatuj_spalanie(spalanie, elektryczny=czy_prad_kokpit) if spalanie else "Za mało danych"
+            # Odliczamy liczbę JUŻ przeliczoną na jednostkę z Ustawień. Przy km/l
+            # i mpg mniejsze zużycie znaczy WIĘKSZĄ liczbę, więc animowanie
+            # l/100km jechałoby na ekranie w drugą stronę, a start od zera byłby
+            # dzieleniem przez zero (patrz db.przelicz_zuzycie).
+            zuzycie, jednostka_zuzycia = db.przelicz_zuzycie(spalanie, czy_prad_kokpit)
+            wartosc = liczba_kafelka(
+                zuzycie,
+                lambda v: f"{utils.formatuj_liczba(v, 1)} {jednostka_zuzycia}",
+                zastepnik="Za mało danych",
+            )
             etykieta = "Śr. zużycie" if czy_prad_kokpit else "Śr. spalanie"
             return kafel_z_iskra(
                 ft.Icons.EV_STATION if czy_prad_kokpit else ft.Icons.LOCAL_GAS_STATION,
@@ -292,7 +340,8 @@ class MiksinKokpitu:
             if not zasieg or not zasieg["szacowany"]:
                 wartosc, stopka = "Brak danych", "Uzupełnij baterię i naładuj do pełna"
             else:
-                wartosc = f"{utils.formatuj_liczba(zasieg['szacowany'], 0)} km"
+                wartosc = liczba_kafelka(zasieg["szacowany"],
+                                         lambda v: f"{utils.formatuj_liczba(v, 0)} km")
                 if zasieg["procent_deklarowanego"]:
                     stopka = f"{utils.formatuj_liczba(zasieg['procent_deklarowanego'], 0)}% katalogowego"
                 elif zasieg["pojemnosc"]:
@@ -311,7 +360,7 @@ class MiksinKokpitu:
                         ft.Icon(ft.Icons.BATTERY_CHARGING_FULL, size=15, color=ft.Colors.GREEN_700),
                         ft.Text("Zasięg EV", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(wartosc, size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    tekst_wartosci(wartosc),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
@@ -319,7 +368,8 @@ class MiksinKokpitu:
 
         def widget_przebieg_dzienny():
             sredni = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
-            wartosc = f"{utils.formatuj_liczba(sredni, 1)} km/dzień" if sredni else "Brak danych"
+            wartosc = liczba_kafelka(sredni or None,
+                                     lambda v: f"{utils.formatuj_liczba(v, 1)} km/dzień")
             wartosci_serii = [w for _, w in seria_przebiegu]
             # Więcej kilometrów to nie „gorzej” — stąd wzrost_zly=False, inaczej
             # aktywniejszy miesiąc dostawałby czerwoną strzałkę jak rosnący koszt.
@@ -382,7 +432,7 @@ class MiksinKokpitu:
                         ft.Icon(ft.Icons.MONITOR_HEART, size=15, color=kolor_gauge),
                         ft.Text("Kondycja", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Row([utils.gauge_kondycji(kondycja, rozmiar=76, grubosc=8)],
+                    ft.Row([utils.gauge_kondycji(kondycja, rozmiar=76, grubosc=8, scena=scena)],
                            alignment=ft.MainAxisAlignment.CENTER),
                     ft.Text(etykieta_kond, size=utils.FS["caption"], color=kolor_gauge,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
@@ -443,7 +493,7 @@ class MiksinKokpitu:
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
                                 no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                     ], spacing=6),
-                    utils.pasek_budzetu(self._page, stan),
+                    utils.pasek_budzetu(self._page, stan, scena=scena),
                 ], spacing=8),
             )
 
@@ -459,7 +509,7 @@ class MiksinKokpitu:
                 bgcolor=utils.tlo_karty(self._page, poziom=1),
                 ink=True, on_click=idz_do_statystyk(3),
                 tooltip="Szacunek z licznika i Twojego zużycia — nie z czujnika w aucie",
-                content=utils.wskaznik_baku(self._page, dane, kompaktowy=True),
+                content=utils.wskaznik_baku(self._page, dane, kompaktowy=True, scena=scena),
             )
 
         def widget_prognoza_rok():
@@ -469,7 +519,10 @@ class MiksinKokpitu:
                     ft.Icons.QUERY_STATS, ft.Colors.BLUE_GREY_700, "Prognoza roczna",
                     "Za mało danych", idz_do_statystyk(3),
                 )
-            wartosc = f"{utils.formatuj_liczba(prognoza['prognoza_calego_roku'], 0)} {utils.symbol_waluty()}"
+            wartosc = liczba_kafelka(
+                prognoza["prognoza_calego_roku"],
+                lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+            )
             stopka = (f"do końca roku jeszcze "
                       f"{utils.formatuj_liczba(prognoza['prognoza_do_konca'], 0)} {utils.symbol_waluty()}")
             return ft.Container(
@@ -483,8 +536,7 @@ class MiksinKokpitu:
                         ft.Text(f"Prognoza {prognoza['rok']}", size=utils.FS["caption"],
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(wartosc, size=utils.FS["title"], weight="bold",
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    tekst_wartosci(wartosc),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
@@ -592,12 +644,13 @@ class MiksinKokpitu:
                         ft.Text("Przed trasą", size=utils.FS["caption"],
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(f"{stan['zrobione']} / {stan['razem']}", size=utils.FS["title"], weight="bold"),
-                    ft.ProgressBar(
+                    liczba_kafelka(stan["zrobione"],
+                                   lambda v: f"{utils.formatuj_liczba(v, 0)} / {stan['razem']}"),
+                    scena.wskaznik(ft.ProgressBar(
                         value=(stan["zrobione"] / stan["razem"]) if stan["razem"] else 0,
                         color=kolor, bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
                         height=6, border_radius=3,
-                    ),
+                    )),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
@@ -612,7 +665,10 @@ class MiksinKokpitu:
             stan = db.suma_kategorii_innych(
                 self.state.auto_id, db.KATEGORIA_INNE_DROGOWE, poczatek_roku, dzisiaj.date()
             )
-            wartosc = f"{utils.formatuj_liczba(stan['suma'], 0)} {utils.symbol_waluty()}"
+            wartosc = liczba_kafelka(
+                stan["suma"],
+                lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+            )
             stopka = (f"{stan['liczba']} wpisów w {dzisiaj.year}" if stan["liczba"]
                       else f"brak wpisów w {dzisiaj.year}")
             return ft.Container(
@@ -626,8 +682,7 @@ class MiksinKokpitu:
                         ft.Text("Opłaty drogowe", size=utils.FS["caption"],
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(wartosc, size=utils.FS["title"], weight="bold",
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    tekst_wartosci(wartosc),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
@@ -665,7 +720,7 @@ class MiksinKokpitu:
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
                     ft.Row([
-                        ft.Text(str(stan["otwarte"]), size=utils.FS["title"], weight="bold"),
+                        liczba_kafelka(stan["otwarte"], lambda v: utils.formatuj_liczba(v, 0)),
                         ft.Text(f"• {stan['po_terminie']} po terminie" if stan["po_terminie"] else "",
                                 size=utils.FS["caption"], color=ft.Colors.RED_700, no_wrap=True),
                     ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.END),
@@ -700,9 +755,9 @@ class MiksinKokpitu:
                         ft.Text("Magazyn", size=utils.FS["caption"],
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
-                    ft.Text(f"{niski} do uzupełnienia" if niski else "Stan w porządku",
-                            size=utils.FS["title"], weight="bold",
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    liczba_kafelka(niski or None,
+                                   lambda v: f"{utils.formatuj_liczba(v, 0)} do uzupełnienia",
+                                   zastepnik="Stan w porządku"),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
@@ -747,6 +802,11 @@ class MiksinKokpitu:
     def _odswiez_kokpit(self):
         if not self.kokpit_kontener:
             return
+        # Przebudowa w locie (tryb układania, nowa kolejność po przeciągnięciu)
+        # to NIE jest wejście na ekran — kafelki mają się pojawić od razu ze
+        # swoimi wartościami, a nie odliczać od zera po każdym przesunięciu.
+        if self._scena_kokpitu:
+            self._scena_kokpitu.wygas()
         self.kokpit_kontener.content = self._zawartosc_kokpitu()
         try:
             self.kokpit_kontener.update()
@@ -754,6 +814,21 @@ class MiksinKokpitu:
             # Kontener jeszcze nie jest w drzewie strony (np. tuż po zbudowaniu
             # widoku) — przy najbliższym renderze i tak pokaże aktualny stan.
             pass
+
+    def _czy_animowac_kokpit(self):
+        """Odliczanie gra przy starcie aplikacji i po zmianie pojazdu — nie przy
+        każdym powrocie na kokpit.
+
+        Ekran startowy przebudowuje się przy KAŻDEJ zmianie zakładki i po wyjściu
+        z dowolnego ekranu. Animowanie za każdym razem zamieniłoby ruch „na
+        powitanie” w zwłokę przy odczycie już za dziesiątym przejściem tam
+        i z powrotem — a kokpit jest ekranem, na który się wraca, nie takim,
+        który się ogląda."""
+        if self.kokpit_edycja or not self.state.auto_id:
+            return False
+        if not db.czy_animacje_kokpitu():
+            return False
+        return getattr(self.state, "kokpit_animacja_dla", None) != self.state.auto_id
 
     def _ustaw_tryb_ukladania(self, wlaczony):
         self.kokpit_edycja = bool(wlaczony)
@@ -913,6 +988,13 @@ class MiksinKokpitu:
         self.elementy.append(ft.Row(naglowek, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
         self.elementy.append(self._buduj_kokpit())
+        # Scena rusza dopiero, gdy kafelki są zbudowane (sama odczeka jeszcze
+        # moment, aż widok trafi do drzewa strony). Znacznik w stanie zapisuje,
+        # że dla TEGO pojazdu odliczanie już było.
+        if self._scena_kokpitu:
+            self._scena_kokpitu.uruchom(self._page)
+        self.state.kokpit_animacja_dla = self.state.auto_id
+
         if not db.pobierz_widgety_kokpitu(self.state.auto_id):
             # Pusty kokpit bez słowa wyjaśnienia wyglądałby jak zepsuty ekran,
             # a nie jak ekran czekający na wybór kafelków.

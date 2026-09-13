@@ -20,6 +20,11 @@ class AppState:
         self.duplikuj_zrodlo_wizyta = None
         self.wybrane_zadanie_nazwa = ""
         self.powiadomienia_widziane = {}   # zamiast pojedynczej sygnatury
+        # Pojazd, dla którego odliczanie liczb na kokpicie już zagrało. Kokpit
+        # przebudowuje się przy każdej zmianie zakładki i po wyjściu z dowolnego
+        # ekranu — bez tego znacznika animacja wejścia grałaby kilkanaście razy
+        # na sesję i z powitania zrobiłaby się zwłoka przy odczycie.
+        self.kokpit_animacja_dla = None
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
         self.do_zrobienia_podzakladka = 0  # 0 = Do zrobienia, 1 = Checklisty
         self.porownanie_wybrane = []
