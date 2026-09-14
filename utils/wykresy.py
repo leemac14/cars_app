@@ -104,9 +104,9 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
     scena = scena or ScenaWejscia(wlaczona=False)
     scena.nastepny_wiersz()
     kolor = {
-        "przekroczony": ft.Colors.RED_700,
-        "uwaga": ft.Colors.ORANGE_700,
-        "ok": ft.Colors.GREEN_700,
+        "przekroczony": KOLOR_STATUS["critical"],
+        "uwaga": KOLOR_STATUS["warning"],
+        "ok": KOLOR_STATUS["ok"],
     }.get(stan.get("status"), ft.Colors.PRIMARY)
 
     udzial = min(1.0, (stan["procent"] or 0) / 100)
@@ -181,11 +181,11 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False, scena=None):
     if procent is None:
         kolor = ft.Colors.BLUE_GREY_700
     elif procent < 15:
-        kolor = ft.Colors.RED_700
+        kolor = KOLOR_STATUS["critical"]
     elif procent < 30:
-        kolor = ft.Colors.ORANGE_700
+        kolor = KOLOR_STATUS["warning"]
     else:
-        kolor = ft.Colors.GREEN_700
+        kolor = KOLOR_STATUS["ok"]
 
     styl_zasiegu = dict(size=FS["title"], weight="bold", color=kolor, no_wrap=True)
     if zasieg is None:
@@ -222,8 +222,8 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False, scena=None):
         else:
             opis_dni = f"za około {dni_do_pustego} dni"
         kolor_prognozy = (
-            ft.Colors.RED_700 if dni_do_pustego <= 2
-            else ft.Colors.ORANGE_700 if dni_do_pustego <= 5
+            KOLOR_STATUS["critical"] if dni_do_pustego <= 2
+            else KOLOR_STATUS["warning"] if dni_do_pustego <= 5
             else ft.Colors.ON_SURFACE_VARIANT
         )
         data_pustego = dane.get("data_pustego")

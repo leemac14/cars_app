@@ -113,10 +113,10 @@ class PodzialKosztowView(ft.View):
                     tekst_rozliczenia, kolor_rozliczenia = "Dokładnie tyle, ile powinien/powinna.", ft.Colors.ON_SURFACE_VARIANT
                 elif roznica > 0:
                     tekst_rozliczenia = f"Dopłacił(a) {utils.formatuj_liczba(roznica)} {waluta} więcej niż uczciwa część — reszta powinna mu/jej to oddać."
-                    kolor_rozliczenia = ft.Colors.GREEN_700
+                    kolor_rozliczenia = utils.KOLOR_STATUS["ok"]
                 else:
                     tekst_rozliczenia = f"Powinien(nna) dopłacić {utils.formatuj_liczba(abs(roznica))} {waluta}, by wyrównać."
-                    kolor_rozliczenia = ft.Colors.ORANGE_700
+                    kolor_rozliczenia = utils.KOLOR_STATUS["warning"]
 
                 pary_kategorii = [
                     (utils.IKONY_KATEGORII_KOSZTOW["paliwo"], utils.formatuj_liczba(d["paliwo"], 0)) if d["paliwo"] > 0 else None,
@@ -136,7 +136,7 @@ class PodzialKosztowView(ft.View):
                                         ft.Text(d["osoba"], weight="bold", size=16, expand=True,
                                                 no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)],
                                        spacing=6, expand=True),
-                                ft.Text(f"{utils.formatuj_liczba(d['razem'])} {waluta}", weight="bold", size=16, color=ft.Colors.RED_700, no_wrap=True)
+                                ft.Text(f"{utils.formatuj_liczba(d['razem'])} {waluta}", weight="bold", size=16, color=utils.KOLOR_STATUS["cost"], no_wrap=True)
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                             self.scena.wskaznik(ft.ProgressBar(
                                 value=max(0.03, proporcja), color=ft.Colors.PRIMARY,

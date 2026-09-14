@@ -163,12 +163,12 @@ def odznaka_pojazdu(auto, rozmiar=40, kolor_nazwa=None):
 def wskaznik_kondycji(wynik):
     """Zwraca (kolor, ikona, etykieta) dla wskaźnika kondycji pojazdu (0-100)."""
     if wynik is None:
-        return ft.Colors.ON_SURFACE_VARIANT, ft.Icons.HELP_OUTLINE, "Brak danych"
+        return KOLOR_STATUS["neutral"], ft.Icons.HELP_OUTLINE, "Brak danych"
     if wynik >= 80:
-        return ft.Colors.GREEN_700, ft.Icons.FAVORITE, "Bardzo dobra"
+        return KOLOR_STATUS["ok"], ft.Icons.FAVORITE, "Bardzo dobra"
     if wynik >= 50:
-        return ft.Colors.ORANGE_700, ft.Icons.FAVORITE_BORDER, "Wymaga uwagi"
-    return ft.Colors.RED_700, ft.Icons.HEART_BROKEN, "Wymaga pilnej reakcji"
+        return KOLOR_STATUS["warning"], ft.Icons.FAVORITE_BORDER, "Wymaga uwagi"
+    return KOLOR_STATUS["critical"], ft.Icons.HEART_BROKEN, "Wymaga pilnej reakcji"
 
 
 def pokaz_panel_kondycji(page: ft.Page, state):
@@ -238,7 +238,7 @@ def pokaz_panel_kondycji(page: ft.Page, state):
         for p in powody:
             # Największe minusy pierwsze (sortuje db), więc czerwień u góry to
             # jednocześnie „zajmij się tym najpierw”.
-            kolor_kary = ft.Colors.RED_700 if p["punkty"] >= 15 else ft.Colors.ORANGE_800
+            kolor_kary = KOLOR_STATUS["critical"] if p["punkty"] >= 15 else KOLOR_STATUS["warning"]
             tresc = [ft.Text(p["opis"], size=FS["label"], weight="bold")]
             if p["szczegol"]:
                 tresc.append(ft.Text(p["szczegol"], size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
@@ -328,9 +328,9 @@ def tablica_rejestracyjna(nr_rej, wysokosc=30, on_click=None):
 
 
 KOLORY_STATUSU_TERMINU = {
-    "po_terminie": ft.Colors.RED_700,
-    "blisko": ft.Colors.ORANGE_700,
-    "ok": ft.Colors.GREEN_700,
+    "po_terminie": KOLOR_STATUS["critical"],
+    "blisko": KOLOR_STATUS["warning"],
+    "ok": KOLOR_STATUS["ok"],
 }
 
 

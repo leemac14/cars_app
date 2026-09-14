@@ -326,7 +326,7 @@ class FormularzAutoView(ft.View):
         if not vin or len(vin) != 17:
             utils.ustaw_blad(self.e_vin, "Wpisz pełny, 17-znakowy numer VIN")
             self._page.update()
-            utils.pokaz_komunikat(self._page, "VIN jest pusty albo ma nieprawidłową długość (wymagane dokładnie 17 znaków).", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, "VIN jest pusty albo ma nieprawidłową długość (wymagane dokładnie 17 znaków).", utils.KOLOR_STATUS["error"])
             return
 
         utils.ustaw_blad(self.e_vin)
@@ -425,7 +425,7 @@ class FormularzAutoView(ft.View):
                 self._page,
                 "Rozpoznano markę i rok produkcji lokalnie (baza WMI). Baza NHTSA nie miała dodatkowych "
                 "danych dla tego VIN-u (typowe dla aut spoza USA) — resztę uzupełnij ręcznie.",
-                ft.Colors.ORANGE_700
+                utils.KOLOR_STATUS["warning"]
             )
         elif wzbogacono_api:
             utils.pokaz_komunikat(self._page, "Rozkodowano dane z numeru VIN! Sprawdź uzupełnione pola.")
@@ -433,13 +433,13 @@ class FormularzAutoView(ft.View):
             utils.pokaz_komunikat(
                 self._page,
                 f"Nie rozpoznano dokładnej marki, ale VIN wskazuje na region: {region}. Uzupełnij dane ręcznie.",
-                ft.Colors.ORANGE_700
+                utils.KOLOR_STATUS["warning"]
             )
         else:
             utils.pokaz_komunikat(
                 self._page,
                 "Nie udało się rozkodować VIN-u — sprawdź poprawność numeru albo uzupełnij dane ręcznie.",
-                ft.Colors.RED_700
+                utils.KOLOR_STATUS["error"]
             )
 
     def _migawka_formularza(self):
@@ -513,7 +513,7 @@ class FormularzAutoView(ft.View):
                 utils.ustaw_blad(self.e_marka, "Pojazd o tej samej konfiguracji już istnieje!")
                 utils.ustaw_blad(self.e_model, "Zmień dane, aby były unikalne.")
                 self._page.update()
-                return utils.pokaz_komunikat(self._page, "Pojazd o takiej nazwie już istnieje w bazie.", ft.Colors.RED_700)
+                return utils.pokaz_komunikat(self._page, "Pojazd o takiej nazwie już istnieje w bazie.", utils.KOLOR_STATUS["error"])
 
         # PO:
         przygotowany_zdj = db.przygotuj_nowy_zalacznik(self.get_zdjecie())
@@ -616,7 +616,7 @@ class FormularzAutoView(ft.View):
             utils.pokaz_komunikat(self._page, "Zapisano pojazd!")
         except Exception as ex:
             db.anuluj_nowy_zalacznik(przygotowany_zdj)
-            utils.pokaz_komunikat(self._page, f"Błąd zapisu pojazdu: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, f"Błąd zapisu pojazdu: {ex}", utils.KOLOR_STATUS["error"])
 
 
 __all__ = [

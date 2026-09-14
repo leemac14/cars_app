@@ -4,7 +4,7 @@ import db
 import flet as ft
 import inspect
 
-from .stale import FS, RADIUS
+from .stale import FS, KOLOR_STATUS, RADIUS
 from .format import bez_ogonkow
 from .wyglad import dol_bezpieczny, pasek_przewijany, pasek_zawijany, tlo_karty
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_menu_grupowane, przejdz, zamknij_dialog, zamknij_dno
@@ -278,7 +278,7 @@ def uruchom_akcje(page: ft.Page, obsluga):
         try:
             await wynik
         except Exception as ex:
-            pokaz_komunikat(page, f"Nie udało się wykonać akcji: {ex}", ft.Colors.RED_700)
+            pokaz_komunikat(page, f"Nie udało się wykonać akcji: {ex}", KOLOR_STATUS["error"])
 
     page.run_task(_dokoncz)
 
@@ -398,9 +398,9 @@ def _wiersz_szuflady(ekran, liczniki, aktywny, po_kliknieciu):
     if licznik:
         tresc.append(ft.Container(
             padding=ft.Padding(7, 1, 7, 1), border_radius=RADIUS["pill"],
-            bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.ORANGE_700),
+            bgcolor=ft.Colors.with_opacity(0.18, KOLOR_STATUS["warning"]),
             content=ft.Text(str(licznik) if licznik < 100 else "99+", size=10,
-                            weight="bold", color=ft.Colors.ORANGE_800),
+                            weight="bold", color=KOLOR_STATUS["warning"]),
         ))
 
     return ft.Container(
@@ -663,7 +663,7 @@ def kafel_skrotu(page: ft.Page, state, ekran, akcje=None, liczniki=None, szeroko
     if licznik:
         warstwy.append(ft.Container(
             right=0, top=0, padding=ft.Padding(5, 1, 5, 1), border_radius=RADIUS["pill"],
-            bgcolor=ft.Colors.RED_700,
+            bgcolor=KOLOR_STATUS["critical"],
             content=ft.Text(str(licznik) if licznik < 100 else "99+", size=9,
                             weight="bold", color=ft.Colors.WHITE),
         ))
@@ -700,7 +700,7 @@ def karta_sekcji(page: ft.Page, state, ekran, akcje=None, liczniki=None, szeroko
     ]
     if licznik:
         naglowek.append(ft.Container(
-            padding=ft.Padding(6, 1, 6, 1), border_radius=RADIUS["pill"], bgcolor=ft.Colors.RED_700,
+            padding=ft.Padding(6, 1, 6, 1), border_radius=RADIUS["pill"], bgcolor=KOLOR_STATUS["critical"],
             content=ft.Text(str(licznik) if licznik < 100 else "99+", size=9,
                             weight="bold", color=ft.Colors.WHITE),
         ))
@@ -755,7 +755,7 @@ def pokaz_edytor_skrotow(page: ft.Page, state, po_zapisie=None):
         elif len(wybrane) >= db.MAKS_PRZYPIETYCH:
             pole.value = False
             pokaz_komunikat(page, f"Skróty mieszczą {db.MAKS_PRZYPIETYCH} pozycji — odznacz coś najpierw.",
-                            ft.Colors.AMBER_700)
+                            KOLOR_STATUS["warning"])
         else:
             wybrane.append(ekran["id"])
             pole.value = True
@@ -897,7 +897,7 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
                 content=ft.Text("Masz niezapisane zmiany w formularzu. Wyjść bez zapisywania?"),
                 actions=[
                     ft.TextButton("Anuluj", on_click=lambda e2: zamknij_dialog(page, dlg)),
-                    ft.TextButton("Wyjdź bez zapisywania", on_click=wykonaj, style=ft.ButtonStyle(color=ft.Colors.RED)),
+                    ft.TextButton("Wyjdź bez zapisywania", on_click=wykonaj, style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"])),
                 ]
             )
             otworz_dialog(page, dlg)
@@ -926,7 +926,7 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
                     ),
                     ft.PopupMenuItem(
                         content=ft.Row([
-                            ft.Icon(ft.Icons.CANCEL, color=ft.Colors.RED, size=20), 
+                            ft.Icon(ft.Icons.CANCEL, color=KOLOR_STATUS["destructive"], size=20), 
                             ft.Text("Anuluj i wróć")
                         ]), 
                         on_click=wroc

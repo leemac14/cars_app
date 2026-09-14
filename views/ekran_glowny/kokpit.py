@@ -178,10 +178,10 @@ class MiksinKokpitu:
                 if koszt_poprzedni_do_dnia > 0:
                     zmiana = ((koszt_biezacy - koszt_poprzedni_do_dnia) / koszt_poprzedni_do_dnia) * 100
                     if zmiana > 5:
-                        t_ikona, t_kolor = ft.Icons.TRENDING_UP, ft.Colors.RED_700
+                        t_ikona, t_kolor = ft.Icons.TRENDING_UP, utils.KOLOR_STATUS["critical"]
                         t_tekst = f"+{utils.formatuj_liczba(zmiana, 0)}%"
                     elif zmiana < -5:
-                        t_ikona, t_kolor = ft.Icons.TRENDING_DOWN, ft.Colors.GREEN_700
+                        t_ikona, t_kolor = ft.Icons.TRENDING_DOWN, utils.KOLOR_STATUS["ok"]
                         t_tekst = f"{utils.formatuj_liczba(zmiana, 0)}%"
                     else:
                         t_ikona, t_kolor = ft.Icons.TRENDING_FLAT, ft.Colors.ON_SURFACE_VARIANT
@@ -223,7 +223,7 @@ class MiksinKokpitu:
             powiadomienia = db.pobierz_powiadomienia(self.state.auto_id)
             if powiadomienia:
                 p = powiadomienia[0]
-                kolor_p = ft.Colors.RED_700 if p["status"] == "przeterminowane" else ft.Colors.ORANGE_700
+                kolor_p = utils.KOLOR_STATUS["critical"] if p["status"] == "przeterminowane" else utils.KOLOR_STATUS["warning"]
                 ikona_p = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
                 dodatek = f"  (+{len(powiadomienia) - 1})" if len(powiadomienia) > 1 else ""
 
@@ -246,14 +246,14 @@ class MiksinKokpitu:
             else:
                 tresc = ft.Column([
                     ft.Row([
-                        ft.Icon(ft.Icons.EVENT_AVAILABLE, size=15, color=ft.Colors.GREEN_700),
+                        ft.Icon(ft.Icons.EVENT_AVAILABLE, size=15, color=utils.KOLOR_STATUS["ok"]),
                         utils.etykieta("Termin", expand=True),
                     ], spacing=6),
-                    ft.Text("Na czas", size=utils.FS["title"], weight="bold", color=ft.Colors.GREEN_700),
+                    ft.Text("Na czas", size=utils.FS["title"], weight="bold", color=utils.KOLOR_STATUS["ok"]),
                     ft.Text("Brak terminów", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                 ], spacing=4)
                 on_klik = None
-                tlo = ft.Colors.with_opacity(0.08, ft.Colors.GREEN_700)
+                tlo = ft.Colors.with_opacity(0.08, utils.KOLOR_STATUS["ok"])
 
             return ft.Container(
                 width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
@@ -360,7 +360,7 @@ class MiksinKokpitu:
                 tooltip="Realny zasięg policzony z Twojego zużycia",
                 content=ft.Column([
                     ft.Row([
-                        ft.Icon(ft.Icons.BATTERY_CHARGING_FULL, size=15, color=ft.Colors.GREEN_700),
+                        ft.Icon(ft.Icons.BATTERY_CHARGING_FULL, size=15, color=ft.Colors.GREEN_700),  # paleta: tożsamość — akcent kafla
                         utils.etykieta("Zasięg EV", expand=True),
                     ], spacing=6),
                     tekst_wartosci(wartosc),
@@ -582,8 +582,8 @@ class MiksinKokpitu:
             if bieznik is not None:
                 # 1,6 mm to minimum prawne, 3 mm — próg, przy którym opona
                 # przestaje sensownie odprowadzać wodę.
-                kolor_bieznika = (ft.Colors.RED_700 if bieznik < 1.6
-                                  else ft.Colors.ORANGE_700 if bieznik < 3 else ft.Colors.GREEN_700)
+                kolor_bieznika = (utils.KOLOR_STATUS["critical"] if bieznik < 1.6
+                                  else utils.KOLOR_STATUS["warning"] if bieznik < 3 else utils.KOLOR_STATUS["ok"])
                 wiersz_bieznika = ft.Row([
                     ft.Icon(ft.Icons.STRAIGHTEN, size=13, color=kolor_bieznika),
                     ft.Text(f"bieżnik {utils.formatuj_liczba(bieznik, 1)} mm", size=utils.FS["caption"],
@@ -628,7 +628,7 @@ class MiksinKokpitu:
                     "Brak listy", lambda e: utils.przejdz(self._page, "/do-zrobienia"),
                 )
 
-            kolor = ft.Colors.GREEN_700 if stan["gotowa"] else ft.Colors.PRIMARY
+            kolor = utils.KOLOR_STATUS["ok"] if stan["gotowa"] else ft.Colors.PRIMARY
             stopka = ("wszystko sprawdzone" if stan["gotowa"]
                       else f"zostało {stan['razem'] - stan['zrobione']} do sprawdzenia")
 
@@ -681,7 +681,7 @@ class MiksinKokpitu:
                 tooltip="Suma kategorii „Mandaty i opłaty drogowe” od początku roku",
                 content=ft.Column([
                     ft.Row([
-                        ft.Icon(ft.Icons.TOLL, size=15, color=ft.Colors.DEEP_ORANGE_700),
+                        ft.Icon(ft.Icons.TOLL, size=15, color=ft.Colors.DEEP_ORANGE_700),  # paleta: tożsamość — akcent kafla
                         ft.Text("Opłaty drogowe", size=utils.FS["caption"],
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6),
@@ -695,11 +695,11 @@ class MiksinKokpitu:
             stan = db.podsumowanie_do_zrobienia(self.state.auto_id)
             if not stan or not stan["otwarte"]:
                 return kafel_wartosci(
-                    ft.Icons.CHECKLIST_RTL, ft.Colors.GREEN_700, "Do zrobienia",
+                    ft.Icons.CHECKLIST_RTL, ft.Colors.GREEN_700, "Do zrobienia",  # paleta: tożsamość — akcent kafla
                     "Nic nie czeka", lambda e: utils.przejdz(self._page, "/do-zrobienia"),
                 )
 
-            kolor = ft.Colors.RED_700 if stan["po_terminie"] else ft.Colors.PRIMARY
+            kolor = utils.KOLOR_STATUS["critical"] if stan["po_terminie"] else ft.Colors.PRIMARY
             if stan["najblizsze"]:
                 dni = stan["najblizsze"]["dni"]
                 if dni < 0:
@@ -725,7 +725,7 @@ class MiksinKokpitu:
                     ft.Row([
                         liczba_kafelka(stan["otwarte"], lambda v: utils.formatuj_liczba(v, 0)),
                         ft.Text(f"• {stan['po_terminie']} po terminie" if stan["po_terminie"] else "",
-                                size=utils.FS["caption"], color=ft.Colors.RED_700, no_wrap=True),
+                                size=utils.FS["caption"], color=utils.KOLOR_STATUS["critical"], no_wrap=True),
                     ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.END),
                     ft.Text(opis, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
@@ -744,7 +744,7 @@ class MiksinKokpitu:
                     "Pusty", idz_do_czesci,
                 )
             niski = stan["niski"]
-            kolor = ft.Colors.ORANGE_700 if niski else ft.Colors.GREEN_700
+            kolor = utils.KOLOR_STATUS["warning"] if niski else utils.KOLOR_STATUS["ok"]
             stopka = (", ".join(stan["nazwy_niskich"][:2]) if niski
                       else f"{stan['razem']} pozycji na stanie")
             return ft.Container(

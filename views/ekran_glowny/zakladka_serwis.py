@@ -130,7 +130,7 @@ class MiksinZakladkiSerwis:
                     ft.ListTile(leading=ft.Icon(ft.Icons.HISTORY), title=ft.Text("Historia wymian"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/historia/{zid}"))),
                     ft.ListTile(leading=ft.Icon(ft.Icons.TIMER), title=ft.Text("Ustaw interwał przypomnień"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/interwal/{zid}"))),
                     ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Zmień nazwę"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/zadanie/edytuj/{zid}"))),
-                    ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED), title=ft.Text("Usuń podzespół", color=ft.Colors.RED), on_click=usun_zadanie),
+                    ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=utils.KOLOR_STATUS["destructive"]), title=ft.Text("Usuń podzespół", color=utils.KOLOR_STATUS["destructive"]), on_click=usun_zadanie),
                 ], tight=True)))
                 utils.otworz_dno(self._page, bs)
 
@@ -138,7 +138,7 @@ class MiksinZakladkiSerwis:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
                 for z in po_filtrach:
-                    kol, ico = ft.Colors.GREEN_700, ft.Icons.CHECK_CIRCLE  # domyślny status
+                    kol, ico = utils.KOLOR_STATUS["ok"], ft.Icons.CHECK_CIRCLE  # domyślny status
                     stxt = []
                     procent_km = None
                     procent_dni = None
@@ -150,11 +150,11 @@ class MiksinZakladkiSerwis:
                         procent_km = (interwal_km - zost_km) / interwal_km if interwal_km > 0 else None
                         if zost_km < 0:
                             stxt.append(f"{utils.formatuj_liczba(abs(zost_km), 0)} km po!")
-                            kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
+                            kol, ico = utils.KOLOR_STATUS["critical"], ft.Icons.WARNING
                         elif zost_km <= prog_km_z:
                             prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny)
                             stxt.append(prognoza or f"{utils.formatuj_liczba(zost_km, 0)} km")
-                            kol, ico = ft.Colors.ORANGE_700, ft.Icons.HOURGLASS_BOTTOM
+                            kol, ico = utils.KOLOR_STATUS["warning"], ft.Icons.HOURGLASS_BOTTOM
                         else:
                             prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny)
                             stxt.append(prognoza or f"{utils.formatuj_liczba(zost_km, 0)} km")
@@ -167,10 +167,10 @@ class MiksinZakladkiSerwis:
                             procent_dni = (interwal_dni - zost_dni) / interwal_dni if interwal_dni > 0 else None
                             if zost_dni < 0:
                                 stxt.append(f"{abs(zost_dni)} dni po!")
-                                kol, ico = ft.Colors.RED_700, ft.Icons.WARNING
+                                kol, ico = utils.KOLOR_STATUS["critical"], ft.Icons.WARNING
                             elif zost_dni <= prog_dni_z:
                                 stxt.append(f"{zost_dni} dni")
-                                if kol != ft.Colors.RED_700: kol, ico = ft.Colors.ORANGE_700, ft.Icons.HOURGLASS_BOTTOM
+                                if kol != utils.KOLOR_STATUS["critical"]: kol, ico = utils.KOLOR_STATUS["warning"], ft.Icons.HOURGLASS_BOTTOM
                             else: stxt.append(f"~{zost_dni//30} m-cy")
 
                     if stxt: final_status = " | ".join(stxt)

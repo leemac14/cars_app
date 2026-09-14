@@ -276,7 +276,7 @@ def main(page: ft.Page):
 
         try:
             if not sciezka_zrodlowa or not os.path.exists(sciezka_zrodlowa):
-                utils.pokaz_komunikat(page, "Nie można odczytać wybranego pliku.", ft.Colors.RED_700)
+                utils.pokaz_komunikat(page, "Nie można odczytać wybranego pliku.", utils.KOLOR_STATUS["error"])
                 return
 
             # PRZED kopią bezpieczeństwa i przed czymkolwiek innym: migracje idą
@@ -338,12 +338,12 @@ def main(page: ft.Page):
             if kopia_zrobiona:
                 przywroc_kopie_bezpieczenstwa()
                 utils.przejdz(page, "/")
-            utils.pokaz_komunikat(page, "Wybrany plik nie jest poprawną bazą danych SQLite. Przywrócono poprzednią bazę.", ft.Colors.RED_700)
+            utils.pokaz_komunikat(page, "Wybrany plik nie jest poprawną bazą danych SQLite. Przywrócono poprzednią bazę.", utils.KOLOR_STATUS["error"])
         except Exception as ex:
             if kopia_zrobiona:
                 przywroc_kopie_bezpieczenstwa()
                 utils.przejdz(page, "/")
-            utils.pokaz_komunikat(page, f"Błąd importu: {ex}. Przywrócono poprzednią bazę.", ft.Colors.RED_700)
+            utils.pokaz_komunikat(page, f"Błąd importu: {ex}. Przywrócono poprzednią bazę.", utils.KOLOR_STATUS["error"])
 
     file_picker = ft.FilePicker()
     _pending_export = {"bajty": None}  # bufor na dane, gdy plik zapisu pochodzi z eksportu innego niż kopia bazy
@@ -361,9 +361,9 @@ def main(page: ft.Page):
                         dane_zapisu = await asyncio.to_thread(_przygotuj_zip_eksportu)
                     with open(e.path, "wb") as f:
                         f.write(dane_zapisu)
-                    utils.pokaz_komunikat(page, "Zapisano pomyślnie!", ft.Colors.GREEN_700)
+                    utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
                 except Exception as ex:
-                    utils.pokaz_komunikat(page, f"Błąd zapisu: {ex}", ft.Colors.RED_700)
+                    utils.pokaz_komunikat(page, f"Błąd zapisu: {ex}", utils.KOLOR_STATUS["error"])
         page.run_task(_obsluz)
 
     if hasattr(file_picker, "on_result"):
@@ -424,11 +424,11 @@ def main(page: ft.Page):
                     res = await file_picker.save_file(file_name="kopia_baza.zip", src_bytes=zip_bytes)
 
                 if res:
-                    utils.pokaz_komunikat(page, "Zapisano pomyślnie!", ft.Colors.GREEN_700)
+                    utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
             else:
                 file_picker.save_file(file_name="kopia_baza.zip")
         except Exception as ex:
-            utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])
         finally:
             _schowaj_ladowanie()
 
@@ -457,12 +457,12 @@ def main(page: ft.Page):
                 else:
                     res = await file_picker.save_file(file_name=nazwa_pliku, src_bytes=dane_bytes)
                 if res:
-                    utils.pokaz_komunikat(page, "Wyeksportowano pomyślnie!", ft.Colors.GREEN_700)
+                    utils.pokaz_komunikat(page, "Wyeksportowano pomyślnie!", utils.KOLOR_STATUS["ok"])
             else:
                 _pending_export["bajty"] = dane_bytes
                 file_picker.save_file(file_name=nazwa_pliku)
         except Exception as ex:
-            utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])
 
     # Widoki generujące własne pliki (np. grafika „Rok w pigułce”) korzystają
     # z TEGO SAMEGO mechanizmu zapisu, co eksport danych — łącznie z udostępnianiem
@@ -492,7 +492,7 @@ def main(page: ft.Page):
                         dolacz_paszport, **dane_paszportu
                     )
                 except RuntimeError as ex:
-                    utils.pokaz_komunikat(page, str(ex), ft.Colors.RED_700)
+                    utils.pokaz_komunikat(page, str(ex), utils.KOLOR_STATUS["error"])
                     return
                 nazwa_pliku = f"paszport_{nazwa_bazowa}.pdf" if dolacz_paszport else f"raport_{nazwa_bazowa}.pdf"
             else:
@@ -501,7 +501,7 @@ def main(page: ft.Page):
 
             await _zapisz_bajty_pliku(nazwa_pliku, dane_pliku)
         except Exception as ex:
-            utils.pokaz_komunikat(page, f"Błąd eksportu: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(page, f"Błąd eksportu: {ex}", utils.KOLOR_STATUS["error"])
         finally:
             if po_zakonczeniu:
                 po_zakonczeniu()
@@ -519,7 +519,7 @@ def main(page: ft.Page):
             else:
                 file_picker.pick_files()
         except Exception as ex:
-            utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])
 
     def przelacz_tryb(e=None):
         obecny = db.pobierz_tryb_motywu()
@@ -575,7 +575,7 @@ def main(page: ft.Page):
         # że nie wolno.
         wolno, powod_odmowy = _wolno_wejsc(app_state.auto_id, segmenty)
         if not wolno:
-            utils.pokaz_komunikat(page, powod_odmowy, ft.Colors.ORANGE_700)
+            utils.pokaz_komunikat(page, powod_odmowy, utils.KOLOR_STATUS["warning"])
             if page.route != "/":
                 utils.przejdz(page, "/")
                 return

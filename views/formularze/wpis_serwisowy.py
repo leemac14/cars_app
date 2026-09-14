@@ -175,7 +175,7 @@ class FormularzWpisView(ft.View):
             self._page.update()
             if bledy:
                 return utils.pokaz_bledy_formularza(self._page, bledy)
-            return utils.pokaz_komunikat(self._page, "Sprawdź ilości wykorzystanych części z magazynu.", ft.Colors.RED_700)
+            return utils.pokaz_komunikat(self._page, "Sprawdź ilości wykorzystanych części z magazynu.", utils.KOLOR_STATUS["error"])
 
         # Pobieramy wykonawcę i jeśli wpisano z palca nową nazwę, zapisujemy ją do bazy
         wyk = self.get_wykonawca() or "Warsztat"

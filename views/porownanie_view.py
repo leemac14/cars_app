@@ -141,7 +141,7 @@ class PorownanieView(ft.View):
             if aid in self.wybrane:
                 self.wybrane.remove(aid)
             elif len(self.wybrane) >= MAKS_AUT:
-                utils.pokaz_komunikat(self._page, f"Można porównać maksymalnie {MAKS_AUT} pojazdy naraz.", ft.Colors.ORANGE_700)
+                utils.pokaz_komunikat(self._page, f"Można porównać maksymalnie {MAKS_AUT} pojazdy naraz.", utils.KOLOR_STATUS["warning"])
                 return
             else:
                 self.wybrane.append(aid)
@@ -264,7 +264,7 @@ class PorownanieView(ft.View):
             padding=18, border_radius=16,
             bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
             content=ft.Column([
-                ft.Row([ft.Icon(ft.Icons.EMOJI_EVENTS, color=ft.Colors.AMBER_700), ft.Text("Werdykt", weight="bold", size=16, color=ft.Colors.PRIMARY)], spacing=8),
+                ft.Row([ft.Icon(ft.Icons.EMOJI_EVENTS, color=utils.KOLOR_STATUS["accent"]), ft.Text("Werdykt", weight="bold", size=16, color=ft.Colors.PRIMARY)], spacing=8),
                 ft.Divider(height=15),
                 ft.Column(wiersze, spacing=12)
             ])
@@ -329,9 +329,9 @@ class PorownanieView(ft.View):
 
             proporcja = (wartosc / maks) if maks > 0 else 0
             if wielu_wynikow and wartosc == najlepsza:
-                pasek_kolor, znacznik = ft.Colors.GREEN_700, ""
+                pasek_kolor, znacznik = utils.KOLOR_STATUS["ok"], ""
             elif wielu_wynikow and wartosc == najgorsza:
-                pasek_kolor, znacznik = ft.Colors.RED_700, ""
+                pasek_kolor, znacznik = utils.KOLOR_STATUS["critical"], ""
             else:
                 pasek_kolor, znacznik = kolor_auta, ""
 
@@ -554,7 +554,7 @@ class PorownanieView(ft.View):
                 v = _k.get(d["auto_id"])
                 if v is None:
                     return ft.Colors.ON_SURFACE_VARIANT
-                return ft.Colors.GREEN_700 if (_w and _n is not None and v == _n) else ft.Colors.ON_SURFACE
+                return utils.KOLOR_STATUS["ok"] if (_w and _n is not None and v == _n) else ft.Colors.ON_SURFACE
 
             strzalka = "↓" if mniej_lepiej else "↑"
             wiersze_tabeli.append(
@@ -650,9 +650,9 @@ class PorownanieView(ft.View):
 
             proporcja = wartosc / maks if maks > 0 else 0
             if najlepsze != najgorsze and wartosc == najlepsze:
-                pasek_kolor = ft.Colors.GREEN_700
+                pasek_kolor = utils.KOLOR_STATUS["ok"]
             elif najlepsze != najgorsze and wartosc == najgorsze:
-                pasek_kolor = ft.Colors.RED_700
+                pasek_kolor = utils.KOLOR_STATUS["critical"]
             else:
                 pasek_kolor = d["kolor"]
 
@@ -681,12 +681,12 @@ class PorownanieView(ft.View):
             self._wiersz_tekstowy(
                 "Zaległości", dane_aut,
                 lambda d: (f"{d['przeterminowane']} po term." if d["przeterminowane"] else (f"{d['pilne']} pilne" if d["pilne"] else "Brak")),
-                pobierz_kolor=lambda d: ft.Colors.RED_700 if d["przeterminowane"] else (ft.Colors.ORANGE_700 if d["pilne"] else ft.Colors.GREEN_700)
+                pobierz_kolor=lambda d: utils.KOLOR_STATUS["critical"] if d["przeterminowane"] else (utils.KOLOR_STATUS["warning"] if d["pilne"] else utils.KOLOR_STATUS["ok"])
             ),
             self._wiersz_tekstowy(
                 "Niski stan mag.", dane_aut,
                 lambda d: (f"{d['magazyn_niski_stan']} poz." if d["magazyn_niski_stan"] else "OK"),
-                pobierz_kolor=lambda d: ft.Colors.ORANGE_700 if d["magazyn_niski_stan"] else ft.Colors.GREEN_700
+                pobierz_kolor=lambda d: utils.KOLOR_STATUS["warning"] if d["magazyn_niski_stan"] else utils.KOLOR_STATUS["ok"]
             ),
         ], spacing=10)
         return utils.karta_formularza([ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Serwis i przypomnienia", ft.Icons.BUILD_CIRCLE)
@@ -696,10 +696,10 @@ class PorownanieView(ft.View):
             d_obj = datetime.strptime(str(data_str), "%d.%m.%Y").date()
             roz = (d_obj - datetime.now().date()).days
             if roz < 0:
-                return ft.Colors.RED_700, str(data_str)
+                return utils.KOLOR_STATUS["critical"], str(data_str)
             elif roz <= 30:
-                return ft.Colors.ORANGE_700, str(data_str)
-            return ft.Colors.GREEN_700, str(data_str)
+                return utils.KOLOR_STATUS["warning"], str(data_str)
+            return utils.KOLOR_STATUS["ok"], str(data_str)
         except Exception:
             return ft.Colors.ON_SURFACE_VARIANT, str(data_str)
 

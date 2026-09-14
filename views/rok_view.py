@@ -169,8 +169,8 @@ class RokWPigulceView(ft.View):
                 kafel(ft.Icons.WATER_DROP, "Zatankowane", ilosc, ft.Colors.CYAN_700),
             ], spacing=10),
             ft.Row([
-                kafel(ft.Icons.BUILD, "Wpisy serwisowe", str(d["liczba_wpisow_serwisu"]), ft.Colors.ORANGE_700),
-                kafel(ft.Icons.HOME_REPAIR_SERVICE, "Wizyty w warsztacie", str(d["liczba_wizyt"]), ft.Colors.RED_700),
+                kafel(ft.Icons.BUILD, "Wpisy serwisowe", str(d["liczba_wpisow_serwisu"]), ft.Colors.ORANGE_700),  # paleta: tożsamość — kolor kategorii kosztu
+                kafel(ft.Icons.HOME_REPAIR_SERVICE, "Wizyty w warsztacie", str(d["liczba_wizyt"]), ft.Colors.RED_700),  # paleta: tożsamość — kolor kategorii kosztu
             ], spacing=10),
         ], spacing=10)
 
@@ -197,8 +197,8 @@ class RokWPigulceView(ft.View):
 
         return utils.karta_analizy(self._page, "Na co poszły pieniądze", ft.Icons.PIE_CHART, [
             pasek("Paliwo i energia", d["koszty"]["paliwo"], ft.Colors.BLUE_700),
-            pasek("Serwis", d["koszty"]["serwis"], ft.Colors.ORANGE_700),
-            pasek("Inne koszty", d["koszty"]["inne"], ft.Colors.GREEN_700),
+            pasek("Serwis", d["koszty"]["serwis"], ft.Colors.ORANGE_700),  # paleta: tożsamość — kolor kategorii kosztu
+            pasek("Inne koszty", d["koszty"]["inne"], ft.Colors.GREEN_700),  # paleta: tożsamość — kolor kategorii kosztu
         ])
 
     def _wykres_miesiecy(self):
@@ -240,32 +240,32 @@ class RokWPigulceView(ft.View):
         pozycje = []
 
         najdr = d["najdrozszy_miesiac"]
-        pozycje.append((ft.Icons.TRENDING_UP, ft.Colors.RED_700, "Najdroższy miesiąc",
+        pozycje.append((ft.Icons.TRENDING_UP, utils.KOLOR_STATUS["critical"], "Najdroższy miesiąc",
                         f"{MIESIACE_NAZWY[najdr['miesiac'] - 1]} • "
                         f"{utils.formatuj_liczba(najdr['kwota'])} {utils.symbol_waluty()}"))
 
         najt = d["najtanszy_miesiac"]
         if najt["miesiac"] != najdr["miesiac"]:
-            pozycje.append((ft.Icons.TRENDING_DOWN, ft.Colors.GREEN_700, "Najspokojniejszy miesiąc",
+            pozycje.append((ft.Icons.TRENDING_DOWN, utils.KOLOR_STATUS["ok"], "Najspokojniejszy miesiąc",
                             f"{MIESIACE_NAZWY[najt['miesiac'] - 1]} • "
                             f"{utils.formatuj_liczba(najt['kwota'])} {utils.symbol_waluty()}"))
 
         if d.get("ulubiona_stacja"):
             st = d["ulubiona_stacja"]
-            pozycje.append((ft.Icons.STORE, ft.Colors.AMBER_800, "Ulubiona stacja",
+            pozycje.append((ft.Icons.STORE, utils.KOLOR_STATUS["accent"], "Ulubiona stacja",
                             f"{st['nazwa']} • {st['liczba']}x na "
                             f"{utils.formatuj_liczba(st['kwota'])} {utils.symbol_waluty()}"))
 
         if d.get("najwiekszy_wydatek"):
             nw = d["najwiekszy_wydatek"]
-            pozycje.append((ft.Icons.PRIORITY_HIGH, ft.Colors.DEEP_ORANGE_700, "Największy pojedynczy wydatek",
+            pozycje.append((ft.Icons.PRIORITY_HIGH, utils.KOLOR_STATUS["accent"], "Największy pojedynczy wydatek",
                             f"{nw['opis']} • {utils.formatuj_liczba(nw['kwota'])} {utils.symbol_waluty()} "
                             f"({nw['data']})"))
 
         if d.get("zmiana_rdr") is not None:
             drozej = d["zmiana_rdr"] > 0
             pozycje.append((
-                ft.Icons.COMPARE_ARROWS, ft.Colors.RED_700 if drozej else ft.Colors.GREEN_700,
+                ft.Icons.COMPARE_ARROWS, utils.KOLOR_STATUS["critical"] if drozej else utils.KOLOR_STATUS["ok"],
                 f"Względem {d['rok'] - 1} roku",
                 f"{'Drożej' if drozej else 'Taniej'} o {utils.formatuj_liczba(abs(d['zmiana_rdr']), 0)}% "
                 f"({utils.formatuj_liczba(d['poprzedni_rok'])} {utils.symbol_waluty()})"
@@ -286,7 +286,7 @@ class RokWPigulceView(ft.View):
             padding=18, border_radius=16,
             bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
             content=ft.Column([
-                ft.Row([ft.Icon(ft.Icons.EMOJI_EVENTS, color=ft.Colors.AMBER_700),
+                ft.Row([ft.Icon(ft.Icons.EMOJI_EVENTS, color=utils.KOLOR_STATUS["accent"]),
                         ft.Text("Werdykt roku", weight="bold", size=16, color=ft.Colors.PRIMARY)], spacing=8),
                 ft.Divider(height=15),
                 ft.Column(wiersze, spacing=12),
@@ -312,7 +312,7 @@ class RokWPigulceView(ft.View):
         zapisywacz = getattr(self._page, "zapisz_bajty_pliku", None)
         if zapisywacz is None:
             utils.pokaz_komunikat(self._page, "Zapis pliku jest niedostępny w tej wersji aplikacji.",
-                                  ft.Colors.RED_700)
+                                  utils.KOLOR_STATUS["error"])
             return
 
         dialog = utils.pokaz_ladowanie(self._page, "Rysuję podsumowanie...")
@@ -325,7 +325,7 @@ class RokWPigulceView(ft.View):
             )
         except Exception as ex:
             utils.ukryj_ladowanie(self._page, dialog)
-            utils.pokaz_komunikat(self._page, f"Nie udało się wygenerować grafiki: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, f"Nie udało się wygenerować grafiki: {ex}", utils.KOLOR_STATUS["error"])
             return
 
         utils.ukryj_ladowanie(self._page, dialog)

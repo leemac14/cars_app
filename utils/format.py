@@ -6,7 +6,7 @@ import re
 from date import parsuj_date
 from datetime import date, datetime, timedelta
 
-from .stale import formatuj_liczba
+from .stale import KOLOR_STATUS, formatuj_liczba
 
 
 def parsuj_int(wartosc, domyslna=0):
@@ -99,7 +99,7 @@ def formatuj_prognoze_km(zostalo_km, sredni_dzienny_przebieg):
 
 def kolor_i_tekst_terminu(termin_str):
     if not termin_str:
-        return ft.Colors.ON_SURFACE_VARIANT, ""
+        return KOLOR_STATUS["neutral"], ""
         
     d_obj = parsuj_date(termin_str)
     if d_obj == datetime.min.date():
@@ -109,15 +109,15 @@ def kolor_i_tekst_terminu(termin_str):
     roznica = (d_obj - dzis).days
     
     if roznica < 0:
-        return ft.Colors.RED_700, f"Po terminie ({abs(roznica)} dni)"
+        return KOLOR_STATUS["critical"], f"Po terminie ({abs(roznica)} dni)"
     elif roznica == 0:
-        return ft.Colors.RED_700, "Na dzisiaj!"
+        return KOLOR_STATUS["critical"], "Na dzisiaj!"
     elif roznica == 1:
-        return ft.Colors.ORANGE_700, "Na jutro"
+        return KOLOR_STATUS["warning"], "Na jutro"
     elif roznica <= 7:
-        return ft.Colors.ORANGE_700, f"Za {roznica} dni"
+        return KOLOR_STATUS["warning"], f"Za {roznica} dni"
     else:
-        return ft.Colors.GREEN_700, str(termin_str)
+        return KOLOR_STATUS["ok"], str(termin_str)
 
 
 def _odmiana_liczby(n, forma_1, forma_2_4, forma_pozostale):

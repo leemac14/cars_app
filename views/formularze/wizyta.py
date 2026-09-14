@@ -55,7 +55,7 @@ class FormularzWizytyView(ft.View):
         self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
-        self.blad_czesci = ft.Text("", color=ft.Colors.RED_700, size=13)
+        self.blad_czesci = ft.Text("", color=utils.KOLOR_STATUS["error"], size=13)
 
         self.chk_czesci = []
         self.zadania_opon_ids = set()
@@ -332,7 +332,7 @@ class FormularzWizytyView(ft.View):
                     ft.TextButton("Edytuj", icon=ft.Icons.EDIT,
                                   on_click=lambda e, i=p_id, n=nazwa, p=pozycje: edytuj(i, n, p)),
                     ft.TextButton("Usuń", icon=ft.Icons.DELETE,
-                                  style=ft.ButtonStyle(color=ft.Colors.RED_700),
+                                  style=ft.ButtonStyle(color=utils.KOLOR_STATUS["destructive"]),
                                   on_click=lambda e, i=p_id, n=nazwa: usun(i, n)),
                     przycisk_zastosuj(nazwa, pozycje),
                 ]))
@@ -501,7 +501,7 @@ class FormularzWizytyView(ft.View):
         if dopasowane:
             utils.pokaz_komunikat(self._page, f"Zastosowano pakiet „{nazwa_pakietu}” ({dopasowane}/{len(pozycje_pakietu)} pozycji).")
         else:
-            utils.pokaz_komunikat(self._page, "Żadna pozycja z pakietu nie pasuje do Twoich podzespołów — dodaj je najpierw w sekcji Serwis.", ft.Colors.ORANGE_700)
+            utils.pokaz_komunikat(self._page, "Żadna pozycja z pakietu nie pasuje do Twoich podzespołów — dodaj je najpierw w sekcji Serwis.", utils.KOLOR_STATUS["warning"])
 
     def _migawka_formularza(self):
         return (
@@ -543,9 +543,9 @@ class FormularzWizytyView(ft.View):
             if bledy:
                 utils.pokaz_bledy_formularza(self._page, bledy)
             elif blad_magazynu:
-                utils.pokaz_komunikat(self._page, "Sprawdź ilości wykorzystanych części z magazynu.", ft.Colors.RED_700)
+                utils.pokaz_komunikat(self._page, "Sprawdź ilości wykorzystanych części z magazynu.", utils.KOLOR_STATUS["error"])
             elif self.blad_czesci.value:
-                utils.pokaz_komunikat(self._page, "Zaznacz co najmniej jedną część z listy!", ft.Colors.RED_700)
+                utils.pokaz_komunikat(self._page, "Zaznacz co najmniej jedną część z listy!", utils.KOLOR_STATUS["error"])
             return
 
         if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.w_id, tabela="wizyty", nowa_data_str=self.e_d.value):

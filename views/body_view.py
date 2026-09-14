@@ -70,7 +70,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                     {"ikona": ft.Icons.IMAGE, "tekst": "Pełny ekran", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, z_sciezka, "Galeria")},
                     {"ikona": ft.Icons.COMPARE, "tekst": "Wybierz do porównania", "akcja": lambda: self.wymus_tryb_zaznaczania(zid)},
                     {"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/karoseria/edytuj/{zid}")},
-                    {"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": lambda: utils.potwierdz(self._page, "Usunąć?", "Na pewno?", wykonaj), "kolor": ft.Colors.RED}
+                    {"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": lambda: utils.potwierdz(self._page, "Usunąć?", "Na pewno?", wykonaj), "kolor": utils.KOLOR_STATUS["destructive"]}
                 ])
 
             for z in zdjecia:
@@ -158,7 +158,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
             opis = e_opis.value if c_opis.value else None
 
             if strefa is None and typ is None and opis is None:
-                utils.pokaz_komunikat(self._page, "Nie wybrano żadnej zmiany do zastosowania.", ft.Colors.ORANGE_700)
+                utils.pokaz_komunikat(self._page, "Nie wybrano żadnej zmiany do zastosowania.", utils.KOLOR_STATUS["warning"])
                 return
 
             db.aktualizuj_wiele_zdjec_karoserii(ids, strefa=strefa, typ_porownania=typ, opis=opis)
@@ -385,7 +385,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
                 (wynik_komponentu not in (None, ""))
             )
             if not bedzie_zdjecie:
-                return utils.pokaz_komunikat(self._page, "Wymagane jest fizyczne zdjęcie!", ft.Colors.RED_700)
+                return utils.pokaz_komunikat(self._page, "Wymagane jest fizyczne zdjęcie!", utils.KOLOR_STATUS["error"])
 
             przygotowany = db.przygotuj_nowy_zalacznik(wynik_komponentu)
             nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
@@ -404,7 +404,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
         # --- Tryb masowego dodawania: jedno zdjęcie = jeden nowy wpis w galerii ---
         sciezki_zrodlowe = self.get_wiele_zdjec()
         if not sciezki_zrodlowe:
-            return utils.pokaz_komunikat(self._page, "Wybierz co najmniej jedno zdjęcie!", ft.Colors.RED_700)
+            return utils.pokaz_komunikat(self._page, "Wybierz co najmniej jedno zdjęcie!", utils.KOLOR_STATUS["error"])
 
         przygotowane = []
         try:
@@ -414,7 +414,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
                     przygotowane.append(nowy)
 
             if not przygotowane:
-                return utils.pokaz_komunikat(self._page, "Nie udało się wczytać żadnego z wybranych zdjęć.", ft.Colors.RED_700)
+                return utils.pokaz_komunikat(self._page, "Nie udało się wczytać żadnego z wybranych zdjęć.", utils.KOLOR_STATUS["error"])
 
             with db.polacz_baze() as conn:
                 for zalacznik in przygotowane:
@@ -425,7 +425,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
         except Exception as ex:
             for zalacznik in przygotowane:
                 db.anuluj_nowy_zalacznik(zalacznik)
-            return utils.pokaz_komunikat(self._page, f"Błąd zapisu galerii: {ex}", ft.Colors.RED_700)
+            return utils.pokaz_komunikat(self._page, f"Błąd zapisu galerii: {ex}", utils.KOLOR_STATUS["error"])
 
         utils.przejdz(self._page, "/karoseria")
         ile_wybranych, ile_zapisanych = len(sciezki_zrodlowe), len(przygotowane)
@@ -433,7 +433,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
             utils.pokaz_komunikat(
                 self._page,
                 f"Zapisano {ile_zapisanych} z {ile_wybranych} zdjęć — część plików była niedostępna.",
-                ft.Colors.ORANGE_700
+                utils.KOLOR_STATUS["warning"]
             )
         else:
             utils.pokaz_komunikat(self._page, f"Dodano {ile_zapisanych} {_forma_zdjec(ile_zapisanych)} do galerii!")

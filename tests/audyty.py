@@ -1,4 +1,4 @@
-"""Siedem audytów, które do tej pory były jednorazowymi skryptami.
+"""Osiem audytów, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
@@ -999,6 +999,119 @@ def audyt_pogrubien(sciezki=None, korzen=None):
 
 
 # ============================================================================
+#  AUDYT 8 — paleta statusów (AST)
+# ============================================================================
+# Kolor jest w tej aplikacji nośnikiem informacji: czerwień znaczy „po terminie",
+# bursztyn „zbliża się", zieleń „w porządku". Cała wartość tego kodu stoi na
+# jednym warunku — że ten sam odcień znaczy wszędzie to samo. Wystarczy, że
+# w trzech miejscach czerwień jest inna, a przestaje być kodem, a staje się
+# dekoracją.
+#
+# Audyt szuka odcieni statusowych wpisanych wprost w widoku, zamiast wziętych
+# z `KOLOR_STATUS`. Nie chodzi o piksele — te zwykle się zgadzają — tylko o to,
+# że taki literał jest kopią, która nie wie, że jest kopią: zmiana palety jej
+# nie dotyczy.
+#
+# Trzy drogi wyjścia, w kolejności od najlepszej:
+#   1. wziąć kolor z KOLOR_STATUS po nazwie roli;
+#   2. dopisać go do nazwanej mapy tożsamości (patrz MAPY_TOZSAMOSCI);
+#   3. oznaczyć miejsce komentarzem `# paleta: tożsamość` — gdy kolor naprawdę
+#      nic nie mówi o stanie, tylko odróżnia rzecz od rzeczy (kategoria kosztu,
+#      typ wpisu, seria wykresu).
+
+# Odcienie, które w tej aplikacji NIOSĄ znaczenie — razem z sąsiadami o jeden
+# stopień obok, bo to właśnie one rozjeżdżają kod: „prawie ta sama czerwień"
+# jest gorsza niż zupełnie inny kolor, bo wygląda na pomyłkę dopiero obok.
+ODCIENIE_STATUSU = {
+    "RED", "RED_700",
+    "ORANGE_700", "ORANGE_800", "DEEP_ORANGE_700",
+    "GREEN_700",
+    "AMBER_700", "AMBER_800",
+}
+
+# Plik, w którym paleta i mapy tożsamości mają prawo istnieć. To jedyne miejsce,
+# gdzie odcień wolno napisać wprost — bo tu właśnie się go NAZYWA.
+DOM_PALETY = "utils/stale.py"
+
+# Nazwane mapy, w których kolor odróżnia rzecz od rzeczy, a nie stan od stanu.
+# TEAL przy kategorii nie mówi nic o pilności — i właśnie dlatego nie podlega
+# palecie statusów.
+MAPY_TOZSAMOSCI = {
+    "IKONY_TIMELINE",
+    "IKONY_WYSZUKIWANIA",
+    "PALETA_KOLOROW",
+    "KOLORY_ROL",
+    "EKRANY",
+    "GRUPY_EKRANOW",
+}
+
+# Znacznik przy linii (albo w linijce nad nią) zdejmujący miejsce z audytu.
+# Wyjątek stoi TAM, gdzie zapadła decyzja — nie na liście w innym pliku, która
+# rozjeżdża się z kodem przy pierwszym przesunięciu linii.
+ZNACZNIK_TOZSAMOSCI = "# paleta: tożsamość"
+
+
+def _kolor_fleta(wezel):
+    """`ft.Colors.RED_700` -> 'RED_700'; wszystko inne -> None."""
+    if not isinstance(wezel, ast.Attribute):
+        return None
+    cel = wezel.value
+    if isinstance(cel, ast.Attribute) and cel.attr == "Colors":
+        return wezel.attr
+    return None
+
+
+def _miejsca_w_mapach_tozsamosci(drzewo):
+    """Pozycje kolorów stojących wewnątrz nazwanej mapy tożsamości."""
+    zwolnione = set()
+    for wezel in ast.walk(drzewo):
+        cele = []
+        if isinstance(wezel, ast.Assign):
+            cele = wezel.targets
+        elif isinstance(wezel, ast.AnnAssign):
+            cele = [wezel.target]
+        if not any(isinstance(c, ast.Name) and c.id in MAPY_TOZSAMOSCI for c in cele):
+            continue
+        for w in ast.walk(wezel.value):
+            if _kolor_fleta(w):
+                zwolnione.add((w.lineno, w.col_offset))
+    return zwolnione
+
+
+def audyt_palety_statusow(sciezki=None, korzen=None):
+    """Odcienie statusowe wpisane wprost, zamiast wzięte z KOLOR_STATUS."""
+    korzen = korzen or KORZEN_PROJEKTU
+    znaleziska = []
+
+    for sciezka in sciezki if sciezki is not None else _pliki_projektu():
+        wzgledna = sciezka.relative_to(korzen).as_posix()
+        if wzgledna == DOM_PALETY:
+            continue
+
+        tresc = sciezka.read_text(encoding="utf-8")
+        linie = tresc.splitlines()
+        drzewo = ast.parse(tresc, filename=str(sciezka))
+        zwolnione = _miejsca_w_mapach_tozsamosci(drzewo)
+
+        for wezel in ast.walk(drzewo):
+            nazwa = _kolor_fleta(wezel)
+            if nazwa not in ODCIENIE_STATUSU:
+                continue
+            if (wezel.lineno, wezel.col_offset) in zwolnione:
+                continue
+            sasiedztwo = linie[max(0, wezel.lineno - 2):wezel.lineno]
+            if any(ZNACZNIK_TOZSAMOSCI in w for w in sasiedztwo):
+                continue
+            znaleziska.append({
+                "plik": wzgledna, "linia": wezel.lineno, "col": wezel.col_offset,
+                "kolor": nazwa,
+                "opis": f"ft.Colors.{nazwa} wpisane wprost zamiast roli z KOLOR_STATUS",
+            })
+
+    return znaleziska
+
+
+# ============================================================================
 #  RAPORT
 # ============================================================================
 
@@ -1057,6 +1170,10 @@ if __name__ == "__main__":
 
     print("\n== Audyt pogrubień na drugim planie ==")
     for z in audyt_pogrubien():
+        print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
+
+    print("\n== Audyt palety statusów ==")
+    for z in audyt_palety_statusow():
         print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
 
     print("\nAudyty drzewa kontrolek (expand, chipy) uruchamia pytest:")

@@ -134,7 +134,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     ))
                     pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{h_id}")})
                     pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_wpis", h_id), utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))})
-                    pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": ft.Colors.RED})
+                    pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": utils.KOLOR_STATUS["destructive"]})
 
                     utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
 
@@ -156,7 +156,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                             ft.Text(str(data), weight="bold", size=16, expand=True), 
                             ft.Row([
                                 utils.wskaznik_zalacznika(self._page, zalacznik, "Wpis historii"),
-                                ft.Text(k_str, color=ft.Colors.RED_700, weight="bold")
+                                ft.Text(k_str, color=utils.KOLOR_STATUS["cost"], weight="bold")
                             ], spacing=6)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
@@ -173,7 +173,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         tresc_h.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
                     karta, kontener = utils.karta_listy(
                         ft.Column(tresc_h, spacing=4),
-                        kolor_paska=ft.Colors.RED_700 if jest_zbiorcza else ft.Colors.ORANGE_700,
+                        kolor_paska=ft.Colors.RED_700 if jest_zbiorcza else ft.Colors.ORANGE_700,  # paleta: tożsamość — pasek karty mówi, jaki to wpis, nie w jakim jest stanie
                         page=self._page,
                     )
 
@@ -182,7 +182,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=zalacznik, nt=notatka):
                         if self.tryb_zaznaczania:
                             if wid:
-                                utils.pokaz_komunikat(self._page, "Wpisów z Wizyty Zbiorczej nie można grupować stąd. Usuń całą wizytę.", ft.Colors.ORANGE_700)
+                                utils.pokaz_komunikat(self._page, "Wpisów z Wizyty Zbiorczej nie można grupować stąd. Usuń całą wizytę.", utils.KOLOR_STATUS["warning"])
                             else:
                                 self.zaznacz_odznacz(hid, kont)
                         else:
@@ -270,7 +270,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             )
             for p in pozycje
         ]
-        blad = ft.Text("", color=ft.Colors.RED_700, size=12, visible=False)
+        blad = ft.Text("", color=utils.KOLOR_STATUS["error"], size=12, visible=False)
 
         def wykonaj(e):
             wybrane = [chk.data for chk in checkboxy if chk.value]
@@ -283,7 +283,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             utils.zamknij_dialog(self._page, dlg)
             wynik = db.zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, wybrane)
             if not wynik:
-                utils.pokaz_komunikat(self._page, "Nie udało się zwrócić pozycji.", ft.Colors.RED_700)
+                utils.pokaz_komunikat(self._page, "Nie udało się zwrócić pozycji.", utils.KOLOR_STATUS["error"])
                 return
 
             # Po cofnięciu przebudowujemy przeliczenia podzespołów — zwrot
@@ -479,7 +479,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     "tekst": "Zwróć pozycję na listę Do zrobienia",
                     "akcja": lambda: self._zwroc_pozycje_na_liste(wid),
                 })
-            pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wizytę", "akcja": usun_wizyte, "kolor": ft.Colors.RED})
+            pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wizytę", "akcja": usun_wizyte, "kolor": utils.KOLOR_STATUS["destructive"]})
 
             utils.pokaz_menu_kontekstowe(self._page, "Opcje wizyty", pozycje)
 
@@ -498,7 +498,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Text(str(data), weight="bold", size=16, expand=True),
                         ft.Row([
                             utils.wskaznik_zalacznika(self._page, zalacznik, "Wizyta"),
-                            ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))}  {utils.symbol_waluty()}", color=ft.Colors.RED_700, weight="bold")
+                            ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))}  {utils.symbol_waluty()}", color=utils.KOLOR_STATUS["cost"], weight="bold")
                         ], spacing=6)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Row([
@@ -526,7 +526,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
                 karta, kontener = utils.karta_listy(
                     ft.Column(tresc_karty, spacing=4),
-                    kolor_paska=ft.Colors.RED_700,
+                    kolor_paska=ft.Colors.RED_700,  # paleta: tożsamość — pasek karty mówi, jaki to wpis
                     page=self._page,
                 )
 

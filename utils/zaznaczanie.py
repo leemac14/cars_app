@@ -2,6 +2,7 @@
 
 import flet as ft
 
+from .stale import KOLOR_STATUS
 from .formularze import dopasuj_wysokosc_listy
 
 
@@ -67,7 +68,7 @@ class ZaznaczanieGrupowe:
 
     def aktualizuj_appbar_zaznaczania(self, dodatkowe_akcje=None):
         akcje = list(dodatkowe_akcje or [])
-        akcje.append(ft.IconButton(ft.Icons.DELETE, icon_color=ft.Colors.RED_700, tooltip="Usuń zaznaczone", on_click=self.potwierdz_grupowe_usuwanie))
+        akcje.append(ft.IconButton(ft.Icons.DELETE, icon_color=KOLOR_STATUS["destructive"], tooltip="Usuń zaznaczone", on_click=self.potwierdz_grupowe_usuwanie))
         akcje.append(ft.Container(width=10))
         self.appbar = ft.AppBar(
             leading=ft.IconButton(ft.Icons.CLOSE, on_click=self.zakoncz_zaznaczanie),

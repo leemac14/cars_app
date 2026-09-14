@@ -249,9 +249,9 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             zrobione = sum(1 for c in checkboxy if c.value)
             gotowa = razem > 0 and zrobione == razem
             licznik.value = f"{zrobione} / {razem}"
-            licznik.color = ft.Colors.GREEN_700 if gotowa else ft.Colors.ON_SURFACE_VARIANT
+            licznik.color = utils.KOLOR_STATUS["ok"] if gotowa else ft.Colors.ON_SURFACE_VARIANT
             pasek.value = (zrobione / razem) if razem else 0
-            pasek.color = ft.Colors.GREEN_700 if gotowa else ft.Colors.PRIMARY
+            pasek.color = utils.KOLOR_STATUS["ok"] if gotowa else ft.Colors.PRIMARY
 
         def przelacz(e, pozycja_id):
             db.przelacz_pozycje_checklisty(pozycja_id, bool(e.control.value))
@@ -297,7 +297,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                  "akcja": lambda: self._okno_edytora_checklisty(lista)},
                 {"ikona": ft.Icons.DONE_ALL, "tekst": "Odhacz wszystko", "akcja": odhacz_wszystko},
                 {"ikona": ft.Icons.RESTART_ALT, "tekst": "Wyzeruj ptaszki", "akcja": wyzeruj},
-                {"ikona": ft.Icons.DELETE, "tekst": "Usuń checklistę", "kolor": ft.Colors.RED, "akcja": usun},
+                {"ikona": ft.Icons.DELETE, "tekst": "Usuń checklistę", "kolor": utils.KOLOR_STATUS["destructive"], "akcja": usun},
             ])
 
         podpis = []
@@ -395,10 +395,10 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         zrobione = bool(wykonane)
 
         kolor_priorytetu = {
-            "Wysoki": ft.Colors.RED_700,
-            "Średni": ft.Colors.ORANGE_700,
-            "Niski": ft.Colors.BLUE_700,
-        }.get(priorytet, ft.Colors.ON_SURFACE_VARIANT)
+            "Wysoki": utils.KOLOR_STATUS["critical"],
+            "Średni": utils.KOLOR_STATUS["warning"],
+            "Niski": utils.KOLOR_STATUS["info"],
+        }.get(priorytet, utils.KOLOR_STATUS["neutral"])
 
         chip_priorytet = ft.Container(
             padding=8, border_radius=20,
@@ -412,7 +412,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             db.przelacz_wykonane_do_zrobienia(pid, e.control.value)
             utils.przejdz(self._page, "/do-zrobienia")
 
-        chk = ft.Checkbox(value=zrobione, on_change=przelacz, active_color=ft.Colors.GREEN_700, tooltip="Oznacz jako zrobione")
+        chk = ft.Checkbox(value=zrobione, on_change=przelacz, active_color=utils.KOLOR_STATUS["ok"], tooltip="Oznacz jako zrobione")
 
         podtytul_bits = []
         if opis:
@@ -491,7 +491,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             {"ikona": ft.Icons.BUILD_CIRCLE, "tekst": "Utwórz wizytę w warsztacie", "akcja": poprosz_o_wizyte, "kolor": ft.Colors.PRIMARY},
             {"ikona": ft.Icons.UNDO if zrobione else ft.Icons.CHECK_CIRCLE, "tekst": "Cofnij ukończenie" if zrobione else "Oznacz jako zrobione", "akcja": przelacz_status, "kolor": ft.Colors.GREEN},
             {"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/do-zrobienia/edytuj/{p_id}")},
-            {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_pozycje, "kolor": ft.Colors.RED}
+            {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_pozycje, "kolor": utils.KOLOR_STATUS["destructive"]}
         ])
 
     def potwierdz_grupowe_usuwanie(self, e):

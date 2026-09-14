@@ -6,6 +6,7 @@ import flet as ft
 import log
 import os
 
+from .stale import KOLOR_STATUS
 from .dialogi import otworz_dialog, pokaz_komunikat, zamknij_dialog
 
 
@@ -54,7 +55,7 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
     def zawartosc_podgladu(sciezka):
         if sciezka:
             if sciezka.lower().endswith(".pdf"):
-                return ft.Icon(ft.Icons.PICTURE_AS_PDF, size=32, color=ft.Colors.RED_700)
+                return ft.Icon(ft.Icons.PICTURE_AS_PDF, size=32, color=ft.Colors.RED_700)  # paleta: tożsamość — PDF ma swój kolor niezależnie od stanu
             return ft.Image(src=sciezka, width=56, height=56, fit="cover", border_radius=10)
         return ft.Icon(ft.Icons.IMAGE_OUTLINED, size=26, color=ft.Colors.ON_SURFACE_VARIANT)
 
@@ -68,7 +69,7 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
         size=13, color=ft.Colors.ON_SURFACE_VARIANT, expand=True
     )
     btn_usun = ft.IconButton(
-        icon=ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED_700,
+        icon=ft.Icons.DELETE_OUTLINE, icon_color=KOLOR_STATUS["destructive"],
         tooltip="Usuń załącznik", visible=bool(sciezka_zapisana)
     )
 
@@ -87,7 +88,7 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
             return
         sciezki = [p.path for p in pliki if getattr(p, "path", None)]
         if not sciezki:
-            pokaz_komunikat(page, "Brak dostępu do ścieżki (Uprawnienia telefonu).", ft.Colors.RED_700)
+            pokaz_komunikat(page, "Brak dostępu do ścieżki (Uprawnienia telefonu).", KOLOR_STATUS["error"])
             return
 
         if len(sciezki) == 1:
@@ -97,12 +98,12 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
             return
 
         if any(s.lower().endswith(".pdf") for s in sciezki):
-            pokaz_komunikat(page, "Można połączyć wiele zdjęć w jeden PDF, ale nie plik PDF razem ze zdjęciami — wybierz same zdjęcia.", ft.Colors.ORANGE_700)
+            pokaz_komunikat(page, "Można połączyć wiele zdjęć w jeden PDF, ale nie plik PDF razem ze zdjęciami — wybierz same zdjęcia.", KOLOR_STATUS["warning"])
             return
 
         polaczony = db.polacz_zdjecia_w_pdf(sciezki)
         if not polaczony:
-            pokaz_komunikat(page, "Nie udało się połączyć wybranych zdjęć w PDF.", ft.Colors.RED_700)
+            pokaz_komunikat(page, "Nie udało się połączyć wybranych zdjęć w PDF.", KOLOR_STATUS["error"])
             return
 
         stan["nowa_sciezka"] = polaczony
@@ -131,7 +132,7 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
                 pliki = getattr(wynik, "files", wynik)
                 _obsluz_wybrane(pliki if isinstance(pliki, list) else None)
         except Exception as ex:
-            pokaz_komunikat(page, f"Błąd wczytywania pliku: {ex}", ft.Colors.RED_700)
+            pokaz_komunikat(page, f"Błąd wczytywania pliku: {ex}", KOLOR_STATUS["error"])
 
     def usun(e):
         stan["nowa_sciezka"] = None
@@ -184,7 +185,7 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
                         content=ft.Image(src=sciezka, width=52, height=52, fit="cover", border_radius=8),
                     ),
                     ft.Text(os.path.basename(sciezka), size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
-                    ft.IconButton(icon=ft.Icons.CLOSE, icon_size=18, icon_color=ft.Colors.RED_700, on_click=lambda e, s=sciezka: usun(s)),
+                    ft.IconButton(icon=ft.Icons.CLOSE, icon_size=18, icon_color=KOLOR_STATUS["destructive"], on_click=lambda e, s=sciezka: usun(s)),
                 ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
             )
         n = len(stan["pliki"])
@@ -208,9 +209,9 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
                     stan["pliki"].append(s)
             odswiez()
         if pominieto_pdf:
-            pokaz_komunikat(page, "Pliki PDF pominięto — galeria karoserii przyjmuje tylko zdjęcia.", ft.Colors.ORANGE_700)
+            pokaz_komunikat(page, "Pliki PDF pominięto — galeria karoserii przyjmuje tylko zdjęcia.", KOLOR_STATUS["warning"])
         elif not nowe:
-            pokaz_komunikat(page, "Brak dostępu do wybranych plików (uprawnienia).", ft.Colors.RED_700)
+            pokaz_komunikat(page, "Brak dostępu do wybranych plików (uprawnienia).", KOLOR_STATUS["error"])
 
     def po_wyborze(e):
         obsluzono["wartosc"] = True
@@ -229,7 +230,7 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
             if wynik is not None and not obsluzono["wartosc"]:
                 dodaj_pliki(getattr(wynik, "files", wynik))
         except Exception as ex:
-            pokaz_komunikat(page, f"Błąd wczytywania plików: {ex}", ft.Colors.RED_700)
+            pokaz_komunikat(page, f"Błąd wczytywania plików: {ex}", KOLOR_STATUS["error"])
 
     btn_dodaj = ft.TextButton("Wybierz zdjęcia (można zaznaczyć od razu kilka)", icon=ft.Icons.PHOTO_CAMERA, on_click=wybierz)
     kontener = ft.Column([btn_dodaj, licznik, lista_podgladow], spacing=8)
@@ -266,7 +267,7 @@ def pokaz_podglad_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik
                 import pathlib
                 await page.launch_url(pathlib.Path(abs_path).as_uri())
             except Exception:
-                pokaz_komunikat(page, "Nie można otworzyć pliku PDF na tym urządzeniu.", ft.Colors.RED_700)
+                pokaz_komunikat(page, "Nie można otworzyć pliku PDF na tym urządzeniu.", KOLOR_STATUS["error"])
 
         page.run_task(otworz_pdf)
         return
@@ -317,7 +318,7 @@ def wskaznik_zalacznika(page: ft.Page, sciezka_wzgledna, tytul="Załącznik"):
         
     czy_pdf = sciezka_wzgledna.lower().endswith(".pdf")
     ikona = ft.Icons.PICTURE_AS_PDF if czy_pdf else ft.Icons.IMAGE
-    kolor = ft.Colors.RED_700 if czy_pdf else ft.Colors.PRIMARY
+    kolor = ft.Colors.RED_700 if czy_pdf else ft.Colors.PRIMARY  # paleta: tożsamość — PDF ma swój kolor niezależnie od stanu
     
     return ft.Container(
         width=28, height=28, border_radius=8,
@@ -350,7 +351,7 @@ async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, st
             if getattr(plik, "path", None):
                 zapisz_wybrany_plik(plik)
             else:
-                pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", ft.Colors.RED_700)
+                pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", KOLOR_STATUS["error"])
 
     page.zalacznik_picker.on_result = po_wyborze
     page.zalacznik_picker.update() 
@@ -369,9 +370,9 @@ async def szybkie_dodanie_zdjecia(page: ft.Page, tabela: str, rekord_id: int, st
                 if getattr(plik, "path", None):
                     zapisz_wybrany_plik(plik)
                 else:
-                    pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", ft.Colors.RED_700)
+                    pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", KOLOR_STATUS["error"])
     except Exception as ex:
-        pokaz_komunikat(page, f"Błąd wczytywania: {ex}", ft.Colors.RED_700)
+        pokaz_komunikat(page, f"Błąd wczytywania: {ex}", KOLOR_STATUS["error"])
 
 
 __all__ = [

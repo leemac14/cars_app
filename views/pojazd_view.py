@@ -167,8 +167,8 @@ class PojazdView(ft.View):
             procent = m["intensywnosc"]
             podpis_tempa = (f"{utils.formatuj_liczba(procent, 0)}% typowych "
                             f"{utils.formatuj_liczba(db.NORMA_PRZEBIEGU_ROCZNEGO, 0)} km/rok")
-            kolor_tempa = (ft.Colors.ORANGE_700 if procent > 150
-                           else ft.Colors.GREEN_700 if procent < 70 else ft.Colors.PRIMARY)
+            kolor_tempa = (utils.KOLOR_STATUS["warning"] if procent > 150
+                           else utils.KOLOR_STATUS["ok"] if procent < 70 else ft.Colors.PRIMARY)
         else:
             podpis_tempa, kolor_tempa = "za mało danych", ft.Colors.ON_SURFACE_VARIANT
 
@@ -233,7 +233,7 @@ class PojazdView(ft.View):
                     + (f"zostało {utils.formatuj_liczba(zostalo, 0)} km" if zostalo > 0
                        else "limit kilometrów już przekroczony"),
                     size=utils.FS["caption"],
-                    color=ft.Colors.ON_SURFACE_VARIANT if zostalo > 0 else ft.Colors.RED_700,
+                    color=ft.Colors.ON_SURFACE_VARIANT if zostalo > 0 else utils.KOLOR_STATUS["critical"],
                     expand=True),
             ], spacing=6))
 
@@ -256,7 +256,7 @@ class PojazdView(ft.View):
                  ft.FilledTonalButton("Uzupełnij dane zakupu", icon=ft.Icons.SELL,
                                       on_click=lambda e: utils.przejdz(
                                           self._page, f"/auto/edytuj/{self.state.auto_id}"))],
-                ft.Colors.AMBER_800,
+                ft.Colors.AMBER_800,  # paleta: tożsamość — akcent sekcji
             )
 
         wiersze = []
@@ -289,7 +289,7 @@ class PojazdView(ft.View):
         if m.get("utrata_wartosci") is not None:
             wiersze.append(wiersz_kwoty(
                 "Utrata wartości", f"{utils.formatuj_liczba(m['utrata_wartosci'])} {waluta}",
-                ft.Colors.RED_700,
+                utils.KOLOR_STATUS["cost"],
                 sufiks=(f"{utils.formatuj_liczba(m['utrata_rocznie'])} {waluta}/rok"
                         if m.get("utrata_rocznie") else None)))
         wiersze.append(wiersz_kwoty(
@@ -319,7 +319,7 @@ class PojazdView(ft.View):
             ], spacing=6))
 
         return utils.karta_analizy(self._page, "Zakup i wartość", ft.Icons.SELL,
-                                   wiersze, ft.Colors.AMBER_800)
+                                   wiersze, ft.Colors.AMBER_800)  # paleta: tożsamość — akcent sekcji
 
     # ================= SPECYFIKACJA =================
 
@@ -410,7 +410,7 @@ class PojazdView(ft.View):
         ]
 
         return utils.karta_analizy(self._page, "Ściągawka do sklepu i warsztatu",
-                                   ft.Icons.SHOPPING_CART, wiersze, ft.Colors.ORANGE_700)
+                                   ft.Icons.SHOPPING_CART, wiersze, ft.Colors.ORANGE_700)  # paleta: tożsamość — akcent sekcji
 
     # ================= NOTATKI =================
 

@@ -122,7 +122,7 @@ def pokaz_dialog_konfliktow(page: ft.Page, konflikty, auto_id=None, po_zmianie=N
             opisy.append(ft.Text(f"w chmurze było: {k['opis_zdalny']}", size=11,
                                  italic=True, color=ft.Colors.ON_SURFACE_VARIANT))
         return ft.Row([
-            ft.Icon(ft.Icons.MERGE_TYPE, size=16, color=ft.Colors.AMBER_700),
+            ft.Icon(ft.Icons.MERGE_TYPE, size=16, color=KOLOR_STATUS["warning"]),
             ft.Column(opisy, spacing=1, tight=True, expand=True),
         ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START)
 
@@ -143,7 +143,7 @@ def pokaz_dialog_konfliktow(page: ft.Page, konflikty, auto_id=None, po_zmianie=N
                 pokaz_komunikat(page, f"Przywrócono wersję z chmury dla {ile} rekordów.")
             except Exception as ex:
                 ukryj_ladowanie(page, okno)
-                pokaz_komunikat(page, f"Nie udało się przywrócić: {ex}", ft.Colors.RED_700)
+                pokaz_komunikat(page, f"Nie udało się przywrócić: {ex}", KOLOR_STATUS["error"])
 
         page.run_task(_zrob)
 
@@ -155,7 +155,7 @@ def pokaz_dialog_konfliktow(page: ft.Page, konflikty, auto_id=None, po_zmianie=N
 
     dlg = ft.AlertDialog(
         title=ft.Row([
-            ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.AMBER_700),
+            ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=KOLOR_STATUS["warning"]),
             ft.Text("Edycja z dwóch urządzeń", weight="bold", expand=True),
         ], spacing=8),
         content=ft.Column(
@@ -183,10 +183,10 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
             konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
             odrzucone = sync.pobierz_odrzucone_ostatniej_synchronizacji()
             if konflikty:
-                pokaz_komunikat(page, podsumowanie_konfliktow(konflikty), ft.Colors.AMBER_700)
+                pokaz_komunikat(page, podsumowanie_konfliktow(konflikty), KOLOR_STATUS["warning"])
                 pokaz_dialog_konfliktow(page, konflikty, auto_id)
             elif odrzucone:
-                pokaz_komunikat(page, podsumowanie_odrzuconych(odrzucone), ft.Colors.ORANGE_700)
+                pokaz_komunikat(page, podsumowanie_odrzuconych(odrzucone), KOLOR_STATUS["warning"])
             elif db.czy_tylko_podglad(auto_id):
                 pokaz_komunikat(page, f"Pobrano {pobrano} zmian. Ten pojazd masz w trybie tylko do odczytu.")
             else:
@@ -198,7 +198,7 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
             pokaz_komunikat(
                 page,
                 f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
-                ft.Colors.RED_700
+                KOLOR_STATUS["error"]
             )
     return _synchronizuj
 
@@ -230,7 +230,7 @@ def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", p
     # Kropka zamiast zdania „3 pojazdy czekają na wysłanie zmian” — ta sama
     # informacja, zero wpływu na szerokość. Szczegóły siedzą w tooltipie.
     kropka_zalegle = ft.Container(
-        width=7, height=7, border_radius=RADIUS["pill"], bgcolor=ft.Colors.ORANGE_700,
+        width=7, height=7, border_radius=RADIUS["pill"], bgcolor=KOLOR_STATUS["warning"],
         visible=bool(db.opis_oczekujacej_synchronizacji()),
     )
 
@@ -399,7 +399,7 @@ def zablokowane(page: ft.Page, auto_id, autor=None, pokaz=True):
             tekst = "Ten pojazd masz w trybie tylko do odczytu — możesz go oglądać, ale nie zmieniać."
         else:
             tekst = "To nie jest Twój wpis. Jako współautor zmieniasz tylko to, co sam dodałeś."
-        pokaz_komunikat(page, tekst, ft.Colors.ORANGE_700)
+        pokaz_komunikat(page, tekst, KOLOR_STATUS["warning"])
     return True
 
 

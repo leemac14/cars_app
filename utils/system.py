@@ -3,6 +3,7 @@
 import flet as ft
 import inspect
 
+from .stale import KOLOR_STATUS
 from .dialogi import pokaz_komunikat
 
 
@@ -36,12 +37,12 @@ def kopiuj_do_schowka(page: ft.Page, wartosc, komunikat="Skopiowano do schowka")
             await schowek.set(tekst)
             pokaz_komunikat(page, komunikat)
         except Exception:
-            pokaz_komunikat(page, "Nie udało się skopiować.", ft.Colors.RED_700)
+            pokaz_komunikat(page, "Nie udało się skopiować.", KOLOR_STATUS["error"])
 
     try:
         page.run_task(_zadanie)
     except Exception:
-        pokaz_komunikat(page, "Nie udało się skopiować.", ft.Colors.RED_700)
+        pokaz_komunikat(page, "Nie udało się skopiować.", KOLOR_STATUS["error"])
 
 
 def zadzwon(page: ft.Page, numer):

@@ -129,7 +129,7 @@ class MiksinZakladkiInne:
                 ))
                 pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Edytuj koszt"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/inne/edytuj/{iid}"))))
                 pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.CONTENT_COPY), title=ft.Text("Duplikuj"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), setattr(self.state, "duplikuj_zrodlo_koszt", iid), utils.przejdz(self._page, "/inne/nowy"))))
-                pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED), title=ft.Text("Usuń koszt", color=ft.Colors.RED), on_click=usun_koszt))
+                pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=utils.KOLOR_STATUS["destructive"]), title=ft.Text("Usuń koszt", color=utils.KOLOR_STATUS["destructive"]), on_click=usun_koszt))
 
                 bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE, content=ft.Column(pozycje, tight=True)))
                 utils.otworz_dno(self._page, bs)
@@ -146,7 +146,7 @@ class MiksinZakladkiInne:
                             utils.podpis(str(w.get('data')), expand=True),
                             ft.Row([
                                 utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Koszt"),
-                                ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
+                                ft.Text(f"-{cena_str}", weight="bold", color=utils.KOLOR_STATUS["cost"])
                             ], spacing=6)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(str(w.get('nazwa')) if w.get('nazwa') else "Brak opisu", size=16, weight="bold"),

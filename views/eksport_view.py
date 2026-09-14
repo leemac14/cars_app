@@ -95,7 +95,7 @@ class EksportView(ft.View):
             ft.TextButton("Odznacz wszystko", on_click=odznacz_wszystkie),
         ], spacing=4)
 
-        self.blad_kategorii = ft.Text("", color=ft.Colors.RED_700, size=13)
+        self.blad_kategorii = ft.Text("", color=utils.KOLOR_STATUS["error"], size=13)
 
         # --- Format ---
         pdf_dostepny = db.FPDF is not None
@@ -134,7 +134,7 @@ class EksportView(ft.View):
         if not pdf_dostepny:
             elementy_k3.append(ft.Text(
                 "Aby włączyć eksport do PDF, doinstaluj bibliotekę: pip install fpdf2",
-                size=11, italic=True, color=ft.Colors.ORANGE_700
+                size=11, italic=True, color=utils.KOLOR_STATUS["warning"]
             ))
         k3 = utils.karta_formularza(elementy_k3, "Format eksportu", ft.Icons.DESCRIPTION, domyslnie_otwarte=True)
 
@@ -181,7 +181,7 @@ class EksportView(ft.View):
             if od_d == datetime.min.date(): od_d = None
             if do_d == datetime.min.date(): do_d = None
             if od_d and do_d and od_d > do_d:
-                utils.pokaz_komunikat(self._page, "Data 'Od' nie może być późniejsza niż 'Do'.", ft.Colors.RED_700)
+                utils.pokaz_komunikat(self._page, "Data 'Od' nie może być późniejsza niż 'Do'.", utils.KOLOR_STATUS["error"])
                 return
             opis_okresu = f"{od_txt or 'początek'} – {do_txt or 'dziś'}"
         else:

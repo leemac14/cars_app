@@ -4,7 +4,7 @@ import db
 import flet as ft
 from datetime import date, datetime, timezone
 
-from .stale import FS, RADIUS, SPACING
+from .stale import FS, KOLOR_STATUS, RADIUS, SPACING
 from .wyglad import dol_bezpieczny, powierzchnia_karty, tlo_karty
 from .zgodnosc import ustaw_blad, ustaw_ikone
 from .dialogi import otworz_dialog, pokaz_komunikat, przejdz
@@ -76,7 +76,7 @@ def pokaz_bledy_formularza(page: ft.Page, bledy):
     for kontrolka, komunikat in bledy:
         ustaw_blad(kontrolka, komunikat)
     page.update()
-    pokaz_komunikat(page, "Popraw zaznaczone pola formularza.", ft.Colors.RED_700)
+    pokaz_komunikat(page, "Popraw zaznaczone pola formularza.", KOLOR_STATUS["error"])
 
 
 def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
@@ -95,7 +95,7 @@ def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, aut
         pole_przebiegu._potwierdzona_wartosc = nowy_przebieg
         ustaw_blad(pole_przebiegu, "Niski przebieg — kliknij Zapisz ponownie, aby potwierdzić")
         page.update()
-        pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
+        pokaz_komunikat(page, ostrzezenie, KOLOR_STATUS["warning"])
         return True
 
     pole_przebiegu._potwierdzona_wartosc = None
@@ -113,7 +113,7 @@ def sprawdz_duplikat_tankowania(page: ft.Page, pole_kwoty: ft.TextField, auto_id
         pole_kwoty._duplikat_potwierdzony = klucz
         ustaw_blad(pole_kwoty, "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić")
         page.update()
-        pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
+        pokaz_komunikat(page, ostrzezenie, KOLOR_STATUS["warning"])
         return True
 
     pole_kwoty._duplikat_potwierdzony = None
@@ -131,7 +131,7 @@ def sprawdz_duplikat_kosztu(page: ft.Page, pole_kwoty: ft.TextField, auto_id, da
         pole_kwoty._duplikat_potwierdzony = klucz
         ustaw_blad(pole_kwoty, "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić")
         page.update()
-        pokaz_komunikat(page, ostrzezenie, ft.Colors.ORANGE_700)
+        pokaz_komunikat(page, ostrzezenie, KOLOR_STATUS["warning"])
         return True
 
     pole_kwoty._duplikat_potwierdzony = None

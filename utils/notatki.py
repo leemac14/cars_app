@@ -3,7 +3,7 @@
 import db
 import flet as ft
 
-from .stale import FS, RADIUS, SPACING
+from .stale import FS, KOLOR_STATUS, RADIUS, SPACING
 from .dialogi import otworz_dialog, pokaz_komunikat, zamknij_dialog
 from .sync_ui import wypchnij_w_tle
 from .formularze import styl_pola
@@ -128,7 +128,7 @@ def szybka_notatka(page: ft.Page, tabela, rekord_id, po_zapisie_callback=None, t
             auto_id = db.zapisz_notatke(tabela, rekord_id, nowa)
         except Exception as ex:
             zamknij_dialog(page, dlg)
-            pokaz_komunikat(page, f"Nie udało się zapisać notatki: {ex}", ft.Colors.RED_700)
+            pokaz_komunikat(page, f"Nie udało się zapisać notatki: {ex}", KOLOR_STATUS["error"])
             return
         zamknij_dialog(page, dlg)
         wypchnij_w_tle(page, auto_id, "notatka")

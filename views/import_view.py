@@ -62,7 +62,7 @@ class ImportCSVView(ft.View):
         self.btn_importuj = ft.ElevatedButton(
             "Importuj",
             on_click=self._importuj,
-            bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE,
+            bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE,  # paleta: tożsamość — zielony przycisk akcji, nie stan
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=12), padding=15),
             width=float("inf"), visible=False, disabled=True
         )
@@ -100,7 +100,7 @@ class ImportCSVView(ft.View):
                 allow_multiple=False
             )
         except Exception as ex:
-            utils.pokaz_komunikat(self._page, f"Nie udało się otworzyć menedżera plików: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, f"Nie udało się otworzyć menedżera plików: {ex}", utils.KOLOR_STATUS["error"])
             return
 
         pliki = getattr(wynik, "files", wynik) if wynik is not None else None
@@ -108,13 +108,13 @@ class ImportCSVView(ft.View):
             return
         sciezka = getattr(pliki[0], "path", None)
         if not sciezka:
-            utils.pokaz_komunikat(self._page, "Brak dostępu do pliku (uprawnienia telefonu).", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, "Brak dostępu do pliku (uprawnienia telefonu).", utils.KOLOR_STATUS["error"])
             return
 
         try:
             self.naglowki, self.wiersze = await asyncio.to_thread(db.wczytaj_plik_csv, sciezka)
         except Exception as ex:
-            utils.pokaz_komunikat(self._page, f"Nie udało się wczytać pliku: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, f"Nie udało się wczytać pliku: {ex}", utils.KOLOR_STATUS["error"])
             return
 
         self.t_plik.value = f"{os.path.basename(sciezka)} — {len(self.wiersze)} wierszy, {len(self.naglowki)} kolumn"
@@ -185,7 +185,7 @@ class ImportCSVView(ft.View):
 
         tresc = [
             ft.Row([
-                ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color=ft.Colors.GREEN_700),
+                ft.Icon(ft.Icons.CHECK_CIRCLE, size=16, color=utils.KOLOR_STATUS["ok"]),
                 ft.Text(f"Do dodania: {len(self.gotowe)}", size=13, weight="bold", expand=True),
             ], spacing=6),
             ft.Row([
@@ -194,13 +194,13 @@ class ImportCSVView(ft.View):
             ], spacing=6),
             ft.Row([
                 ft.Icon(ft.Icons.ERROR_OUTLINE, size=16,
-                        color=ft.Colors.RED_700 if raport["bledy"] else ft.Colors.ON_SURFACE_VARIANT),
+                        color=utils.KOLOR_STATUS["error"] if raport["bledy"] else ft.Colors.ON_SURFACE_VARIANT),
                 ft.Text(f"Wiersze z błędami: {len(raport['bledy'])}", size=13, expand=True),
             ], spacing=6),
         ]
 
         for nr, powod in raport["bledy"][:5]:
-            tresc.append(ft.Text(f"• wiersz {nr}: {powod}", size=11, color=ft.Colors.RED_700))
+            tresc.append(ft.Text(f"• wiersz {nr}: {powod}", size=11, color=utils.KOLOR_STATUS["error"]))
         if len(raport["bledy"]) > 5:
             tresc.append(ft.Text(f"…i {len(raport['bledy']) - 5} kolejnych", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT))
 
@@ -236,7 +236,7 @@ class ImportCSVView(ft.View):
                     utils.pokaz_komunikat(self._page, f"Zaimportowano {ile} wpisów.")
                 except Exception as ex:
                     utils.ukryj_ladowanie(self._page, dlg)
-                    utils.pokaz_komunikat(self._page, f"Błąd importu: {ex}", ft.Colors.RED_700)
+                    utils.pokaz_komunikat(self._page, f"Błąd importu: {ex}", utils.KOLOR_STATUS["error"])
             self._page.run_task(_zrob)
 
         utils.potwierdz(

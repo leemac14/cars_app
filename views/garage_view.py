@@ -262,7 +262,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 komunikat += " Termin następnej zmiany przesunięty."
             utils.pokaz_komunikat(
                 self._page, komunikat,
-                kolor=ft.Colors.GREEN_700 if wynik.get("ok") else ft.Colors.ORANGE_800,
+                kolor=utils.KOLOR_STATUS["ok"] if wynik.get("ok") else utils.KOLOR_STATUS["warning"],
             )
 
         def ustaw_przypomnienie(e):
@@ -304,11 +304,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             try:
                 g = float(glebokosc)
                 if g < 1.6:
-                    kol_gl = ft.Colors.RED_700
+                    kol_gl = utils.KOLOR_STATUS["critical"]
                 elif g < 3.0:
-                    kol_gl = ft.Colors.ORANGE_700
+                    kol_gl = utils.KOLOR_STATUS["warning"]
                 else:
-                    kol_gl = ft.Colors.GREEN_700
+                    kol_gl = utils.KOLOR_STATUS["ok"]
                 tekst_gl = f"{utils.formatuj_liczba(g, 1)} mm"
             except (TypeError, ValueError):
                 kol_gl = ft.Colors.ON_SURFACE_VARIANT
@@ -329,7 +329,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             etykieta_osi = f" ({os_montazu})" if os_montazu and os_montazu != "Wszystkie" else ""
             znacznik = ft.Container(
                 padding=8, border_radius=20, bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.GREEN),
-                content=ft.Text(f"Na aucie{etykieta_osi}", size=11, weight="bold", color=ft.Colors.GREEN_700)
+                content=ft.Text(f"Na aucie{etykieta_osi}", size=11, weight="bold", color=utils.KOLOR_STATUS["ok"])
             )
         else:
             znacznik = ft.Container(
@@ -413,7 +413,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             {"ikona": ft.Icons.ARROW_UPWARD, "tekst": "Zamontuj tylko na przedniej osi", "akcja": lambda: zamontuj("Przód"), "kolor": ft.Colors.GREEN},
             {"ikona": ft.Icons.ARROW_DOWNWARD, "tekst": "Zamontuj tylko na tylnej osi", "akcja": lambda: zamontuj("Tył"), "kolor": ft.Colors.GREEN},
             {"ikona": ft.Icons.EDIT, "tekst": "Edytuj zestaw", "akcja": lambda: utils.przejdz(self._page, f"/magazyn/opony/edytuj/{zid}")},
-            {"ikona": ft.Icons.DELETE, "tekst": "Usuń zestaw", "akcja": usun_zestaw, "kolor": ft.Colors.RED}
+            {"ikona": ft.Icons.DELETE, "tekst": "Usuń zestaw", "akcja": usun_zestaw, "kolor": utils.KOLOR_STATUS["destructive"]}
         ])
 
         utils.pokaz_menu_kontekstowe(self._page, f"Zestaw: {sezon}", pozycje_menu)
@@ -494,11 +494,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         jednostka = jednostka or "szt"
         if ilosc_f <= 0:
-            kolor_stan = ft.Colors.RED_700
+            kolor_stan = utils.KOLOR_STATUS["critical"]
         elif ilosc_f <= prog_f:
-            kolor_stan = ft.Colors.ORANGE_700
+            kolor_stan = utils.KOLOR_STATUS["warning"]
         else:
-            kolor_stan = ft.Colors.GREEN_700
+            kolor_stan = utils.KOLOR_STATUS["ok"]
         tekst_stan = f"{utils.formatuj_liczba(ilosc_f, 2)} {jednostka}" if ilosc_f > 0 else "Brak na stanie"
 
         znacznik = ft.Container(
@@ -556,7 +556,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         pozycje_menu.extend([
             {"ikona": ft.Icons.EDIT, "tekst": "Edytuj pozycję", "akcja": lambda: utils.przejdz(self._page, f"/magazyn/czesci/edytuj/{cid}")},
-            {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_czesc, "kolor": ft.Colors.RED}
+            {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_czesc, "kolor": utils.KOLOR_STATUS["destructive"]}
         ])
 
         utils.pokaz_menu_kontekstowe(self._page, f"Pozycja: {nazwa}", pozycje_menu)
@@ -729,7 +729,7 @@ class FormularzOponyView(ft.View):
             utils.pokaz_komunikat(
                 self._page,
                 "Zapisano zestaw opon! Uwaga: głębokość bieżnika poniżej ustawowego minimum (1.6 mm).",
-                ft.Colors.ORANGE_700
+                utils.KOLOR_STATUS["warning"]
             )
         else:
             utils.pokaz_komunikat(self._page, "Zapisano zestaw opon!")

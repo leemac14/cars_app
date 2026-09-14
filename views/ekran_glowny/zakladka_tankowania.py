@@ -173,7 +173,7 @@ class MiksinZakladkiTankowania:
                 ))
                 pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/tankowanie/edytuj/{tid}")})
                 pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_tankowanie", tid), utils.przejdz(self._page, "/tankowanie/nowe"))})
-                pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": ft.Colors.RED})
+                pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": utils.KOLOR_STATUS["destructive"]})
 
                 utils.pokaz_menu_kontekstowe(self._page, "Opcje tankowania", pozycje)
 
@@ -217,7 +217,7 @@ class MiksinZakladkiTankowania:
                                 ) if dwuzrodlowy_lista else ft.Container(),
                                 utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Tankowanie"),
                                 ft.Icon(ft.Icons.EV_STATION if czy_prad_w else ft.Icons.LOCAL_GAS_STATION, size=14, color=ft.Colors.PRIMARY, tooltip="Do pełna") if w.get('do_pelna') else ft.Container(),
-                                ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)
+                                ft.Text(f"-{cena_str}", weight="bold", color=utils.KOLOR_STATUS["cost"])
                             ], spacing=4)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Row([

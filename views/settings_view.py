@@ -332,14 +332,14 @@ class UstawieniaView(ft.View):
                     ft.Icon(
                         ft.Icons.WARNING_AMBER if liczba_duplikatow else ft.Icons.CHECK_CIRCLE_OUTLINE,
                         size=18,
-                        color=ft.Colors.ORANGE_800 if liczba_duplikatow else ft.Colors.GREEN_700,
+                        color=utils.KOLOR_STATUS["warning"] if liczba_duplikatow else utils.KOLOR_STATUS["ok"],
                     ),
                     ft.Text(
                         (f"Wykryto {liczba_duplikatow} grupę wariantów" if liczba_duplikatow == 1
                          else f"Wykryto {liczba_duplikatow} grupy wariantów" if liczba_duplikatow
                          else "Brak duplikatów w tym pojeździe"),
                         size=12,
-                        color=ft.Colors.ORANGE_800 if liczba_duplikatow else ft.Colors.ON_SURFACE_VARIANT,
+                        color=utils.KOLOR_STATUS["warning"] if liczba_duplikatow else ft.Colors.ON_SURFACE_VARIANT,
                         expand=True,
                     ),
                 ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -359,7 +359,7 @@ class UstawieniaView(ft.View):
         self.ikona_logu = ft.Icon(ft.Icons.HISTORY, size=18)
         self.opis_logu = ft.Text(size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True)
         self.opis_ostatniego_bledu = ft.Text(
-            size=11, italic=True, color=ft.Colors.ORANGE_800, visible=False
+            size=11, italic=True, color=utils.KOLOR_STATUS["warning"], visible=False
         )
         dane_logu = self._odswiez_stan_logu(aktualizuj=False)
 
@@ -380,7 +380,7 @@ class UstawieniaView(ft.View):
                     ft.OutlinedButton("Podgląd", icon=ft.Icons.VISIBILITY_OUTLINED,
                                       on_click=self._podglad_logu),
                     ft.TextButton("Wyczyść", icon=ft.Icons.DELETE_OUTLINE,
-                                  style=ft.ButtonStyle(color=ft.Colors.RED_700),
+                                  style=ft.ButtonStyle(color=utils.KOLOR_STATUS["destructive"]),
                                   on_click=self._wyczysc_log),
                 ], wrap=True, spacing=8, run_spacing=8),
                 ft.Text(
@@ -425,12 +425,12 @@ class UstawieniaView(ft.View):
 
         if not dane["wpisy"]:
             utils.ustaw_ikone(self.ikona_logu, ft.Icons.CHECK_CIRCLE_OUTLINE)
-            self.ikona_logu.color = ft.Colors.GREEN_700
+            self.ikona_logu.color = utils.KOLOR_STATUS["ok"]
             self.opis_logu.value = "Log jest pusty — nic się jeszcze nie zapisało."
         else:
             ma_bledy = bool(dane["bledy"])
             utils.ustaw_ikone(self.ikona_logu, ft.Icons.BUG_REPORT if ma_bledy else ft.Icons.HISTORY)
-            self.ikona_logu.color = ft.Colors.RED_700 if ma_bledy else ft.Colors.ON_SURFACE_VARIANT
+            self.ikona_logu.color = utils.KOLOR_STATUS["error"] if ma_bledy else ft.Colors.ON_SURFACE_VARIANT
             self.opis_logu.value = (
                 f"{dane['wpisy']} {log.odmien(dane['wpisy'], 'wpis', 'wpisy', 'wpisów')} · "
                 f"{dane['bledy']} {log.odmien(dane['bledy'], 'błąd', 'błędy', 'błędów')}, "
@@ -492,14 +492,14 @@ class UstawieniaView(ft.View):
         zapisywacz = getattr(self._page, "zapisz_bajty_pliku", None)
         if zapisywacz is None:
             utils.pokaz_komunikat(self._page, "Zapis pliku jest niedostępny w tej wersji aplikacji.",
-                                  ft.Colors.RED_700)
+                                  utils.KOLOR_STATUS["error"])
             return
 
         try:
             raport = log.zbierz_raport(self._naglowek_logu())
         except Exception as ex:
             log.blad("nie udało się zebrać raportu z logu")
-            utils.pokaz_komunikat(self._page, f"Nie udało się przygotować logu: {ex}", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, f"Nie udało się przygotować logu: {ex}", utils.KOLOR_STATUS["error"])
             return
 
         await zapisywacz(log.nazwa_pliku_raportu(), raport.encode("utf-8"))
@@ -538,7 +538,7 @@ class UstawieniaView(ft.View):
                 utils.pokaz_komunikat(
                     self._page,
                     f"Scalono {ile} {'wariant' if ile == 1 else 'warianty'} w „{docelowa_nazwa}”.",
-                    ft.Colors.GREEN_700,
+                    utils.KOLOR_STATUS["ok"],
                 )
                 self._okno_duplikatow()
 
@@ -570,7 +570,7 @@ class UstawieniaView(ft.View):
                 padding=ft.Padding(12, 18, 12, 18),
                 alignment=ft.Alignment.CENTER,
                 content=ft.Column([
-                    ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=40, color=ft.Colors.GREEN_700),
+                    ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=40, color=utils.KOLOR_STATUS["ok"]),
                     ft.Text("Nie znaleziono duplikatów", weight="bold"),
                     ft.Text("Żadna nazwa nie występuje w tym pojeździe w dwóch wariantach zapisu.",
                             size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
@@ -634,7 +634,7 @@ class UstawieniaView(ft.View):
             utils.pokaz_komunikat(
                 self._page,
                 f"„{self.state.auto_nazwa}” korzysta znów ze wspólnego kokpitu.",
-                ft.Colors.GREEN_700,
+                utils.KOLOR_STATUS["ok"],
             )
 
         utils.potwierdz(

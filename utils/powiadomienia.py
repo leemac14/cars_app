@@ -77,9 +77,9 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
     if liczba == 0 or juz_widziane:
         kolor_ikony = ft.Colors.ON_SURFACE
     elif ma_przeterminowane:
-        kolor_ikony = ft.Colors.RED_700
+        kolor_ikony = KOLOR_STATUS["critical"]
     else:
-        kolor_ikony = ft.Colors.ORANGE_700
+        kolor_ikony = KOLOR_STATUS["warning"]
 
     ikona = ft.IconButton(
         icon=ft.Icons.NOTIFICATIONS_ROUNDED if liczba else ft.Icons.NOTIFICATIONS_OUTLINED,
@@ -96,7 +96,7 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
 
     odznaka = ft.Container(
         content=ft.Text(str(liczba) if liczba < 10 else "9+", size=9, color=ft.Colors.WHITE, weight="bold"),
-        width=14, height=14, border_radius=7, bgcolor=ft.Colors.RED_700,
+        width=14, height=14, border_radius=7, bgcolor=KOLOR_STATUS["critical"],
         alignment=ft.Alignment.CENTER,
     )
     odznaka_pozycja = ft.Container(odznaka, right=0, top=0, visible=not juz_widziane)
@@ -291,7 +291,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             ))
         else:
             for p in powiadomienia:
-                kolor = ft.Colors.RED_700 if p["status"] == "przeterminowane" else ft.Colors.ORANGE_700
+                kolor = KOLOR_STATUS["critical"] if p["status"] == "przeterminowane" else KOLOR_STATUS["warning"]
                 ikona = ft.Icons.WARNING if p["status"] == "przeterminowane" else ft.Icons.HOURGLASS_BOTTOM
                 if p["typ"] == "cykliczny":
                     czy_koszt_p = p.get("czy_koszt", True)
@@ -404,7 +404,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
                             on_click=lambda e, w=(w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ): formularz(w)
                         ),
                         ft.PopupMenuItem(
-                            content=ft.Row([ft.Icon(ft.Icons.DELETE, color=ft.Colors.RED, size=18), ft.Text("Usuń")]),
+                            content=ft.Row([ft.Icon(ft.Icons.DELETE, color=KOLOR_STATUS["destructive"], size=18), ft.Text("Usuń")]),
                             on_click=lambda e, wid=w_id: usun(wid)
                         ),
                     ])

@@ -232,7 +232,7 @@ class TimelineView(ft.View):
 
         prawa_strona = [ft.Row(naglowek_bits, spacing=6)]
         if kwota is not None and kwota != 0:
-            prawa_strona.append(ft.Text(f"-{utils.formatuj_liczba(kwota)} {utils.symbol_waluty()}", size=13, weight="bold", color=ft.Colors.RED_700))
+            prawa_strona.append(ft.Text(f"-{utils.formatuj_liczba(kwota)} {utils.symbol_waluty()}", size=13, weight="bold", color=utils.KOLOR_STATUS["cost"]))
 
         kontener = ft.Container(
             padding=14, border_radius=10,

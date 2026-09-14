@@ -101,14 +101,14 @@ class MiksinZakladkiStatystyki:
 
             self.elementy.extend([
                 ft.Row(utils.tytul_sekcji(ft.Icons.PIE_CHART, "Podsumowanie kosztów"), spacing=8),
-                kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)}  {utils.symbol_waluty()}", ft.Colors.RED_700),
+                kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)}  {utils.symbol_waluty()}", ft.Colors.RED_700),  # paleta: tożsamość — kolor kategorii kosztu
                 ft.Row([
                     kafel(ft.Icons.LOCAL_GAS_STATION, "Na energię" if dwuzrodlowy else "Na paliwo",
                           f"{utils.formatuj_liczba(pal)}  {utils.symbol_waluty()}", ft.Colors.BLUE_700, expand=1),
-                    kafel(ft.Icons.BUILD, "Na serwis", f"{utils.formatuj_liczba(serw)}  {utils.symbol_waluty()}", ft.Colors.ORANGE_700, expand=1),
+                    kafel(ft.Icons.BUILD, "Na serwis", f"{utils.formatuj_liczba(serw)}  {utils.symbol_waluty()}", ft.Colors.ORANGE_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
                 ], spacing=10),
                 ft.Row([
-                    kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),
+                    kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
                     kafel(ft.Icons.ADD_ROAD, "Koszt 1 km", f"{utils.formatuj_liczba(koszt_km)}  {utils.symbol_waluty()}/km", ft.Colors.PURPLE_700, expand=1),
                 ], spacing=10),
             ])
@@ -138,7 +138,7 @@ class MiksinZakladkiStatystyki:
                     kafel(ft.Icons.PAYMENTS, etyk["cena_jednostkowa"],
                           f"{utils.formatuj_liczba(stat['cena_jednostkowa'])} {utils.symbol_waluty()}"
                           if stat["cena_jednostkowa"] > 0 else "—",
-                          ft.Colors.AMBER_800, expand=1),
+                          ft.Colors.AMBER_800, expand=1),  # paleta: tożsamość — akcent kafla
                     # Koszt na km liczony osobno pokazuje wprost, ile daje
                     # ładowanie zamiast tankowania.
                     kafel(ft.Icons.ADD_ROAD, f"Koszt 1 km ({stat['etykieta'].lower()})",
@@ -155,7 +155,7 @@ class MiksinZakladkiStatystyki:
                             ft.Icons.POWER if typ == "AC" else ft.Icons.FLASH_ON,
                             f"Cena/kWh — {typ}",
                             f"{utils.formatuj_liczba(dane['cena'])} {utils.symbol_waluty()}",
-                            ft.Colors.LIGHT_GREEN_800 if typ == "AC" else ft.Colors.DEEP_ORANGE_700,
+                            ft.Colors.LIGHT_GREEN_800 if typ == "AC" else ft.Colors.DEEP_ORANGE_700,  # paleta: tożsamość — kolor typu polisy
                             expand=1,
                         )
                         for typ, dane in sorted(stat["ceny_ladowania"].items())
@@ -199,7 +199,7 @@ class MiksinZakladkiStatystyki:
                     podpis += f" ({utils.formatuj_liczba(zasieg['procent_deklarowanego'], 0)}% katalogowego)"
                 self.elementy.append(ft.Row([
                     kafel(ft.Icons.BATTERY_CHARGING_FULL, "Realny zasięg na prądzie", podpis,
-                          ft.Colors.GREEN_700),
+                          ft.Colors.GREEN_700),  # paleta: tożsamość — kolor kategorii kosztu
                 ], spacing=10))
 
             self.elementy.extend([
@@ -245,8 +245,8 @@ class MiksinZakladkiStatystyki:
                 **utils.powierzchnia_karty(self._page, "md"),
                 content=ft.Column([
                     segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["paliwo"], "Paliwo", pal, proc_pal, ft.Colors.BLUE_700),
-                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["serwis"], "Serwis", serw, proc_ser, ft.Colors.ORANGE_700),
-                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["inne"], "Inne", inn, proc_inn, ft.Colors.GREEN_700),
+                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["serwis"], "Serwis", serw, proc_ser, ft.Colors.ORANGE_700),  # paleta: tożsamość — kolor kategorii kosztu
+                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["inne"], "Inne", inn, proc_inn, ft.Colors.GREEN_700),  # paleta: tożsamość — kolor kategorii kosztu
                 ], spacing=12)
             )
 
@@ -438,11 +438,11 @@ class MiksinZakladkiStatystyki:
                 if zmiana_proc > 5:
                     znacznik_trendu = chip_trendu(
                         ft.Icons.TRENDING_UP,
-                        f"Rośnie o {utils.formatuj_liczba(zmiana_proc, 0)}%", ft.Colors.RED_700)
+                        f"Rośnie o {utils.formatuj_liczba(zmiana_proc, 0)}%", utils.KOLOR_STATUS["critical"])
                 elif zmiana_proc < -5:
                     znacznik_trendu = chip_trendu(
                         ft.Icons.TRENDING_DOWN,
-                        f"Spada o {utils.formatuj_liczba(abs(zmiana_proc), 0)}%", ft.Colors.GREEN_700)
+                        f"Spada o {utils.formatuj_liczba(abs(zmiana_proc), 0)}%", utils.KOLOR_STATUS["ok"])
                 else:
                     znacznik_trendu = chip_trendu(
                         ft.Icons.TRENDING_FLAT, "Stabilne", ft.Colors.ON_SURFACE_VARIANT, tlo=False)
@@ -577,14 +577,14 @@ class MiksinZakladkiStatystyki:
                         ft.Row([
                             ft.Row([
                                 ft.Icon(ft.Icons.EMOJI_EVENTS if czy_najtansza else ft.Icons.LOCAL_GAS_STATION,
-                                        size=16, color=ft.Colors.AMBER_700 if czy_najtansza else ft.Colors.ON_SURFACE_VARIANT),
+                                        size=16, color=utils.KOLOR_STATUS["accent"] if czy_najtansza else ft.Colors.ON_SURFACE_VARIANT),
                                 ft.Text(s["nazwa"], weight="bold" if czy_najtansza else "normal", size=13,
                                         expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                             ], spacing=6, expand=True),
                             ft.Text(
                                 f"{utils.formatuj_liczba(s['srednia_cena'], 2)} {utils.symbol_waluty()}/L  •  {s['liczba_tankowan']}x",
                                 size=13, weight="bold" if czy_najtansza else "normal", no_wrap=True,
-                                color=ft.Colors.GREEN_700 if czy_najtansza else ft.Colors.ON_SURFACE,
+                                color=utils.KOLOR_STATUS["ok"] if czy_najtansza else ft.Colors.ON_SURFACE,
                             )
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     )
@@ -668,8 +668,8 @@ class MiksinZakladkiStatystyki:
             # --- Trend zużycia ---
             if trend:
                 czy_prad_tr = trend["rodzaj"] == db.ENERGIA_PRAD
-                kolor_tr = (ft.Colors.RED_700 if trend["kierunek"] == "wzrost"
-                            else ft.Colors.GREEN_700 if trend["kierunek"] == "spadek"
+                kolor_tr = (utils.KOLOR_STATUS["critical"] if trend["kierunek"] == "wzrost"
+                            else utils.KOLOR_STATUS["ok"] if trend["kierunek"] == "spadek"
                             else ft.Colors.BLUE_GREY_700)
                 opis_kierunku = {
                     "wzrost": "Zużycie rośnie",
@@ -761,7 +761,7 @@ class MiksinZakladkiStatystyki:
                               ft.Colors.BLUE_700, expand=1),
                         kafel(ft.Icons.HOURGLASS_BOTTOM, "Zostało do końca roku",
                               f"{utils.formatuj_liczba(prognoza['prognoza_do_konca'])} {utils.symbol_waluty()}",
-                              ft.Colors.ORANGE_700, expand=1),
+                              ft.Colors.ORANGE_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
                     ], spacing=10),
                     kafel(ft.Icons.QUERY_STATS, f"Cały {prognoza['rok']} — prognoza",
                           f"{utils.formatuj_liczba(prognoza['prognoza_calego_roku'])} {utils.symbol_waluty()}",
@@ -771,7 +771,7 @@ class MiksinZakladkiStatystyki:
                     w_gore = prognoza["zmiana_rdr"] > 0
                     wiersze_prognozy.append(ft.Row([
                         ft.Icon(ft.Icons.TRENDING_UP if w_gore else ft.Icons.TRENDING_DOWN, size=16,
-                                color=ft.Colors.RED_700 if w_gore else ft.Colors.GREEN_700),
+                                color=utils.KOLOR_STATUS["critical"] if w_gore else utils.KOLOR_STATUS["ok"]),
                         ft.Text(
                             f"{'Drożej' if w_gore else 'Taniej'} od {prognoza['rok'] - 1} roku o "
                             f"{utils.formatuj_liczba(abs(prognoza['zmiana_rdr']), 0)}% "
@@ -813,7 +813,7 @@ class MiksinZakladkiStatystyki:
                     ),
                 ]
             self.elementy.append(utils.karta_analizy(
-                self._page, "Budżety", ft.Icons.SAVINGS, zawartosc_budzetu, ft.Colors.GREEN_700))
+                self._page, "Budżety", ft.Icons.SAVINGS, zawartosc_budzetu, ft.Colors.GREEN_700))  # paleta: tożsamość — akcent sekcji
 
         elif self.state.stat_podzakladka == 2:
             zdarzenia = []
@@ -872,7 +872,7 @@ class MiksinZakladkiStatystyki:
                 tresc = [
                     ft.Row([
                         ft.Text(etykieta, weight="bold", size=16, expand=True),
-                        ft.Text(f"{utils.formatuj_liczba(razem_w)}  {utils.symbol_waluty()}", weight="bold", size=16, color=ft.Colors.RED_700)
+                        ft.Text(f"{utils.formatuj_liczba(razem_w)}  {utils.symbol_waluty()}", weight="bold", size=16, color=utils.KOLOR_STATUS["cost"])
                     ]),
                     opis,
                 ]

@@ -184,7 +184,7 @@ class ArchiwumView(ft.View):
             {"ikona": ft.Icons.UNARCHIVE, "tekst": "Przywróć do garażu",
              "akcja": przywroc},
             {"ikona": ft.Icons.DELETE_OUTLINE, "tekst": "Przenieś do kosza",
-             "kolor": ft.Colors.RED, "akcja": do_kosza},
+             "kolor": utils.KOLOR_STATUS["destructive"], "akcja": do_kosza},
         ])
 
 

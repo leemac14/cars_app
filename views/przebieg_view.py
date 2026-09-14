@@ -186,14 +186,14 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         if p["anomalie"]:
             wiersze.append(ft.Container(
                 padding=ft.Padding(10, 8, 10, 8), border_radius=utils.RADIUS["sm"],
-                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.RED_700),
+                bgcolor=ft.Colors.with_opacity(0.12, utils.KOLOR_STATUS["critical"]),
                 content=ft.Row([
-                    ft.Icon(ft.Icons.WARNING_AMBER, size=16, color=ft.Colors.RED_700),
+                    ft.Icon(ft.Icons.WARNING_AMBER, size=16, color=utils.KOLOR_STATUS["critical"]),
                     ft.Text(
                         f"{p['anomalie']} "
                         + ("nieścisłość" if p["anomalie"] == 1 else "nieścisłości")
                         + " w historii licznika — oznaczone kolorem niżej.",
-                        size=utils.FS["caption"], color=ft.Colors.RED_700, expand=True),
+                        size=utils.FS["caption"], color=utils.KOLOR_STATUS["critical"], expand=True),
                 ], spacing=6),
             ))
 
@@ -226,18 +226,18 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         # w opowieść o tym, jak auto jeździło między zdarzeniami.
         if anomalia == "cofka":
             tresc.append(ft.Row([
-                ft.Icon(ft.Icons.WARNING, size=13, color=ft.Colors.RED_700),
+                ft.Icon(ft.Icons.WARNING, size=13, color=utils.KOLOR_STATUS["critical"]),
                 ft.Text(f"Licznik niższy o {utils.formatuj_liczba(abs(w['dystans']), 0)} km niż "
                         f"w poprzednim wpisie — sprawdź datę albo przebieg",
-                        size=12, color=ft.Colors.RED_700, expand=True),
+                        size=12, color=utils.KOLOR_STATUS["critical"], expand=True),
             ], spacing=4))
         elif anomalia == "skok":
             tresc.append(ft.Row([
-                ft.Icon(ft.Icons.WARNING, size=13, color=ft.Colors.ORANGE_700),
+                ft.Icon(ft.Icons.WARNING, size=13, color=utils.KOLOR_STATUS["warning"]),
                 ft.Text(f"{utils.formatuj_liczba(w['dystans'], 0)} km w {w['dni']} dni "
                         f"({utils.formatuj_liczba(w['srednia_dzienna'], 0)} km/dzień) — "
                         f"nietypowo dużo jak na to auto",
-                        size=12, color=ft.Colors.ORANGE_700, expand=True),
+                        size=12, color=utils.KOLOR_STATUS["warning"], expand=True),
             ], spacing=4))
         elif w.get("dystans") is not None:
             czesci = [f"{utils.formatuj_liczba(w['dystans'], 0)} km od poprzedniego"]
@@ -262,8 +262,8 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         # Pasek po lewej niesie od razu dwie informacje: kolor źródła, a przy
         # nieścisłości — ostrzeżenie. Korzystamy z gotowej karta_listy (ta sama,
         # co w historii serwisu), żeby karta wyglądała identycznie jak wszędzie.
-        kolor_paska = (ft.Colors.RED_700 if anomalia == "cofka"
-                       else ft.Colors.ORANGE_700 if anomalia == "skok" else kolor_zrodla)
+        kolor_paska = (utils.KOLOR_STATUS["critical"] if anomalia == "cofka"
+                       else utils.KOLOR_STATUS["warning"] if anomalia == "skok" else kolor_zrodla)
         karta, kontener = utils.karta_listy(tresc, kolor_paska=kolor_paska, page=self._page)
 
         if w["edytowalny"]:
@@ -307,7 +307,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten odczyt przebiegu?", wykonaj)
 
             pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń odczyt",
-                            "akcja": usun, "kolor": ft.Colors.RED})
+                            "akcja": usun, "kolor": utils.KOLOR_STATUS["destructive"]})
 
         podtytul = f"{w['data']} • {utils.formatuj_liczba(w['przebieg'], 0)} km"
         utils.pokaz_menu_kontekstowe(self._page, f"{w['etykieta_zrodla']}: {podtytul}", pozycje)

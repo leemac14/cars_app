@@ -3,12 +3,12 @@
 import asyncio
 import flet as ft
 
-from .stale import FS, RADIUS
+from .stale import FS, KOLOR_STATUS, RADIUS
 from .wyglad import dol_bezpieczny
 from .zgodnosc import ustaw_ikone
 
 
-def pokaz_komunikat(page: ft.Page, wiadomosc, kolor=ft.Colors.GREEN_700):
+def pokaz_komunikat(page: ft.Page, wiadomosc, kolor=KOLOR_STATUS["ok"]):
     snack = ft.SnackBar(ft.Text(str(wiadomosc)), bgcolor=kolor)
     if hasattr(page, "open"):
         page.open(snack)
@@ -29,7 +29,7 @@ def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5, 
         return pokaz_komunikat(
             page,
             wiadomosc_bledu or "Nie usunięto: wpisu już nie ma albo nie masz do niego uprawnień.",
-            ft.Colors.RED_700
+            KOLOR_STATUS["error"]
         )
 
     pominiete = wynik_usuwania.get("pominiete") if isinstance(wynik_usuwania, dict) else 0
@@ -223,8 +223,8 @@ def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str |
             tytul_wiersza.append(ft.Container(
                 padding=ft.Padding(7, 1, 7, 1),
                 border_radius=RADIUS["pill"],
-                bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.ORANGE_700),
-                content=ft.Text(str(odznaka), size=10, weight="bold", color=ft.Colors.ORANGE_800),
+                bgcolor=ft.Colors.with_opacity(0.18, KOLOR_STATUS["warning"]),
+                content=ft.Text(str(odznaka), size=10, weight="bold", color=KOLOR_STATUS["warning"]),
             ))
 
         tresc = [ft.Row(tytul_wiersza, spacing=6, tight=True)]
@@ -301,7 +301,7 @@ def pokaz_ostrzezenie(page: ft.Page, tytul, tresc, ikona=ft.Icons.WARNING_AMBER)
         modal=True,
         shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
         title=ft.Row([
-            ft.Icon(ikona, color=ft.Colors.ORANGE_800),
+            ft.Icon(ikona, color=KOLOR_STATUS["warning"]),
             ft.Text(tytul, weight="bold", expand=True),
         ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         content=ft.Text(tresc, size=FS["body_strong"]),
@@ -324,7 +324,7 @@ def potwierdz(page: ft.Page, tytul, tresc, po_potwierdzeniu, tekst_potwierdzenia
     
     dlg.actions = [
         ft.TextButton("Anuluj", on_click=anuluj),
-        ft.TextButton(tekst_potwierdzenia, style=ft.ButtonStyle(color=ft.Colors.RED_700), on_click=zatwierdz),
+        ft.TextButton(tekst_potwierdzenia, style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"]), on_click=zatwierdz),
     ]
     dlg.actions_alignment = ft.MainAxisAlignment.END
     otworz_dialog(page, dlg)

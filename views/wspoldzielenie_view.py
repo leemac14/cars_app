@@ -142,12 +142,12 @@ class WspoldzielenieView(ft.View):
             elementy.append(ft.Container(
                 padding=ft.Padding(10, 8, 10, 8),
                 border_radius=utils.RADIUS["sm"],
-                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ORANGE_700),
+                bgcolor=ft.Colors.with_opacity(0.12, utils.KOLOR_STATUS["warning"]),
                 content=ft.Text(
                     "Kody ograniczonego dostępu nie są jeszcze założone. Wymagają jednorazowego wgrania "
                     "pliku supabase/role_wspoldzielenia.sql w edytorze SQL Twojego projektu Supabase — "
                     "bez tego serwer nie wie, co znaczy „tylko podgląd”.",
-                    size=11, color=ft.Colors.ORANGE_800
+                    size=11, color=utils.KOLOR_STATUS["warning"]
                 ),
             ))
             elementy.append(ft.ElevatedButton("Utwórz kody ról", icon=ft.Icons.ADD_MODERATOR,
@@ -216,11 +216,11 @@ class WspoldzielenieView(ft.View):
             elementy.append(ft.Container(
                 padding=ft.Padding(10, 8, 10, 8),
                 border_radius=utils.RADIUS["sm"],
-                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ORANGE_700),
+                bgcolor=ft.Colors.with_opacity(0.12, utils.KOLOR_STATUS["warning"]),
                 content=ft.Row([
-                    ft.Icon(ft.Icons.CLOUD_UPLOAD, size=16, color=ft.Colors.ORANGE_800),
+                    ft.Icon(ft.Icons.CLOUD_UPLOAD, size=16, color=utils.KOLOR_STATUS["warning"]),
                     ft.Text(f"{zalegle} — wyślą się przy najbliższej udanej synchronizacji.",
-                            size=12, color=ft.Colors.ORANGE_800, expand=True),
+                            size=12, color=utils.KOLOR_STATUS["warning"], expand=True),
                 ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             ))
 
@@ -287,7 +287,7 @@ class WspoldzielenieView(ft.View):
                     size=13, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
                 ft.ElevatedButton("Rozłącz pojazd", on_click=self._odlacz,
-                                  bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE)
+                                  bgcolor=utils.KOLOR_STATUS["destructive"], color=ft.Colors.WHITE)
             ], "Niebezpieczna strefa", ft.Icons.WARNING_AMBER_ROUNDED)
 
         return utils.karta_formularza([
@@ -297,7 +297,7 @@ class WspoldzielenieView(ft.View):
                 size=13, color=ft.Colors.ON_SURFACE_VARIANT
             ),
             ft.ElevatedButton("Przestań obserwować", on_click=self._odlacz,
-                              bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE)
+                              bgcolor=utils.KOLOR_STATUS["destructive"], color=ft.Colors.WHITE)
         ], "Niebezpieczna strefa", ft.Icons.WARNING_AMBER_ROUNDED)
 
     # ------------------------------------------------------------ AKCJE
@@ -339,7 +339,7 @@ class WspoldzielenieView(ft.View):
                     self._page,
                     f"Nie udało się założyć kodów ról: {ex}. Najczęstsza przyczyna to niewgrany plik "
                     f"supabase/role_wspoldzielenia.sql — kod pełnego dostępu działa niezależnie.",
-                    ft.Colors.RED_700
+                    utils.KOLOR_STATUS["error"]
                 )
         self._page.run_task(_zrob)
 
@@ -376,7 +376,7 @@ class WspoldzielenieView(ft.View):
                 utils.pokaz_komunikat(self._page, f"Udostępniono! Kod pełnego dostępu: {kod}")
             except Exception as ex:
                 utils.ukryj_ladowanie(self._page, dlg)
-                utils.pokaz_komunikat(self._page, f"Błąd łączenia z Supabase: {ex}", ft.Colors.RED_700)
+                utils.pokaz_komunikat(self._page, f"Błąd łączenia z Supabase: {ex}", utils.KOLOR_STATUS["error"])
         self._page.run_task(_zrob)
 
     def _dolacz(self, e):
@@ -400,7 +400,7 @@ class WspoldzielenieView(ft.View):
                         self._page,
                         f"Dołączono jako nowy, osobny pojazd „{nazwa}” ({etykieta}). Miałeś/aś już auto o tej samej "
                         f"nazwie, więc dopisaliśmy odróżnik, żeby ich nie pomylić — to dwa niezależne pojazdy.",
-                        ft.Colors.ORANGE_700
+                        utils.KOLOR_STATUS["warning"]
                     )
                 elif rola == db.ROLA_PODGLAD:
                     utils.pokaz_komunikat(
@@ -416,7 +416,7 @@ class WspoldzielenieView(ft.View):
                     utils.pokaz_komunikat(self._page, f"Dołączono do pojazdu „{nazwa}”! Zaimportowano dotychczasową historię.")
             except Exception as ex:
                 utils.ukryj_ladowanie(self._page, dlg)
-                utils.pokaz_komunikat(self._page, f"Błąd: {ex}", ft.Colors.RED_700)
+                utils.pokaz_komunikat(self._page, f"Błąd: {ex}", utils.KOLOR_STATUS["error"])
         self._page.run_task(_zrob)
 
     def _synchronizuj(self, e):
@@ -450,10 +450,10 @@ class WspoldzielenieView(ft.View):
                 konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
                 odrzucone = sync.pobierz_odrzucone_ostatniej_synchronizacji()
                 if konflikty:
-                    utils.pokaz_komunikat(self._page, utils.podsumowanie_konfliktow(konflikty), ft.Colors.AMBER_700)
+                    utils.pokaz_komunikat(self._page, utils.podsumowanie_konfliktow(konflikty), utils.KOLOR_STATUS["warning"])
                     utils.pokaz_dialog_konfliktow(self._page, konflikty, self.state.auto_id)
                 elif odrzucone:
-                    utils.pokaz_komunikat(self._page, utils.podsumowanie_odrzuconych(odrzucone), ft.Colors.ORANGE_700)
+                    utils.pokaz_komunikat(self._page, utils.podsumowanie_odrzuconych(odrzucone), utils.KOLOR_STATUS["warning"])
                 elif self.rola == db.ROLA_PODGLAD:
                     utils.pokaz_komunikat(self._page, f"Pobrano {pobrano} zmian.")
                 else:
@@ -467,7 +467,7 @@ class WspoldzielenieView(ft.View):
                 utils.pokaz_komunikat(
                     self._page,
                     f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
-                    ft.Colors.RED_700
+                    utils.KOLOR_STATUS["error"]
                 )
         self._page.run_task(_zrob)
 
@@ -485,7 +485,7 @@ class WspoldzielenieView(ft.View):
                         utils.pokaz_komunikat(self._page, "Brak danych do przywrócenia — wszystko już jest na miejscu.")
                 except Exception as ex:
                     utils.ukryj_ladowanie(self._page, dlg)
-                    utils.pokaz_komunikat(self._page, f"Błąd przywracania: {ex}", ft.Colors.RED_700)
+                    utils.pokaz_komunikat(self._page, f"Błąd przywracania: {ex}", utils.KOLOR_STATUS["error"])
             self._page.run_task(_zrob)
 
         utils.potwierdz(

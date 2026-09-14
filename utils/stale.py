@@ -76,11 +76,30 @@ FS = {
     "title": 16, "heading": 18, "display": 22,
 }
 
+# Kolor jest w tej aplikacji NOŚNIKIEM INFORMACJI, a nie dekoracją: czerwień
+# znaczy „po terminie”, bursztyn „zbliża się”, zieleń „w porządku”. Cała wartość
+# tego kodu stoi na jednym warunku — że ten sam odcień znaczy wszędzie to samo.
+# Wystarczy, że w trzech miejscach czerwień jest inna, a przestaje być kodem.
+#
+# Dlatego odcienie statusowe mieszkają TYLKO tutaj, a ekrany wołają je po nazwie
+# roli. Pilnuje tego audyt 8 w tests/audyty.py.
+#
+# Cztery role są dziś czerwone i to jest zamierzone: nazwa mówi, PO CO kolor stoi
+# w danym miejscu. Dzięki temu „odróżnij czerwień akcji usuwania od czerwieni
+# terminu” jest zmianą jednej linijki, a nie przeglądem stu miejsc.
 KOLOR_STATUS = {
-    "critical": ft.Colors.RED_700,
-    "warning": ft.Colors.ORANGE_700,
-    "ok": ft.Colors.GREEN_700,
-    "neutral": ft.Colors.ON_SURFACE_VARIANT,
+    # --- stan rzeczy w aucie ---
+    "critical": ft.Colors.RED_700,            # już się wydarzyło: po terminie, zły stan
+    "warning": ft.Colors.ORANGE_700,          # zbliża się, wymaga uwagi
+    "ok": ft.Colors.GREEN_700,                # w porządku
+    "neutral": ft.Colors.ON_SURFACE_VARIANT,  # brak danych, nieaktywne
+
+    # --- stan aplikacji i akcji ---
+    "error": ft.Colors.RED_700,               # operacja się nie udała
+    "destructive": ft.Colors.RED_700,         # akcja, której nie da się cofnąć
+    "cost": ft.Colors.RED_700,                # kwota wychodząca z kieszeni
+    "info": ft.Colors.BLUE_700,               # informacja bez oceny
+    "accent": ft.Colors.AMBER_700,            # wyróżnienie: rekord, trofeum, „najlepszy”
 }
 
 

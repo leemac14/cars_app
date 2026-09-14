@@ -92,8 +92,8 @@ class KalkulatorTrasyView(ft.View):
 
         # Dynamiczne teksty wyników
         self.t_koszt_paliwa = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.PRIMARY)
-        self.t_koszt_calkowity = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.RED_700)
-        self.t_koszt_osoba = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.GREEN_700)
+        self.t_koszt_calkowity = ft.Text("0.00", size=24, weight="bold", color=utils.KOLOR_STATUS["cost"])
+        self.t_koszt_osoba = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.GREEN_700)  # paleta: tożsamość — druga kwota odróżniona kolorem od pierwszej
         self.t_litry = ft.Text("0.0 L", size=14, color=ft.Colors.ON_SURFACE_VARIANT)
 
         # Karty interfejsu
@@ -248,7 +248,7 @@ class KalkulatorTrasyView(ft.View):
             {"ikona": ft.Icons.SAVE_AS, "tekst": "Nadpisz obecnymi wartościami",
              "opis": "Zapisze dystans, powrót, liczbę osób i opłaty z ekranu",
              "akcja": lambda: self._okno_zapisu(trasa)},
-            {"ikona": ft.Icons.DELETE, "tekst": "Usuń trasę", "kolor": ft.Colors.RED,
+            {"ikona": ft.Icons.DELETE, "tekst": "Usuń trasę", "kolor": utils.KOLOR_STATUS["destructive"],
              "akcja": lambda: utils.potwierdz(
                  self._page, "Usunąć trasę?",
                  f"Czy na pewno usunąć zapisaną trasę „{trasa['nazwa']}”?", usun)},

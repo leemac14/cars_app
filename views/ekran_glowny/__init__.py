@@ -354,10 +354,10 @@ class MainView(
             konflikty = sync.pobierz_konflikty_ostatniej_synchronizacji()
             odrzucone = sync.pobierz_odrzucone_ostatniej_synchronizacji()
             if konflikty:
-                utils.pokaz_komunikat(self._page, utils.podsumowanie_konfliktow(konflikty), ft.Colors.AMBER_700)
+                utils.pokaz_komunikat(self._page, utils.podsumowanie_konfliktow(konflikty), utils.KOLOR_STATUS["warning"])
                 utils.pokaz_dialog_konfliktow(self._page, konflikty, self.state.auto_id)
             elif odrzucone:
-                utils.pokaz_komunikat(self._page, utils.podsumowanie_odrzuconych(odrzucone), ft.Colors.ORANGE_700)
+                utils.pokaz_komunikat(self._page, utils.podsumowanie_odrzuconych(odrzucone), utils.KOLOR_STATUS["warning"])
             elif db.czy_tylko_podglad(self.state.auto_id):
                 utils.pokaz_komunikat(self._page, f"Pobrano {pobrano} zmian. Ten pojazd masz w trybie tylko do odczytu.")
             else:
@@ -369,7 +369,7 @@ class MainView(
             utils.pokaz_komunikat(
                 self._page,
                 f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
-                ft.Colors.RED_700
+                utils.KOLOR_STATUS["error"]
             )
 
     def _buduj_fab_szybkich_akcji(self):

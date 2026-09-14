@@ -159,7 +159,7 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                         title=ft.Text(f"Opcje tagu: {tn}", weight="bold"),
                         content=ft.Column([e_nazwa, e_kolor], tight=True, spacing=10),
                         actions=[
-                            ft.TextButton("Usuń", style=ft.ButtonStyle(color=ft.Colors.RED_700), on_click=usun_tag),
+                            ft.TextButton("Usuń", style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"]), on_click=usun_tag),
                             ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
                             ft.ElevatedButton("Zapisz", on_click=zapisz_zmiany, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
                         ]
@@ -646,7 +646,7 @@ def wiersz_danych(page: ft.Page, ikona, etykieta, wartosc, kopiowalne=False, tel
     akcje = []
     if tekst and telefon:
         akcje.append(ft.IconButton(
-            ft.Icons.PHONE, icon_size=18, icon_color=ft.Colors.GREEN_700, tooltip="Zadzwoń",
+            ft.Icons.PHONE, icon_size=18, icon_color=ft.Colors.GREEN_700, tooltip="Zadzwoń",  # paleta: tożsamość — zielona słuchawka to afordancja, nie stan
             on_click=lambda e: zadzwon(page, tekst), style=ft.ButtonStyle(padding=0),
             width=34, height=34,
         ))

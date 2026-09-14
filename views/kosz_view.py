@@ -35,7 +35,7 @@ class KoszView(ft.View):
             akcje_dodatkowe=[
                 ft.IconButton(
                     icon=ft.Icons.DELETE_FOREVER,
-                    icon_color=ft.Colors.RED_700,
+                    icon_color=utils.KOLOR_STATUS["destructive"],
                     tooltip="Opróżnij kosz",
                     on_click=self._oproznij,
                 )
@@ -122,13 +122,13 @@ class KoszView(ft.View):
         odznaka = None
         if dni is not None:
             if dni <= 0:
-                tekst, kolor = "Zniknie przy najbliższym starcie", ft.Colors.RED_700
+                tekst, kolor = "Zniknie przy najbliższym starcie", utils.KOLOR_STATUS["critical"]
             elif dni == 1:
-                tekst, kolor = "Zniknie jutro", ft.Colors.RED_700
+                tekst, kolor = "Zniknie jutro", utils.KOLOR_STATUS["critical"]
             elif dni <= 3:
-                tekst, kolor = f"Zniknie za {dni} dni", ft.Colors.RED_700
+                tekst, kolor = f"Zniknie za {dni} dni", utils.KOLOR_STATUS["critical"]
             else:
-                tekst, kolor = f"Zniknie za {dni} dni", ft.Colors.ORANGE_800
+                tekst, kolor = f"Zniknie za {dni} dni", utils.KOLOR_STATUS["warning"]
             odznaka = ft.Container(
                 padding=ft.Padding(8, 3, 8, 3),
                 border_radius=utils.RADIUS["pill"],
@@ -161,7 +161,7 @@ class KoszView(ft.View):
             ft.TextButton(
                 "Usuń trwale",
                 icon=ft.Icons.DELETE_FOREVER,
-                style=ft.ButtonStyle(color=ft.Colors.RED_700),
+                style=ft.ButtonStyle(color=utils.KOLOR_STATUS["destructive"]),
                 on_click=lambda e, p=pozycja: self._usun_trwale(p),
             ),
         ], spacing=8, alignment=ft.MainAxisAlignment.END, wrap=True)
@@ -184,7 +184,7 @@ class KoszView(ft.View):
     def _przywroc(self, pozycja):
         nowe_id = db.przywroc_auto_z_kosza(pozycja["id"])
         if not nowe_id:
-            utils.pokaz_komunikat(self._page, "Nie udało się przywrócić pojazdu.", ft.Colors.RED_700)
+            utils.pokaz_komunikat(self._page, "Nie udało się przywrócić pojazdu.", utils.KOLOR_STATUS["error"])
             utils.przejdz(self._page, "/kosz")
             return
 
@@ -196,7 +196,7 @@ class KoszView(ft.View):
         utils.pokaz_komunikat(
             self._page,
             f"Przywrócono pojazd „{self.state.auto_nazwa}” wraz z historią.",
-            ft.Colors.GREEN_700,
+            utils.KOLOR_STATUS["ok"],
         )
 
     def _usun_trwale(self, pozycja):
@@ -204,7 +204,7 @@ class KoszView(ft.View):
             db.usun_z_kosza_trwale(pozycja["id"])
             utils.przejdz(self._page, "/kosz")
             utils.pokaz_komunikat(
-                self._page, f"Pojazd „{pozycja['nazwa']}” usunięty bezpowrotnie.", ft.Colors.RED_700
+                self._page, f"Pojazd „{pozycja['nazwa']}” usunięty bezpowrotnie.", utils.KOLOR_STATUS["destructive"]
             )
 
         utils.potwierdz(
@@ -228,7 +228,7 @@ class KoszView(ft.View):
             utils.pokaz_komunikat(
                 self._page,
                 f"Opróżniono kosz — usunięto {ile} {'pojazd' if ile == 1 else 'pojazdy/pojazdów'}.",
-                ft.Colors.RED_700,
+                utils.KOLOR_STATUS["destructive"],
             )
 
         utils.potwierdz(
