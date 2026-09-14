@@ -103,8 +103,8 @@ class BudzetView(ft.View):
 
     def _nota_o_liczeniu(self):
         return ft.Container(
-            padding=utils.SPACING["md"], border_radius=utils.RADIUS["md"],
-            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
+            padding=utils.SPACING["md"],
+            **utils.powierzchnia(self._page, "blok"),
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),

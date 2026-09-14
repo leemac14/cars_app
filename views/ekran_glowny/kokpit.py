@@ -101,8 +101,8 @@ class MiksinKokpitu:
 
         def kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click):
             return ft.Container(
-                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=on_click,
                 content=ft.Column([
                     ft.Row([
@@ -137,8 +137,8 @@ class MiksinKokpitu:
             ], spacing=6)
 
             return ft.Container(
-                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 60, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=on_click,
                 content=ft.Column([
                     ft.Row([
@@ -213,8 +213,11 @@ class MiksinKokpitu:
 
             return ft.Container(
                 width=SZER_KAFLA + (60 if iskra_mc is not None else 0),
-                padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
+                padding=15,
+                # Barwienie na PRIMARY robiło z tego kafelka najgłośniejszy na
+                # kokpicie, nie mając nic do powiedzenia o stanie. Barwa zostaje
+                # dla kafli, które naprawdę czegoś chcą.
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=idz_do_statystyk(0),
                 content=ft.Column(zawartosc, spacing=6),
             )
@@ -242,7 +245,7 @@ class MiksinKokpitu:
                 trasa_termin = p.get("trasa")
                 on_klik = (lambda e, t=trasa_termin: utils.przejdz(self._page, t)) if trasa_termin \
                     else (lambda e: utils.pokaz_panel_powiadomien(self._page, self.state))
-                tlo = ft.Colors.with_opacity(0.08, kolor_p)
+                stan_kafla = utils.stan_z_koloru(kolor_p)
             else:
                 tresc = ft.Column([
                     ft.Row([
@@ -253,11 +256,15 @@ class MiksinKokpitu:
                     ft.Text("Brak terminów", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                 ], spacing=4)
                 on_klik = None
-                tlo = ft.Colors.with_opacity(0.08, utils.KOLOR_STATUS["ok"])
+                # „Na czas" barwione na zielono krzyczało tak samo głośno jak
+                # termin po terminie. Brak powodu do działania nie jest powodem
+                # do wyróżnienia — zieleń została w ikonie i w napisie.
+                stan_kafla = None
 
             return ft.Container(
-                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=tlo, ink=on_klik is not None, on_click=on_klik,
+                width=SZER_KAFLA, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=stan_kafla),
+                ink=on_klik is not None, on_click=on_klik,
                 content=tresc,
             )
 
@@ -286,8 +293,8 @@ class MiksinKokpitu:
                 )
 
             return ft.Container(
-                width=SZER_KAFLA + 100, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 100, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=idz_do_statystyk(1),
                 content=ft.Column([
                     ft.Row([
@@ -354,8 +361,8 @@ class MiksinKokpitu:
             # Własny kafelek zamiast kafel_wartosci, bo potrzebna jest trzecia
             # linijka: „ile procent katalogowego” to sedno tej liczby.
             return ft.Container(
-                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=idz_do_statystyk(0),
                 tooltip="Realny zasięg policzony z Twojego zużycia",
                 content=ft.Column([
@@ -401,8 +408,8 @@ class MiksinKokpitu:
                 )
 
             return ft.Container(
-                width=SZER_KAFLA + 90, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 90, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=lambda e: utils.przejdz(self._page, "/timeline"),
                 content=ft.Column([
                     ft.Row([
@@ -415,7 +422,7 @@ class MiksinKokpitu:
 
         def widget_kondycja():
             kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
-            _, _, etykieta_kond = utils.wskaznik_kondycji(kondycja)
+            kolor_kond, _, etykieta_kond = utils.wskaznik_kondycji(kondycja)
             kolor_gauge = utils.kolor_kondycji_plynny(kondycja)
 
             # Zamiast samego „82/100”: pierścień wypełniony proporcjonalnie do
@@ -423,8 +430,8 @@ class MiksinKokpitu:
             # czytelna z odległości, bez czytania liczby — a liczba i tak zostaje
             # w środku dla tych, którzy chcą dokładną wartość.
             return ft.Container(
-                width=SZER_KAFLA, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor_kond)),
                 # Klik prowadzi teraz do ROZPISKI, a nie do magazynu: sam wynik
                 # nie mówi, co go obniżyło, i to jest pierwsze pytanie po jego
                 # zobaczeniu.
@@ -455,10 +462,16 @@ class MiksinKokpitu:
                 )
             o = obserwacje[0]
             kolor = utils.KOLORY_TONU.get(o["ton"], ft.Colors.BLUE_GREY_700)
+            stan_obs = utils.stan_z_koloru(kolor)
+            plaszczyzna = utils.powierzchnia(self._page, "kafel", stan=stan_obs)
+            # Obserwacja w stanie jest już zabarwiona — pasek po lewej powtarzałby
+            # to samo trzeci raz (po tytule i po tle). Obserwacja spokojna paska
+            # potrzebuje, bo inaczej nie ma po czym jej poznać.
+            if stan_obs is None:
+                plaszczyzna["border"] = ft.Border.only(left=ft.BorderSide(3, kolor))
             return ft.Container(
-                width=SZER_KAFLA + 80, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
-                border=ft.Border.only(left=ft.BorderSide(3, kolor)),
+                width=SZER_KAFLA + 80, padding=15,
+                **plaszczyzna,
                 ink=True, on_click=idz_do_statystyk(3),
                 tooltip=o["tekst"],
                 content=ft.Column([
@@ -484,9 +497,10 @@ class MiksinKokpitu:
                     "Nie ustawiono", lambda e: utils.przejdz(self._page, "/budzet"),
                 )
             stan = stany[0]
+            stan_budzetu = {"przekroczony": "critical", "uwaga": "warning"}.get(stan.get("status"))
             return ft.Container(
-                width=SZER_KAFLA + 80, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 80, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=stan_budzetu),
                 ink=True, on_click=lambda e: utils.przejdz(self._page, "/budzet"),
                 tooltip=f"Budżet {stan['etykieta_okresu'].lower()} — dotknij, aby zmienić limity",
                 content=ft.Column([
@@ -508,8 +522,8 @@ class MiksinKokpitu:
                     "Podaj pojemność", lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
                 )
             return ft.Container(
-                width=SZER_KAFLA + 80, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 80, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=idz_do_statystyk(3),
                 tooltip="Szacunek z licznika i Twojego zużycia — nie z czujnika w aucie",
                 content=utils.wskaznik_baku(self._page, dane, kompaktowy=True, scena=scena),
@@ -529,8 +543,8 @@ class MiksinKokpitu:
             stopka = (f"do końca roku jeszcze "
                       f"{utils.formatuj_liczba(prognoza['prognoza_do_konca'], 0)} {utils.symbol_waluty()}")
             return ft.Container(
-                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 60, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=lambda e: utils.przejdz(self._page, "/rok"),
                 tooltip=f"Ekstrapolacja ze średniej z {prognoza['miesiecy_bazowych']} pełnych miesięcy",
                 content=ft.Column([
@@ -579,11 +593,13 @@ class MiksinKokpitu:
                 stopka = f"Następne: {stan['docelowy_sezon'].lower()}"
 
             bieznik = stan["bieznik"]
+            stan_opon = None
             if bieznik is not None:
                 # 1,6 mm to minimum prawne, 3 mm — próg, przy którym opona
                 # przestaje sensownie odprowadzać wodę.
                 kolor_bieznika = (utils.KOLOR_STATUS["critical"] if bieznik < 1.6
                                   else utils.KOLOR_STATUS["warning"] if bieznik < 3 else utils.KOLOR_STATUS["ok"])
+                stan_opon = utils.stan_z_koloru(kolor_bieznika)
                 wiersz_bieznika = ft.Row([
                     ft.Icon(ft.Icons.STRAIGHTEN, size=13, color=kolor_bieznika),
                     ft.Text(f"bieżnik {utils.formatuj_liczba(bieznik, 1)} mm", size=utils.FS["caption"],
@@ -610,8 +626,8 @@ class MiksinKokpitu:
                                      no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
 
             return ft.Container(
-                width=SZER_KAFLA + 40, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=stan_opon),
                 ink=True, on_click=idz_do_opon,
                 tooltip="Zamontowany zestaw i najbliższa sezonowa zmiana",
                 content=ft.Column(tresc, spacing=4),
@@ -637,8 +653,8 @@ class MiksinKokpitu:
                 utils.przejdz(self._page, "/do-zrobienia")
 
             return ft.Container(
-                width=SZER_KAFLA + 40, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=otworz,
                 tooltip=stan["nazwa"],
                 content=ft.Column([
@@ -651,7 +667,7 @@ class MiksinKokpitu:
                                    lambda v: f"{utils.formatuj_liczba(v, 0)} / {stan['razem']}"),
                     scena.wskaznik(ft.ProgressBar(
                         value=(stan["zrobione"] / stan["razem"]) if stan["razem"] else 0,
-                        color=kolor, bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                        color=kolor, bgcolor=utils.tlo_toru(self._page),
                         height=6, border_radius=3,
                     )),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
@@ -675,8 +691,8 @@ class MiksinKokpitu:
             stopka = (f"{stan['liczba']} wpisów w {dzisiaj.year}" if stan["liczba"]
                       else f"brak wpisów w {dzisiaj.year}")
             return ft.Container(
-                width=SZER_KAFLA + 20, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 20, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=idz_do_kosztow(1),
                 tooltip="Suma kategorii „Mandaty i opłaty drogowe” od początku roku",
                 content=ft.Column([
@@ -712,8 +728,8 @@ class MiksinKokpitu:
                 opis = "bez terminów"
 
             return ft.Container(
-                width=SZER_KAFLA + 60, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 60, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor)),
                 ink=True, on_click=lambda e: utils.przejdz(self._page, "/do-zrobienia"),
                 tooltip="Otwarte pozycje z listy Do zrobienia",
                 content=ft.Column([
@@ -748,8 +764,8 @@ class MiksinKokpitu:
             stopka = (", ".join(stan["nazwy_niskich"][:2]) if niski
                       else f"{stan['razem']} pozycji na stanie")
             return ft.Container(
-                width=SZER_KAFLA + 40, padding=15, border_radius=utils.RADIUS["lg"],
-                bgcolor=utils.tlo_karty(self._page, poziom=1),
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor)),
                 ink=True, on_click=idz_do_czesci,
                 tooltip="Pozycje magazynu poniżej własnego progu ostrzegawczego",
                 content=ft.Column([

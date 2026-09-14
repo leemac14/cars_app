@@ -248,12 +248,10 @@ class FormularzWizytyView(ft.View):
         return ft.Row(chipy, wrap=True, spacing=6, run_spacing=6)
 
     def _karta_pakietu(self, nazwa, pozycje, akcje):
-        powierzchnia = utils.powierzchnia_karty(self._page, "sm")
+        # Karta pakietu leży w arkuszu na dole, a nie na tle ekranu — blok.
         return ft.Container(
             padding=14,
-            border_radius=utils.RADIUS["md"],
-            bgcolor=powierzchnia["bgcolor"],
-            border=powierzchnia["border"],
+            **utils.powierzchnia(self._page, "blok"),
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.Icons.BOOKMARK, size=16, color=ft.Colors.TEAL_700),
@@ -339,8 +337,7 @@ class FormularzWizytyView(ft.View):
         else:
             zawartosc.append(ft.Container(
                 padding=ft.Padding(12, 14, 12, 14),
-                border_radius=utils.RADIUS["md"],
-                bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
+                **utils.powierzchnia(self._page, "blok"),
                 content=ft.Text(
                     "Nie masz jeszcze własnych pakietów. Ułóż taki, jaki naprawdę robisz "
                     "u swojego mechanika — „Nowy pakiet” powyżej.",

@@ -234,15 +234,15 @@ class MiksinZakladkiStatystyki:
                     self._scena_zakladki.wskaznik(ft.ProgressBar(
                         value=(procent / 100) if procent > 0 else 0,
                         color=kolor,
-                        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                        bgcolor=utils.tlo_toru(self._page),
                         height=8,
                         border_radius=4
                     ))
                 ], spacing=4)
 
             karta_struktury = ft.Container(
-                border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
-                **utils.powierzchnia_karty(self._page, "md"),
+                padding=utils.SPACING["lg"],
+                **utils.powierzchnia(self._page, "karta", cien="md"),
                 content=ft.Column([
                     segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["paliwo"], "Paliwo", pal, proc_pal, ft.Colors.BLUE_700),
                     segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["serwis"], "Serwis", serw, proc_ser, ft.Colors.ORANGE_700),  # paleta: tożsamość — kolor kategorii kosztu
@@ -277,21 +277,21 @@ class MiksinZakladkiStatystyki:
                         self._scena_zakladki.wskaznik(ft.ProgressBar(
                             value=(procent_kat / 100) if procent_kat > 0 else 0,
                             color=utils.kolor_kategorii_innych(nazwa_kat),
-                            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                            bgcolor=utils.tlo_toru(self._page),
                             height=6, border_radius=3,
                         )),
                         ft.Text(f"{liczba_kat} {'wpis' if liczba_kat == 1 else 'wpisy/-ów'}",
                                 size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                     ], spacing=3))
                 karta_kategorii_innych = ft.Container(
-                    border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
-                    **utils.powierzchnia_karty(self._page, "md"),
+                    padding=utils.SPACING["lg"],
+                    **utils.powierzchnia(self._page, "karta", cien="md"),
                     content=ft.Column(wiersze_kategorii, spacing=12),
                 )
             else:
                 karta_kategorii_innych = ft.Container(
-                    border_radius=utils.RADIUS["lg"], padding=utils.SPACING["lg"],
-                    **utils.powierzchnia_karty(self._page, "md"),
+                    padding=utils.SPACING["lg"],
+                    **utils.powierzchnia(self._page, "karta", cien="md"),
                     content=ft.Text("Brak innych kosztów w historii pojazdu.", size=13, italic=True,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                 )
@@ -924,6 +924,7 @@ class MiksinZakladkiStatystyki:
                 )
 
                 self.lista_kart_stat = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_stat, "lista:statystyki")
                 self.wszystkie_karty_stat = []
 
                 wiersze_mc_f = utils.filtruj_po_roku(wiersze_mc_wszystkie, self.state, "stat_miesiace_rok", 9)

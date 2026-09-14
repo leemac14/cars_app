@@ -101,6 +101,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 )
 
                 self.lista_kart = ft.ListView(spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:odczyty")
                 self.wszystkie_karty = []
                 self.uzyj_wirtualizacji = True
                 # Odczyty licznika to czysta chronologia — kwot tu nie ma, więc
@@ -198,8 +199,8 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             ))
 
         return ft.Container(
-            padding=utils.SPACING["lg"], border_radius=utils.RADIUS["lg"],
-            **utils.powierzchnia_karty(self._page, "md"),
+            padding=utils.SPACING["lg"],
+            **utils.powierzchnia(self._page, "karta", cien="md"),
             content=ft.Column(wiersze, spacing=utils.SPACING["sm"]),
         )
 

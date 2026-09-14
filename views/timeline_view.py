@@ -96,6 +96,7 @@ class TimelineView(ft.View):
                 # WEWNĄTRZ wiersza osi, dzięki czemu pionowa linia biegnie przez
                 # przerwę i łączy kolejne zdarzenia zamiast się urywać.
                 self.lista_kart = ft.ListView(spacing=0, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:os_czasu")
                 self.wszystkie_karty = []
                 # Oś czasu bywa najdłuższą listą w aplikacji — bez nagłówków
                 # miesięcy jest jedną taśmą dat. Kwot nie sumujemy: w jednej osi
@@ -226,7 +227,7 @@ class TimelineView(ft.View):
             naglowek_bits.append(ft.Container(
                 padding=ft.Padding(6, 1, 6, 1),
                 border_radius=utils.RADIUS["pill"],
-                bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE),
+                bgcolor=utils.tlo_odznaki(self._page),
                 content=ft.Text(str(autor), size=10, color=ft.Colors.ON_SURFACE_VARIANT),
             ))
 

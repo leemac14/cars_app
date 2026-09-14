@@ -4,6 +4,7 @@ import db
 import flet as ft
 
 from .stale import FS, KOLOR_STATUS, RADIUS, SPACING
+from .wyglad import powierzchnia
 from .dialogi import otworz_dialog, pokaz_komunikat, zamknij_dialog
 from .sync_ui import wypchnij_w_tle
 from .formularze import styl_pola
@@ -64,11 +65,16 @@ def podglad_notatki(page: ft.Page, tresc, autor=None, data=None, tytul="Notatka"
     if podpis:
         linie.append(ft.Text(podpis, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
 
+    # Podgląd notatki leży W ŚRODKU karty wpisu — jest blokiem, nie drugą
+    # kartą. Tło bierze ze wspólnej drabinki zamiast z własnego 0,05, które
+    # nie było żadnym jej szczeblem. Pasek po lewej zostaje: to on mówi
+    # „tu jest notatka", a żadnego stanu ten blok nie ma.
+    plaszczyzna = powierzchnia(page, "blok")
     return ft.Container(
         margin=ft.Margin(0, SPACING["xs"], 0, 0),
         padding=ft.Padding(SPACING["sm"], 6, SPACING["sm"], 6),
-        border_radius=RADIUS["sm"],
-        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
+        border_radius=plaszczyzna["border_radius"],
+        bgcolor=plaszczyzna["bgcolor"],
         border=ft.Border.only(left=ft.BorderSide(3, ft.Colors.with_opacity(0.35, ft.Colors.PRIMARY))),
         tooltip="Pokaż całą notatkę",
         on_click=lambda e: pokaz_notatke(page, tekst, autor, data, tytul, on_edytuj),

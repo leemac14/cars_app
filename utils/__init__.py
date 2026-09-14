@@ -17,6 +17,7 @@ from .typografia import *
 from .animacje import *
 from .wyglad import *
 from .szkielet import *
+from .pozycja import *
 from .miesiace import *
 from .zgodnosc import *
 from .dialogi import *
@@ -28,6 +29,7 @@ from .notatki import *
 from .zalaczniki import *
 from .wykresy import *
 from .pojazd import *
+from .start import *
 from .system import *
 from .komponenty import *
 from .powiadomienia import *
@@ -41,6 +43,7 @@ from . import (
     animacje,
     wyglad,
     szkielet,
+    pozycja,
     miesiace,
     zgodnosc,
     dialogi,
@@ -52,6 +55,7 @@ from . import (
     zalaczniki,
     wykresy,
     pojazd,
+    start,
     system,
     komponenty,
     powiadomienia,

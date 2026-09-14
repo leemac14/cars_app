@@ -9,7 +9,7 @@ from .animacje import ScenaWejscia
 from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
 from .format import parsuj_float, symbol_waluty
 from .zgodnosc import ustaw_blad
-from .wyglad import powierzchnia_karty
+from .wyglad import powierzchnia, tlo_toru
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
 from .formularze import pole_daty, styl_pola
 from .wykresy import kolor_kondycji_plynny
@@ -200,7 +200,7 @@ def pokaz_panel_kondycji(page: ft.Page, state):
     # Pasek wyniku: 100 punktów startowych, z których odjęto to, co niżej.
     pasek = ft.Container(
         height=8, border_radius=RADIUS["pill"],
-        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+        bgcolor=tlo_toru(page),
         content=ft.Row([
             ft.Container(
                 expand=max(1, wynik or 0), height=8,
@@ -243,12 +243,11 @@ def pokaz_panel_kondycji(page: ft.Page, state):
             if p["szczegol"]:
                 tresc.append(ft.Text(p["szczegol"], size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
 
-            powierzchnia = powierzchnia_karty(page, "sm")
+            # Wiersz powodu leży W ŚRODKU panelu kondycji, więc jest blokiem,
+            # a nie kartą: wystarczy tło o stopień wyżej.
             zawartosc.append(ft.Container(
                 padding=ft.Padding(12, 12, 12, 12),
-                border_radius=RADIUS["md"],
-                bgcolor=powierzchnia["bgcolor"],
-                border=powierzchnia["border"],
+                **powierzchnia(page, "blok"),
                 ink=bool(p["trasa"]),
                 on_click=idz_do(p["trasa"]) if p["trasa"] else None,
                 content=ft.Row([
@@ -396,7 +395,7 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
     if pelny:
         elementy.append(scena.wskaznik(ft.ProgressBar(
             value=udzial, color=kolor,
-            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+            bgcolor=tlo_toru(page),
             height=6, border_radius=3,
         )))
         elementy.append(ft.Row([

@@ -106,7 +106,7 @@ class RokWPigulceView(ft.View):
                     ft.Text(str(d["rok"]), size=44, weight="bold", color=ft.Colors.PRIMARY, expand=True),
                     ft.Container(
                         padding=ft.Padding(10, 3, 10, 3), border_radius=utils.RADIUS["pill"],
-                        bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.ON_SURFACE),
+                        bgcolor=utils.tlo_odznaki(self._page),
                         content=ft.Text("rok w toku", size=utils.FS["caption"],
                                         color=ft.Colors.ON_SURFACE_VARIANT),
                         visible=bool(d.get("niepelny")),
@@ -190,7 +190,7 @@ class RokWPigulceView(ft.View):
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 self.scena.wskaznik(ft.ProgressBar(
                     value=max(0.0, min(1.0, procent / 100)), color=kolor,
-                    bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                    bgcolor=utils.tlo_toru(self._page),
                     height=8, border_radius=4,
                 )),
             ], spacing=4)

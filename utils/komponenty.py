@@ -10,7 +10,7 @@ from .stale import (
     FS, IKONY_OBSERWACJI, KOLORY_TONU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING,
     ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych,
 )
-from .wyglad import powierzchnia_karty, tlo_karty
+from .wyglad import powierzchnia, tlo_karty
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
 from .formularze import styl_dropdown, styl_pola
@@ -707,8 +707,8 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
     triki typu `karta.content.opacity = ...` działają bez zmian.
     Kontener ma już gotową (ale nieaktywną) animację naciśnięcia —
     zobacz `z_efektem_nacisniecia` niżej."""
-    powierzchnia = powierzchnia_karty(page, "sm")
-    tlo_finalne = tlo if tlo is not None else powierzchnia["bgcolor"]
+    plaszczyzna = powierzchnia(page, "karta")
+    tlo_finalne = tlo if tlo is not None else plaszczyzna["bgcolor"]
 
     kontener = ft.Container(
         padding=SPACING["md"], ink=True,
@@ -722,17 +722,17 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
 
     if not kolor_paska:
         karta = ft.Container(
-            border_radius=RADIUS["lg"],
-            shadow=powierzchnia["shadow"],
-            border=powierzchnia["border"],
+            border_radius=plaszczyzna["border_radius"],
+            shadow=plaszczyzna["shadow"],
+            border=plaszczyzna["border"],
             content=kontener,
         )
         return karta, kontener
 
     karta = ft.Container(
-        border_radius=RADIUS["lg"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-        shadow=powierzchnia["shadow"],
-        border=powierzchnia["border"],
+        border_radius=plaszczyzna["border_radius"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        shadow=plaszczyzna["shadow"],
+        border=plaszczyzna["border"],
         content=ft.Row([ft.Container(width=4, bgcolor=kolor_paska), kontener], spacing=0),
     )
     return karta, kontener

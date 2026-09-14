@@ -9,7 +9,7 @@ from state import MIESIACE_NAZWY
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
 from .format import _odmiana_liczby, symbol_waluty
-from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia_karty
+from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_toru
 from .formularze import karta_formularza
 
 
@@ -72,7 +72,7 @@ def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=
         value=(czysty / 100) if czysty is not None else 0.0,
         width=rozmiar, height=rozmiar, stroke_width=grubosc,
         color=kolor, stroke_cap=ft.StrokeCap.ROUND,
-        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+        bgcolor=tlo_toru(),
     )
 
     if czysty is not None:
@@ -127,7 +127,7 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
     pasek = ft.Stack([
         ft.Container(
             height=WYSOKOSC, border_radius=RADIUS["xs"],
-            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+            bgcolor=tlo_toru(page),
         ),
         ft.Row([wypelnienie, reszta_paska], spacing=0),
         # Znacznik „gdzie powinieneś być dzisiaj” — cienka kreska w poprzek paska.
@@ -206,7 +206,7 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False, scena=None):
     if procent is not None:
         elementy.append(scena.wskaznik(ft.ProgressBar(
             value=max(0.0, min(1.0, procent / 100)), color=kolor,
-            bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+            bgcolor=tlo_toru(page),
             height=8, border_radius=4,
         )))
 
@@ -266,8 +266,8 @@ def karta_analizy(page: ft.Page, tytul, ikona, zawartosc, kolor=None):
     """Sekcja zakładki Analiza: nagłówek z ikoną i treść na jednej powierzchni."""
     kolor = kolor or ft.Colors.PRIMARY
     return ft.Container(
-        padding=SPACING["lg"], border_radius=RADIUS["lg"],
-        **powierzchnia_karty(page, "md"),
+        padding=SPACING["lg"],
+        **powierzchnia(page, "karta", cien="md"),
         content=ft.Column([
             ft.Row([
                 ft.Icon(ikona, size=18, color=kolor),
@@ -482,7 +482,7 @@ def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8, sce
         ]),
         scena.wskaznik(ft.ProgressBar(
             value=max(0.03, min(1.0, procent)), color=kolor,
-            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+            bgcolor=tlo_toru(),
             height=wysokosc, border_radius=4,
         ))
     ], spacing=4)

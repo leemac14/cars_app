@@ -199,8 +199,11 @@ class PorownanieView(ft.View):
 
             karty.append(
                 ft.Container(
-                    width=SZEROKOSC_KOLUMNY, padding=10, border_radius=14,
-                    bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
+                    width=SZEROKOSC_KOLUMNY, padding=10,
+                    border_radius=utils.powierzchnia(self._page, "kafel")["border_radius"],
+                    bgcolor=utils.powierzchnia(self._page, "kafel")["bgcolor"],
+                    # Ramka w kolorze pojazdu zostaje — to ona wiąże kolumnę
+                    # z legendą wykresów. Tło schodzi na wspólny szczebel.
                     border=ft.Border.all(2, d["kolor"]),
                     content=ft.Column([
                         wizerunek,
@@ -323,7 +326,7 @@ class PorownanieView(ft.View):
                         ft.Text("Brak danych", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
                     ]),
                     ft.ProgressBar(value=0, color=ft.Colors.ON_SURFACE_VARIANT,
-                                   bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=8, border_radius=4)
+                                   bgcolor=utils.tlo_toru(self._page), height=8, border_radius=4)
                 ], spacing=4))
                 continue
 
@@ -644,7 +647,7 @@ class PorownanieView(ft.View):
                         ft.Text(d["nazwa_wyswietlana"], size=12, weight="bold", expand=True, no_wrap=True),
                         ft.Text("Za mało danych", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
                     ]),
-                    ft.ProgressBar(value=0, bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE), height=8, border_radius=4)
+                    ft.ProgressBar(value=0, bgcolor=utils.tlo_toru(self._page), height=8, border_radius=4)
                 ], spacing=4))
                 continue
 
@@ -664,7 +667,7 @@ class PorownanieView(ft.View):
                 ]),
                 self.scena.wskaznik(ft.ProgressBar(
                     value=max(0.03, proporcja), color=pasek_kolor,
-                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                    bgcolor=utils.tlo_toru(self._page),
                     height=8, border_radius=4))
             ], spacing=4))
 

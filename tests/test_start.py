@@ -10,6 +10,9 @@ które `main.py` woła w wątku w tle PO pierwszym renderze.
 Ten plik pilnuje podziału z obu stron: że `init_db()` już tego nie robi
 (inaczej przeniesienie byłoby pozorne) i że `porzadki_startowe()` robi to
 naprawdę (inaczej sprzątanie przestałoby się dziać w ogóle).
+
+Na końcu ekran startowy: tablica rejestracyjna zamiast pustego okna przez ten
+czas, w którym baza dopiero wstaje.
 """
 
 import os
@@ -153,3 +156,110 @@ def test_porzadki_naprawiaja_sciezke_z_innego_urzadzenia(baza):
             "SELECT zalacznik FROM tankowania WHERE id=?", (identyfikatory["tankowanie"],)
         ).fetchone()[0]
     assert os.path.exists(sciezka), "po naprawie ścieżka ma wskazywać istniejący plik"
+
+
+# ============================================================================
+#  EKRAN STARTOWY
+# ============================================================================
+
+import flet as ft  # noqa: E402
+import pytest  # noqa: E402
+
+import utils  # noqa: E402
+
+
+def _teksty(kontrolka, zebrane=None):
+    zebrane = [] if zebrane is None else zebrane
+    if isinstance(kontrolka, ft.Text) and isinstance(kontrolka.value, str):
+        zebrane.append(kontrolka.value)
+    for nazwa in ("controls", "content"):
+        w = getattr(kontrolka, nazwa, None)
+        if isinstance(w, (list, tuple)):
+            for d in w:
+                if isinstance(d, ft.Control):
+                    _teksty(d, zebrane)
+        elif isinstance(w, ft.Control):
+            _teksty(w, zebrane)
+    return zebrane
+
+
+def test_ekran_startowy_pokazuje_tablice_zanim_wiadomo_czyja():
+    """Tablica pojawia się PRZED otwarciem bazy — inaczej najdłuższy kawałek
+    startu (migracje) znowu odbywałby się przy pustym oknie."""
+    ekran = utils.EkranStartowy(None)
+
+    teksty = _teksty(ekran.widok)
+
+    assert utils.NAZWA_NA_TABLICY in teksty
+    assert "PL" in teksty, "bez niebieskiego paska UE to nie jest ta tablica"
+
+
+def test_ekran_startowy_ma_ruch_ktorego_nie_zatrzyma_zajety_python():
+    """W chwili, gdy ekran startowy jest na wyświetlaczu, pętla zdarzeń otwiera
+    bazę. Pasek NIEOKREŚLONY rysuje Flutter po swojej stronie."""
+    ekran = utils.EkranStartowy(None)
+
+    paski = []
+
+    def szukaj(k):
+        if isinstance(k, ft.ProgressBar):
+            paski.append(k)
+        for nazwa in ("controls", "content"):
+            w = getattr(k, nazwa, None)
+            if isinstance(w, (list, tuple)):
+                for d in w:
+                    if isinstance(d, ft.Control):
+                        szukaj(d)
+            elif isinstance(w, ft.Control):
+                szukaj(w)
+
+    szukaj(ekran.widok)
+
+    assert paski, "brak paska — ekran startowy stoi wtedy zupełnie nieruchomo"
+    assert all(p.value is None for p in paski), "pasek udający procenty kłamałby o postępie startu"
+
+
+def test_numer_wskakuje_na_miejsce_nazwy():
+    ekran = utils.EkranStartowy(None)
+
+    assert ekran.ustaw_numer("WX 1234A") is True
+    teksty = _teksty(ekran.widok)
+    assert "WX 1234A" in teksty
+    assert utils.NAZWA_NA_TABLICY not in teksty
+
+
+@pytest.mark.parametrize("numer", ["", None, "   "])
+def test_brak_rejestracji_zostawia_nazwe_aplikacji(numer):
+    """Pojazd bez rejestracji albo pusty garaż nie ma czego pokazać, a tablica
+    z niczym w środku wyglądałaby na usterkę."""
+    ekran = utils.EkranStartowy(None)
+
+    assert ekran.ustaw_numer(numer) is False
+    assert utils.NAZWA_NA_TABLICY in _teksty(ekran.widok)
+
+
+def test_ekran_startowy_znika_z_pierwsza_nawigacja():
+    """Router zaczyna od `page.views.clear()`, więc nikt nie musi zdejmować
+    splashu — ale gdyby to się zmieniło, zostałby pod spodem na zawsze.
+
+    Czytamy plik, a nie moduł: `main.py` kończy się `ft.run(main)`, więc samo
+    zaimportowanie go próbowałoby uruchomić aplikację."""
+    zrodlo = (pathlib.Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+
+    assert "pokaz_ekran_startowy" in zrodlo, "ekran startowy nie jest w ogóle pokazywany"
+    assert "page.views.clear()" in zrodlo, "nic nie zdejmuje ekranu startowego ze stosu"
+    assert zrodlo.index("pokaz_ekran_startowy") < zrodlo.index('log.zmierz("init_db")'), (
+        "ekran startowy pojawia się PO otwarciu bazy — czyli po tym, na co był potrzebny"
+    )
+
+
+def test_rejestracja_startowa_bierze_ostatni_pojazd(baza):
+    pomoce.utworz_pojazd("Pierwszy")
+    with db.polacz_baze() as conn:
+        conn.execute("UPDATE samochody SET nr_rej = ? WHERE id = ?", ("WX 1234A", 1))
+
+    assert db.pobierz_rejestracje_startowa() == "WX 1234A"
+
+
+def test_rejestracja_startowa_w_pustym_garazu_jest_pusta(baza):
+    assert db.pobierz_rejestracje_startowa() == ""

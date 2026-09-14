@@ -277,6 +277,31 @@ def pobierz_ostatni_pojazd():
         return None
 
 
+def pobierz_rejestracje_startowa() -> str:
+    """Numer rejestracyjny na ekran startowy: pojazdu, na którym aplikacja
+    stanęła ostatnio, a gdy takiego nie ma — pierwszego aktywnego w garażu.
+
+    Osobne, jedno zapytanie zamiast `zainicjuj_domyslne_auto`: ekran startowy
+    pojawia się ZANIM powstanie stan aplikacji i nie ma go wymuszać tylko po to,
+    żeby narysować tablicę. Pusty napis znaczy „nie ma czego pokazać" —
+    wywołujący zostaje wtedy przy nazwie aplikacji."""
+    ostatni = pobierz_ostatni_pojazd()
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        if ostatni:
+            c.execute("SELECT nr_rej FROM samochody WHERE id = ?", (ostatni,))
+            wiersz = c.fetchone()
+            if wiersz and (wiersz[0] or "").strip():
+                return str(wiersz[0]).strip()
+        c.execute(
+            "SELECT nr_rej FROM samochody "
+            "WHERE COALESCE(status, 'aktywny') = 'aktywny' AND COALESCE(nr_rej, '') <> '' "
+            "ORDER BY nazwa LIMIT 1"
+        )
+        wiersz = c.fetchone()
+    return str(wiersz[0]).strip() if wiersz else ""
+
+
 def zainicjuj_domyslne_auto(state):
     """Ustala, na którym aucie stoi aplikacja.
 
@@ -332,6 +357,7 @@ __all__ = [
     "ustaw_przypiete_ekrany",
     "zainicjuj_domyslne_auto",
     "zanotuj_uzycie_ekranu",
+    "pobierz_rejestracje_startowa",
     "zapamietaj_ostatnia_pozycje",
     "zapamietaj_podzakladke_kosztow",
 ]

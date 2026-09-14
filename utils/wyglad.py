@@ -4,7 +4,7 @@ import colorsys
 import db
 import flet as ft
 
-from .stale import MAPA_KOLOROW
+from .stale import KOLOR_STATUS, MAPA_KOLOROW, RADIUS
 
 
 def _czy_ciemny(page: ft.Page = None) -> bool:
@@ -101,36 +101,62 @@ def zastosuj_motywy(page: ft.Page, nazwa_koloru):
     return kolor_seed
 
 
+# Drabinka powierzchni: (jasny, ciemny). Górny stopień NIE jest podwojony tak
+# jak dwa niższe — w ciemności różnica jasności rośnie szybciej niż w świetle,
+# więc 30% bieli nie czytałoby się jako „karta wyżej", tylko jako jasny
+# prostokąt. Dwa niższe stopnie zostają dokładnie takie, jakie były.
+DRABINKA_POWIERZCHNI = {
+    1: (0.03, 0.06),   # karta na tle ekranu (jasny motyw — unosi ją cień)
+    2: (0.08, 0.16),   # pole formularza, karta w ciemnym motywie, blok w karcie
+    3: (0.15, 0.24),   # najwyższy stopień — karta, na którą trzeba spojrzeć pierwszą
+}
+
+DRABINKA_OLED = {1: 0.05, 2: 0.09, 3: 0.14}
+
+NAJWYZSZY_POZIOM = 3
+
+
 def tlo_karty(page: ft.Page = None, poziom=1):
-    """Automatycznie dobiera przezroczystość koloru ON_SURFACE.
-    W trybie ciemnym podwaja opacity dla zachowania kontrastu.
-    W wariancie czystej czerni schodzimy z powrotem do delikatnych wartości —
-    na czarnym tle nawet 6% bieli to już wyraźnie widoczna powierzchnia, a cały
-    sens trybu OLED polega na tym, żeby jak najwięcej pikseli zostało zgaszonych."""
+    """Tło powierzchni na zadanym stopniu drabinki.
+
+    W wariancie czystej czerni drabinka startuje od niemal czerni i rośnie
+    ledwie kilkoma stopniami szarości — na czarnym tle nawet 6% bieli to już
+    wyraźnie widoczna powierzchnia, a cały sens trybu OLED polega na tym, żeby
+    jak najwięcej pikseli zostało zgaszonych."""
     if czy_czysta_czern(page):
-        return {
-            1: ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
-            2: ft.Colors.with_opacity(0.09, ft.Colors.ON_SURFACE),
-            3: ft.Colors.with_opacity(0.14, ft.Colors.ON_SURFACE),
-        }.get(poziom, ft.Colors.TRANSPARENT)
+        udzial = DRABINKA_OLED.get(poziom)
+    else:
+        stopien = DRABINKA_POWIERZCHNI.get(poziom)
+        udzial = None if stopien is None else stopien[1 if _czy_ciemny(page) else 0]
+    if udzial is None:
+        return ft.Colors.TRANSPARENT
+    return ft.Colors.with_opacity(udzial, ft.Colors.ON_SURFACE)
 
-    ciemny = _czy_ciemny(page)
-    mnoznik = 2.0 if ciemny else 1.0
 
-    if poziom == 1:   # Delikatne tło (karty w jasnym motywie — cień robi "unoszenie")
-        return ft.Colors.with_opacity(0.03 * mnoznik, ft.Colors.ON_SURFACE)
-    elif poziom == 2: # Średnie tło (pola formularza, karty w ciemnym motywie)
-        return ft.Colors.with_opacity(0.08 * mnoznik, ft.Colors.ON_SURFACE)
-    elif poziom == 3: # Najsilniejsze tło — dostępne do mocniejszych akcentów
-        return ft.Colors.with_opacity(0.15 * mnoznik, ft.Colors.ON_SURFACE)
-    return ft.Colors.TRANSPARENT
+# Powierzchnia w stanie bierze ten sam szczebel drabinki, tylko w kolorze stanu
+# zamiast neutralnej szarości. To jeden mechanizm, a nie drugi: kafel po terminie
+# nie dostaje „szarości wyżej ORAZ czerwieni" — dostaje ten sam stopień wyżej,
+# wyrażony barwą, która i tak już mówi, co się dzieje.
+UDZIAL_TLA_STANU = {"jasny": 0.08, "ciemny": 0.14, "oled": 0.10}
+
+
+def tlo_stanu(page: ft.Page = None, stan=None):
+    """Tło powierzchni, która ma coś do powiedzenia o swoim stanie."""
+    kolor = KOLOR_STATUS.get(stan)
+    if kolor is None:
+        return ft.Colors.TRANSPARENT
+    if czy_czysta_czern(page):
+        udzial = UDZIAL_TLA_STANU["oled"]
+    else:
+        udzial = UDZIAL_TLA_STANU["ciemny" if _czy_ciemny(page) else "jasny"]
+    return ft.Colors.with_opacity(udzial, kolor)
 
 
 def cien_karty(page: ft.Page = None, poziom="md"):
     """Miękki, 'unoszący' cień w duchu Material 3 — WYŁĄCZNIE w trybie jasnym.
     W trybie ciemnym cień jest ledwo czytelny na ciemnym tle i tylko brudzi
     interfejs, dlatego zwracamy None — tam różnicujemy powierzchnie wyłącznie
-    jaśniejszym `bgcolor` (patrz `powierzchnia_karty` niżej). Każdy poziom to
+    jaśniejszym `bgcolor` (patrz `powierzchnia` niżej). Każdy poziom to
     dwie warstwy (blisko + rozlana), jak w prawdziwych cieniach Material 3."""
     if _czy_ciemny(page):
         return None
@@ -165,19 +191,111 @@ def obramowanie_karty(page: ft.Page = None):
     return ft.Border.all(1, ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE))
 
 
-def powierzchnia_karty(page: ft.Page = None, cien="md"):
-    """Gotowy zestaw {bgcolor, shadow} do rozpakowania (**) w Containerze
-    karty/formularza. Jasny motyw: niemal przezroczyste tło + miękki cień
-    (cień 'unosi' kartę). Ciemny motyw: cień wyłączony, więc tło podbijamy
-    o jeden poziom mocniej (poziom=2), żeby granica karty była widoczna
-    bez cienia. Wariant OLED: tło zostaje minimalne, a rolę krawędzi przejmuje
-    cienka ramka (patrz obramowanie_karty)."""
+# Ramka, wypełnienie, zaokrąglenie i cień to cztery sposoby powiedzenia „to jest
+# osobny obiekt". Użyte na wszystkim naraz spłaszczają hierarchię: jeśli każda
+# karta krzyczy tak samo głośno, to ważna karta niczym się nie wyróżnia.
+#
+# Dlatego powierzchnia opisuje się DWOMA rzeczami, a nie zestawem pól:
+#
+#   rola  — czym ten prostokąt JEST;
+#   stan  — jak głośno ma o sobie mówić.
+#
+# Role:
+#   "karta"  — leży na tle ekranu i mieści w sobie blok treści. Jasny motyw:
+#              delikatne tło + cień, który ją unosi. Ciemny: cienia nie widać,
+#              więc krawędź robi tło o stopień mocniejsze. OLED: tło minimalne,
+#              krawędź robi hairline'owa ramka.
+#   "kafel"  — jeden z wielu małych prostokątów w siatce (kokpit). To samo tło,
+#              ale BEZ cienia: siedemnaście cieni obok siebie to szum, a odstępy
+#              w siatce i tak już mówią, gdzie kończy się jeden kafel.
+#   "blok"   — kawałek WEWNĄTRZ karty. Samo tło o stopień wyżej od rodzica, bez
+#              cienia i bez ramki, mniejszy promień. Blok jest już w karcie, więc
+#              cień pod cieniem i promień 20 w promieniu 20 powtarzają informację,
+#              którą oko dostało sekundę wcześniej.
+ROLE_POWIERZCHNI = ("karta", "kafel", "blok")
+
+# Stany, które SAME podnoszą powierzchnię o stopień (klucze z KOLOR_STATUS).
+# Kolor mówi „po terminie", a poziom sprawia, że kafel naprawdę wystaje z siatki
+# — bez tego kafel wymagający reakcji wygląda dokładnie tak samo jak kafel
+# z zasięgiem, a kokpit przestaje odpowiadać na pytanie „gdzie mam patrzeć".
+STANY_PODNOSZACE = frozenset({"critical", "warning"})
+
+
+def poziom_karty(page: ft.Page = None):
+    """Stopień, na którym leży ZWYKŁA karta.
+
+    W trybie ciemnym o jeden wyżej, bo tam nie ma cienia i to tło musi zrobić
+    krawędź. W wariancie OLED z powrotem na dole — krawędź robi ramka, a piksele
+    mają zostać zgaszone."""
     if czy_czysta_czern(page):
-        return {"bgcolor": tlo_karty(page, poziom=1), "shadow": None,
-                "border": obramowanie_karty(page)}
-    if _czy_ciemny(page):
-        return {"bgcolor": tlo_karty(page, poziom=2), "shadow": None, "border": None}
-    return {"bgcolor": tlo_karty(page, poziom=1), "shadow": cien_karty(page, cien), "border": None}
+        return 1
+    return 2 if _czy_ciemny(page) else 1
+
+
+def powierzchnia(page: ft.Page = None, rola="karta", stan=None, cien="sm",
+                 poziom_rodzica=None):
+    """Gotowy zestaw {bgcolor, shadow, border, border_radius} do rozpakowania (**)
+    w Containerze. Rola decyduje o wszystkich czterech naraz — właśnie po to, żeby
+    nie dało się złożyć powierzchni z cieniem, ramką i trzema promieniami naraz.
+
+    `poziom_rodzica` podaje się TYLKO dla bloku leżącego w karcie podniesionej
+    stanem — żeby blok wszedł stopień wyżej od NIEJ, a nie od zwykłej karty."""
+    baza = poziom_karty(page)
+    podniesiony = stan in STANY_PODNOSZACE
+
+    if rola == "blok":
+        poziom = min(NAJWYZSZY_POZIOM, (poziom_rodzica or baza) + 1)
+        return {
+            "bgcolor": tlo_stanu(page, stan) if podniesiony else tlo_karty(page, poziom=poziom),
+            "shadow": None, "border": None, "border_radius": RADIUS["sm"],
+        }
+
+    if rola == "kafel":
+        cienie = None
+    else:
+        cienie = cien_karty(page, "md" if (podniesiony and cien == "sm") else cien)
+
+    return {
+        "bgcolor": tlo_stanu(page, stan) if podniesiony else tlo_karty(page, poziom=baza),
+        "shadow": cienie,
+        "border": obramowanie_karty(page),
+        "border_radius": RADIUS["lg"],
+    }
+
+
+# Tło toru paska postępu. JEDNA wartość na całą aplikację: pasek budżetu, pasek
+# terminu i pasek checklisty pokazują to samo — ile z czegoś minęło — więc nie ma
+# powodu, żeby ich tory różniły się jasnością. Wcześniej chodziły w dwóch
+# odcieniach (0,08 i 0,12), zależnie od tego, kto pisał dany ekran.
+UDZIAL_TLA_TORU = 0.12
+
+
+def tlo_toru(page: ft.Page = None):
+    """Tło toru, po którym jedzie wypełnienie paska postępu."""
+    return ft.Colors.with_opacity(UDZIAL_TLA_TORU, ft.Colors.ON_SURFACE)
+
+
+# Tło neutralnej odznaki („rok w toku", autor wpisu, kółko pod ikoną). Też jedna
+# wartość: pigułka jest pigułką niezależnie od ekranu, a chodziła w 0,10 i 0,14.
+UDZIAL_TLA_ODZNAKI = 0.10
+
+
+def tlo_odznaki(page: ft.Page = None):
+    """Tło odznaki bez stanu. Odznaka ze stanem bierze `tlo_stanu`."""
+    return ft.Colors.with_opacity(UDZIAL_TLA_ODZNAKI, ft.Colors.ON_SURFACE)
+
+
+def stan_z_koloru(kolor):
+    """Stan podnoszący odczytany z koloru, którym element i tak już się posługuje.
+
+    Kafle liczą swój kolor same (termin, bieżnik, budżet, magazyn) — i to on jest
+    jedynym miejscem, w którym wiedzą, jak bardzo jest źle. Zamiast dokładać drugi,
+    równoległy opis stanu, czytamy ten, który już istnieje: dzięki temu kolor
+    treści i kolor powierzchni nie mogą się rozjechać."""
+    for nazwa in STANY_PODNOSZACE:
+        if kolor == KOLOR_STATUS.get(nazwa):
+            return nazwa
+    return None
 
 
 def dol_bezpieczny(wysokosc=20):
@@ -242,7 +360,15 @@ def pasek_zawijany(kontrolki, spacing=6, run_spacing=6):
 
 
 __all__ = [
+    "DRABINKA_OLED",
+    "DRABINKA_POWIERZCHNI",
     "MIEJSCE_NA_SUWAK",
+    "NAJWYZSZY_POZIOM",
+    "ROLE_POWIERZCHNI",
+    "STANY_PODNOSZACE",
+    "UDZIAL_TLA_STANU",
+    "UDZIAL_TLA_ODZNAKI",
+    "UDZIAL_TLA_TORU",
     "POWIERZCHNIE_OLED",
     "_CACHE_CZERNI",
     "_OSTATNI_MOTYW",
@@ -256,8 +382,13 @@ __all__ = [
     "ostatni_zastosowany_motyw",
     "pasek_przewijany",
     "pasek_zawijany",
-    "powierzchnia_karty",
+    "poziom_karty",
+    "powierzchnia",
+    "stan_z_koloru",
     "tlo_karty",
+    "tlo_odznaki",
+    "tlo_stanu",
+    "tlo_toru",
     "zastosuj_motywy",
     "zbuduj_motyw_ciemny",
 ]

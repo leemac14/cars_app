@@ -1,4 +1,4 @@
-"""Osiem audytów, które do tej pory były jednorazowymi skryptami.
+"""Dziewięć audytów, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
@@ -26,6 +26,7 @@ import typing
 sys.path[:0] = [str(pathlib.Path(__file__).resolve().parent), str(pathlib.Path(__file__).resolve().parents[1])]
 
 import flet as ft  # noqa: E402
+import utils  # noqa: E402
 
 
 KORZEN_PROJEKTU = pathlib.Path(__file__).resolve().parents[1]
@@ -187,6 +188,70 @@ def znajdz_rozciagliwe_chipy(korzen):
             zejdz(dziecko, przodkowie + [kontrolka])
 
     zejdz(korzen, [])
+    return znaleziska
+
+
+# ============================================================================
+#  AUDYT 2b — płaskie zagnieżdżenia powierzchni (drzewo kontrolek)
+# ============================================================================
+# Ramka, wypełnienie, zaokrąglenie i cień to cztery sposoby powiedzenia „to jest
+# osobny obiekt". Użyte na wszystkim naraz spłaszczają hierarchię: jeśli każda
+# karta krzyczy tak samo głośno, to ważna karta niczym się nie wyróżnia.
+#
+# Audyt chodzi po ZBUDOWANYM drzewie, bo pytanie brzmi „co widać", a poziom
+# powierzchni powstaje dopiero z motywu (jasny/ciemny/OLED). Sprawdza trzy rzeczy:
+#
+#   1. blok w karcie ma INNE tło niż karta — inaczej granica znika i zagnieżdżenie
+#      nie czyta się wcale;
+#   2. cień nie leży pod cieniem — druga warstwa unoszenia nic nie dodaje;
+#   3. jedna powierzchnia nie łączy cienia z ramką — to dwa sposoby na to samo.
+#
+# Powierzchnią jest tylko to, co ma tło ze wspólnej drabinki (`utils.powierzchnia`).
+# Pigułki, tory pasków i awatary mają własne, nazwane tła i nie udają kart.
+
+
+def _drabinka_powierzchni(page):
+    """Tła, które w tym motywie oznaczają powierzchnię: szczeble drabinki
+    i ich kolorowe odpowiedniki dla stanów."""
+    mapa = {}
+    for poziom in (1, 2, 3):
+        mapa[str(utils.tlo_karty(page, poziom=poziom))] = f"poziom {poziom}"
+    for stan in utils.STANY_PODNOSZACE:
+        mapa[str(utils.tlo_stanu(page, stan))] = f"stan {stan}"
+    return mapa
+
+
+def znajdz_plaskie_powierzchnie(korzen, page=None):
+    """Powierzchnie, które powtarzają sygnał rodzica zamiast go stopniować."""
+    drabinka = _drabinka_powierzchni(page)
+    znaleziska = []
+
+    def zejdz(kontrolka, przodkowie, rodzic_tlo, rodzic_cien):
+        tlo = str(getattr(kontrolka, "bgcolor", "") or "")
+        opis_tla = drabinka.get(tlo)
+        if isinstance(kontrolka, ft.Container) and opis_tla:
+            ma_cien = bool(getattr(kontrolka, "shadow", None))
+            ma_ramke = bool(getattr(kontrolka, "border", None))
+            sciezka = _sciezka(przodkowie, kontrolka)
+
+            if rodzic_tlo is not None and tlo == rodzic_tlo:
+                znaleziska.append({
+                    "powod": f"powierzchnia w powierzchni na tym samym szczeblu ({opis_tla})",
+                    "sciezka": sciezka,
+                })
+            if ma_cien and rodzic_cien:
+                znaleziska.append({"powod": "cień pod cieniem", "sciezka": sciezka})
+            if ma_cien and ma_ramke:
+                znaleziska.append({
+                    "powod": "cień i ramka naraz — dwa sposoby na to samo",
+                    "sciezka": sciezka,
+                })
+            rodzic_tlo, rodzic_cien = tlo, rodzic_cien or ma_cien
+
+        for _, dziecko in _dzieci(kontrolka):
+            zejdz(dziecko, przodkowie + [kontrolka], rodzic_tlo, rodzic_cien)
+
+    zejdz(korzen, [], None, False)
     return znaleziska
 
 
@@ -1176,5 +1241,5 @@ if __name__ == "__main__":
     for z in audyt_palety_statusow():
         print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
 
-    print("\nAudyty drzewa kontrolek (expand, chipy) uruchamia pytest:")
-    print("  python -m pytest tests/test_audyty.py -q")
+    print("\nAudyty drzewa kontrolek (expand, chipy, powierzchnie) uruchamia pytest:")
+    print("  python -m pytest tests/test_audyty.py tests/test_powierzchnie.py -q")

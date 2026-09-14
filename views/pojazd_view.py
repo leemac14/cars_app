@@ -128,8 +128,8 @@ class PojazdView(ft.View):
             ], spacing=6))
 
         return ft.Container(
-            padding=utils.SPACING["lg"], border_radius=utils.RADIUS["lg"],
-            **utils.powierzchnia_karty(self._page, "md"),
+            padding=utils.SPACING["lg"],
+            **utils.powierzchnia(self._page, "karta", cien="md"),
             content=ft.Column(tresc, spacing=utils.SPACING["sm"]),
         )
 

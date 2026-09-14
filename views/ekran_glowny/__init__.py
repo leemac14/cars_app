@@ -312,6 +312,11 @@ class MainView(
             self._page, self._zawartosc_zakladki(),
             kierunek=utils.PrzelacznikEkranow.kierunek(stara, nowa),
         )
+        # Przełączenie zakładki nie idzie przez router, więc nikt nie wróci na
+        # zapamiętaną pozycję za nas. Zapisywanie działa samo — klucz liczy się
+        # w chwili przewijania (patrz utils.pamietaj_pozycje).
+        utils.przewin_na(self._page, self,
+                         utils.pobierz_pozycje(self.state, utils.klucz_ekranu(self, self.state)))
         self.floating_action_button = self.fab
         self._odswiez_szuflade()
         if self.pasek_zakladek is not None:

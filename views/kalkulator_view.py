@@ -113,7 +113,7 @@ class KalkulatorTrasyView(ft.View):
             if podtytul:
                 kolumna.append(podtytul)
             return ft.Container(
-                padding=15, border_radius=10, bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
+                padding=15, **utils.powierzchnia(self._page, "blok"),
                 content=ft.Row([
                     ft.Icon(ikona, size=30, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Column(kolumna, spacing=2)

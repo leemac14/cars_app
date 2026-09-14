@@ -5,7 +5,7 @@ import flet as ft
 from datetime import date, datetime, timezone
 
 from .stale import FS, KOLOR_STATUS, RADIUS, SPACING
-from .wyglad import dol_bezpieczny, powierzchnia_karty, tlo_karty
+from .wyglad import dol_bezpieczny, powierzchnia, tlo_karty
 from .zgodnosc import ustaw_blad, ustaw_ikone
 from .dialogi import otworz_dialog, pokaz_komunikat, przejdz
 
@@ -220,13 +220,11 @@ def dopasuj_wysokosc_listy(lista, page: ft.Page, wysokosc_pozycji=175, na_wiersz
 
 
 def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False, page: ft.Page = None):
-    powierzchnia = powierzchnia_karty(page, "md")
+    plaszczyzna = powierzchnia(page, "karta", cien="md")
 
     if not tytul:
         return ft.Container(
-            padding=SPACING["lg"], border_radius=RADIUS["lg"],
-            bgcolor=powierzchnia["bgcolor"], shadow=powierzchnia["shadow"],
-            border=powierzchnia["border"],
+            padding=SPACING["lg"], **plaszczyzna,
             content=ft.Column(zawartosc, spacing=SPACING["md"])
         )
 
@@ -257,9 +255,7 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False,
     )
 
     return ft.Container(
-        border_radius=RADIUS["lg"],
-        bgcolor=powierzchnia["bgcolor"], shadow=powierzchnia["shadow"],
-        border=powierzchnia["border"],
+        **plaszczyzna,
         content=ft.Column([naglowek, cialo], spacing=0)
     )
 

@@ -145,6 +145,12 @@ def main(page: ft.Page):
     page.padding = 0
     page.spacing = 0
 
+    # Ekran startowy idzie na wyświetlacz PRZED otwarciem bazy — to migracje
+    # są najdłuższym kawałkiem startu i to je trzeba czymś przykryć. Tablica
+    # nosi na razie nazwę aplikacji; numer wskoczy na jej miejsce, gdy baza
+    # wstanie (patrz utils.start).
+    ekran_startowy = utils.pokaz_ekran_startowy(page)
+
     # Mierzone, bo start to jedyny moment, w którym czas widać gołym okiem —
     # i jedyny, którego nie da się zmierzyć u siebie: na komputerze wszystko
     # jest szybkie. Pomiar jedzie w logu razem z „Wyślij log", więc mówi, ile to
@@ -165,6 +171,14 @@ def main(page: ft.Page):
     with log.zmierz("motyw"):
         utils.zastosuj_motywy(page, kolor_ustawiony)
         zastosuj_tryb_motywu()
+
+    # Baza stoi, więc tablica może pokazać prawdziwy numer. Motyw wgrywamy
+    # tuż przed tym, żeby podmiana i zmiana kolorów poszły jednym patchem.
+    try:
+        ekran_startowy.ustaw_numer(db.pobierz_rejestracje_startowa())
+        page.update()
+    except Exception:
+        log.polkniety("numer rejestracyjny na ekranie startowym")
 
     # Zapamiętujemy ostatnio zastosowany kolor motywu i auto, dla którego go
     # policzyliśmy — każdy pojazd może mieć teraz własny kolor interfejsu.
@@ -553,6 +567,11 @@ def main(page: ft.Page):
         # Zapamiętujemy, gdzie użytkownik jest, żeby następne uruchomienie
         # otworzyło się dokładnie tu, a nie na pierwszym aucie i Serwisie.
         if (app_state.auto_id, app_state.zakladka) != (ostatnia_pozycja_zapisana["auto_id"], ostatnia_pozycja_zapisana["zakladka"]):
+            # Zmiana POJAZDU kasuje zapamiętane pozycje przewijania: to samo
+            # miejsce na liście, ale zupełnie inne wpisy — powrót na dwa
+            # tysiące pikseli w dół nie znaczyłby już nic.
+            if app_state.auto_id != ostatnia_pozycja_zapisana["auto_id"]:
+                utils.zapomnij_pozycje(app_state)
             db.zapamietaj_ostatnia_pozycje(app_state.auto_id, app_state.zakladka)
             ostatnia_pozycja_zapisana["auto_id"] = app_state.auto_id
             ostatnia_pozycja_zapisana["zakladka"] = app_state.zakladka
@@ -687,6 +706,16 @@ def main(page: ft.Page):
                 page.views.append(FormularzDoZrobieniaView(page, app_state, None))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 page.views.append(FormularzDoZrobieniaView(page, app_state, utils.parsuj_int(segmenty[2], None)))
+
+        # Ekran ma zostać tam, gdzie był. Router przebudowuje CAŁY stos przy
+        # każdej zmianie sortowania, filtra i po każdej akcji na wpisie, więc
+        # bez tej jednej pętli każde odhaczenie zadania wyrzucało użytkownika
+        # na górę listy. Podpinamy tutaj, w jednym miejscu — ekran, który
+        # powstanie jutro, dostanie to samo bez dopisywania czegokolwiek
+        # u siebie (patrz utils.pozycja).
+        for widok in page.views:
+            utils.pamietaj_pozycje(page, app_state, widok,
+                                   lambda w=widok: utils.klucz_ekranu(w, app_state))
 
         page.update()
 

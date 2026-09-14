@@ -30,6 +30,11 @@ class AppState:
         # (patrz utils.pierwsze_pokazanie) — przy dziesiątym wejściu na kartę
         # pojazdu ten sam ruch byłby już tylko zwłoką przed odczytem.
         self.animacje_pokazane = {}
+        # Gdzie stał pasek przewijania na danym ekranie: klucz miejsca -> piksele.
+        # Router przebudowuje cały stos widoków przy każdej zmianie sortowania,
+        # filtra i po każdej akcji na wpisie — bez tej pamięci lista wracała za
+        # każdym razem na samą górę (patrz utils.pozycja).
+        self.pozycje_przewijania = {}
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
         self.do_zrobienia_podzakladka = 0  # 0 = Do zrobienia, 1 = Checklisty
         self.porownanie_wybrane = []

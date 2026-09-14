@@ -140,7 +140,7 @@ class PodzialKosztowView(ft.View):
                             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                             self.scena.wskaznik(ft.ProgressBar(
                                 value=max(0.03, proporcja), color=ft.Colors.PRIMARY,
-                                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                                bgcolor=utils.tlo_toru(self._page),
                                 height=8, border_radius=4)),
                             opis_kategorii,
                             ft.Text(

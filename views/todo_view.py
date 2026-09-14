@@ -168,6 +168,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 elementy.append(self.pole_wyszukiwarki)
 
                 self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:do_zrobienia")
                 self.wszystkie_karty = []
                 self.uzyj_wirtualizacji = True
                 # Tu miesiąc bierze się z TERMINU, nie z daty dopisania — i tylko
@@ -243,7 +244,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         razem = lista["razem"]
         licznik = ft.Text("", weight="bold", size=13)
         pasek = ft.ProgressBar(height=6, border_radius=3,
-                               bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE))
+                               bgcolor=utils.tlo_toru(self._page))
 
         def odswiez_naglowek():
             zrobione = sum(1 for c in checkboxy if c.value)

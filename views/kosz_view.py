@@ -107,7 +107,7 @@ class KoszView(ft.View):
         )
 
     def _karta_pojazdu(self, pozycja):
-        powierzchnia = utils.powierzchnia_karty(self._page, "md")
+        plaszczyzna = utils.powierzchnia(self._page, "karta", cien="md")
 
         opis = [f"Usunięto {pozycja['data_tekst']}"]
         if pozycja["liczba_wpisow"]:
@@ -139,7 +139,7 @@ class KoszView(ft.View):
         naglowek = ft.Row([
             ft.Container(
                 content=ft.Icon(ft.Icons.DIRECTIONS_CAR, size=20, color=ft.Colors.ON_SURFACE_VARIANT),
-                bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE),
+                bgcolor=utils.tlo_odznaki(self._page),
                 border_radius=utils.RADIUS["sm"],
                 padding=8,
             ),
@@ -173,10 +173,7 @@ class KoszView(ft.View):
 
         return ft.Container(
             padding=15,
-            border_radius=utils.RADIUS["lg"],
-            bgcolor=powierzchnia["bgcolor"],
-            shadow=powierzchnia["shadow"],
-            border=powierzchnia["border"],
+            **plaszczyzna,
             content=ft.Column(zawartosc, spacing=10),
         )
 

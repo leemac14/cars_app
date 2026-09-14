@@ -94,6 +94,7 @@ class SzukajView(ft.View):
         self.lista_wynikow = ft.ListView(
             spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False
         )
+        utils.pamietaj_pozycje(self._page, self.state, self.lista_wynikow, "lista:wyszukiwarka")
 
         elementy = [
             self.pole_wyszukiwarki, self.podpowiedz_kwot, self.pasek_trybu_kwoty,

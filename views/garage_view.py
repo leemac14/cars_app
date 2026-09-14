@@ -207,6 +207,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             )
         )
         self.lista_kart_opony = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+        utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_opony, "lista:opony")
         self.wszystkie_karty_opony = []
         self.uzyj_wirtualizacji = True
 
@@ -333,7 +334,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             )
         else:
             znacznik = ft.Container(
-                padding=8, border_radius=20, bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE),
+                padding=8, border_radius=20, bgcolor=utils.tlo_odznaki(self._page),
                 content=utils.etykieta("W magazynie")
             )
 
@@ -462,6 +463,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             )
         )
         self.lista_kart_czesci = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+        utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_czesci, "lista:magazyn_czesci")
         self.wszystkie_karty_czesci = []
         self.uzyj_wirtualizacji = True
 

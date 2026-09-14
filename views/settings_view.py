@@ -453,7 +453,7 @@ class UstawieniaView(ft.View):
         """Ostatnie wpisy w arkuszu dolnym. Podgląd jest tu warunkiem wysyłki,
         nie ozdobą: nikt nie wysyła pliku, którego nie widział na oczy."""
         tekst = log.ostatnie_linie(200).strip() or "Log jest pusty."
-        powierzchnia = utils.powierzchnia_karty(self._page, "sm")
+        plaszczyzna = utils.powierzchnia(self._page, "blok")
 
         bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
         bs.content.content = ft.Column([
@@ -472,9 +472,7 @@ class UstawieniaView(ft.View):
             ft.Divider(height=14),
             ft.Container(
                 padding=10,
-                border_radius=utils.RADIUS["md"],
-                bgcolor=powierzchnia["bgcolor"],
-                border=powierzchnia["border"],
+                **plaszczyzna,
                 content=ft.Column(
                     [ft.Text(tekst, size=10, font_family="monospace",
                              color=ft.Colors.ON_SURFACE_VARIANT)],
@@ -608,12 +606,9 @@ class UstawieniaView(ft.View):
                         ft.Text(opis_uzyc, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                     ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
-                powierzchnia = utils.powierzchnia_karty(self._page, "sm")
                 zawartosc.append(ft.Container(
                     padding=14,
-                    border_radius=utils.RADIUS["md"],
-                    bgcolor=powierzchnia["bgcolor"],
-                    border=powierzchnia["border"],
+                    **utils.powierzchnia(self._page, "blok"),
                     content=ft.Column(wiersze + [
                         ft.Row([
                             ft.FilledTonalButton("Scal w jedną", icon=ft.Icons.MERGE_TYPE,

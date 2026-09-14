@@ -7,6 +7,7 @@ import log
 import os
 
 from .stale import KOLOR_STATUS
+from .wyglad import powierzchnia
 from .dialogi import otworz_dialog, pokaz_komunikat, zamknij_dialog
 
 
@@ -60,8 +61,8 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
         return ft.Icon(ft.Icons.IMAGE_OUTLINED, size=26, color=ft.Colors.ON_SURFACE_VARIANT)
 
     ramka_podgladu = ft.Container(
-        width=56, height=56, border_radius=10, alignment=ft.Alignment.CENTER,
-        bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE),
+        width=56, height=56, alignment=ft.Alignment.CENTER,
+        **powierzchnia(page, "blok"),
         content=zawartosc_podgladu(abs_zalacznik(sciezka_zapisana))
     )
     tekst_nazwy = ft.Text(

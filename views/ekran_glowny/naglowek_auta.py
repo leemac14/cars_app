@@ -333,7 +333,7 @@ class MiksinNaglowkaAuta:
                 ft.ProgressRing(
                     value=wartosc_pierscienia, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA,
                     stroke_width=4, color=kolor_pierscienia, stroke_cap=ft.StrokeCap.ROUND,
-                    bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE),
+                    bgcolor=utils.tlo_toru(self._page),
                 ),
                 ft.Container(tresc_awatara, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA, alignment=ft.Alignment.CENTER),
             ], width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA),

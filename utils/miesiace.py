@@ -22,6 +22,7 @@ from state import MIESIACE_NAZWY
 
 from .stale import FS, RADIUS, SPACING, formatuj_liczba
 from .format import _odmiana_liczby, symbol_waluty
+from .pozycja import dodaj_obsluge_przewijania
 from .wyglad import tlo_karty
 
 # Separator ma zadaną wysokość nie dla wyglądu, tylko dla rachunku: to jedyny
@@ -103,10 +104,12 @@ class GrupyMiesiecy:
             ], spacing=SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
 
-        lista.on_scroll = self._przewiniete
-        # Domyślny odstęp zdarzeń przewijania jest gęsty jak na to zastosowanie:
-        # pasek ma nadążać za palcem, a nie dostawać setki zdarzeń na sekundę.
-        lista.scroll_interval = 100
+        # Dokładamy się do `on_scroll`, a nie podmieniamy go: na tej samej liście
+        # siedzi też pamięć pozycji (utils.pozycja), a przypisanie wprost
+        # wyłączyłoby po cichu tego, kto dopisał się pierwszy.
+        # Przy okazji odstęp zdarzeń: pasek ma nadążać za palcem, a nie dostawać
+        # setki zdarzeń na sekundę.
+        dodaj_obsluge_przewijania(lista, self._przewiniete)
 
     # ----- budowa -----
     def _naglowek(self, klucz):
