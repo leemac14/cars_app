@@ -23,7 +23,6 @@ class TimelineView(ft.View):
             page, "Dziennik życia auta", "/", ikona=ft.Icons.CALENDAR_MONTH,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, state.auto_id, "/timeline"))] if wspolny_id else None
         )
-        elementy = []
 
         if not self.state.auto_id:
             super().__init__(
@@ -38,98 +37,109 @@ class TimelineView(ft.View):
             )
             return
         
-        zdarzenia = db.pobierz_dane_timeline(self.state.auto_id)
+        def tresc():
+            # Oś czasu scala wpisy ze wszystkich tabel i rysuje heatmapę roku —
+            # przy kilkuset zdarzeniach to zauważalna chwila. Liczymy ją dopiero
+            # tutaj, czyli już po tym, jak zarys trafi na ekran.
+            elementy = []
+            zdarzenia = db.pobierz_dane_timeline(self.state.auto_id)
 
-        if not zdarzenia:
-            elementy.append(utils.ekran_braku_danych(
-                ikona=ft.Icons.HISTORY,
-                tytul="Brak zdarzeń",
-                opis="Gdy dodasz tankowania, wpisy serwisowe, wizyty czy koszty, pojawią się tutaj w jednej chronologicznej osi czasu.",
-                tekst_przycisku="Wróć na start",
-                on_click=lambda e: utils.przejdz(self._page, "/")
-            ))
-        else:
-            elementy.append(utils.heatmapa_aktywnosci(self._page, [z[2] for z in zdarzenia]))
-
-            opcje_sort = [
-                ("Data", "data", lambda x: (parsuj_date(x[2]), str(x[0]))),
-                ("Kwota", "kwota", lambda x: float(x[5] or 0)),
-            ]
-
-            sort_ui = utils.przycisk_sortowania(self._page, self.state, "timeline", opcje_sort)
-            filtr_typ_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "timeline_typ", zdarzenia, 1, "Typ")
-            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "timeline_rok", zdarzenia, 2)
-            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "timeline_mc", zdarzenia, 2)
-
-            # Filtr autorstwa ma sens dopiero, gdy pojazd jest współdzielony —
-            # przy jednym użytkowniku każdy wpis jest „jego” i przycisk byłby
-            # tylko szumem w i tak zapełnionym pasku filtrów.
-            filtry_ui = [sort_ui, filtr_typ_ui, filtr_rok_ui, filtr_mc_ui]
-            if wspolny_id:
-                filtry_ui.append(
-                    utils.przycisk_filtrowania_autora(self._page, self.state, "timeline_autor", zdarzenia, 8)
-                )
-
-            elementy.append(utils.pasek_zawijany(filtry_ui))
-
-            def filtruj_timeline(e):
-                zapytanie = e.control.value.lower().strip()
-                self.lista_kart.controls.clear()
-                widoczne = [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]]
-                for k in widoczne:
-                    self.lista_kart.controls.append(k["karta"])
-                # Oś musi się urywać na PIERWSZYM i OSTATNIM widocznym zdarzeniu,
-                # a nie na pierwszym/ostatnim w ogóle — inaczej po wyszukaniu
-                # linia wystaje w pustkę nad i pod listą.
-                self._popraw_koncowki_osi(widoczne)
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
-                self.update()
-
-            elementy.append(
-                ft.TextField(
-                    hint_text="Szukaj (typ, tytuł, opis, data)...",
-                    prefix_icon=ft.Icons.SEARCH,
-                    on_change=utils.z_opoznieniem(self._page, filtruj_timeline),
-                    **utils.styl_pola()
-                )
-            )
-
-            # spacing=0 celowo: odstęp między kartami robi teraz dolny padding
-            # WEWNĄTRZ wiersza osi, dzięki czemu pionowa linia biegnie przez
-            # przerwę i łączy kolejne zdarzenia zamiast się urywać.
-            self.lista_kart = ft.ListView(spacing=0, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-            self.wszystkie_karty = []
-            self.uzyj_wirtualizacji = True
-
-            po_filtrach = utils.filtruj_po_kategorii(zdarzenia, self.state, "timeline_typ", 1)
-            po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "timeline_rok", 2)
-            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "timeline_mc", 2)
-            if wspolny_id:
-                po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "timeline_autor", 8)
-            utils.posortuj_liste(po_filtrach, self.state, "timeline", opcje_sort)
-
-            if not po_filtrach:
-                elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+            if not zdarzenia:
+                elementy.append(utils.ekran_braku_danych(
+                    ikona=ft.Icons.HISTORY,
+                    tytul="Brak zdarzeń",
+                    opis="Gdy dodasz tankowania, wpisy serwisowe, wizyty czy koszty, pojawią się tutaj w jednej chronologicznej osi czasu.",
+                    tekst_przycisku="Wróć na start",
+                    on_click=lambda e: utils.przejdz(self._page, "/")
+                ))
             else:
-                for z in po_filtrach:
-                    wiersz = self._wiersz_osi_czasu(z)
-                    typ, data, tytul, opis, autor = z[1], z[2], z[3], z[4], z[8]
-                    notatka = z[9] if len(z) > 9 else None
-                    tekst_szukaj = f"{typ} {data} {tytul} {opis} {autor or ''} {notatka or ''}".lower()
-                    wiersz["szukaj"] = tekst_szukaj
-                    self.wszystkie_karty.append(wiersz)
-                    self.lista_kart.controls.append(wiersz["karta"])
-                self._popraw_koncowki_osi(self.wszystkie_karty)
+                elementy.append(utils.heatmapa_aktywnosci(self._page, [z[2] for z in zdarzenia]))
 
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
-            elementy.append(self.lista_kart)
+                opcje_sort = [
+                    ("Data", "data", lambda x: (parsuj_date(x[2]), str(x[0]))),
+                    ("Kwota", "kwota", lambda x: float(x[5] or 0)),
+                ]
 
-        elementy.append(utils.dol_bezpieczny(10))
+                sort_ui = utils.przycisk_sortowania(self._page, self.state, "timeline", opcje_sort)
+                filtr_typ_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "timeline_typ", zdarzenia, 1, "Typ")
+                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "timeline_rok", zdarzenia, 2)
+                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "timeline_mc", zdarzenia, 2)
+
+                # Filtr autorstwa ma sens dopiero, gdy pojazd jest współdzielony —
+                # przy jednym użytkowniku każdy wpis jest „jego” i przycisk byłby
+                # tylko szumem w i tak zapełnionym pasku filtrów.
+                filtry_ui = [sort_ui, filtr_typ_ui, filtr_rok_ui, filtr_mc_ui]
+                if wspolny_id:
+                    filtry_ui.append(
+                        utils.przycisk_filtrowania_autora(self._page, self.state, "timeline_autor", zdarzenia, 8)
+                    )
+
+                elementy.append(utils.pasek_zawijany(filtry_ui))
+
+                def filtruj_timeline(e):
+                    zapytanie = e.control.value.lower().strip()
+                    self.lista_kart.controls.clear()
+                    widoczne = [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]]
+                    for k in widoczne:
+                        self.lista_kart.controls.append(k["karta"])
+                    # Oś musi się urywać na PIERWSZYM i OSTATNIM widocznym zdarzeniu,
+                    # a nie na pierwszym/ostatnim w ogóle — inaczej po wyszukaniu
+                    # linia wystaje w pustkę nad i pod listą.
+                    self._popraw_koncowki_osi(widoczne)
+                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
+                    self.update()
+
+                elementy.append(
+                    ft.TextField(
+                        hint_text="Szukaj (typ, tytuł, opis, data)...",
+                        prefix_icon=ft.Icons.SEARCH,
+                        on_change=utils.z_opoznieniem(self._page, filtruj_timeline),
+                        **utils.styl_pola()
+                    )
+                )
+
+                # spacing=0 celowo: odstęp między kartami robi teraz dolny padding
+                # WEWNĄTRZ wiersza osi, dzięki czemu pionowa linia biegnie przez
+                # przerwę i łączy kolejne zdarzenia zamiast się urywać.
+                self.lista_kart = ft.ListView(spacing=0, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.wszystkie_karty = []
+                self.uzyj_wirtualizacji = True
+
+                po_filtrach = utils.filtruj_po_kategorii(zdarzenia, self.state, "timeline_typ", 1)
+                po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "timeline_rok", 2)
+                po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "timeline_mc", 2)
+                if wspolny_id:
+                    po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "timeline_autor", 8)
+                utils.posortuj_liste(po_filtrach, self.state, "timeline", opcje_sort)
+
+                if not po_filtrach:
+                    elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
+                else:
+                    for z in po_filtrach:
+                        wiersz = self._wiersz_osi_czasu(z)
+                        typ, data, tytul, opis, autor = z[1], z[2], z[3], z[4], z[8]
+                        notatka = z[9] if len(z) > 9 else None
+                        tekst_szukaj = f"{typ} {data} {tytul} {opis} {autor or ''} {notatka or ''}".lower()
+                        wiersz["szukaj"] = tekst_szukaj
+                        self.wszystkie_karty.append(wiersz)
+                        self.lista_kart.controls.append(wiersz["karta"])
+                    self._popraw_koncowki_osi(self.wszystkie_karty)
+
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
+                elementy.append(self.lista_kart)
+
+            elementy.append(utils.dol_bezpieczny(10))
+            return utils.z_odswiezaniem(page, elementy)
+
 
         super().__init__(
             route="/timeline",
             padding=15,
-            appbar=appbar, controls=[utils.z_odswiezaniem(page, elementy)]
+            appbar=appbar,
+            controls=[utils.zbuduj_etapami(
+                page, utils.szkielet_ekranu(page, wykres=True, karty=5, linie=2),
+                tresc, widok=self,
+            )],
         )
 
     # ================= OŚ CZASU =================

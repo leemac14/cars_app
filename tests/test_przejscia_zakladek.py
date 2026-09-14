@@ -280,7 +280,8 @@ def test_zawartosc_zakladki_nie_rozpycha_sie_na_wysokosc(baza, zakladka):
     rozjechałoby układ na telefonie, czego test budowy widoku by nie zauważył."""
     widok, _ = ekran_glowny(zakladka=zakladka)
 
-    kolumna = widok.przelacznik_zakladek.kontrolka.content.content
+    # AnimatedSwitcher → opakowanie przesunięcia → kontener szkieletu → treść
+    kolumna = widok.przelacznik_zakladek.kontrolka.content.content.content
     rozpychajace = [type(k).__name__ for k in kolumna.controls if getattr(k, "expand", None)]
 
     assert rozpychajace == [], f"zakładka {zakladka}: {rozpychajace}"

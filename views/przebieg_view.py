@@ -42,88 +42,97 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         self.uzyj_wirtualizacji = False
         # ----------------------------------------
 
-        elementy = []
-        wpisy = db.pobierz_pelna_historie_przebiegu(self.state.auto_id)
+        def tresc():
+            # Pełna historia licznika to wszystkie tankowania, wizyty i wpisy
+            # serwisowe zebrane w jedną oś plus wykres — liczymy ją dopiero tutaj,
+            # czyli już po tym, jak zarys trafi na ekran.
+            elementy = []
+            wpisy = db.pobierz_pelna_historie_przebiegu(self.state.auto_id)
 
-        if not wpisy:
-            elementy.append(utils.ekran_braku_danych(
-                ikona=ft.Icons.SPEED,
-                tytul="Brak zapisanych przebiegów",
-                opis="Tu trafia każdy stan licznika, jaki zna aplikacja — z tankowań, wizyt "
-                     "i wpisów serwisowych, a także szybkie odczyty z deski rozdzielczej.",
-                tekst_przycisku="Dodaj odczyt",
-                on_click=lambda e: self._dialog_odczytu()
-            ))
-        else:
-            podsumowanie = db.podsumowanie_historii_przebiegu(self.state.auto_id, wpisy)
-            elementy.append(self._karta_podsumowania(podsumowanie))
-
-            wykres = utils.wykres_przebiegu(self._page, wpisy)
-            if wykres:
-                elementy.append(utils.karta_analizy(
-                    self._page, "Licznik w czasie", ft.Icons.SHOW_CHART, [wykres],
+            if not wpisy:
+                elementy.append(utils.ekran_braku_danych(
+                    ikona=ft.Icons.SPEED,
+                    tytul="Brak zapisanych przebiegów",
+                    opis="Tu trafia każdy stan licznika, jaki zna aplikacja — z tankowań, wizyt "
+                         "i wpisów serwisowych, a także szybkie odczyty z deski rozdzielczej.",
+                    tekst_przycisku="Dodaj odczyt",
+                    on_click=lambda e: self._dialog_odczytu()
                 ))
-
-            opcje_sort = [
-                ("Data", "data", lambda x: (x["data_obj"], x["przebieg"])),
-                ("Przebieg", "przebieg", lambda x: x["przebieg"]),
-                ("Źródło", "zrodlo", lambda x: (x["etykieta_zrodla"], x["data_obj"])),
-            ]
-
-            sort_ui = utils.przycisk_sortowania(self._page, self.state, "odczyty_przebiegu", opcje_sort)
-            filtr_zrodlo_ui = utils.przycisk_filtrowania_kategoria(
-                self._page, self.state, "przebieg_zrodlo", wpisy, "etykieta_zrodla", "Źródło")
-            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "odczyty_rok", wpisy, "data")
-            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "odczyty_mc", wpisy, "data")
-
-            elementy.append(ft.Row(controls=[sort_ui, filtr_zrodlo_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
-
-            def filtruj_odczyty(e):
-                zapytanie = e.control.value.lower().strip()
-                self.lista_kart.controls.clear()
-                for k in self.wszystkie_karty:
-                    if zapytanie in k["szukaj"]:
-                        self.lista_kart.controls.append(k["karta"])
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
-                self.update()
-
-            elementy.append(
-                ft.TextField(
-                    hint_text="Szukaj (data, przebieg, źródło, notatka)...",
-                    prefix_icon=ft.Icons.SEARCH,
-                    on_change=utils.z_opoznieniem(self._page, filtruj_odczyty),
-                    **utils.styl_pola()
-                )
-            )
-
-            self.lista_kart = ft.ListView(spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-            self.wszystkie_karty = []
-            self.uzyj_wirtualizacji = True
-
-            po_filtrach = utils.filtruj_po_kategorii(wpisy, self.state, "przebieg_zrodlo", "etykieta_zrodla")
-            po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "odczyty_rok", "data")
-            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "odczyty_mc", "data")
-            utils.posortuj_liste(po_filtrach, self.state, "odczyty_przebiegu", opcje_sort)
-
-            if not po_filtrach:
-                elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)],
-                                       alignment=ft.MainAxisAlignment.CENTER))
             else:
-                for w in po_filtrach:
-                    karta = self._karta_wpisu(w, wspolny_id)
-                    self.wszystkie_karty.append(karta)
-                    self.lista_kart.controls.append(karta["karta"])
+                podsumowanie = db.podsumowanie_historii_przebiegu(self.state.auto_id, wpisy)
+                elementy.append(self._karta_podsumowania(podsumowanie))
 
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
-            elementy.append(self.lista_kart)
+                wykres = utils.wykres_przebiegu(self._page, wpisy)
+                if wykres:
+                    elementy.append(utils.karta_analizy(
+                        self._page, "Licznik w czasie", ft.Icons.SHOW_CHART, [wykres],
+                    ))
 
-        elementy.append(utils.dol_bezpieczny(10))
+                opcje_sort = [
+                    ("Data", "data", lambda x: (x["data_obj"], x["przebieg"])),
+                    ("Przebieg", "przebieg", lambda x: x["przebieg"]),
+                    ("Źródło", "zrodlo", lambda x: (x["etykieta_zrodla"], x["data_obj"])),
+                ]
+
+                sort_ui = utils.przycisk_sortowania(self._page, self.state, "odczyty_przebiegu", opcje_sort)
+                filtr_zrodlo_ui = utils.przycisk_filtrowania_kategoria(
+                    self._page, self.state, "przebieg_zrodlo", wpisy, "etykieta_zrodla", "Źródło")
+                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "odczyty_rok", wpisy, "data")
+                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "odczyty_mc", wpisy, "data")
+
+                elementy.append(ft.Row(controls=[sort_ui, filtr_zrodlo_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+
+                def filtruj_odczyty(e):
+                    zapytanie = e.control.value.lower().strip()
+                    self.lista_kart.controls.clear()
+                    for k in self.wszystkie_karty:
+                        if zapytanie in k["szukaj"]:
+                            self.lista_kart.controls.append(k["karta"])
+                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
+                    self.update()
+
+                elementy.append(
+                    ft.TextField(
+                        hint_text="Szukaj (data, przebieg, źródło, notatka)...",
+                        prefix_icon=ft.Icons.SEARCH,
+                        on_change=utils.z_opoznieniem(self._page, filtruj_odczyty),
+                        **utils.styl_pola()
+                    )
+                )
+
+                self.lista_kart = ft.ListView(spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.wszystkie_karty = []
+                self.uzyj_wirtualizacji = True
+
+                po_filtrach = utils.filtruj_po_kategorii(wpisy, self.state, "przebieg_zrodlo", "etykieta_zrodla")
+                po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "odczyty_rok", "data")
+                po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "odczyty_mc", "data")
+                utils.posortuj_liste(po_filtrach, self.state, "odczyty_przebiegu", opcje_sort)
+
+                if not po_filtrach:
+                    elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)],
+                                           alignment=ft.MainAxisAlignment.CENTER))
+                else:
+                    for w in po_filtrach:
+                        karta = self._karta_wpisu(w, wspolny_id)
+                        self.wszystkie_karty.append(karta)
+                        self.lista_kart.controls.append(karta["karta"])
+
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
+                elementy.append(self.lista_kart)
+
+            elementy.append(utils.dol_bezpieczny(10))
+            return utils.z_odswiezaniem(page, elementy)
+
 
         super().__init__(
             route="/przebieg",
             padding=15,
             appbar=appbar, floating_action_button=fab,
-            controls=[utils.z_odswiezaniem(page, elementy)]
+            controls=[utils.zbuduj_etapami(
+                page, utils.szkielet_ekranu(page, kafle=2, wykres=True, karty=4),
+                tresc, widok=self,
+            )],
         )
 
     # ================= PODSUMOWANIE =================

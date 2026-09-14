@@ -15,6 +15,7 @@ from .stale import *
 from .format import *
 from .animacje import *
 from .wyglad import *
+from .szkielet import *
 from .zgodnosc import *
 from .dialogi import *
 from .listy import *
@@ -36,6 +37,7 @@ from . import (
     format,
     animacje,
     wyglad,
+    szkielet,
     zgodnosc,
     dialogi,
     listy,

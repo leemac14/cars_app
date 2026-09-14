@@ -33,172 +33,178 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         self.uzyj_wirtualizacji = False
         # --------------------------------------
 
-        elementy = []
-        with db.polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
-            wpisy = c.fetchall()
+        def tresc():
+            # Historia podzespołu potrafi mieć kilkadziesiąt wpisów, każdy z kartą,
+            # załącznikiem i notatką — budujemy ją dopiero tutaj, czyli już po tym,
+            # jak zarys trafi na ekran.
+            elementy = []
+            with db.polacz_baze() as conn:
+                c = conn.cursor()
+                c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
+                wpisy = c.fetchall()
 
-        if not wpisy:
-            elementy.append(ft.Text("Brak wpisów w historii. Kliknij + aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
-        else:
-            opcje_sort = [
-                ("Data", "data", lambda x: (parsuj_date(x[1]), x[0])),
-                ("Przebieg", "przebieg", lambda x: int(x[2] or 0)),
-                ("Cena", "cena", lambda x: float((x[5] if x[4] else x[3]) or 0))
-            ]
+            if not wpisy:
+                elementy.append(ft.Text("Brak wpisów w historii. Kliknij + aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
+            else:
+                opcje_sort = [
+                    ("Data", "data", lambda x: (parsuj_date(x[1]), x[0])),
+                    ("Przebieg", "przebieg", lambda x: int(x[2] or 0)),
+                    ("Cena", "cena", lambda x: float((x[5] if x[4] else x[3]) or 0))
+                ]
 
-            sort_ui = utils.przycisk_sortowania(self._page, self.state, "historia", opcje_sort)
-            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "historia_rok", wpisy, 1)
-            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "historia_mc", wpisy, 1)
+                sort_ui = utils.przycisk_sortowania(self._page, self.state, "historia", opcje_sort)
+                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "historia_rok", wpisy, 1)
+                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "historia_mc", wpisy, 1)
 
-            elementy.append(ft.Row(controls=[sort_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+                elementy.append(ft.Row(controls=[sort_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
-            # --- POPRAWNA INICJALIZACJA WYSZUKIWARKI ---
-            self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-            self.uzyj_wirtualizacji = True
-            self.wszystkie_karty = []
+                # --- POPRAWNA INICJALIZACJA WYSZUKIWARKI ---
+                self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.uzyj_wirtualizacji = True
+                self.wszystkie_karty = []
 
-            def filtruj_historie(e):
-                zapytanie = e.control.value.lower().strip()
-                self.lista_kart.controls.clear()
-                for k in self.wszystkie_karty:
-                    if zapytanie in k["szukaj"]:
-                        self.lista_kart.controls.append(k["karta"])
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
-                self.update()
+                def filtruj_historie(e):
+                    zapytanie = e.control.value.lower().strip()
+                    self.lista_kart.controls.clear()
+                    for k in self.wszystkie_karty:
+                        if zapytanie in k["szukaj"]:
+                            self.lista_kart.controls.append(k["karta"])
+                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
+                    self.update()
 
-            self.pole_wyszukiwarki = ft.TextField(
-                hint_text="Szukaj (np. przebieg, data, notatki)...",
-                prefix_icon=ft.Icons.SEARCH,
-                on_change=utils.z_opoznieniem(self._page, filtruj_historie),
-                **utils.styl_pola()
-            )
-            elementy.append(self.pole_wyszukiwarki)
-            # -------------------------------------------
+                self.pole_wyszukiwarki = ft.TextField(
+                    hint_text="Szukaj (np. przebieg, data, notatki)...",
+                    prefix_icon=ft.Icons.SEARCH,
+                    on_change=utils.z_opoznieniem(self._page, filtruj_historie),
+                    **utils.styl_pola()
+                )
+                elementy.append(self.pole_wyszukiwarki)
+                # -------------------------------------------
 
-            # Filtrowanie i sortowanie listy wpisów
-            wpisy = utils.filtruj_po_roku(wpisy, self.state, "historia_rok", 1)
-            wpisy = utils.filtruj_po_miesiacu(wpisy, self.state, "historia_mc", 1)
-            utils.posortuj_liste(wpisy, self.state, "historia", opcje_sort)
+                # Filtrowanie i sortowanie listy wpisów
+                wpisy = utils.filtruj_po_roku(wpisy, self.state, "historia_rok", 1)
+                wpisy = utils.filtruj_po_miesiacu(wpisy, self.state, "historia_mc", 1)
+                utils.posortuj_liste(wpisy, self.state, "historia", opcje_sort)
 
-            def otworz_menu_historii(h_id, w_id, zalacznik=None, notatka=None):
-                # Wpisu z wizyty zbiorczej nadal nie edytujemy stąd (dane trzyma
-                # wizyta), ale NOTATKĘ da się dopisać — jest własnością tego
-                # jednego wpisu, więc blokowanie jej tutaj byłoby sztuczne.
-                if w_id:
-                    utils.pokaz_menu_kontekstowe(self._page, "Wpis z wizyty zbiorczej", [
-                        utils.pozycja_menu_notatki(
-                            self._page, "historia", h_id, notatka,
+                def otworz_menu_historii(h_id, w_id, zalacznik=None, notatka=None):
+                    # Wpisu z wizyty zbiorczej nadal nie edytujemy stąd (dane trzyma
+                    # wizyta), ale NOTATKĘ da się dopisać — jest własnością tego
+                    # jednego wpisu, więc blokowanie jej tutaj byłoby sztuczne.
+                    if w_id:
+                        utils.pokaz_menu_kontekstowe(self._page, "Wpis z wizyty zbiorczej", [
+                            utils.pozycja_menu_notatki(
+                                self._page, "historia", h_id, notatka,
+                                lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
+                            ),
+                            {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty zbiorcze”",
+                             "akcja": lambda: utils.przejdz(self._page, "/wizyty")},
+                        ])
+                        return
+
+                    def usun_wpis():
+                        def wykonaj():
+                            wynik = db.usun_z_cofnieciem("historia", h_id)
+                            if wynik:
+                                oryginalne_cofnij = wynik["cofnij"]
+                                def nowe_cofnij():
+                                    oryginalne_cofnij()
+                                    db.aktualizuj_najnowszy_wpis(z_id)
+                                wynik["cofnij"] = nowe_cofnij
+                            db.aktualizuj_najnowszy_wpis(z_id)
+                            utils.przejdz(self._page, f"/historia/{z_id}")
+                            utils.pokaz_komunikat_cofnij(self._page, "Usunięto wpis.", wynik)
+                        utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten wpis z historii?", wykonaj)
+
+                    async def dodaj_zmien_zdj():
+                        await utils.szybkie_dodanie_zdjecia(self._page, "historia", h_id, zalacznik, lambda: utils.przejdz(self._page, f"/historia/{z_id}"))
+
+                    pozycje = []
+                    if zalacznik:
+                        pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Historia")})
+                        pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
+                    else:
+                        pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon/faktura)", "akcja": dodaj_zmien_zdj})
+                
+                    pozycje.append(utils.pozycja_menu_notatki(
+                        self._page, "historia", h_id, notatka,
+                        lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
+                    ))
+                    pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{h_id}")})
+                    pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_wpis", h_id), utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))})
+                    pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": ft.Colors.RED})
+
+                    utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
+
+                for w in wpisy:
+                    (h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez,
+                     zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data) = w
+                    jest_zbiorcza = w_id is not None
+                    # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
+                    # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
+                    if jest_zbiorcza:
+                        k_str = f"{utils.formatuj_liczba(float(w_koszt or 0))}  {utils.symbol_waluty()} (cała wizyta)"
+                    else:
+                        k_str = f"{utils.formatuj_liczba(float(cena or 0))}  {utils.symbol_waluty()}"
+                    sub_tekst = f"Przebieg: {utils.formatuj_liczba(int(prz or 0), 0)} km  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
+                    if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
+
+                    tresc_h = [
+                        ft.Row([
+                            ft.Text(str(data), weight="bold", size=16, expand=True), 
+                            ft.Row([
+                                utils.wskaznik_zalacznika(self._page, zalacznik, "Wpis historii"),
+                                ft.Text(k_str, color=ft.Colors.RED_700, weight="bold")
+                            ], spacing=6)
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
+                    ]
+                    tresc_h.append(utils.podglad_notatki(
+                        self._page, notatka, notatka_autor, notatka_data, "Notatka do wpisu",
+                        on_edytuj=lambda rid=h_id: utils.szybka_notatka(
+                            self._page, "historia", rid,
                             lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
                         ),
-                        {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty zbiorcze”",
-                         "akcja": lambda: utils.przejdz(self._page, "/wizyty")},
-                    ])
-                    return
+                        pokaz_podpis=bool(wspolny_id)
+                    ))
+                    if wspolny_id and (dodane_przez or zmodyfikowane_przez):
+                        tresc_h.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
+                    karta, kontener = utils.karta_listy(
+                        ft.Column(tresc_h, spacing=4),
+                        kolor_paska=ft.Colors.RED_700 if jest_zbiorcza else ft.Colors.ORANGE_700,
+                        page=self._page,
+                    )
 
-                def usun_wpis():
-                    def wykonaj():
-                        wynik = db.usun_z_cofnieciem("historia", h_id)
-                        if wynik:
-                            oryginalne_cofnij = wynik["cofnij"]
-                            def nowe_cofnij():
-                                oryginalne_cofnij()
-                                db.aktualizuj_najnowszy_wpis(z_id)
-                            wynik["cofnij"] = nowe_cofnij
-                        db.aktualizuj_najnowszy_wpis(z_id)
-                        utils.przejdz(self._page, f"/historia/{z_id}")
-                        utils.pokaz_komunikat_cofnij(self._page, "Usunięto wpis.", wynik)
-                    utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten wpis z historii?", wykonaj)
+                    self.karty_ref[h_id] = kontener
 
-                async def dodaj_zmien_zdj():
-                    await utils.szybkie_dodanie_zdjecia(self._page, "historia", h_id, zalacznik, lambda: utils.przejdz(self._page, f"/historia/{z_id}"))
-
-                pozycje = []
-                if zalacznik:
-                    pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Historia")})
-                    pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
-                else:
-                    pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon/faktura)", "akcja": dodaj_zmien_zdj})
-                
-                pozycje.append(utils.pozycja_menu_notatki(
-                    self._page, "historia", h_id, notatka,
-                    lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
-                ))
-                pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{h_id}")})
-                pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_wpis", h_id), utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))})
-                pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": ft.Colors.RED})
-
-                utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
-
-            for w in wpisy:
-                (h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez,
-                 zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data) = w
-                jest_zbiorcza = w_id is not None
-                # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
-                # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
-                if jest_zbiorcza:
-                    k_str = f"{utils.formatuj_liczba(float(w_koszt or 0))}  {utils.symbol_waluty()} (cała wizyta)"
-                else:
-                    k_str = f"{utils.formatuj_liczba(float(cena or 0))}  {utils.symbol_waluty()}"
-                sub_tekst = f"Przebieg: {utils.formatuj_liczba(int(prz or 0), 0)} km  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
-                if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
-
-                tresc_h = [
-                    ft.Row([
-                        ft.Text(str(data), weight="bold", size=16, expand=True), 
-                        ft.Row([
-                            utils.wskaznik_zalacznika(self._page, zalacznik, "Wpis historii"),
-                            ft.Text(k_str, color=ft.Colors.RED_700, weight="bold")
-                        ], spacing=6)
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
-                ]
-                tresc_h.append(utils.podglad_notatki(
-                    self._page, notatka, notatka_autor, notatka_data, "Notatka do wpisu",
-                    on_edytuj=lambda rid=h_id: utils.szybka_notatka(
-                        self._page, "historia", rid,
-                        lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
-                    ),
-                    pokaz_podpis=bool(wspolny_id)
-                ))
-                if wspolny_id and (dodane_przez or zmodyfikowane_przez):
-                    tresc_h.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
-                karta, kontener = utils.karta_listy(
-                    ft.Column(tresc_h, spacing=4),
-                    kolor_paska=ft.Colors.RED_700 if jest_zbiorcza else ft.Colors.ORANGE_700,
-                    page=self._page,
-                )
-
-                self.karty_ref[h_id] = kontener
-
-                def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=zalacznik, nt=notatka):
-                    if self.tryb_zaznaczania:
-                        if wid:
-                            utils.pokaz_komunikat(self._page, "Wpisów z Wizyty Zbiorczej nie można grupować stąd. Usuń całą wizytę.", ft.Colors.ORANGE_700)
+                    def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=zalacznik, nt=notatka):
+                        if self.tryb_zaznaczania:
+                            if wid:
+                                utils.pokaz_komunikat(self._page, "Wpisów z Wizyty Zbiorczej nie można grupować stąd. Usuń całą wizytę.", ft.Colors.ORANGE_700)
+                            else:
+                                self.zaznacz_odznacz(hid, kont)
                         else:
+                            otworz_menu_historii(hid, wid, zal, nt)
+
+                    def _on_long_press(e, hid=h_id, wid=w_id, kont=kontener):
+                        if wid: return 
+                        if not self.tryb_zaznaczania:
+                            self.tryb_zaznaczania = True
                             self.zaznacz_odznacz(hid, kont)
-                    else:
-                        otworz_menu_historii(hid, wid, zal, nt)
 
-                def _on_long_press(e, hid=h_id, wid=w_id, kont=kontener):
-                    if wid: return 
-                    if not self.tryb_zaznaczania:
-                        self.tryb_zaznaczania = True
-                        self.zaznacz_odznacz(hid, kont)
+                    kontener.on_click = _on_click
+                    kontener.on_long_press = _on_long_press
 
-                kontener.on_click = _on_click
-                kontener.on_long_press = _on_long_press
+                    tekst_szukaj = f"{data} {sub_tekst} {k_str} {notatka or ''}".lower()
+                    self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
+                    self.lista_kart.controls.append(karta)
 
-                tekst_szukaj = f"{data} {sub_tekst} {k_str} {notatka or ''}".lower()
-                self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
-                self.lista_kart.controls.append(karta)
+                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
+                elementy.append(self.lista_kart)
 
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
-            elementy.append(self.lista_kart)
+            # To jest linijka poza blokiem else (już ją masz)
+            elementy.append(utils.dol_bezpieczny(10))
+            return ft.Column(elementy, spacing=15)
 
-        # To jest linijka poza blokiem else (już ją masz)
-        elementy.append(utils.dol_bezpieczny(10))
 
         super().__init__(
             route=f"/historia/{z_id}",
@@ -206,8 +212,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             appbar=appbar,
             floating_action_button=fab,
             spacing=15,
-            controls=elementy,          # lub self.elementy, w zależności jak masz w tym pliku
-            scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
+            controls=[utils.zbuduj_etapami(
+                page, utils.szkielet_ekranu(page, kafle=2, karty=4), tresc, widok=self,
+            )],
+            scroll=ft.ScrollMode.AUTO,  # natywne przewijanie
         )
 
     def potwierdz_grupowe_usuwanie(self, e):

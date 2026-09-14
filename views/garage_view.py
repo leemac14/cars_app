@@ -92,17 +92,29 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
     def _fab_podzakladki(self):
         return utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, self.trasa_fab))
 
+    def _ustal_trase_fab(self):
+        """Trasa „plusa” zależy tylko od tego, którą połowę magazynu widać —
+        ustalamy ją PRZED budową treści, bo przycisk powstaje wcześniej niż ona."""
+        self.trasa_fab = ("/magazyn/czesci/nowa" if int(self.state.magazyn_zakladka or 0) == 1
+                          else "/magazyn/opony/nowy")
+        return self.trasa_fab
+
     def _zawartosc_podzakladki(self):
         """Zawartość aktywnej podzakładki jako JEDNA kontrolka — to ona jedzie
-        przez przełącznik. Przy okazji ustawia trasę „plusa”, bo dodaje się
-        zawsze do tej połowy magazynu, którą się właśnie ogląda."""
-        if int(self.state.magazyn_zakladka or 0) == 1:
-            elementy = self._buduj_czesci()
-            self.trasa_fab = "/magazyn/czesci/nowa"
-        else:
-            elementy = self._buduj_opony()
-            self.trasa_fab = "/magazyn/opony/nowy"
-        return ft.Column(list(elementy), spacing=15)
+        przez przełącznik. Budowa jest odroczona za szkielet, bo lista zestawów
+        albo części potrafi mieć swoje kilkadziesiąt kart."""
+        self._ustal_trase_fab()
+
+        def tresc():
+            if int(self.state.magazyn_zakladka or 0) == 1:
+                elementy = self._buduj_czesci()
+            else:
+                elementy = self._buduj_opony()
+            return ft.Column(list(elementy), spacing=15)
+
+        return utils.zbuduj_etapami(
+            self._page, utils.szkielet_listy(self._page, ile=4), tresc, widok=self,
+        )
 
     def _przelacz_podzakladke(self, idx):
         stara = int(self.state.magazyn_zakladka or 0)

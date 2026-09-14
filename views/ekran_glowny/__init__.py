@@ -56,6 +56,7 @@ class MainView(
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
         self._scena_zakladki = None      # animacja wejścia aktywnej zakładki (utils.ScenaWejscia)
         self.przelacznik_zakladek = None # zawartość zakładki żyje w nim (patrz przelacz_zakladke)
+        self._gotowy = False             # True dopiero po super().__init__ (patrz _po_zbudowaniu_zakladki)
         self.pasek_zakladek = None       # ustawiany niżej, razem z dolnym paskiem
         self._przelacznik_pojazdow = None  # ustawiane w buduj_naglowek_auta (showroom aut)
         # --------------------------------------
@@ -131,6 +132,7 @@ class MainView(
             scroll=ft.ScrollMode.AUTO,  # Włączamy natywne przewijanie całej strony
             floating_action_button=self.fab
         )
+        self._gotowy = True
 
     def zmien_zakladke(self, e):
         self.przelacz_zakladke(int(e.control.selected_index))
@@ -139,37 +141,72 @@ class MainView(
         """Zawartość aktywnej zakładki jako JEDNA kontrolka — to ona jedzie przez
         przełącznik.
 
-        Buildery zakładek dopisują do `self.elementy` i ustawiają `self.fab`, więc
-        na czas budowy podstawiamy im własną listę. Poza tą chwilą
-        `self.elementy` znaczy dokładnie to, co znaczyło."""
+        Budowa jest ODROCZONA: najpierw idzie szkielet, treść dolicza się chwilę
+        później (patrz utils.zbuduj_etapami). Lista tankowań z pięciu lat to
+        kilkaset kontrolek — bez tego zakładka przez ułamek sekundy pokazuje
+        pustkę, a pustka wygląda tak samo jak zepsuty ekran."""
         self._scena_zakladki = self._nowa_scena_zakladki()
-        wspolne, self.elementy = self.elementy, []
-        self.fab = None
-        try:
-            if self.state.zakladka == 1:
-                self.buduj_serwis()
-            elif self.state.zakladka == 2:
-                self.buduj_koszty()
-            elif self.state.zakladka == 3:
-                self.buduj_statystyki()
-            else:
-                self.buduj_kokpit_ekran()
-            zebrane = self.elementy
-        finally:
-            self.elementy = wspolne
 
-        # Szybkie dodawanie znika u kogoś, kto ma pojazd wyłącznie do wglądu.
-        # FAB składają zakładki (patrz _buduj_fab_szybkich_akcji), więc gasimy go
-        # tutaj — w jednym miejscu, przez które przechodzą wszystkie cztery.
-        if self.state.auto_id and not utils.wolno_dodawac(self.state.auto_id):
+        def zbuduj():
+            # Buildery zakładek dopisują do `self.elementy` i ustawiają
+            # `self.fab`, więc na czas budowy podstawiamy im własną listę. Poza tą
+            # chwilą `self.elementy` znaczy dokładnie to, co znaczyło.
+            wspolne, self.elementy = self.elementy, []
             self.fab = None
+            try:
+                if self.state.zakladka == 1:
+                    self.buduj_serwis()
+                elif self.state.zakladka == 2:
+                    self.buduj_koszty()
+                elif self.state.zakladka == 3:
+                    self.buduj_statystyki()
+                else:
+                    self.buduj_kokpit_ekran()
+                zebrane = self.elementy
+            finally:
+                self.elementy = wspolne
 
-        # Scena rusza dopiero, gdy zawartość jest zbudowana — sama odczeka
-        # jeszcze moment, aż widok trafi do drzewa strony.
-        self._scena_zakladki.uruchom(self._page)
+            # Szybkie dodawanie znika u kogoś, kto ma pojazd wyłącznie do wglądu.
+            # FAB składają zakładki (patrz _buduj_fab_szybkich_akcji), więc gasimy
+            # go tutaj — w jednym miejscu, przez które przechodzą wszystkie cztery.
+            if self.state.auto_id and not utils.wolno_dodawac(self.state.auto_id):
+                self.fab = None
 
-        # `spacing` odtwarza odstęp, który przy płaskiej liście dawał sam widok.
-        return ft.Column(zebrane, spacing=15)
+            # Scena animacji rusza dopiero, gdy zawartość jest zbudowana.
+            self._scena_zakladki.uruchom(self._page)
+
+            # `spacing` odtwarza odstęp, który przy płaskiej liście dawał sam widok.
+            return ft.Column(zebrane, spacing=15)
+
+        return utils.zbuduj_etapami(
+            self._page, self._szkielet_zakladki(), zbuduj,
+            widok=self, po_zbudowaniu=self._po_zbudowaniu_zakladki,
+        )
+
+    def _szkielet_zakladki(self):
+        """Zarys w kształcie tego, co za chwilę stanie na jego miejscu — inaczej
+        treść „przeskakuje" po podmianie zamiast się w zarys wpasować."""
+        zakladka = int(self.state.zakladka or 0)
+        if zakladka == 0:
+            return utils.szkielet_ekranu(self._page, kafle=2, karty=2, linie=1)
+        if zakladka == 3:
+            return utils.szkielet_ekranu(self._page, kafle=4, wykres=True, karty=1)
+        return utils.szkielet_ekranu(self._page, karty=4)
+
+    def _po_zbudowaniu_zakladki(self):
+        """Przycisk dodawania zależy od zakładki, a powstaje razem z jej treścią —
+        czyli już PO tym, jak widok trafił na ekran. Trzeba go więc dostawić.
+
+        Bez pętli zdarzeń treść buduje się jeszcze w konstruktorze, zanim widok
+        stanie się widokiem — wtedy nie ma czego dostawiać, bo `self.fab` i tak
+        pojedzie do `super().__init__`."""
+        if not self._gotowy:
+            return
+        self.floating_action_button = self.fab
+        try:
+            self.update()
+        except Exception:
+            log.polkniety("dostawienie przycisku dodawania po zbudowaniu zakładki")
 
     def _nowa_scena_zakladki(self):
         """Każda zakładka animuje się po swojemu, więc scenę dobiera się do niej,

@@ -55,33 +55,42 @@ class RokWPigulceView(ft.View):
         )
 
         self.rok = int(rok) if rok and int(rok) in lata else lata[0]
-        self.dane = db.podsumowanie_roku(self.state.auto_id, self.rok)
+        self.dane = None
 
-        elementy = []
-        if len(lata) > 1:
-            elementy.append(utils.segmented_control(
-                page, [(str(r), r) for r in lata[:4]], self.rok,
-                lambda r: utils.przejdz(self._page, f"/rok/{r}")
-            ))
+        def tresc():
+            # Podsumowanie roku to kilkanaście zapytań plus wykres — liczymy je
+            # DOPIERO tutaj, czyli już po tym, jak zarys trafi na ekran.
+            self.dane = db.podsumowanie_roku(self.state.auto_id, self.rok)
 
-        if not self.dane:
-            elementy.append(ft.Text(f"Brak wpisów w roku {self.rok}.",
-                                    color=ft.Colors.ON_SURFACE_VARIANT))
-        else:
-            elementy.append(self._karta_glowna())
-            elementy.append(self._kafle())
-            elementy.append(self._rozbicie_kosztow())
-            elementy.append(self._wykres_miesiecy())
-            elementy.append(self._werdykty())
-            elementy.append(self._przycisk_grafiki())
+            elementy = []
+            if len(lata) > 1:
+                elementy.append(utils.segmented_control(
+                    page, [(str(r), r) for r in lata[:4]], self.rok,
+                    lambda r: utils.przejdz(self._page, f"/rok/{r}")
+                ))
 
-        elementy.append(utils.dol_bezpieczny(10))
+            if not self.dane:
+                elementy.append(ft.Text(f"Brak wpisów w roku {self.rok}.",
+                                        color=ft.Colors.ON_SURFACE_VARIANT))
+            else:
+                elementy.append(self._karta_glowna())
+                elementy.append(self._kafle())
+                elementy.append(self._rozbicie_kosztow())
+                elementy.append(self._wykres_miesiecy())
+                elementy.append(self._werdykty())
+                elementy.append(self._przycisk_grafiki())
+
+            elementy.append(utils.dol_bezpieczny(10))
+            self.scena.uruchom(page)
+            return utils.z_odswiezaniem(page, elementy)
 
         super().__init__(
             route=f"/rok/{self.rok}", padding=15, spacing=15, appbar=appbar,
-            controls=[utils.z_odswiezaniem(page, elementy)],
+            controls=[utils.zbuduj_etapami(
+                page, utils.szkielet_ekranu(page, kafle=4, wykres=True, karty=2),
+                tresc, widok=self,
+            )],
         )
-        self.scena.uruchom(page)
 
     # ================= SEKCJE =================
 
