@@ -65,10 +65,10 @@ class MiksinZakladkiInne:
 
             def filtruj_inne(e):
                 zapytanie = e.control.value.lower().strip()
-                self.lista_kart_inne.controls.clear()
-                for k in self.wszystkie_karty_inne:
-                    if zapytanie in k["szukaj"]:
-                        self.lista_kart_inne.controls.append(k["karta"])
+                self.miesiace_inne.ustaw(
+                    [k for k in self.wszystkie_karty_inne if zapytanie in k["szukaj"]],
+                    grupuj=utils.czy_po_dacie(self.state, "inne"),
+                )
                 utils.dopasuj_wysokosc_listy(self.lista_kart_inne, self._page, wysokosc_pozycji=190)
                 self.update()
 
@@ -83,6 +83,9 @@ class MiksinZakladkiInne:
             self.lista_kart_inne = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             self.uzyj_wirtualizacji = True
             self.wszystkie_karty_inne = []
+            self.miesiace_inne = utils.GrupyMiesiecy(
+                self._page, self.lista_kart_inne, wysokosc_pozycji=190
+            )
 
             po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "inne_rok", "data")
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "inne_mc", "data")
@@ -177,10 +180,17 @@ class MiksinZakladkiInne:
 
                     karta_i = ft.Card(elevation=1, content=kontener)
                     tekst_szukaj = f"{w.get('data')} {w.get('nazwa')} {w.get('kategoria')} {cena_str} {w.get('notatka') or ''}".lower()
-                    self.wszystkie_karty_inne.append({"karta": karta_i, "szukaj": tekst_szukaj})
-                    self.lista_kart_inne.controls.append(karta_i)
+                    self.wszystkie_karty_inne.append({
+                        "karta": karta_i, "szukaj": tekst_szukaj,
+                        "data": w.get('data'), "kwota": float(w.get('kwota') or 0),
+                    })
 
+                self.miesiace_inne.ustaw(
+                    self.wszystkie_karty_inne,
+                    grupuj=utils.czy_po_dacie(self.state, "inne"),
+                )
                 utils.dopasuj_wysokosc_listy(self.lista_kart_inne, self._page, wysokosc_pozycji=190)
+                self.elementy.append(self.miesiace_inne.kontrolka)
                 self.elementy.append(self.lista_kart_inne)
 
         self.fab = self._buduj_fab_szybkich_akcji()

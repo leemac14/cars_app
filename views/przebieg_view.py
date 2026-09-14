@@ -84,10 +84,10 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
                 def filtruj_odczyty(e):
                     zapytanie = e.control.value.lower().strip()
-                    self.lista_kart.controls.clear()
-                    for k in self.wszystkie_karty:
-                        if zapytanie in k["szukaj"]:
-                            self.lista_kart.controls.append(k["karta"])
+                    self.miesiace.ustaw(
+                        [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
+                        grupuj=utils.czy_po_dacie(self.state, "odczyty_przebiegu"),
+                    )
                     utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
                     self.update()
 
@@ -103,6 +103,11 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 self.lista_kart = ft.ListView(spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 self.wszystkie_karty = []
                 self.uzyj_wirtualizacji = True
+                # Odczyty licznika to czysta chronologia — kwot tu nie ma, więc
+                # nagłówek mówi tylko, ile wpisów przypadło na miesiąc.
+                self.miesiace = utils.GrupyMiesiecy(
+                    self._page, self.lista_kart, wysokosc_pozycji=130, pokaz_kwoty=False
+                )
 
                 po_filtrach = utils.filtruj_po_kategorii(wpisy, self.state, "przebieg_zrodlo", "etykieta_zrodla")
                 po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "odczyty_rok", "data")
@@ -114,11 +119,14 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                                            alignment=ft.MainAxisAlignment.CENTER))
                 else:
                     for w in po_filtrach:
-                        karta = self._karta_wpisu(w, wspolny_id)
-                        self.wszystkie_karty.append(karta)
-                        self.lista_kart.controls.append(karta["karta"])
+                        self.wszystkie_karty.append(self._karta_wpisu(w, wspolny_id))
+                    self.miesiace.ustaw(
+                        self.wszystkie_karty,
+                        grupuj=utils.czy_po_dacie(self.state, "odczyty_przebiegu"),
+                    )
 
                 utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
+                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
             elementy.append(utils.dol_bezpieczny(10))
@@ -269,7 +277,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
         tekst_szukaj = (f"{w['data']} {w['przebieg']} {w['etykieta_zrodla']} {w['opis']} "
                         f"{w.get('notatka') or ''}").lower()
-        return {"karta": karta, "szukaj": tekst_szukaj}
+        return {"karta": karta, "szukaj": tekst_szukaj, "data": w["data"]}
 
     # ================= MENU =================
 

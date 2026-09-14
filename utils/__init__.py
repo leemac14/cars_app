@@ -16,6 +16,7 @@ from .format import *
 from .animacje import *
 from .wyglad import *
 from .szkielet import *
+from .miesiace import *
 from .zgodnosc import *
 from .dialogi import *
 from .listy import *
@@ -38,6 +39,7 @@ from . import (
     animacje,
     wyglad,
     szkielet,
+    miesiace,
     zgodnosc,
     dialogi,
     listy,

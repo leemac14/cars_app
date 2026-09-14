@@ -112,10 +112,12 @@ class MiksinZakladkiTankowania:
 
             def filtruj_tankowania(e):
                 zapytanie = e.control.value.lower().strip()
-                self.lista_kart_tankowania.controls.clear()
-                for k in self.wszystkie_karty_tankowania:
-                    if zapytanie in k["szukaj"]:
-                        self.lista_kart_tankowania.controls.append(k["karta"])
+                # Nagłówki miesięcy przeliczają się razem z filtrem — inaczej
+                # pokazywałyby podsumowania wpisów, których już nie widać.
+                self.miesiace_tankowania.ustaw(
+                    [k for k in self.wszystkie_karty_tankowania if zapytanie in k["szukaj"]],
+                    grupuj=utils.czy_po_dacie(self.state, "tankowania"),
+                )
                 utils.dopasuj_wysokosc_listy(self.lista_kart_tankowania, self._page, wysokosc_pozycji=200)
                 self.update()
 
@@ -130,6 +132,11 @@ class MiksinZakladkiTankowania:
             self.lista_kart_tankowania = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             self.uzyj_wirtualizacji = True
             self.wszystkie_karty_tankowania = []
+            # Trzy lata tankowań to jedna długa taśma dat — nagłówki miesięcy
+            # dzielą ją na kawałki, a pasek nad listą mówi, w którym się jest.
+            self.miesiace_tankowania = utils.GrupyMiesiecy(
+                self._page, self.lista_kart_tankowania, wysokosc_pozycji=200
+            )
 
             po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "tankowania_rok", "data")
             po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "tankowania_mc", "data")
@@ -240,10 +247,17 @@ class MiksinZakladkiTankowania:
 
                     karta_t = ft.Card(elevation=1, content=kontener)
                     tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')} {db.ETYKIETY_RODZAJU[rodzaj_w]} {w.get('typ_ladowania') or ''} {w.get('notatka') or ''}".lower()
-                    self.wszystkie_karty_tankowania.append({"karta": karta_t, "szukaj": tekst_szukaj})
-                    self.lista_kart_tankowania.controls.append(karta_t)
+                    self.wszystkie_karty_tankowania.append({
+                        "karta": karta_t, "szukaj": tekst_szukaj,
+                        "data": w.get('data'), "kwota": kwota_val,
+                    })
 
+                self.miesiace_tankowania.ustaw(
+                    self.wszystkie_karty_tankowania,
+                    grupuj=utils.czy_po_dacie(self.state, "tankowania"),
+                )
                 utils.dopasuj_wysokosc_listy(self.lista_kart_tankowania, self._page, wysokosc_pozycji=200)
+                self.elementy.append(self.miesiace_tankowania.kontrolka)
                 self.elementy.append(self.lista_kart_tankowania)
 
         self.fab = self._buduj_fab_szybkich_akcji()

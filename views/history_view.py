@@ -62,13 +62,16 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 self.uzyj_wirtualizacji = True
                 self.wszystkie_karty = []
+                self.miesiace = utils.GrupyMiesiecy(
+                    self._page, self.lista_kart, wysokosc_pozycji=190
+                )
 
                 def filtruj_historie(e):
                     zapytanie = e.control.value.lower().strip()
-                    self.lista_kart.controls.clear()
-                    for k in self.wszystkie_karty:
-                        if zapytanie in k["szukaj"]:
-                            self.lista_kart.controls.append(k["karta"])
+                    self.miesiace.ustaw(
+                        [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
+                        grupuj=utils.czy_po_dacie(self.state, "historia"),
+                    )
                     utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
                     self.update()
 
@@ -195,10 +198,21 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     kontener.on_long_press = _on_long_press
 
                     tekst_szukaj = f"{data} {sub_tekst} {k_str} {notatka or ''}".lower()
-                    self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
-                    self.lista_kart.controls.append(karta)
+                    self.wszystkie_karty.append({
+                        "karta": karta, "szukaj": tekst_szukaj, "data": data,
+                        # Wpis z wizyty zbiorczej niesie koszt CAŁEJ wizyty — do
+                        # sumy miesiąca bierzemy wyłącznie cenę tej pozycji,
+                        # inaczej jedna wizyta liczyłaby się tyle razy, ile miała
+                        # podzespołów.
+                        "kwota": float(cena or 0),
+                    })
 
+                self.miesiace.ustaw(
+                    self.wszystkie_karty,
+                    grupuj=utils.czy_po_dacie(self.state, "historia"),
+                )
                 utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
+                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
             # To jest linijka poza blokiem else (już ją masz)
@@ -395,10 +409,10 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         # --- 1. DODAJ TEN BLOK KODU (WYSZUKIWARKA) ---
         def filtruj_wizyty(e):
             zapytanie = e.control.value.lower().strip()
-            self.lista_kart.controls.clear()
-            for k in self.wszystkie_karty:
-                if zapytanie in k["szukaj"]:
-                    self.lista_kart.controls.append(k["karta"])
+            self.miesiace.ustaw(
+                [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
+                grupuj=utils.czy_po_dacie(self.state, "wizyty"),
+            )
             utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
             self.update()
 
@@ -413,6 +427,9 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
         self.uzyj_wirtualizacji = True
         self.wszystkie_karty = []
+        self.miesiace = utils.GrupyMiesiecy(
+            self._page, self.lista_kart, wysokosc_pozycji=190
+        )
         # ---------------------------------------------
 
         def otworz_menu_wiz(wid, zalacznik=None, notatka=None):
@@ -531,12 +548,19 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
                 magazyn_szukaj = " ".join(czesci_magazynowe) if czesci_magazynowe else ""
                 tekst_szukaj = f"{data} {wyk} {czesci} {kosz} {tagi} {magazyn_szukaj} {notatka_wizyty or ''}".lower()
-                self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
-                self.lista_kart.controls.append(karta)
+                self.wszystkie_karty.append({
+                    "karta": karta, "szukaj": tekst_szukaj,
+                    "data": data, "kwota": float(kosz or 0),
+                })
 
+            self.miesiace.ustaw(
+                self.wszystkie_karty,
+                grupuj=utils.czy_po_dacie(self.state, "wizyty"),
+            )
             # Lista dokładana TYLKO gdy są wizyty — pusty ListView ma stałą wysokość
             # i zostawiał pod komunikatem „Brak wizyt…” pół ekranu pustki.
             utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
+            elementy.append(self.miesiace.kontrolka)
             elementy.append(self.lista_kart)
 
         super().__init__(

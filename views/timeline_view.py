@@ -78,14 +78,8 @@ class TimelineView(ft.View):
 
                 def filtruj_timeline(e):
                     zapytanie = e.control.value.lower().strip()
-                    self.lista_kart.controls.clear()
                     widoczne = [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]]
-                    for k in widoczne:
-                        self.lista_kart.controls.append(k["karta"])
-                    # Oś musi się urywać na PIERWSZYM i OSTATNIM widocznym zdarzeniu,
-                    # a nie na pierwszym/ostatnim w ogóle — inaczej po wyszukaniu
-                    # linia wystaje w pustkę nad i pod listą.
-                    self._popraw_koncowki_osi(widoczne)
+                    self._rozloz_os(widoczne)
                     utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
                     self.update()
 
@@ -103,6 +97,12 @@ class TimelineView(ft.View):
                 # przerwę i łączy kolejne zdarzenia zamiast się urywać.
                 self.lista_kart = ft.ListView(spacing=0, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 self.wszystkie_karty = []
+                # Oś czasu bywa najdłuższą listą w aplikacji — bez nagłówków
+                # miesięcy jest jedną taśmą dat. Kwot nie sumujemy: w jednej osi
+                # stoją obok siebie tankowania, wizyty i odczyty licznika.
+                self.miesiace = utils.GrupyMiesiecy(
+                    self._page, self.lista_kart, wysokosc_pozycji=96, pokaz_kwoty=False
+                )
                 self.uzyj_wirtualizacji = True
 
                 po_filtrach = utils.filtruj_po_kategorii(zdarzenia, self.state, "timeline_typ", 1)
@@ -122,10 +122,10 @@ class TimelineView(ft.View):
                         tekst_szukaj = f"{typ} {data} {tytul} {opis} {autor or ''} {notatka or ''}".lower()
                         wiersz["szukaj"] = tekst_szukaj
                         self.wszystkie_karty.append(wiersz)
-                        self.lista_kart.controls.append(wiersz["karta"])
-                    self._popraw_koncowki_osi(self.wszystkie_karty)
+                    self._rozloz_os(self.wszystkie_karty)
 
                 utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
+                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
             elementy.append(utils.dol_bezpieczny(10))
@@ -157,6 +157,20 @@ class TimelineView(ft.View):
         for i, w in enumerate(widoczne_wiersze):
             w["gora"].bgcolor = ft.Colors.TRANSPARENT if i == 0 else kolor
             w["dol"].bgcolor = ft.Colors.TRANSPARENT if i == len(widoczne_wiersze) - 1 else kolor
+
+    def _rozloz_os(self, widoczne):
+        """Układa wiersze w liście z nagłówkami miesięcy i domyka oś na granicy
+        każdego z nich.
+
+        Oś to ciągła pionowa kreska biegnąca między zdarzeniami. Nagłówek miesiąca
+        ją przerywa, więc linia musi urywać się PRZED nim i zaczynać PO nim —
+        inaczej wystawałaby w tło nagłówka. Dlatego końcówki poprawiamy osobno
+        w każdej grupie, a nie raz na całą listę."""
+        grupy = self.miesiace.ustaw(
+            widoczne, grupuj=utils.czy_po_dacie(self.state, "timeline")
+        )
+        for _, wiersze in grupy:
+            self._popraw_koncowki_osi(wiersze)
 
     def _wiersz_osi_czasu(self, z):
         """Jeden przystanek na osi: pionowa linia + kropka z ikoną po lewej,

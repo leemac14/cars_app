@@ -152,10 +152,10 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
 
                 def filtruj_pozycje(e):
                     zapytanie = e.control.value.lower().strip()
-                    self.lista_kart.controls.clear()
-                    for k in self.wszystkie_karty:
-                        if zapytanie in k["szukaj"]:
-                            self.lista_kart.controls.append(k["karta"])
+                    self.miesiace.ustaw(
+                        [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
+                        grupuj=utils.czy_po_dacie(self.state, "do_zrobienia", ("termin",)),
+                    )
                     utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=185)
                     self.update()
 
@@ -170,6 +170,12 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 self.wszystkie_karty = []
                 self.uzyj_wirtualizacji = True
+                # Tu miesiąc bierze się z TERMINU, nie z daty dopisania — i tylko
+                # przy sortowaniu po terminie, bo lista domyślnie idzie po
+                # priorytecie i miesiące nie byłyby wtedy ciągłe.
+                self.miesiace = utils.GrupyMiesiecy(
+                    self._page, self.lista_kart, wysokosc_pozycji=185
+                )
 
                 po_filtrach = utils.filtruj_po_kategorii(dane, self.state, "do_zrobienia_status", 9)
                 po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "do_zrobienia_priorytet", 3)
@@ -182,10 +188,18 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                         karta = self._karta_pozycji(w)
                         _, tytul, opis, priorytet, koszt, termin, _, _, zadanie_nazwa = w[:9]
                         tekst_szukaj = f"{tytul} {opis} {priorytet} {termin} {zadanie_nazwa}".lower()
-                        self.wszystkie_karty.append({"karta": karta, "szukaj": tekst_szukaj})
-                        self.lista_kart.controls.append(karta)
+                        self.wszystkie_karty.append({
+                            "karta": karta, "szukaj": tekst_szukaj,
+                            "data": termin, "kwota": float(koszt or 0),
+                        })
+
+                    self.miesiace.ustaw(
+                        self.wszystkie_karty,
+                        grupuj=utils.czy_po_dacie(self.state, "do_zrobienia", ("termin",)),
+                    )
 
                 utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=185)
+                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
         return ft.Column(elementy, spacing=15)
