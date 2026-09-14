@@ -339,7 +339,9 @@ class MiksinZakladkiStatystyki:
 
                 kolumna_slupka = ft.Column([
                     ft.Text(
-                        tekst_kwota, size=10, weight="bold",
+                        # Myślnik nad pustym słupkiem to nie kwota — pogrubienie
+                        # zostaje przy miesiącach, w których coś wydano.
+                        tekst_kwota, size=10, weight="bold" if val > 0 else "normal",
                         color=ft.Colors.PRIMARY if val > 0 else ft.Colors.ON_SURFACE_VARIANT
                     ),
                     ft.Container(
@@ -617,14 +619,13 @@ class MiksinZakladkiStatystyki:
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Inne koszty wg kategorii", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    ft.Text(f"Razem: {utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", weight="bold",
-                            size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    utils.etykieta(f"Razem: {utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", size=13),
                 ]),
                 karta_kategorii_innych,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Wydatki miesięczne (ostatnie 6 mies.)", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    ft.Text(f"Razem: {utils.formatuj_liczba(suma_okresu)}  {utils.symbol_waluty()}", weight="bold", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+                    utils.etykieta(f"Razem: {utils.formatuj_liczba(suma_okresu)}  {utils.symbol_waluty()}", size=13),
                 ]),
                 karta_wykresu,
                 ft.Divider(height=20),

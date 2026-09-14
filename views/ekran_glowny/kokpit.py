@@ -107,7 +107,7 @@ class MiksinKokpitu:
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ikona, size=15, color=kolor_ikony),
-                        ft.Text(etykieta, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        utils.etykieta(etykieta, expand=True),
                     ], spacing=6),
                     tekst_wartosci(wartosc),
                 ], spacing=4),
@@ -143,7 +143,7 @@ class MiksinKokpitu:
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ikona, size=15, color=kolor_ikony),
-                        ft.Text(etykieta, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        utils.etykieta(etykieta, expand=True),
                     ], spacing=6),
                     tekst_wartosci(wartosc),
                     iskra,
@@ -197,7 +197,7 @@ class MiksinKokpitu:
             zawartosc = [
                 ft.Row([
                     ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, size=15, color=ft.Colors.PRIMARY),
-                    ft.Text("Koszt w mies.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    utils.etykieta("Koszt w mies.", expand=True),
                 ], spacing=6),
                 liczba_kafelka(koszt_biezacy,
                                lambda v: f"{utils.formatuj_liczba(v)} {utils.symbol_waluty()}"),
@@ -230,7 +230,7 @@ class MiksinKokpitu:
                 tresc = ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.EVENT, size=15, color=ft.Colors.PRIMARY),
-                        ft.Text(f"Termin{dodatek}", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        utils.etykieta(f"Termin{dodatek}", expand=True),
                     ], spacing=6),
                     ft.Text(str(p["tytul"]), size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Row([
@@ -247,7 +247,7 @@ class MiksinKokpitu:
                 tresc = ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.EVENT_AVAILABLE, size=15, color=ft.Colors.GREEN_700),
-                        ft.Text("Termin", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        utils.etykieta("Termin", expand=True),
                     ], spacing=6),
                     ft.Text("Na czas", size=utils.FS["title"], weight="bold", color=ft.Colors.GREEN_700),
                     ft.Text("Brak terminów", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
@@ -361,7 +361,7 @@ class MiksinKokpitu:
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.BATTERY_CHARGING_FULL, size=15, color=ft.Colors.GREEN_700),
-                        ft.Text("Zasięg EV", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        utils.etykieta("Zasięg EV", expand=True),
                     ], spacing=6),
                     tekst_wartosci(wartosc),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
@@ -394,7 +394,7 @@ class MiksinKokpitu:
                         ft.Icon(utils.ikona_z_mapy(utils.IKONY_AKTYWNOSCI, ikona), size=15,
                                 color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Column([
-                            ft.Text(opis, size=11, weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.Text(opis, size=11, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                             ft.Text(f"{kto} • {kiedy_tekst}", size=10, color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                         ], spacing=0, expand=True, tight=True),
                     ], spacing=6)
@@ -433,7 +433,7 @@ class MiksinKokpitu:
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.MONITOR_HEART, size=15, color=kolor_gauge),
-                        ft.Text("Kondycja", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        utils.etykieta("Kondycja", expand=True),
                     ], spacing=6),
                     ft.Row([utils.gauge_kondycji(kondycja, rozmiar=76, grubosc=8, scena=scena)],
                            alignment=ft.MainAxisAlignment.CENTER),
@@ -465,7 +465,7 @@ class MiksinKokpitu:
                     ft.Row([
                         ft.Icon(utils.ikona_z_mapy(utils.IKONY_OBSERWACJI, o["ikona"], ft.Icons.INSIGHTS),
                                 size=15, color=kolor),
-                        ft.Text(o["tytul"], size=utils.FS["caption"], color=kolor, weight="bold",
+                        ft.Text(o["tytul"], size=utils.FS["caption"], color=kolor,
                                 expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                     ], spacing=6),
                     ft.Text(o["tekst"], size=utils.FS["body"], color=ft.Colors.ON_SURFACE,
@@ -596,7 +596,7 @@ class MiksinKokpitu:
             tresc = [
                 ft.Row([
                     ft.Icon(ft.Icons.TIRE_REPAIR, size=15, color=kolor_sezonu),
-                    ft.Text("Opony", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    utils.etykieta("Opony", expand=True),
                 ], spacing=6),
                 ft.Row([
                     ft.Icon(ikona_sezonu, size=17, color=kolor_sezonu),

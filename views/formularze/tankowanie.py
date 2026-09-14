@@ -185,7 +185,7 @@ class FormularzTankowanieView(ft.View):
         zawartosc_k2 = []
         if self.dwuzrodlowy:
             zawartosc_k2 += [
-                ft.Text("Czym tankowałeś?", size=12, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+                utils.podpis("Czym tankowałeś?"),
                 self.przelacznik_rodzaju,
             ]
         zawartosc_k2 += [

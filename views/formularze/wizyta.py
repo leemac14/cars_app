@@ -325,8 +325,7 @@ class FormularzWizytyView(ft.View):
 
         pakiety_wlasne = db.pobierz_pakiety_wlasne(self.state.auto_id)
         zawartosc.append(ft.Container(height=6))
-        zawartosc.append(ft.Text("TWOJE PAKIETY", size=utils.FS["caption"], weight="bold",
-                                 color=ft.Colors.ON_SURFACE_VARIANT))
+        zawartosc.append(utils.etykieta("TWOJE PAKIETY"))
         if pakiety_wlasne:
             for p_id, nazwa, pozycje in pakiety_wlasne:
                 zawartosc.append(self._karta_pakietu(nazwa, pozycje, [
@@ -350,8 +349,7 @@ class FormularzWizytyView(ft.View):
             ))
 
         zawartosc.append(ft.Container(height=10))
-        zawartosc.append(ft.Text("GOTOWE ZESTAWY", size=utils.FS["caption"], weight="bold",
-                                 color=ft.Colors.ON_SURFACE_VARIANT))
+        zawartosc.append(utils.etykieta("GOTOWE ZESTAWY"))
         for nazwa, pozycje in db.PAKIETY_SERWISOWE.items():
             zawartosc.append(self._karta_pakietu(nazwa, list(pozycje), [przycisk_zastosuj(nazwa, list(pozycje))]))
 

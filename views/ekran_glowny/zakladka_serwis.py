@@ -191,12 +191,17 @@ class MiksinZakladkiSerwis:
                     kandydaci_procent = [p for p in (procent_km, procent_dni) if p is not None]
                     procent_do_paska = max(kandydaci_procent) if kandydaci_procent else None
 
-                    wiersz_statusu = (
-                        utils.pasek_postepu(final_status, f"{int(max(0.0, min(1.0, procent_do_paska)) * 100)}%",
-                                            procent_do_paska, kol, scena=self._scena_zakladki)
-                        if procent_do_paska is not None
-                        else ft.Text(final_status, size=utils.FS["body_strong"], weight="bold", color=kol)
-                    )
+                    if procent_do_paska is not None:
+                        wiersz_statusu = utils.pasek_postepu(
+                            final_status, f"{int(max(0.0, min(1.0, procent_do_paska)) * 100)}%",
+                            procent_do_paska, kol, scena=self._scena_zakladki)
+                    elif kol == ft.Colors.ON_SURFACE_VARIANT:
+                        # „Brak wpisów" i „Brak interwału" to informacja o BRAKU
+                        # danych, a nie status pilności — pogrubione konkurowały
+                        # z nazwą podzespołu nad nimi, nie mając czego powiedzieć.
+                        wiersz_statusu = utils.etykieta(final_status, size=utils.FS["body_strong"])
+                    else:
+                        wiersz_statusu = utils.wartosc(final_status, color=kol)
                     karta_z, kontener = utils.karta_listy(
                         ft.Column([
                             ft.Row([ft.Text(str(zn), weight="bold", size=utils.FS["title"], expand=True), ft.Icon(ico, color=kol)]),

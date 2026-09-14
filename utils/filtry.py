@@ -49,7 +49,11 @@ def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta, iko
         items=elementy_menu,
         content=ft.Row([
             ft.Icon(ikona_aktywna if jest_aktywny else ikona_nieaktywna, size=13, color=kolor_glowny),
-            ft.Text(pokazywany_tekst, size=11, weight="bold", color=kolor_glowny),
+            # Pogrubiony jest tylko filtr WŁĄCZONY. Wcześniej pogrubione były
+            # wszystkie, więc pasek nie odpowiadał na pytanie, po czym
+            # aktualnie filtrujemy — a to jedyne pytanie, jakie się do niego ma.
+            ft.Text(pokazywany_tekst, size=11, weight="bold" if jest_aktywny else "normal",
+                    color=kolor_glowny),
         ], spacing=2, tight=True),
         tooltip=f"Filtruj po: {etykieta}"
     )

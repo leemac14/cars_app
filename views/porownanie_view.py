@@ -172,7 +172,7 @@ class PorownanieView(ft.View):
             )
 
         return ft.Column([
-            ft.Text(f"Wybierz pojazdy do porównania (2–{MAKS_AUT}):", size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+            utils.etykieta(f"Wybierz pojazdy do porównania (2–{MAKS_AUT}):", size=13),
             ft.Row(chipy, wrap=True, spacing=8, run_spacing=8)
         ], spacing=8)
 
@@ -341,7 +341,7 @@ class PorownanieView(ft.View):
             ))
 
         return ft.Column([
-            ft.Text(etykieta, size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+            utils.etykieta(etykieta, size=13),
             ft.Column(wiersze, spacing=10)
         ], spacing=8)
 

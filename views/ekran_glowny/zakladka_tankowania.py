@@ -199,7 +199,7 @@ class MiksinZakladkiTankowania:
                     tid = w.get('id')
                     tresc_karty = [
                         ft.Row([
-                            ft.Text(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                            utils.podpis(f"{w.get('data')} • {w.get('stacja')}" if w.get('stacja') else str(w.get('data')), expand=True),
                             ft.Row([
                                 # Odznaka źródła tylko przy plug-inie — przy aucie
                                 # jednoźródłowym byłaby tą samą etykietą przy każdym wpisie.
@@ -221,9 +221,9 @@ class MiksinZakladkiTankowania:
                             ], spacing=4)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Row([
-                            ft.Column([ft.Text("Dystans", size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(f"{dystans_val} km", weight="bold")]),
-                            ft.Column([ft.Text(etykiety_w["zuzycie"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(sp_str, weight="bold")]),
-                            ft.Column([ft.Text(etykiety_w["cena_jednostkowa"], size=11, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text(cena_litr_str, weight="bold")]),
+                            utils.pole("Dystans", f"{dystans_val} km"),
+                            utils.pole(etykiety_w["zuzycie"], sp_str),
+                            utils.pole(etykiety_w["cena_jednostkowa"], cena_litr_str),
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     ]
                     if w.get('tagi'):

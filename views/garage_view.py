@@ -334,7 +334,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         else:
             znacznik = ft.Container(
                 padding=8, border_radius=20, bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE),
-                content=ft.Text("W magazynie", size=11, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT)
+                content=utils.etykieta("W magazynie")
             )
 
         stopka = f"Ilość: {ilosc or 4} szt."
@@ -355,8 +355,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 ], spacing=6),
                 ft.Text(podtytul, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Row([
-                    ft.Text("Bieżnik:", size=13, weight="bold"),
-                    ft.Text(tekst_gl, size=13, weight="bold", color=kol_gl, no_wrap=True),
+                    utils.etykieta("Bieżnik:", size=13),
+                    # Zmierzony bieżnik jest wartością i dostaje pogrubienie; „brak
+                    # pomiaru" to informacja o BRAKU i zostaje w drugim planie.
+                    ft.Text(tekst_gl, size=13, color=kol_gl, no_wrap=True,
+                            weight="bold" if kol_gl != ft.Colors.ON_SURFACE_VARIANT else "normal"),
                     # Numer DOT bywa długi — to on ma ustąpić, a nie wypchnąć
                     # wiersz poza kartę.
                     ft.Text(f"|  DOT: {dot_tekst}", size=13, color=ft.Colors.ON_SURFACE_VARIANT,

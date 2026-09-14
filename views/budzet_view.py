@@ -108,8 +108,7 @@ class BudzetView(ft.View):
             content=ft.Column([
                 ft.Row([
                     ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text("Jak liczony jest stan", size=utils.FS["label"], weight="bold",
-                            color=ft.Colors.ON_SURFACE_VARIANT),
+                    utils.podpis("Jak liczony jest stan"),
                 ], spacing=6),
                 ft.Text(
                     "Wydatki sumują się od pierwszego dnia okresu do dzisiaj. Wizyta zbiorcza "

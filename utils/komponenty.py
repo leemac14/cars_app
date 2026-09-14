@@ -814,7 +814,11 @@ def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
         ikona = opcja[2] if len(opcja) > 2 else None
         aktywny = (idx == aktywny_idx)
         kolor_tresci = ft.Colors.ON_PRIMARY if aktywny else ft.Colors.ON_SURFACE_VARIANT
-        podpis = ft.Text(etykieta, size=FS["label"], weight="bold", color=kolor_tresci)
+        # Pogrubiony jest tylko segment WYBRANY — inaczej przełącznik wygląda
+        # tak samo niezależnie od tego, co jest włączone, a tło pod aktywnym
+        # zostaje jedyną różnicą.
+        podpis = ft.Text(etykieta, size=FS["label"], weight="bold" if aktywny else "normal",
+                         color=kolor_tresci)
         tresc = podpis if not ikona else ft.Row(
             [ft.Icon(ikona, size=16, color=kolor_tresci), podpis],
             spacing=6, tight=True, alignment=ft.MainAxisAlignment.CENTER,

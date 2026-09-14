@@ -127,7 +127,7 @@ class UstawieniaView(ft.View):
         odswiez_palete(aktualizuj=False)
 
         paleta_sekcja = ft.Column([
-            ft.Text("Domyślny kolor aplikacji", size=13, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT),
+            utils.etykieta("Domyślny kolor aplikacji", size=13),
             ft.Text("Używany, gdy brak wybranego pojazdu oraz dla pojazdów bez własnego koloru (ustawisz go w edycji pojazdu).", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
             self.wiersz_kolorow
         ], spacing=8)
@@ -588,8 +588,10 @@ class UstawieniaView(ft.View):
                 if grupa["etykieta"] != poprzednia_etykieta:
                     poprzednia_etykieta = grupa["etykieta"]
                     zawartosc.append(ft.Container(height=4))
-                    zawartosc.append(ft.Text(grupa["etykieta"].upper(), size=utils.FS["caption"],
-                                             weight="bold", color=ft.Colors.ON_SURFACE_VARIANT))
+                    # Wersaliki same w sobie są już wyróżnieniem — pogrubienie
+                    # na dokładkę robiło z podpisu grupy rzecz ważniejszą niż
+                    # nazwy, które pod nim stoją.
+                    zawartosc.append(utils.etykieta(grupa["etykieta"].upper()))
 
                 docelowy_id = grupa["kanoniczna"][0]
                 wiersze = []

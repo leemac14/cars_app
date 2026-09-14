@@ -217,7 +217,7 @@ class TimelineView(ft.View):
             tooltip=typ,
         )
 
-        naglowek_bits = [ft.Text(str(data), size=12, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT)]
+        naglowek_bits = [utils.podpis(str(data))]
         if zalacznik:
             naglowek_bits.append(utils.wskaznik_zalacznika(self._page, zalacznik, typ))
         if autor:

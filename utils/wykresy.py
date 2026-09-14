@@ -474,7 +474,10 @@ def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8, sce
     scena.nastepny_wiersz()
     return ft.Column([
         ft.Row([
-            ft.Text(etykieta_lewa, size=12, weight="bold", expand=True, no_wrap=True),
+            # Nazwa po lewej mówi CZEGO dotyczy pasek, liczba po prawej — ILE.
+            # Pogrubione były obie, więc nie prowadziły oka nigdzie.
+            ft.Text(etykieta_lewa, size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                    expand=True, no_wrap=True),
             ft.Text(etykieta_prawa, size=12, weight="bold", color=kolor)
         ]),
         scena.wskaznik(ft.ProgressBar(

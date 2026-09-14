@@ -1,9 +1,10 @@
-"""Sześć audytów, które do tej pory były jednorazowymi skryptami.
+"""Siedem audytów, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
-konstruktor widoku naprawdę poskładał. Trzy ostatnie czytają AST, bo dotyczą
-rzeczy, których w drzewie już nie widać.
+konstruktor widoku naprawdę poskładał. Pozostałe czytają AST, bo dotyczą rzeczy,
+których w drzewie już nie widać albo których w drzewie nie da się odróżnić od
+słusznego wyjątku.
 
 Moduł da się uruchomić wprost, żeby zobaczyć raport:
 
@@ -861,6 +862,143 @@ def audyt_recznego_formatowania(sciezki=None, korzen=None, dozwolone=None):
 
 
 # ============================================================================
+#  AUDYT 7 — pogrubienie na drugim planie (AST)
+# ============================================================================
+# `weight="bold"` bywało w tym projekcie domyślną wagą etykiet. Kiedy wszystko
+# jest ważne, nic nie jest — a na kaflach kokpitu i kartach list, gdzie w małej
+# przestrzeni stoi po pięć elementów, oko nie ma się wtedy o co zaczepić.
+#
+# Audyt pilnuje jednej reguły, bo tylko ona daje się rozstrzygnąć z kodu:
+# **pogrubienie nie chodzi w parze z ON_SURFACE_VARIANT**. Przygaszony kolor
+# mówi „drugi plan", pogrubienie mówi „pierwszy" — postawione razem znoszą się
+# i zostaje sam szum. Nagłówki i wartości zostają pogrubione, ale w pełnym
+# kolorze tekstu; etykiety zostają przygaszone, ale zwykłą wagą.
+#
+# Zgłaszamy WYŁĄCZNIE przypadki rozstrzygnięte na pewno. Kolor spod `.get(...)`
+# albo z gołej zmiennej jest nie do odczytania z AST i audyt go nie rusza —
+# lepiej przepuścić kilka niż nauczyć zespół, że ten audyt sypie fałszywkami.
+
+WAGI_POGRUBIONE = {"bold", "w600", "w700", "w800", "w900"}
+
+KOLOR_DRUGIEGO_PLANU = "ON_SURFACE_VARIANT"
+
+# Pomocniki z utils/typografia.py: same w sobie trzymają regułę, więc pilnujemy
+# tylko tego, żeby nie obchodzić jej nadpisaniem przy wywołaniu.
+POMOCNIKI_DRUGIEGO_PLANU = {"etykieta", "podpis"}
+POMOCNIKI_WARTOSCI = {"wartosc"}
+
+
+def _mozliwe_wagi(wezel):
+    """Wagi, jakie węzeł MOŻE przyjąć. Pusty zbiór = nie do rozstrzygnięcia.
+
+    Wyrażenie warunkowe (`"bold" if biezacy else "normal"`) rozbieramy na obie
+    gałęzie: taka waga niesie znaczenie („jesteś tutaj") i wolno jej zostać,
+    dopóki gałąź pogrubiona nie jest przygaszona."""
+    if isinstance(wezel, ast.Constant) and isinstance(wezel.value, str):
+        return {wezel.value}
+    if isinstance(wezel, ast.IfExp):
+        return _mozliwe_wagi(wezel.body) | _mozliwe_wagi(wezel.orelse)
+    # ft.FontWeight.BOLD — w projekcie rzadkie, ale zapis równoważny napisowi.
+    if isinstance(wezel, ast.Attribute) and isinstance(wezel.value, ast.Attribute) \
+            and wezel.value.attr == "FontWeight":
+        return {wezel.attr.lower()}
+    return set()
+
+
+def _mozliwe_kolory(wezel):
+    """Nazwy kolorów, jakie węzeł MOŻE przyjąć (ostatni człon `ft.Colors.X`)."""
+    if isinstance(wezel, ast.Attribute):
+        return {wezel.attr}
+    if isinstance(wezel, ast.IfExp):
+        return _mozliwe_kolory(wezel.body) | _mozliwe_kolory(wezel.orelse)
+    return set()
+
+
+def _argument(wezel, nazwa):
+    for slowo in wezel.keywords:
+        if slowo.arg == nazwa:
+            return slowo.value
+    return None
+
+
+def _nazwa_wywolania(wezel):
+    """`utils.etykieta(...)` i `etykieta(...)` -> 'etykieta'."""
+    if isinstance(wezel.func, ast.Attribute):
+        return wezel.func.attr
+    if isinstance(wezel.func, ast.Name):
+        return wezel.func.id
+    return None
+
+
+def znajdz_pogrubienia_na_drugim_planie(korzen):
+    """Ta sama reguła, ale na ZBUDOWANYM drzewie — bo połowa kolorów powstaje
+    dopiero w czasie działania.
+
+    `KOLORY_STATUSU.get(...)`, `kolor if pilne else ...`, kolor podany zmienną —
+    z kodu źródłowego nie da się ich rozstrzygnąć, a to właśnie one dają
+    najbrzydsze trafienia: „Brak wpisów" pogrubione i przygaszone naraz, bo
+    zmienna `kol` akurat tym razem wyszła na ON_SURFACE_VARIANT."""
+    znaleziska = []
+
+    def zejdz(kontrolka, przodkowie):
+        if isinstance(kontrolka, ft.Text):
+            waga = str(getattr(kontrolka, "weight", "") or "")
+            kolor = str(getattr(kontrolka, "color", "") or "")
+            tekst = str(getattr(kontrolka, "value", "") or "").strip()
+            if tekst and waga.lower() in WAGI_POGRUBIONE and kolor.endswith(KOLOR_DRUGIEGO_PLANU):
+                znaleziska.append({
+                    "tekst": tekst[:60],
+                    "sciezka": _sciezka(przodkowie, kontrolka),
+                })
+        for _, dziecko in _dzieci(kontrolka):
+            zejdz(dziecko, przodkowie + [kontrolka])
+
+    zejdz(korzen, [])
+    return znaleziska
+
+
+def audyt_pogrubien(sciezki=None, korzen=None):
+    """Teksty, w których pogrubienie spotyka się z kolorem drugiego planu."""
+    korzen = korzen or KORZEN_PROJEKTU
+    znaleziska = []
+
+    for sciezka in sciezki if sciezki is not None else _pliki_projektu():
+        wzgledna = sciezka.relative_to(korzen).as_posix()
+        drzewo = ast.parse(sciezka.read_text(encoding="utf-8"), filename=str(sciezka))
+
+        for wezel in ast.walk(drzewo):
+            if not isinstance(wezel, ast.Call):
+                continue
+            nazwa = _nazwa_wywolania(wezel)
+            wagi = _mozliwe_wagi(_argument(wezel, "weight") or ast.Pass())
+            pogrubione = bool(wagi) and wagi <= WAGI_POGRUBIONE
+
+            if _nazwa_konstruktora(wezel) == "Text":
+                kolory = _mozliwe_kolory(_argument(wezel, "color") or ast.Pass())
+                if pogrubione and kolory == {KOLOR_DRUGIEGO_PLANU}:
+                    znaleziska.append({
+                        "plik": wzgledna, "linia": wezel.lineno,
+                        "opis": "pogrubiony tekst w kolorze drugiego planu "
+                                f"({KOLOR_DRUGIEGO_PLANU}) — etykieta albo wartość, wybierz jedno",
+                    })
+            elif nazwa in POMOCNIKI_DRUGIEGO_PLANU and pogrubione:
+                znaleziska.append({
+                    "plik": wzgledna, "linia": wezel.lineno,
+                    "opis": f"utils.{nazwa}() nadpisane pogrubieniem — to wtedy już nie etykieta",
+                })
+            elif nazwa in POMOCNIKI_WARTOSCI:
+                kolory = _mozliwe_kolory(_argument(wezel, "color") or ast.Pass())
+                if kolory == {KOLOR_DRUGIEGO_PLANU}:
+                    znaleziska.append({
+                        "plik": wzgledna, "linia": wezel.lineno,
+                        "opis": f"utils.{nazwa}() przygaszone do koloru drugiego planu "
+                                "— wartość albo się liczy, albo nie",
+                    })
+
+    return znaleziska
+
+
+# ============================================================================
 #  RAPORT
 # ============================================================================
 
@@ -915,6 +1053,10 @@ if __name__ == "__main__":
 
     print("\n== Audyt ręcznego składania liczb ==")
     for z in audyt_recznego_formatowania():
+        print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
+
+    print("\n== Audyt pogrubień na drugim planie ==")
+    for z in audyt_pogrubien():
         print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
 
     print("\nAudyty drzewa kontrolek (expand, chipy) uruchamia pytest:")

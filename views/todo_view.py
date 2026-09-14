@@ -422,7 +422,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
 
         stopka_bits = []
         if koszt:
-            stopka_bits.append(ft.Text(f"~{utils.formatuj_liczba(float(koszt))} {utils.symbol_waluty()}", size=12, weight="bold", color=ft.Colors.ON_SURFACE_VARIANT))
+            stopka_bits.append(utils.podpis(f"~{utils.formatuj_liczba(float(koszt))} {utils.symbol_waluty()}"))
         if tekst_term:
             stopka_bits.append(ft.Text(tekst_term, size=12, weight="bold", color=kolor_term))
 

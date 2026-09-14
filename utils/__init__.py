@@ -13,6 +13,7 @@ i `utils.cokolwiek(...)` działa jak dawniej.
 
 from .stale import *
 from .format import *
+from .typografia import *
 from .animacje import *
 from .wyglad import *
 from .szkielet import *
@@ -36,6 +37,7 @@ from .zaznaczanie import *
 from . import (
     stale,
     format,
+    typografia,
     animacje,
     wyglad,
     szkielet,

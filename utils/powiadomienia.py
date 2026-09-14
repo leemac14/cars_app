@@ -264,7 +264,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             ink=True, on_click=przelacz,
             content=ft.Row([
                 ft.Icon(ft.Icons.SNOOZE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.Text(f"Odkładane ({len(odlozone)})", weight="bold",
+                ft.Text(f"Odkładane ({len(odlozone)})",
                         color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                 strzalka,
             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),

@@ -48,7 +48,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
 
             pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)...", prefix_icon=ft.Icons.SEARCH, on_change=utils.z_opoznieniem(self._page, filtruj_galerie), **utils.styl_pola())
             
-            elementy.append(ft.Row([ft.Text("Filtruj:", weight="bold", color=ft.Colors.ON_SURFACE_VARIANT), filtr_strefa_ui]))
+            elementy.append(ft.Row([utils.etykieta("Filtruj:", size=13), filtr_strefa_ui]))
             elementy.append(pole_szukaj)
             
             zdjecia = utils.filtruj_po_kategorii(zdjecia, self.state, "karoseria_strefa", 2)
@@ -75,13 +75,20 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
 
             for z in zdjecia:
                 z_id, z_data, z_strefa, z_zal, z_typ, z_opis = z
-                kolor_typu = ft.Colors.BLUE if z_typ == "Przed naprawą" else ft.Colors.GREEN if z_typ == "Po naprawie" else ft.Colors.ON_SURFACE_VARIANT
+                # `z_typ` bywa NULL-em (wpisy sprzed dodania pola), a `str(None)`
+                # wypisywało na karcie dosłowne „None". Brak typu to zwykłe zdjęcie.
+                typ_zdjecia = str(z_typ) if z_typ and z_typ != "Brak" else "Zwykłe"
+                wyrozniony = typ_zdjecia in ("Przed naprawą", "Po naprawie")
+                kolor_typu = ft.Colors.BLUE if typ_zdjecia == "Przed naprawą" else ft.Colors.GREEN if typ_zdjecia == "Po naprawie" else ft.Colors.ON_SURFACE_VARIANT
                 
                 karta, kontener = utils.karta_listy(
                     ft.Column([
                         ft.Image(src=utils.abs_zalacznik(z_zal), height=110, width=165, fit="cover", border_radius=8),
                         ft.Text(f"{z_data} • {z_strefa}", size=12, weight="bold", no_wrap=True),
-                        ft.Text(str(z_typ) if z_typ != "Brak" else "Zwykłe", size=11, color=kolor_typu, weight="bold")
+                        # Pogrubiony tylko typ, który coś znaczy — „Zwykłe" jest
+                        # tłem, a nie wiadomością.
+                        ft.Text(typ_zdjecia, size=11, color=kolor_typu,
+                                weight="bold" if wyrozniony else "normal")
                     ], spacing=4),
                     tlo=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
                     page=self._page,

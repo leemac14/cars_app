@@ -143,7 +143,7 @@ class MiksinZakladkiInne:
                     iid = w.get('id')
                     tresc_i = [
                         ft.Row([
-                            ft.Text(str(w.get('data')), weight="bold", color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                            utils.podpis(str(w.get('data')), expand=True),
                             ft.Row([
                                 utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Koszt"),
                                 ft.Text(f"-{cena_str}", weight="bold", color=ft.Colors.RED_700)

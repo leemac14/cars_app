@@ -768,7 +768,9 @@ def pokaz_edytor_skrotow(page: ft.Page, state, po_zapisie=None):
             continue
         wiersze.append(ft.Container(
             padding=ft.Padding(4, 10, 4, 2),
-            content=ft.Text(grupa["tytul"].upper(), size=10, weight="bold",
+            # Wersaliki wystarczą za wyróżnienie — pogrubienie na dokładkę
+            # robiło z nazwy grupy rzecz ważniejszą niż ekrany pod nią.
+            content=ft.Text(grupa["tytul"].upper(), size=10,
                             color=ft.Colors.ON_SURFACE_VARIANT),
         ))
         for ekran in pozycje:
