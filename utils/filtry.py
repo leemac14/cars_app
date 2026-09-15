@@ -6,7 +6,7 @@ from date import parsuj_date
 from datetime import datetime
 from state import MIESIACE_NAZWY
 
-from .dialogi import przejdz
+from .dialogi import odswiez_ekran
 
 
 def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta, ikona_aktywna, ikona_nieaktywna):
@@ -18,7 +18,9 @@ def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta, iko
 
     def zmien_filtr(wartosc):
         state.filtry[klucz_stanu] = wartosc
-        przejdz(page, page.route)
+        # Odświeżenie, a nie przebudowa stosu: filtr zmienia ZAWARTOŚĆ listy,
+        # a nie ekran, na którym stoimy (patrz utils.odswiez_ekran).
+        odswiez_ekran(page)
 
     elementy_menu = []
     for o in opcje:

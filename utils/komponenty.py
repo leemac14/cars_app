@@ -3,7 +3,6 @@
 import asyncio
 import db
 import flet as ft
-import inspect
 import urllib.parse
 
 from .stale import (
@@ -758,50 +757,6 @@ def z_efektem_nacisniecia(kontener: ft.Container, funkcja):
     return wrapper
 
 
-def z_odswiezaniem(page: ft.Page, kontrolki: list, funkcja_odswiez=None):
-    """Owija kontrolki widoku w przewijaną kolumnę z przyciskiem odświeżania.
-    
-    Zwraca gotową kontrolkę — do użycia jako JEDYNY element w super().__init__(
-    controls=[...]), bez ustawiania scroll= na samym Widoku.
-    """
-    spinner = ft.ProgressRing(visible=False, width=18, height=18, stroke_width=2)
-    btn_odswiez = ft.IconButton(
-        icon=ft.Icons.REFRESH,
-        tooltip="Odśwież widok",
-        icon_size=20,
-    )
-
-    async def _wykonaj_odswiezenie(e):
-        spinner.visible = True
-        btn_odswiez.disabled = True
-        page.update()
-
-        try:
-            handler = funkcja_odswiez or (lambda ev: przejdz(page, page.route))
-            if inspect.iscoroutinefunction(handler):
-                await handler(e)
-            else:
-                handler(e)
-        finally:
-            spinner.visible = False
-            btn_odswiez.disabled = False
-            page.update()
-
-    btn_odswiez.on_click = _wykonaj_odswiezenie
-
-    pasek_gora = ft.Row(
-        controls=[spinner, btn_odswiez],
-        alignment=ft.MainAxisAlignment.END,
-    )
-
-    return ft.Column(
-        controls=[pasek_gora, *kontrolki],
-        spacing=15,
-        scroll=ft.ScrollMode.ALWAYS,
-        expand=True,
-    )
-
-
 def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
     """Animowany zamiennik powtarzanego wzorca 'btn_zakladki' — segmenty
     przełączają się płynną animacją koloru i skali zamiast twardego przeskoku.
@@ -944,7 +899,6 @@ __all__ = [
     "wiersz_danych",
     "wizualizacja_tagow",
     "z_efektem_nacisniecia",
-    "z_odswiezaniem",
     "znacznik_atrybucji",
     "znacznik_wykonania",
 ]

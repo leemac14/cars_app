@@ -1,4 +1,4 @@
-"""Dziesięć audytów, które do tej pory były jednorazowymi skryptami.
+"""Jedenaście audytów, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
@@ -154,6 +154,49 @@ def znajdz_expand_bez_ograniczenia(korzen):
 # nieograniczona; dlatego błąd wychodzi dopiero po przejściu na zawijanie.
 
 
+def znajdz_menu_w_pasku_zawijanym(korzen):
+    """PopupMenuButton w pasku zawijanym — zajmie całą linijkę.
+
+    Audyt wyżej szuka WIERSZY bez `tight=True`, bo o nie chodziło przy jego
+    pisaniu. Chip filtra to jednak `Container > PopupMenuButton > Row(tight=True)`
+    — wiersz w środku jest ciasny, więc tamten audyt przepuszcza go bez słowa,
+    a mimo to chip rozkłada się na całą szerokość: `PopupMenuButton` nie ma
+    własnej szerokości, a `Wrap` daje mu maxWidth całego paska.
+
+    Tak rozjechał się pasek filtrów w „Dzienniku życia auta" — jedynym ekranie,
+    który używał paska zawijanego zamiast przewijanego."""
+    znaleziska = []
+
+    def zawiera_menu(kontrolka, przodkowie):
+        if isinstance(kontrolka, ft.PopupMenuButton):
+            return _sciezka(przodkowie, kontrolka)
+        if getattr(kontrolka, "width", None) is not None:
+            return None
+        for _pole, dziecko in _dzieci(kontrolka, POLA_DZIECI_CHIPY):
+            trafienie = zawiera_menu(dziecko, przodkowie + [kontrolka])
+            if trafienie:
+                return trafienie
+        return None
+
+    def zejdz(kontrolka, przodkowie):
+        if _jest_wierszem(kontrolka) and getattr(kontrolka, "wrap", False):
+            for pole, dziecko in _dzieci(kontrolka, POLA_DZIECI_CHIPY):
+                if pole != "controls":
+                    continue
+                winowajca = zawiera_menu(dziecko, przodkowie + [kontrolka])
+                if winowajca:
+                    znaleziska.append({
+                        "sciezka": winowajca,
+                        "powod": "PopupMenuButton w pasku zawijanym — weźmie całą linijkę; "
+                                 "pasek filtrów robi się przewijany poziomo",
+                    })
+        for _pole, dziecko in _dzieci(kontrolka, POLA_DZIECI_CHIPY):
+            zejdz(dziecko, przodkowie + [kontrolka])
+
+    zejdz(korzen, [])
+    return znaleziska
+
+
 def znajdz_rozciagliwe_chipy(korzen):
     """Zwraca listę {'sciezka', 'powod'} — dzieci pasków zawijanych, które
     rozciągną się na całą linijkę."""
@@ -252,6 +295,45 @@ def znajdz_plaskie_powierzchnie(korzen, page=None):
             zejdz(dziecko, przodkowie + [kontrolka], rodzic_tlo, rodzic_cien)
 
     zejdz(korzen, [], None, False)
+    return znaleziska
+
+
+# ============================================================================
+#  AUDYT 2c — `expand` bezpośrednio w kontenerze (drzewo kontrolek)
+# ============================================================================
+# `expand` tłumaczy się na flutterowy `Expanded`, a `Expanded` MUSI być dzieckiem
+# Row albo Column. `Container.content` nie jest niczym takim — rozciągliwe
+# dziecko nie ma tam czego wypełnić.
+#
+# Objaw jest mylący, bo nic nie wybucha: kontrolka dostaje nieograniczoną
+# wysokość i szerokość. Przewijana kolumna przestaje się przewijać, a pasek
+# filtrów w nieograniczonej szerokości rozkłada każdy chip na osobną linijkę.
+# Dokładnie to stało się „Dziennikowi życia auta" po wprowadzeniu szkieletów:
+# `zbuduj_etapami` opakowuje treść w `ft.Container`, a treść wracała jako
+# `Column(expand=True, scroll=ALWAYS)`.
+
+
+def znajdz_expand_w_kontenerze(korzen):
+    """Rozciągliwe kontrolki wstawione wprost do `Container.content`."""
+    znaleziska = []
+
+    def zejdz(kontrolka, przodkowie):
+        if isinstance(kontrolka, ft.Container):
+            dziecko = getattr(kontrolka, "content", None)
+            # Kontener z WŁASNĄ wysokością (albo sam rozciągliwy) ogranicza dziecko,
+            # więc `expand` jest tam co najwyżej zbędny — bez wysokości dziecko
+            # dostaje nieskończoność i to dopiero psuje ekran.
+            ograniczony = bool(getattr(kontrolka, "height", None) or getattr(kontrolka, "expand", None))
+            if isinstance(dziecko, ft.Control) and getattr(dziecko, "expand", None) and not ograniczony:
+                znaleziska.append({
+                    "powod": f"{type(dziecko).__name__}(expand=…) w Containerze bez wysokości "
+                             "— `Expanded` działa tylko w Row/Column, więc dziecko dostaje nieskończoność",
+                    "sciezka": _sciezka(przodkowie + [kontrolka], dziecko),
+                })
+        for _, dziecko in _dzieci(kontrolka):
+            zejdz(dziecko, przodkowie + [kontrolka])
+
+    zejdz(korzen, [])
     return znaleziska
 
 

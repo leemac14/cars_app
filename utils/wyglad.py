@@ -349,10 +349,18 @@ def pasek_przewijany(kontrolki, spacing=10, miejsce_na_suwak=MIEJSCE_NA_SUWAK,
 
 
 def pasek_zawijany(kontrolki, spacing=6, run_spacing=6):
-    """Pasek filtrów / chipów, który zamiast jechać w bok ZAWIJA się do drugiej
-    linijki. Filtry są małe i jest ich kilka — schowanie części z nich za
-    niewidoczną krawędzią było jedynym powodem, dla którego ten pasek w ogóle
-    musiał się przewijać."""
+    """Pasek małych kontrolek, który zamiast jechać w bok ZAWIJA się do drugiej
+    linijki.
+
+    NIE dla chipów filtrów i sortowania. `wrap=True` to we Flutterze `Wrap`,
+    które daje dziecku maxWidth równe szerokości paska — a chip zbudowany na
+    `PopupMenuButton` nie ma własnej szerokości i bierze wtedy wszystko, co
+    dostanie. Każdy filtr ląduje w osobnej linijce. Paski filtrów robi się przez
+    `ft.Row(controls=…, scroll=ft.ScrollMode.ADAPTIVE, spacing=8)` — tak wygląda
+    każdy inny ekran w tej aplikacji.
+
+    Zostaje dla kontrolek o własnej szerokości: przycisków z tekstem i chipów
+    ekranów w szufladzie."""
     if not kontrolki:
         return ft.Container()
     return ft.Row(kontrolki, spacing=spacing, run_spacing=run_spacing, wrap=True,

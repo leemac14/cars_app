@@ -2,6 +2,7 @@
 
 import asyncio
 import flet as ft
+import log
 
 from .stale import FS, KOLOR_STATUS, RADIUS
 from .wyglad import dol_bezpieczny
@@ -335,6 +336,37 @@ def przejdz(page: ft.Page, trasa: str):
     page.on_route_change(None)
 
 
+def odswiez_ekran(page: ft.Page):
+    """Odświeża BIEŻĄCY ekran, nie ruszając stosu widoków.
+
+    `przejdz(page, page.route)` — używane dotąd przy zmianie sortowania, filtra
+    i po akcjach na wpisach — robi `page.views.clear()` i buduje wszystko od
+    nowa: nagłówek auta, oba paski, szufladę i listę. Efekt uboczny jest taki,
+    że ekran wraca na samą górę, bo nowa lista nie wie nic o starej.
+
+    Ekran, który potrafi odświeżyć samego siebie, wystawia `odswiez_w_miejscu()`
+    — wtedy wołamy jego metodę i nikt niczego nie przebudowuje. Reszta ekranów
+    dostaje starą drogę, więc to jest rozszerzenie, a nie zamiana."""
+    widok = None
+    try:
+        widok = page.views[-1] if page.views else None
+    except Exception:
+        log.polkniety("odczyt bieżącego widoku przy odświeżaniu")
+
+    odswiez = getattr(widok, "odswiez_w_miejscu", None)
+    if callable(odswiez):
+        try:
+            odswiez()
+            return True
+        except Exception:
+            # Ekran nie umiał się odświeżyć — lepiej przebudować niż zostawić
+            # użytkownika z nieaktualną listą.
+            log.polkniety("odświeżenie ekranu w miejscu")
+
+    przejdz(page, page.route)
+    return False
+
+
 __all__ = [
     "otworz_dialog",
     "otworz_dno",
@@ -345,6 +377,7 @@ __all__ = [
     "pokaz_menu_kontekstowe",
     "pokaz_ostrzezenie",
     "potwierdz",
+    "odswiez_ekran",
     "przejdz",
     "ukryj_ladowanie",
     "z_opoznieniem",

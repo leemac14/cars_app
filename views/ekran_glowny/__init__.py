@@ -315,8 +315,9 @@ class MainView(
         # Przełączenie zakładki nie idzie przez router, więc nikt nie wróci na
         # zapamiętaną pozycję za nas. Zapisywanie działa samo — klucz liczy się
         # w chwili przewijania (patrz utils.pamietaj_pozycje).
-        utils.przewin_na(self._page, self,
-                         utils.pobierz_pozycje(self.state, utils.klucz_ekranu(self, self.state)))
+        klucz_miejsca = utils.klucz_ekranu(self, self.state)
+        utils.przewin_na(self._page, self, utils.pobierz_pozycje(self.state, klucz_miejsca),
+                         opis=klucz_miejsca)
         self.floating_action_button = self.fab
         self._odswiez_szuflade()
         if self.pasek_zakladek is not None:
@@ -327,6 +328,33 @@ class MainView(
         db.zapamietaj_ostatnia_pozycje(self.state.auto_id, zakladka)
         utils.zanotuj_ekran_dla_trasy(self.state, [])
         log.zapisz(f"zakładka: {nowa[0]}/{nowa[1]}")
+
+    def odswiez_w_miejscu(self):
+        """Przelicza ZAWARTOŚĆ bieżącej zakładki, nie ruszając reszty ekranu.
+
+        Dotąd zmiana sortowania i filtra szła przez router: `page.views.clear()`
+        i budowa wszystkiego od nowa — nagłówka auta, obu pasków, szuflady
+        i listy. Ekran wracał przez to na samą górę, bo nowa lista nie wie nic
+        o starej, a przewijana jest CAŁA strona, nie tylko lista.
+
+        Tutaj strona zostaje ta sama, więc pozycja przewijania zostaje sama
+        z siebie — bez zapamiętywania, bez `scroll_to` i bez czekania na układ.
+        Wymienia się tylko zawartość zakładki, tak samo jak przy przełączaniu
+        między zakładkami (patrz `przelacz_zakladke`), tyle że bez przesunięcia:
+        nic się nie przesuwa w bok, bo nigdzie nie idziemy.
+
+        Nagłówka auta NIE przebudowujemy: sortowanie i filtr nie zmieniają ani
+        nazwy pojazdu, ani przebiegu. Akcja, która zmienia dane pojazdu, nadal
+        idzie przez router."""
+        if not self.przelacznik_zakladek:
+            utils.przejdz(self._page, "/")
+            return
+
+        self._wyczysc_stan_zakladki()
+        self.liczniki_nawigacji = db.liczniki_nawigacji(self.state.auto_id) if self.state.auto_id else {}
+        self.przelacznik_zakladek.pokaz(self._page, self._zawartosc_zakladki(), kierunek=0)
+        self.floating_action_button = self.fab
+        self._odswiez_szuflade()
 
         try:
             self.update()

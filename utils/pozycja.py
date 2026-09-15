@@ -117,7 +117,7 @@ def zapomnij_pozycje(state, klucz=None):
         pamiec.pop(klucz, None)
 
 
-def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None):
+def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None, opis=None):
     """Wraca na zadaną pozycję, gdy tylko Flutter policzy układ.
 
     Próbujemy DWA razy. Pierwsza próba idzie po jednej klatce i załatwia zwykłe
@@ -132,6 +132,8 @@ def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None):
 
     cel = float(pikseli)
 
+    nazwa = opis or type(kontrolka).__name__
+
     async def _ustaw():
         # `scroll_to` jest we Flecie 0.86 KORUTYNĄ. Wywołane bez `await` tworzy
         # obiekt korutyny, wyrzuca go i nie przewija niczego — po cichu, bez
@@ -142,6 +144,11 @@ def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None):
             wynik = kontrolka.scroll_to(offset=cel, duration=0)
             if inspect.isawaitable(wynik):
                 await wynik
+            # Ślad w logu, bo tej jednej rzeczy nie da się sprawdzić testem:
+            # czy Flutter po drugiej stronie NAPRAWDĘ przewinął. „przewinięto"
+            # bez skutku na ekranie znaczy, że `scroll_to` jest dla tej
+            # kontrolki puste i trzeba innej drogi (patrz claude/pozycja-przewijania.md).
+            log.zapisz(f"pozycja: przewinięto {nazwa} na {cel:.0f} px")
         except Exception:
             # Zawartość mogła się skrócić (filtr) albo kontrolki już nie ma na
             # stronie. Zostanie góra listy — tak jak było przed tą zmianą.
@@ -162,6 +169,7 @@ def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None):
     except Exception:
         log.polkniety("zaplanowanie powrotu na pozycję przewijania")
         return False
+    log.zapisz(f"pozycja: planuję powrót {nazwa} na {cel:.0f} px")
     return True
 
 
@@ -188,7 +196,7 @@ def pamietaj_pozycje(page, state, kontrolka, klucz):
 
     dodaj_obsluge_przewijania(kontrolka, _zapisz)
     cel = pobierz_pozycje(state, _biezacy_klucz())
-    przewin_na(page, kontrolka, cel,
+    przewin_na(page, kontrolka, cel, opis=_biezacy_klucz(),
                nadal_aktualne=lambda: pobierz_pozycje(state, _biezacy_klucz()) == cel)
     return kontrolka
 

@@ -506,6 +506,89 @@ def test_widok_nie_ma_expand_bez_ograniczenia(baza, nazwa_widoku, scenariusz):
     assert znaleziska == [], "\n".join(f"{z['powod']}: {z['sciezka']}" for z in znaleziska)
 
 
+def test_audyt_menu_lapie_chip_filtra_w_pasku_zawijanym():
+    """Dokładnie ten kształt, który audyt chipów przepuszczał: wiersz w środku
+    JEST ciasny, a chip i tak bierze całą linijkę, bo `PopupMenuButton` nie ma
+    własnej szerokości."""
+    chip = ft.Container(height=36, content=ft.PopupMenuButton(
+        items=[], content=ft.Row([ft.Text("Rok")], tight=True)))
+    pasek = ft.Row([chip], wrap=True)
+
+    assert audyty.znajdz_rozciagliwe_chipy(pasek) == [], "stary audyt tego nie widzi — stąd nowy"
+    assert len(audyty.znajdz_menu_w_pasku_zawijanym(pasek)) == 1
+
+
+def test_audyt_menu_przepuszcza_pasek_przewijany():
+    """Tak wygląda pasek filtrów na każdym ekranie tej aplikacji: przewijany
+    poziomo, więc szerokość jest nieograniczona i chip kurczy się do treści."""
+    chip = ft.Container(height=36, content=ft.PopupMenuButton(items=[], content=ft.Text("Rok")))
+    pasek = ft.Row([chip], scroll=ft.ScrollMode.ADAPTIVE, spacing=8)
+
+    assert audyty.znajdz_menu_w_pasku_zawijanym(pasek) == []
+
+
+def test_audyt_menu_przepuszcza_chip_o_wlasnej_szerokosci():
+    chip = ft.Container(width=120, content=ft.PopupMenuButton(items=[], content=ft.Text("Rok")))
+
+    assert audyty.znajdz_menu_w_pasku_zawijanym(ft.Row([chip], wrap=True)) == []
+
+
+@pytest.mark.parametrize("scenariusz", SCENARIUSZE_AUDYTU)
+@pytest.mark.parametrize("nazwa_widoku", list(pomoce.klasy_widokow()))
+def test_widok_nie_wklada_menu_do_paska_zawijanego(baza, nazwa_widoku, scenariusz):
+    stan, identyfikatory = pomoce.przygotuj_scenariusz(scenariusz)
+    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()[nazwa_widoku], pomoce.zbuduj_strone(), stan, identyfikatory)
+
+    znaleziska = audyty.znajdz_menu_w_pasku_zawijanym(widok)
+
+    assert znaleziska == [], (
+        "\n".join(f"{z['powod']}: {z['sciezka']}" for z in znaleziska)
+        + "\n\nPasek filtrów składa się tak samo, jak na pozostałych ekranach: "
+        "ft.Row(controls=…, scroll=ft.ScrollMode.ADAPTIVE, spacing=8)."
+    )
+
+
+@pytest.mark.parametrize("scenariusz", SCENARIUSZE_AUDYTU)
+@pytest.mark.parametrize("nazwa_widoku", list(pomoce.klasy_widokow()))
+def test_widok_nie_wklada_expand_do_kontenera(baza, nazwa_widoku, scenariusz):
+    """`expand` tłumaczy się na flutterowy `Expanded`, a ten musi być dzieckiem
+    Row albo Column. W `Container.content` dziecko dostaje zamiast tego
+    nieskończoną wysokość i szerokość — przewijana kolumna przestaje się
+    przewijać, a pasek filtrów rozkłada każdy chip na osobną linijkę.
+
+    Tak rozjechał się „Dziennik życia auta" po wprowadzeniu szkieletów:
+    `zbuduj_etapami` opakowuje treść w `ft.Container`, a treść wracała wtedy
+    jako `Column(expand=True, scroll=ALWAYS)`."""
+    stan, identyfikatory = pomoce.przygotuj_scenariusz(scenariusz)
+    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()[nazwa_widoku], pomoce.zbuduj_strone(), stan, identyfikatory)
+
+    znaleziska = audyty.znajdz_expand_w_kontenerze(widok)
+
+    assert znaleziska == [], "\n".join(f"{z['powod']}: {z['sciezka']}" for z in znaleziska)
+
+
+def test_audyt_expand_w_kontenerze_lapie_przewijana_kolumne():
+    drzewo = ft.Container(content=ft.Column([ft.Text("x")], expand=True, scroll=ft.ScrollMode.ALWAYS))
+
+    znaleziska = audyty.znajdz_expand_w_kontenerze(drzewo)
+
+    assert len(znaleziska) == 1
+
+
+def test_audyt_expand_w_kontenerze_przepuszcza_kontener_z_wysokoscia():
+    """Wykres w kontenerze o zadanej wysokości jest ograniczony — `expand` jest
+    tam co najwyżej zbędny, a nie szkodliwy."""
+    drzewo = ft.Container(height=180, content=ft.Column([ft.Text("x")], expand=True))
+
+    assert audyty.znajdz_expand_w_kontenerze(drzewo) == []
+
+
+def test_audyt_expand_w_kontenerze_przepuszcza_kolumne_w_kolumnie():
+    drzewo = ft.Column([ft.Column([ft.Text("x")], expand=True)])
+
+    assert audyty.znajdz_expand_w_kontenerze(drzewo) == []
+
+
 @pytest.mark.parametrize("scenariusz", SCENARIUSZE_AUDYTU)
 @pytest.mark.parametrize("nazwa_widoku", list(pomoce.klasy_widokow()))
 def test_widok_nie_ma_rozciagliwych_chipow(baza, nazwa_widoku, scenariusz):

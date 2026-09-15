@@ -131,7 +131,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 elementy.append(self.lista_kart)
 
             elementy.append(utils.dol_bezpieczny(10))
-            return utils.z_odswiezaniem(page, elementy)
+            return ft.Column(elementy, spacing=15)
 
 
         super().__init__(
@@ -142,6 +142,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 page, utils.szkielet_ekranu(page, kafle=2, wykres=True, karty=4),
                 tresc, widok=self,
             )],
+            scroll=ft.ScrollMode.AUTO,
         )
 
     # ================= PODSUMOWANIE =================

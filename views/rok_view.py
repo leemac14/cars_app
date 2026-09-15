@@ -82,7 +82,7 @@ class RokWPigulceView(ft.View):
 
             elementy.append(utils.dol_bezpieczny(10))
             self.scena.uruchom(page)
-            return utils.z_odswiezaniem(page, elementy)
+            return ft.Column(elementy, spacing=15)
 
         super().__init__(
             route=f"/rok/{self.rok}", padding=15, spacing=15, appbar=appbar,
@@ -90,6 +90,7 @@ class RokWPigulceView(ft.View):
                 page, utils.szkielet_ekranu(page, kafle=4, wykres=True, karty=2),
                 tresc, widok=self,
             )],
+            scroll=ft.ScrollMode.AUTO,
         )
 
     # ================= SEKCJE =================

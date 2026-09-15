@@ -72,7 +72,8 @@ class PojazdView(ft.View):
 
         super().__init__(
             route="/pojazd", padding=15, spacing=15, appbar=appbar,
-            controls=[utils.z_odswiezaniem(page, elementy)],
+            controls=elementy,
+            scroll=ft.ScrollMode.AUTO,
         )
         self.scena.uruchom(page)
 

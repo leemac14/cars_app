@@ -74,7 +74,12 @@ class TimelineView(ft.View):
                         utils.przycisk_filtrowania_autora(self._page, self.state, "timeline_autor", zdarzenia, 8)
                     )
 
-                elementy.append(utils.pasek_zawijany(filtry_ui))
+                # Pasek PRZEWIJANY poziomo, tak jak na wszystkich pozostałych
+                # ekranach z filtrami. W pasku zawijanym (`wrap=True`) chipy
+                # oparte na PopupMenuButton biorą całą szerokość i każdy ląduje
+                # w osobnej linijce — patrz claude/expand-tylko-w-row-kolumnie.md.
+                elementy.append(ft.Row(controls=filtry_ui,
+                                       scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
                 def filtruj_timeline(e):
                     zapytanie = e.control.value.lower().strip()
@@ -130,7 +135,7 @@ class TimelineView(ft.View):
                 elementy.append(self.lista_kart)
 
             elementy.append(utils.dol_bezpieczny(10))
-            return utils.z_odswiezaniem(page, elementy)
+            return ft.Column(elementy, spacing=15)
 
 
         super().__init__(
@@ -141,6 +146,13 @@ class TimelineView(ft.View):
                 page, utils.szkielet_ekranu(page, wykres=True, karty=5, linie=2),
                 tresc, widok=self,
             )],
+            # Przewija SAM WIDOK, jak na pozostałych ekranach. Wcześniej treść
+            # wracała opakowana we własną przewijaną kolumnę z `expand=True`,
+            # a ta trafiała do kontenera szkieletu, który wysokości nie ma —
+            # kolumna nie miała czego wypełnić, więc nic się nie przewijało,
+            # a pasek filtrów w nieograniczonej szerokości rozkładał każdy
+            # chip na osobną linijkę.
+            scroll=ft.ScrollMode.AUTO,
         )
 
     # ================= OŚ CZASU =================

@@ -2,7 +2,7 @@
 
 import flet as ft
 
-from .dialogi import przejdz
+from .dialogi import odswiez_ekran
 
 
 def przycisk_sortowania(page: ft.Page, state, klucz_stanu, opcje):
@@ -11,12 +11,12 @@ def przycisk_sortowania(page: ft.Page, state, klucz_stanu, opcje):
     def zmien_pole(pole):
         _, mal = state.sort[klucz_stanu]
         state.sort[klucz_stanu] = (pole, mal)
-        przejdz(page, page.route)
+        odswiez_ekran(page)
         
     def zmien_kierunek(e):
         pole, mal = state.sort[klucz_stanu]
         state.sort[klucz_stanu] = (pole, not mal)
-        przejdz(page, page.route)
+        odswiez_ekran(page)
 
     etykieta_akt = next((et for et, p, _ in opcje if p == pole_akt), str(pole_akt))
 
