@@ -1,4 +1,4 @@
-"""Dziewięć audytów, które do tej pory były jednorazowymi skryptami.
+"""Dziesięć audytów, które do tej pory były jednorazowymi skryptami.
 
 Dwa pierwsze chodzą po FAKTYCZNIE zbudowanym drzewie kontrolek — nie po kodzie
 źródłowym — bo pytanie brzmi „co się narysuje", a to zależy od tego, co
@@ -1177,6 +1177,119 @@ def audyt_palety_statusow(sciezki=None, korzen=None):
 
 
 # ============================================================================
+#  AUDYT 9 — porzucone korutyny metod Fleta (AST)
+# ============================================================================
+# Bliźniak audytu `run_task`. Część metod kontrolek Fleta to KORUTYNY —
+# `scroll_to`, `show_drawer`, `launch_url`, `pick_files`, `take_screenshot`.
+# Wywołane bez `await` tworzą obiekt korutyny, wyrzucają go i nie robią NIC.
+# Po cichu: żadnego błędu, żadnego ostrzeżenia w interfejsie, ekran po prostu
+# zachowuje się tak, jakby kodu nie było.
+#
+# Ta usterka zjadła w tym projekcie całą pamięć pozycji przewijania: powrót na
+# zapamiętane miejsce był napisany, przetestowany i nigdy nie zadziałał, bo
+# `kontrolka.scroll_to(...)` stało bez `await`.
+#
+# Listę nazw bierzemy Z FLETA, a nie z własnego spisu: przy zmianie wersji
+# biblioteki spis rozjechałby się po cichu, a to jest dokładnie ten rodzaj
+# cichego rozjazdu, któremu ten audyt ma zapobiegać.
+
+# Klasy, z których zbieramy nazwy metod asynchronicznych.
+KLASY_FLETA_DO_SKANU = ("Page", "View", "Control", "ListView", "FilePicker")
+
+# Nazwy, które kolidują z czymś własnym albo są wołane wyłącznie przez Fleta.
+POMIJANE_NAZWY_ASYNC = {"login", "logout"}
+
+# Świadome wyjątki: (plik, metoda). Wszystkie trzy to gałąź dla STARSZYCH Fletów,
+# w których `save_file`/`pick_files` były synchroniczne, a wynik przychodził przez
+# `on_result`. Na 0.8x warunek `hasattr(page, "services")` jest prawdziwy, więc
+# ta gałąź w ogóle się nie wykonuje — ale ma zostać, bo to ona obsługuje starsze
+# wersje (ta sama sytuacja, co wpis FilePicker/on_result w DOZWOLONE_POLA).
+DOZWOLONE_KORUTYNY = {
+    ("main.py", "save_file"),
+    ("main.py", "pick_files"),
+}
+
+
+def nazwy_metod_async_fleta():
+    """Nazwy metod Fleta, które są korutynami."""
+    nazwy = set()
+    for nazwa_klasy in KLASY_FLETA_DO_SKANU:
+        klasa = getattr(ft, nazwa_klasy, None)
+        if klasa is None:
+            continue
+        for nazwa in dir(klasa):
+            if nazwa.startswith("_"):
+                continue
+            if inspect.iscoroutinefunction(getattr(klasa, nazwa, None)):
+                nazwy.add(nazwa)
+    return nazwy - POMIJANE_NAZWY_ASYNC
+
+
+def _zmienne_sprawdzane_isawaitable(zakres):
+    """Nazwy, o które ktoś w tym zakresie pyta `inspect.isawaitable`.
+
+    To zgodnościowy idiom tego projektu: ta sama metoda bywa w starszych Fletach
+    synchroniczna, więc wynik sprawdza się przed `await`. Taki zapis jest
+    poprawny i audyt ma go przepuścić."""
+    nazwy = set()
+    for wezel in ast.walk(zakres):
+        if not (isinstance(wezel, ast.Call) and isinstance(wezel.func, ast.Attribute)):
+            continue
+        if wezel.func.attr != "isawaitable" or not wezel.args:
+            continue
+        cel = wezel.args[0]
+        if isinstance(cel, ast.Name):
+            nazwy.add(cel.id)
+    return nazwy
+
+
+def audyt_porzuconych_korutyn(sciezki=None, korzen=None):
+    """Wywołania asynchronicznych metod Fleta, których nikt nie odbiera."""
+    korzen = korzen or KORZEN_PROJEKTU
+    nazwy_async = nazwy_metod_async_fleta()
+    znaleziska = []
+
+    for sciezka in sciezki if sciezki is not None else _pliki_projektu():
+        wzgledna = sciezka.relative_to(korzen).as_posix()
+        drzewo = ast.parse(sciezka.read_text(encoding="utf-8"), filename=str(sciezka))
+
+        # Rodzic każdego węzła — po to, żeby odróżnić `await x.scroll_to()`
+        # od samotnego `x.scroll_to()`.
+        rodzice = {}
+        for wezel in ast.walk(drzewo):
+            for dziecko in ast.iter_child_nodes(wezel):
+                rodzice[dziecko] = wezel
+
+        pilnowane = _zmienne_sprawdzane_isawaitable(drzewo)
+
+        for wezel in ast.walk(drzewo):
+            if not (isinstance(wezel, ast.Call) and isinstance(wezel.func, ast.Attribute)):
+                continue
+            nazwa = wezel.func.attr
+            if nazwa not in nazwy_async:
+                continue
+
+            rodzic = rodzice.get(wezel)
+            if isinstance(rodzic, ast.Await):
+                continue
+            # `wynik = x.scroll_to(...)` plus `inspect.isawaitable(wynik)` niżej.
+            if isinstance(rodzic, ast.Assign):
+                cele = [c.id for c in rodzic.targets if isinstance(c, ast.Name)]
+                if any(c in pilnowane for c in cele):
+                    continue
+
+            if (wzgledna, nazwa) in DOZWOLONE_KORUTYNY:
+                continue
+
+            znaleziska.append({
+                "plik": wzgledna, "linia": wezel.lineno, "metoda": nazwa,
+                "opis": f"`{nazwa}(...)` bez await — korutyna powstaje i ginie, nic się nie dzieje",
+            })
+
+    return znaleziska
+
+
+# ============================================================================
 #  RAPORT
 # ============================================================================
 
@@ -1239,6 +1352,11 @@ if __name__ == "__main__":
 
     print("\n== Audyt palety statusów ==")
     for z in audyt_palety_statusow():
+        print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
+
+    print("\n== Audyt porzuconych korutyn Fleta ==")
+    print(f"  pilnowane metody: {', '.join(sorted(nazwy_metod_async_fleta()))}")
+    for z in audyt_porzuconych_korutyn():
         print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
 
     print("\nAudyty drzewa kontrolek (expand, chipy, powierzchnie) uruchamia pytest:")

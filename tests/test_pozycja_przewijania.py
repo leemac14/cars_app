@@ -53,14 +53,20 @@ class StronaZPetla:
 
 
 class Lista:
-    """Kontrolka przewijalna w minimalnej postaci."""
+    """Kontrolka przewijalna w minimalnej postaci.
+
+    `scroll_to` jest tu KORUTYNĄ, dokładnie jak we Flecie 0.86 — i to nie jest
+    szczegół. Pierwsza wersja tych testów miała atrapę synchroniczną, więc
+    przechodziły na zielono, podczas gdy prawdziwy kod wołał korutynę bez
+    `await` i nie przewijał niczego. Atrapa łatwiejsza od oryginału testuje
+    samą siebie."""
 
     def __init__(self):
         self.on_scroll = None
         self.scroll_interval = None
         self.przewinieto_na = []
 
-    def scroll_to(self, offset=None, duration=None, **k):
+    async def scroll_to(self, offset=None, duration=None, **k):
         self.przewinieto_na.append(offset)
 
 
@@ -145,12 +151,14 @@ def test_dodanie_obslugi_nie_wylacza_poprzedniej():
 
 
 def test_odstep_zdarzen_nie_robi_sie_rzadszy():
+    """Gdy ktoś ŚWIADOMIE poprosił o gęściej, zostawiamy mu to. Wartość domyślna
+    Fleta (10 ms) świadomą prośbą nie jest — patrz test niżej."""
     lista = Lista()
-    lista.scroll_interval = 10
+    lista.scroll_interval = 40
 
     utils.dodaj_obsluge_przewijania(lista, lambda e: None)
 
-    assert lista.scroll_interval == 10, "ktoś chciał gęściej — nie rozrzedzamy mu tego"
+    assert lista.scroll_interval == 40
 
 
 def test_odstep_zdarzen_ustawia_sie_gdy_go_nie_bylo():
@@ -246,7 +254,7 @@ def test_skrocona_lista_nie_wywala_powrotu(petla):
     import asyncio
 
     class ListaKtoraRzuca(Lista):
-        def scroll_to(self, **k):
+        async def scroll_to(self, **k):
             raise RuntimeError("nie ma dokąd przewijać")
 
     stan, strona = Stan(), StronaZPetla()
@@ -328,3 +336,42 @@ def test_pozycja_przezywa_przebudowe_widoku(baza):
     assert utils.pobierz_pozycje(stan, "lista:odczyty") == 1100, (
         "pamięć pozycji nie przeżyła przebudowy — a to jedyny moment, w którym jest potrzebna"
     )
+
+
+def test_scroll_to_fleta_jest_korutyna():
+    """Zapis tego, na czym stoi powrót: gdyby Flet zmienił `scroll_to`
+    z powrotem na metodę synchroniczną, `inspect.isawaitable` w `przewin_na`
+    i tak zadziała — ale warto wiedzieć, że coś się zmieniło."""
+    import inspect
+
+    assert inspect.iscoroutinefunction(ft.ListView.scroll_to)
+    assert inspect.iscoroutinefunction(ft.View.scroll_to)
+
+
+def test_powrot_dziala_takze_gdy_scroll_to_jest_synchroniczne(petla):
+    """Starsze Flety miały `scroll_to` synchroniczne — `isawaitable` obsługuje
+    oba przypadki jednym kodem."""
+    import asyncio
+
+    class ListaSynchroniczna(Lista):
+        def scroll_to(self, offset=None, duration=None, **k):
+            self.przewinieto_na.append(offset)
+
+    stan, strona, lista = Stan(), StronaZPetla(), ListaSynchroniczna()
+    utils.zapisz_pozycje(stan, "lista:stara", 640)
+
+    utils.pamietaj_pozycje(strona, stan, lista, "lista:stara")
+    asyncio.run(_odpal(strona))
+
+    assert lista.przewinieto_na == [640, 640]
+
+
+def test_odstep_zdarzen_podnosi_sie_z_domyslnego_fleta():
+    """Flet daje 10 ms, czyli sto zdarzeń na sekundę na każdą listę. To nie jest
+    niczyja decyzja, tylko wartość domyślna — traktujemy ją jak brak."""
+    lista = Lista()
+    lista.scroll_interval = utils.ODSTEP_DOMYSLNY_FLETA_MS
+
+    utils.dodaj_obsluge_przewijania(lista, lambda e: None)
+
+    assert lista.scroll_interval == utils.ODSTEP_ZDARZEN_MS

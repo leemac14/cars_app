@@ -601,6 +601,78 @@ def test_projekt_nie_sklada_liczb_recznie():
 
 
 
+# ============================================================================
+#  AUDYT PORZUCONYCH KORUTYN
+# ============================================================================
+
+def _audyt_korutyn(tmp_path, kod):
+    return audyty.audyt_porzuconych_korutyn([_plik(tmp_path, "moj.py", kod)], korzen=tmp_path)
+
+
+def test_audyt_korutyn_lapie_scroll_to_bez_await(tmp_path):
+    """Ta usterka zjadła w tym projekcie całą pamięć pozycji przewijania: powrót
+    był napisany, przetestowany i nigdy nie zadziałał."""
+    znaleziska = _audyt_korutyn(tmp_path, """
+        async def wroc(lista):
+            lista.scroll_to(offset=500, duration=0)
+    """)
+
+    assert len(znaleziska) == 1
+    assert znaleziska[0]["metoda"] == "scroll_to"
+
+
+def test_audyt_korutyn_przepuszcza_await(tmp_path):
+    znaleziska = _audyt_korutyn(tmp_path, """
+        async def wroc(lista):
+            await lista.scroll_to(offset=500)
+    """)
+
+    assert znaleziska == []
+
+
+def test_audyt_korutyn_przepuszcza_zgodnosciowy_isawaitable(tmp_path):
+    """Idiom tego projektu: ta sama metoda bywa w starszych Fletach
+    synchroniczna, więc wynik sprawdza się przed `await`."""
+    znaleziska = _audyt_korutyn(tmp_path, """
+        import inspect
+
+        async def wroc(page):
+            wynik = page.launch_url("tel:123")
+            if inspect.isawaitable(wynik):
+                await wynik
+    """)
+
+    assert znaleziska == []
+
+
+def test_audyt_korutyn_nie_rusza_metod_synchronicznych(tmp_path):
+    znaleziska = _audyt_korutyn(tmp_path, """
+        def odswiez(kontrolka):
+            kontrolka.update()
+    """)
+
+    assert znaleziska == []
+
+
+def test_lista_pilnowanych_metod_pochodzi_z_fleta():
+    """Własny spis rozjechałby się po cichu przy zmianie wersji biblioteki —
+    a to jest dokładnie ten rodzaj cichego rozjazdu, któremu ten audyt zapobiega."""
+    nazwy = audyty.nazwy_metod_async_fleta()
+
+    assert "scroll_to" in nazwy
+    assert "update" not in nazwy, "update() jest synchroniczne — fałszywki zabiłyby ten audyt"
+
+
+def test_zadna_korutyna_fleta_nie_jest_porzucona():
+    znaleziska = audyty.audyt_porzuconych_korutyn()
+    assert znaleziska == [], (
+        "\n".join(f"{z['plik']}:{z['linia']} — {z['opis']}" for z in znaleziska)
+        + "\n\nAlbo `await`, albo — gdy ta sama metoda bywa w starszych Fletach "
+        "synchroniczna — `wynik = ...` i `if inspect.isawaitable(wynik): await wynik`. "
+        "Gałąź zgodnościową dla starego API dopisz do DOZWOLONE_KORUTYNY w tests/audyty.py."
+    )
+
+
 def test_ciche_wyjatki_nie_przybywaja():
     """Zamek na `except …: pass`, w duchu zamka na odciskach migracji.
 

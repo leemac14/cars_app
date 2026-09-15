@@ -23,7 +23,7 @@ Dwie rzeczy, na których to stoi:
 """
 
 import asyncio
-import flet as ft
+import inspect
 import log
 
 from .animacje import _petla_dziala
@@ -45,7 +45,10 @@ PROG_PAMIETANIA = 24
 
 # Odstęp zdarzeń przewijania. Pozycja ma być świeża w chwili przebudowy, a nie
 # dokładna co do piksela — setki zdarzeń na sekundę nic tu nie wnoszą.
+# Flet domyślnie daje 10 ms, czyli sto zdarzeń na sekundę na każdą przewijaną
+# listę; traktujemy tę wartość jak „nikt się nie wypowiedział".
 ODSTEP_ZDARZEN_MS = 100
+ODSTEP_DOMYSLNY_FLETA_MS = 10
 
 
 def _pamiec(state):
@@ -78,7 +81,7 @@ def dodaj_obsluge_przewijania(kontrolka, handler):
 
     try:
         biezacy = getattr(kontrolka, "scroll_interval", None)
-        if not biezacy or biezacy > ODSTEP_ZDARZEN_MS:
+        if not biezacy or biezacy in (ODSTEP_DOMYSLNY_FLETA_MS,) or biezacy > ODSTEP_ZDARZEN_MS:
             kontrolka.scroll_interval = ODSTEP_ZDARZEN_MS
     except Exception:
         log.polkniety("ustawienie odstępu zdarzeń przewijania")
@@ -129,9 +132,16 @@ def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None):
 
     cel = float(pikseli)
 
-    def _ustaw():
+    async def _ustaw():
+        # `scroll_to` jest we Flecie 0.86 KORUTYNĄ. Wywołane bez `await` tworzy
+        # obiekt korutyny, wyrzuca go i nie przewija niczego — po cichu, bez
+        # żadnego błędu. Dokładnie ta klasa usterki, co porzucony `run_task`
+        # (patrz audyt 4 w tests/audyty.py). `isawaitable` zamiast samego
+        # `await`, bo w starszych Fletach ta sama metoda bywa synchroniczna.
         try:
-            kontrolka.scroll_to(offset=cel, duration=0)
+            wynik = kontrolka.scroll_to(offset=cel, duration=0)
+            if inspect.isawaitable(wynik):
+                await wynik
         except Exception:
             # Zawartość mogła się skrócić (filtr) albo kontrolki już nie ma na
             # stronie. Zostanie góra listy — tak jak było przed tą zmianą.
@@ -142,10 +152,10 @@ def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None):
 
     async def _wroc():
         await asyncio.sleep(OPOZNIENIE_POWROTU_S)
-        _ustaw()
+        await _ustaw()
         await asyncio.sleep(OPOZNIENIE_DRUGIEJ_PROBY_S)
         if nadal_aktualne is None or nadal_aktualne():
-            _ustaw()
+            await _ustaw()
 
     try:
         page.run_task(_wroc)
@@ -201,6 +211,7 @@ def klucz_ekranu(widok, state=None):
 
 
 __all__ = [
+    "ODSTEP_DOMYSLNY_FLETA_MS",
     "ODSTEP_ZDARZEN_MS",
     "OPOZNIENIE_DRUGIEJ_PROBY_S",
     "OPOZNIENIE_POWROTU_S",
