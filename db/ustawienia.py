@@ -282,10 +282,19 @@ def scal_widgety_kokpitu(zaznaczone, auto_id=None):
     return wynik
 
 
+# Które powiadomienia użytkownik już widział i w jakim stanie (patrz
+# db.powiadomienia — „widziane” per powiadomienie). Klucz per auto, bo klucze
+# samych powiadomień („dokument:oc”) powtarzają się między pojazdami.
+def _klucz_widzianych_powiadomien(auto_id):
+    return f"powiadomienia_widziane_{int(auto_id)}"
+
+
 # Ustawienia przywiązane do KONKRETNEGO pojazdu — przenoszone razem z nim do
 # kosza i z powrotem (ID po przywróceniu może się zmienić, patrz
 # przywroc_auto_z_kosza), żeby nie zostawały w bazie jako sieroty.
-USTAWIENIA_PER_POJAZD = [_klucz_kokpitu]
+# Migawka kosza zapisuje je pod NAZWĄ funkcji budującej klucz — zmiana nazwy
+# którejś z nich zgubiłaby to ustawienie w pojazdach, które już leżą w koszu.
+USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien]
 
 
 def _pobierz_ustawienia_pojazdu(auto_id):
@@ -351,6 +360,7 @@ __all__ = [
     "KOKPIT_WIDGETY_DOMYSLNE",
     "USTAWIENIA_PER_POJAZD",
     "_klucz_kokpitu",
+    "_klucz_widzianych_powiadomien",
     "_odczytaj_kolejnosc_kokpitu",
     "_pobierz_ustawienia_pojazdu",
     "_przywroc_ustawienia_pojazdu",

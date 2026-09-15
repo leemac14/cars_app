@@ -5,16 +5,35 @@ import flet as ft
 from datetime import datetime
 
 from .stale import IKONY_SEZONU_OPON, KOLOR_STATUS, RADIUS, formatuj_liczba
-from .format import kolor_i_tekst_terminu, parsuj_float, parsuj_int, symbol_waluty
+from .format import _odmiana_liczby, kolor_i_tekst_terminu, parsuj_float, parsuj_int, symbol_waluty
+from .typografia import podpis
 from .zgodnosc import ustaw_blad, ustaw_ikone
-from .wyglad import dol_bezpieczny
+from .wyglad import dol_bezpieczny, tlo_stanu
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, potwierdz, przejdz, zamknij_dialog, zamknij_dno
 from .formularze import pole_daty, styl_dropdown, styl_pola
 from .komponenty import znacznik_wykonania
 
 
-def _sygnatura_powiadomien(powiadomienia):
-    return frozenset((p["typ"], p["tytul"], p["status"]) for p in powiadomienia)
+def opis_dzwonka(liczba, nowych):
+    """Podpowiedź przy dzwonku: ile jest wszystkich, a ile z nich nowych — bo
+    odznaka liczy już tylko te drugie."""
+    if not liczba:
+        return "Brak powiadomień"
+    tekst = f"{liczba} {_odmiana_liczby(liczba, 'powiadomienie', 'powiadomienia', 'powiadomień')}"
+    if nowych:
+        tekst += f", w tym {nowych} {_odmiana_liczby(nowych, 'nowe', 'nowe', 'nowych')}"
+    return tekst
+
+
+def znacznik_nowego(page=None):
+    """Pigułka „nowe” przy powiadomieniu, które zapaliło odznakę. Otwarcie panelu
+    zapisuje wszystko jako widziane — bez tego znacznika nowa pozycja ginęłaby
+    wśród tych, które użytkownik zna od tygodnia."""
+    return ft.Container(
+        padding=ft.Padding(6, 1, 6, 1), border_radius=RADIUS["pill"],
+        bgcolor=tlo_stanu(page, "info"),
+        content=ft.Text("nowe", size=10, weight="bold", color=KOLOR_STATUS["info"], no_wrap=True),
+    )
 
 
 # Wpis typu „opony” nie jest ani płatnością, ani gołym przypomnieniem — jego
@@ -67,16 +86,17 @@ def komunikat_po_wykonaniu(wynik, czy_koszt=True):
 
 
 def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
+    # „Widziane” liczy się osobno dla każdego powiadomienia (patrz
+    # db.powiadomienia). Odznaka pokazuje TYLKO nowe albo pogorszone — pięć
+    # znanych od tygodnia nie może zasłaniać szóstego, które przyszło dziś.
     powiadomienia = db.pobierz_powiadomienia(state.auto_id)
     liczba = len(powiadomienia)
-    sygnatura = _sygnatura_powiadomien(powiadomienia)
-    widziana = state.powiadomienia_widziane.get(state.auto_id)
-    juz_widziane = liczba > 0 and sygnatura == widziana
-    ma_przeterminowane = any(p["status"] == "przeterminowane" for p in powiadomienia)
+    widziane = db.przytnij_widziane_powiadomienia(state.auto_id, powiadomienia)
+    nowe = db.niewidziane_powiadomienia(powiadomienia, widziane)
 
-    if liczba == 0 or juz_widziane:
+    if not nowe:
         kolor_ikony = ft.Colors.ON_SURFACE
-    elif ma_przeterminowane:
+    elif any(p["status"] == "przeterminowane" for p in nowe):
         kolor_ikony = KOLOR_STATUS["critical"]
     else:
         kolor_ikony = KOLOR_STATUS["warning"]
@@ -85,7 +105,7 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
         icon=ft.Icons.NOTIFICATIONS_ROUNDED if liczba else ft.Icons.NOTIFICATIONS_OUTLINED,
         icon_color=kolor_ikony,
         icon_size=20,
-        tooltip=f"{liczba} powiadomień" if liczba else "Brak powiadomień",
+        tooltip=opis_dzwonka(liczba, len(nowe)),
         width=36, height=36,
         style=ft.ButtonStyle(padding=0),
     )
@@ -95,15 +115,17 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
         return ikona
 
     odznaka = ft.Container(
-        content=ft.Text(str(liczba) if liczba < 10 else "9+", size=9, color=ft.Colors.WHITE, weight="bold"),
+        content=ft.Text(str(len(nowe)) if len(nowe) < 10 else "9+", size=9, color=ft.Colors.WHITE, weight="bold"),
         width=14, height=14, border_radius=7, bgcolor=KOLOR_STATUS["critical"],
         alignment=ft.Alignment.CENTER,
     )
-    odznaka_pozycja = ft.Container(odznaka, right=0, top=0, visible=not juz_widziane)
+    odznaka_pozycja = ft.Container(odznaka, right=0, top=0, visible=bool(nowe))
 
     def po_kliknieciu(e):
-        state.powiadomienia_widziane[state.auto_id] = sygnatura
+        # Samo zapamiętanie obejrzenia robi panel — dzięki temu działa też
+        # wtedy, gdy otwiera się go z kafla „Termin” na kokpicie.
         ikona.icon_color = ft.Colors.ON_SURFACE
+        ikona.tooltip = opis_dzwonka(liczba, 0)
         odznaka_pozycja.visible = False
         page.update()
         pokaz_panel_powiadomien(page, state)
@@ -122,6 +144,11 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         padding=20, bgcolor=ft.Colors.SURFACE, content=lista_pozycji,
     ))
 
+    # Klucze powiadomień, które były NOWE w chwili otwarcia panelu. Ustalane raz:
+    # pierwsze odświeżenie zapisuje wszystko jako widziane, a znacznik „nowe” ma
+    # zostać przy tych samych pozycjach także po odłożeniu czy „Zapłacone”.
+    nowe_przy_otwarciu = None
+
     def idz_do(trasa):
         def handler(e):
             zamknij_dno(page, bs)
@@ -135,8 +162,11 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
 
             def dokoncz():
                 pokaz_komunikat(page, komunikat)
-                przejdz(page, page.route)  # odświeża dzwonek/badge w tle; panel zostaje otwarty
+                # Najpierw lista (zapisuje obejrzenie), potem dzwonek w tle —
+                # w odwrotnej kolejności odznaka zdążyłaby policzyć to, co
+                # użytkownik ma właśnie przed oczami. Panel zostaje otwarty.
                 odswiez()
+                przejdz(page, page.route)
 
             if kafelek is None:
                 dokoncz()
@@ -161,8 +191,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         jako wykonane i nie rusza terminu — po prostu znika z listy do czasu."""
         db.odloz_powiadomienie(state.auto_id, powiadomienie.get("klucz"), dni, powiadomienie.get("tytul"))
         pokaz_komunikat(page, f"Odłożono „{powiadomienie['tytul']}” na {dni} dni.")
-        przejdz(page, page.route)   # odświeża licznik przy dzwonku w tle
         odswiez()
+        przejdz(page, page.route)   # odświeża licznik przy dzwonku w tle
 
     def okno_wlasnej_liczby_dni(powiadomienie):
         e_dni = ft.TextField(label="Za ile dni przypomnieć?", value="14",
@@ -242,10 +272,13 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 subtitle=ft.Text(podtytul, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                 trailing=ft.TextButton(
                     "Przywróć",
+                    # Przywrócone wraca na listę na oczach użytkownika, więc
+                    # odświeżenie listy zapisuje je jako widziane ZANIM dzwonek
+                    # w tle zdąży je policzyć jako nowe.
                     on_click=lambda e, k=o["klucz"]: (
                         db.przywroc_powiadomienie(state.auto_id, k),
-                        przejdz(page, page.route),
                         odswiez(),
+                        przejdz(page, page.route),
                     ),
                 ),
             ))
@@ -271,8 +304,37 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         )
         return [ft.Divider(height=8), naglowek, wiersze]
 
+    def tytul_pozycji(p):
+        """Tytuł powiadomienia, a przy nowym — z pigułką tuż za nim."""
+        if db.klucz_powiadomienia(p) not in nowe_przy_otwarciu:
+            return ft.Text(p["tytul"], weight="bold")
+        return ft.Row([
+            # Luźne rozciągnięcie: długi tytuł się zawija, krótki nie odsuwa
+            # pigułki na drugi koniec wiersza.
+            ft.Text(p["tytul"], weight="bold", expand=True, expand_loose=True),
+            znacznik_nowego(page),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    def podtytul_pozycji(p, kolor):
+        """Opis powiadomienia. Podzespół z dwoma licznikami dostaje dwa wiersze:
+        u góry ten, który przyjdzie pierwszy (w kolorze statusu), pod nim drugi."""
+        linie = p.get("linie_opisu") or [p["opis"]]
+        if len(linie) == 1:
+            return ft.Text(linie[0], color=kolor, size=13)
+        return ft.Column([
+            ft.Text(linie[0], color=kolor, size=13),
+            podpis(linie[1]),
+        ], spacing=1, tight=True)
+
     def odswiez():
+        nonlocal nowe_przy_otwarciu
         powiadomienia = db.pobierz_powiadomienia(state.auto_id)
+        # Wszystko, co panel pokazuje, jest od tej chwili widziane — w stanie,
+        # w jakim jest teraz. Odznaka zapali się znowu dopiero przy nowym
+        # powiadomieniu albo przy pogorszeniu tego (pilne → po terminie).
+        swiezo_nowe = db.oznacz_powiadomienia_jako_widziane(state.auto_id, powiadomienia)
+        if nowe_przy_otwarciu is None:
+            nowe_przy_otwarciu = swiezo_nowe
         pozycje = [
             ft.Row([
                 ft.Icon(ft.Icons.NOTIFICATIONS_ROUNDED, color=ft.Colors.PRIMARY),
@@ -301,8 +363,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                     ikona_p = ft.Icons.TIRE_REPAIR if typ_p == db.TYP_CYKLICZNY_OPONY else ikona
                     kafelek = ft.ListTile(
                         leading=ft.Icon(ikona_p, color=kolor),
-                        title=ft.Text(p["tytul"], weight="bold"),
-                        subtitle=ft.Text(p["opis"], color=kolor, size=13),
+                        title=tytul_pozycji(p),
+                        subtitle=podtytul_pozycji(p, kolor),
                     )
                     akcje = [ft.TextButton(
                         etykieta_wykonania_cyklicznego(typ_p, czy_koszt_p),
@@ -317,8 +379,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 else:
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
-                        title=ft.Text(p["tytul"], weight="bold"),
-                        subtitle=ft.Text(p["opis"], color=kolor, size=13),
+                        title=tytul_pozycji(p),
+                        subtitle=podtytul_pozycji(p, kolor),
                         trailing=przycisk_odlozenia(p),
                         on_click=idz_do(p["trasa"]),
                     ))
@@ -560,12 +622,13 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
 
 
 __all__ = [
-    "_sygnatura_powiadomien",
     "etykieta_wykonania_cyklicznego",
     "ikona_wpisu_cyklicznego",
     "komunikat_zmiany_opon",
     "komunikat_po_wykonaniu",
+    "opis_dzwonka",
     "pokaz_panel_powiadomien",
     "pokaz_panel_wydatkow_cyklicznych",
     "przycisk_dzwonka",
+    "znacznik_nowego",
 ]

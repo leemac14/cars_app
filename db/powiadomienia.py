@@ -1,5 +1,6 @@
 """Przypomnienia, odkładanie i wyciszanie powiadomień."""
 
+import json
 import sqlite3
 from date import parsuj_date
 from datetime import datetime, timedelta
@@ -7,8 +8,155 @@ from typing import Any
 
 from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, TERMINY_DOKUMENTOW
 from .polaczenie import polacz_baze
-from .ustawienia import pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km
+from .ustawienia import (
+    _klucz_widzianych_powiadomien, pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km,
+    pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie,
+)
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
+
+
+# ============================================================================
+#  INTERWAŁ PODZESPOŁU — DWA LICZNIKI, JEDEN TERMIN
+# ============================================================================
+# Interwał „15 000 km albo 12 miesięcy” to dwa liczniki biegnące naraz, a o tym,
+# kiedy jechać do warsztatu, decyduje ten, który skończy się PIERWSZY. Wcześniej
+# każdy licznik miał własny, niezależny próg: powiadomienie sklejało dwa powody
+# („Zostało 640 km • Zostało 20 dni”), datę musiał złożyć z nich sam użytkownik,
+# a licznik jeszcze spoza progu w ogóle się nie pokazywał — choć „3 000 km
+# zapasu” przy dwóch tygodniach do terminu znaczy co innego niż przy pół roku.
+#
+# Oba liczniki liczą się TUTAJ i tylko tutaj. Korzysta z tego powiadomienie
+# i karta podzespołu w zakładce Serwis, więc obie mówią to samo tymi samymi
+# liczbami.
+
+# Miesiąc interwału w dniach. Ta sama wartość, co od zawsze w tym liczeniu —
+# zmiana przesunęłaby termin wszystkim podzespołom naraz.
+DNI_W_MIESIACU_INTERWALU = 30.5
+
+# Kolejność statusów od najlżejszego. Status podzespołu to najgorszy z jego
+# liczników; ta sama skala mówi dzwonkowi, czy powiadomienie się pogorszyło.
+WAGA_STATUSU_POWIADOMIENIA = {"ok": 0, "pilne": 1, "przeterminowane": 2}
+
+
+def _pole(wiersz, nazwa):
+    """sqlite3.Row i słownik czytane tak samo: powiadomienia dostają wiersze
+    prosto z kursora, zakładka Serwis — słowniki."""
+    try:
+        return wiersz[nazwa]
+    except (KeyError, IndexError):
+        return None
+
+
+def _dodatnia_liczba(wartosc):
+    """Liczba całkowita > 0 albo None. Zero i puste pole znaczą tu to samo:
+    „nie ustawiono” — tak samo traktował je dotychczasowy warunek `if z[...]`."""
+    try:
+        liczba = int(float(wartosc))
+    except (TypeError, ValueError):
+        return None
+    return liczba if liczba > 0 else None
+
+
+def _status_licznika(zostalo, prog):
+    if zostalo < 0:
+        return "przeterminowane"
+    return "pilne" if zostalo <= prog else "ok"
+
+
+def oblicz_stan_interwalu(zadanie, aktualny_przebieg, sredni_dzienny_przebieg=None,
+                          prog_km=None, prog_dni=None, dzis=None) -> dict[str, Any]:
+    """Oba liczniki interwału podzespołu i to, który z nich nadejdzie pierwszy.
+
+    `zadanie` to wiersz tabeli `zadania` (sqlite3.Row albo słownik). Wynik:
+
+    * "km", "czas" — licznik albo None (interwał go nie ma albo brakuje przebiegu
+      czy daty ostatniej wymiany). Licznik to słownik: rodzaj, zostalo (km albo
+      dni; ujemne znaczy po terminie), interwal (km albo dni), zuzycie (część
+      interwału, która już minęła), prog, status, dni (ile dni do końca; przy
+      kilometrach prognoza ze średniego przebiegu albo None), data (koniec
+      licznika; przy kilometrach prognozowany), prognoza.
+    * "pierwsze" — "km", "czas" albo None, gdy nie ma żadnego licznika.
+    * "status" — najgorszy ze statusów liczników albo None.
+
+    Progi zostają dwa, bo są w różnych jednostkach i ustawia się je osobno —
+    ale rozstrzygają RAZEM: podzespół jest pilny, gdy KTÓRYKOLWIEK licznik wszedł
+    w swoje okno. Termin, który przyjdzie wcześniej, nie może zasłaniać tego,
+    o którym użytkownik kazał sobie przypomnieć z wyprzedzeniem.
+    """
+    dzis = dzis or datetime.now().date()
+    if prog_km is None:
+        prog_km = pobierz_prog_km()
+    if prog_dni is None:
+        prog_dni = pobierz_prog_dni()
+    prog_km_z = _dodatnia_liczba(_pole(zadanie, "prog_km")) or int(prog_km)
+    prog_dni_z = _dodatnia_liczba(_pole(zadanie, "prog_dni")) or int(prog_dni)
+
+    km = None
+    interwal_km = _dodatnia_liczba(_pole(zadanie, "interwal_km"))
+    przebieg_wymiany = _dodatnia_liczba(_pole(zadanie, "przebieg"))
+    przebieg_teraz = _dodatnia_liczba(aktualny_przebieg)
+    if interwal_km and przebieg_wymiany and przebieg_teraz:
+        zostalo_km = przebieg_wymiany + interwal_km - przebieg_teraz
+        # Prognoza dni tylko przed terminem i tym samym wzorem, co w tekstach
+        # („ok. 12 dni”) — inaczej karta i powiadomienie rozjechałyby się o dzień.
+        dni_km = None
+        if zostalo_km >= 0 and sredni_dzienny_przebieg and sredni_dzienny_przebieg > 0:
+            dni_km = int(round(zostalo_km / sredni_dzienny_przebieg))
+        km = {
+            "rodzaj": "km", "zostalo": zostalo_km, "interwal": interwal_km,
+            "zuzycie": (interwal_km - zostalo_km) / interwal_km,
+            "prog": prog_km_z, "status": _status_licznika(zostalo_km, prog_km_z),
+            "dni": dni_km,
+            "data": dzis + timedelta(days=dni_km) if dni_km is not None else None,
+            "prognoza": True,
+        }
+
+    czas = None
+    try:
+        interwal_dni = int(float(_pole(zadanie, "interwal_miesiace") or 0) * DNI_W_MIESIACU_INTERWALU)
+    except (TypeError, ValueError):
+        interwal_dni = 0
+    data_wymiany = parsuj_date(_pole(zadanie, "data"))
+    if interwal_dni > 0 and data_wymiany != datetime.min.date():
+        termin = data_wymiany + timedelta(days=interwal_dni)
+        zostalo_dni = (termin - dzis).days
+        czas = {
+            "rodzaj": "czas", "zostalo": zostalo_dni, "interwal": interwal_dni,
+            "zuzycie": (interwal_dni - zostalo_dni) / interwal_dni,
+            "prog": prog_dni_z, "status": _status_licznika(zostalo_dni, prog_dni_z),
+            "dni": zostalo_dni, "data": termin, "prognoza": False,
+        }
+
+    if km is None and czas is None:
+        return {"km": None, "czas": None, "pierwsze": None, "status": None}
+
+    if km is None or czas is None:
+        pierwsze = "km" if km is not None else "czas"
+    elif km["zostalo"] < 0 or czas["zostalo"] < 0:
+        # Licznik po terminie wyprzedza każdy, który jeszcze biegnie. Oba po
+        # terminie: kiedy dokładnie skończyły się kilometry, nie wiadomo (średnia
+        # mówi o dzisiejszym tempie, nie o tamtym), więc rozstrzyga to, który
+        # interwał przekroczono o większą część.
+        if km["zostalo"] >= 0:
+            pierwsze = "czas"
+        elif czas["zostalo"] >= 0:
+            pierwsze = "km"
+        else:
+            pierwsze = "km" if km["zuzycie"] > czas["zuzycie"] else "czas"
+    elif km["dni"] is not None:
+        # Kilometry przełożone na dni: porównujemy te same dni, które widać
+        # w prognozie. Remis rozstrzyga większa zużyta część interwału.
+        pierwsze = "km" if (km["dni"], -km["zuzycie"]) < (czas["dni"], -czas["zuzycie"]) else "czas"
+    else:
+        # Bez średniego przebiegu nie ma prognozy daty. Porównanie zużytych
+        # części interwału to wtedy ta sama prognoza, tylko liczona tempem jazdy
+        # od ostatniej wymiany: kilometry skończą się pierwsze dokładnie wtedy,
+        # gdy zjadły większą część swojego interwału niż czas swojego.
+        pierwsze = "km" if km["zuzycie"] > czas["zuzycie"] else "czas"
+
+    liczniki = [licznik for licznik in (km, czas) if licznik is not None]
+    status = max((licznik["status"] for licznik in liczniki), key=WAGA_STATUSU_POWIADOMIENIA.get)
+    return {"km": km, "czas": czas, "pierwsze": pierwsze, "status": status}
 
 
 def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=True) -> list[dict[str, Any]]:
@@ -39,39 +187,23 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
             (auto_id,)
         )
         for z in c.fetchall():
-            powody, status_zadania = [], None
-            prog_km_z = int(z["prog_km"]) if z["prog_km"] else prog_km
-            prog_dni_z = int(z["prog_dni"]) if z["prog_dni"] else prog_dni
-
-            if z["interwal_km"] and z["przebieg"] and aktualny_przebieg:
-                zost_km = (int(z["przebieg"]) + int(z["interwal_km"])) - aktualny_przebieg
-                if zost_km <= prog_km_z:
-                    s = "przeterminowane" if zost_km < 0 else "pilne"
-                    if zost_km < 0:
-                        powody.append(f"Przekroczono o {abs(zost_km)} km")
-                    else:
-                        import utils
-                        prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny_przebieg)
-                        powody.append(f"Zostało {prognoza}")
-                    status_zadania = s
-
-            if z["interwal_miesiace"] and z["data"]:
-                d_w = parsuj_date(z["data"])
-                if d_w != datetime.min.date():
-                    termin = d_w + timedelta(days=int(float(z["interwal_miesiace"]) * 30.5))
-                    zost_dni = (termin - dzis).days
-                    if zost_dni <= prog_dni_z:
-                        s = "przeterminowane" if zost_dni < 0 else "pilne"
-                        powody.append(f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni")
-                        if status_zadania != "przeterminowane":
-                            status_zadania = s
-
-            if powody:
-                wyniki.append({
-                    "typ": "podzespol", "tytul": z["nazwa"], "opis": " • ".join(powody),
-                    "status": status_zadania, "trasa": f"/zadanie/edytuj/{z['id']}",
-                    "klucz": f"podzespol:{z['id']}",
-                })
+            # Jedno powiadomienie na podzespół i JEDEN termin wynikowy: najpierw
+            # licznik, który skończy się pierwszy, pod nim drugi — nawet jeśli
+            # sam jeszcze nie wszedł w swój próg (patrz oblicz_stan_interwalu).
+            stan = oblicz_stan_interwalu(z, aktualny_przebieg, sredni_dzienny_przebieg,
+                                         prog_km=prog_km, prog_dni=prog_dni, dzis=dzis)
+            if stan["status"] not in ("pilne", "przeterminowane"):
+                continue
+            import utils
+            linie = utils.linie_opisu_interwalu(stan)
+            wyniki.append({
+                "typ": "podzespol", "tytul": z["nazwa"], "opis": utils.polacz_linie_opisu(linie),
+                # Te same zdania osobno — panel powiadomień stawia je w dwóch
+                # wierszach, żeby licznik, który przyjdzie pierwszy, stał na górze.
+                "linie_opisu": linie,
+                "status": stan["status"], "trasa": f"/zadanie/edytuj/{z['id']}",
+                "klucz": f"podzespol:{z['id']}",
+            })
 
         kolumny_terminow = ", ".join(kol for _, kol, _ in TERMINY_DOKUMENTOW)
         c.execute(
@@ -242,6 +374,107 @@ def pobierz_wyciszone_klucze(auto_id):
         return {r[0] for r in c.fetchall()}
 
 
+# ============================================================================
+#  WIDZIANE — PER POWIADOMIENIE, NIE PER ZESTAW
+# ============================================================================
+# Dzwonek porównywał kiedyś sygnaturę CAŁEGO zestawu powiadomień z tą, którą
+# użytkownik ostatnio widział. Skutek był dwojaki: zmiana jednego wpisu zapalała
+# odznakę na wszystkich naraz, a nowe, ważne powiadomienie wśród pięciu już
+# przeczytanych gasło tym samym kliknięciem co one — nic go nie wyróżniało.
+#
+# Teraz każde powiadomienie ma własną sygnaturę pod własnym kluczem
+# („podzespol:12”, „dokument:oc” — tymi samymi, co przy drzemce). Sygnaturą jest
+# STATUS, nie treść: opis zmienia się codziennie („zostało 12 dni” → „11 dni”)
+# i to nie jest powód, żeby wołać od nowa. Powodem jest pogorszenie — pilne,
+# które stało się przeterminowanym.
+#
+# Zapis siedzi w ustawieniach, osobno dla każdego pojazdu: na telefonie
+# większość otwarć aplikacji to zimny start, a stan trzymany tylko w pamięci
+# zapalałby po każdym z nich odznakę na wszystkim od nowa. Świadomie NIE jest
+# synchronizowany — to, co ja widziałem na swoim telefonie, nie mówi nic o tym,
+# co zobaczyła druga osoba.
+
+
+def klucz_powiadomienia(powiadomienie):
+    """Klucz powiadomienia. Źródło bez klucza dostaje zastępczy z typu i tytułu —
+    bez niego obejrzenia nie dałoby się zapamiętać i odznaka nie gasłaby nigdy."""
+    return powiadomienie.get("klucz") or f"{powiadomienie.get('typ')}:{powiadomienie.get('tytul')}"
+
+
+def _sygnatura_powiadomienia(powiadomienie):
+    """To, czego zmiana robi z obejrzanego powiadomienia znowu nowe: status."""
+    return str(powiadomienie.get("status"))
+
+
+def _waga_statusu(status):
+    return WAGA_STATUSU_POWIADOMIENIA.get(status, 0)
+
+
+def pobierz_widziane_powiadomienia(auto_id) -> dict[str, str]:
+    """{klucz powiadomienia: status, w jakim użytkownik ostatnio je widział}."""
+    if not auto_id:
+        return {}
+    surowe = pobierz_ustawienie(_klucz_widzianych_powiadomien(auto_id))
+    if not surowe:
+        return {}
+    try:
+        dane = json.loads(surowe)
+    except (TypeError, ValueError):
+        # Uszkodzony zapis nie może zablokować dzwonka — najwyżej wszystko
+        # będzie raz jeszcze nowe.
+        return {}
+    if not isinstance(dane, dict):
+        return {}
+    return {str(k): v for k, v in dane.items() if isinstance(v, str)}
+
+
+def _zapisz_widziane_powiadomienia(auto_id, widziane):
+    klucz = _klucz_widzianych_powiadomien(auto_id)
+    if widziane:
+        zapisz_ustawienie(klucz, json.dumps(dict(sorted(widziane.items())), ensure_ascii=False))
+    else:
+        usun_ustawienie(klucz)
+
+
+def niewidziane_powiadomienia(powiadomienia, widziane) -> list[dict[str, Any]]:
+    """Powiadomienia, na które odznaka ma zwrócić uwagę: jeszcze nieoglądane
+    albo takie, których status pogorszył się od ostatniego obejrzenia."""
+    widziane = widziane or {}
+    nowe = []
+    for p in powiadomienia:
+        klucz = klucz_powiadomienia(p)
+        if klucz not in widziane or _waga_statusu(_sygnatura_powiadomienia(p)) > _waga_statusu(widziane[klucz]):
+            nowe.append(p)
+    return nowe
+
+
+def przytnij_widziane_powiadomienia(auto_id, powiadomienia) -> dict[str, str]:
+    """Zapomina obejrzenia powiadomień, których na liście już nie ma, i zwraca
+    resztę. Powód zniknął (wymiana zapisana, polisa odnowiona, drzemka) — a kiedy
+    wróci, ma wrócić jako nowy, nie jako coś, co już raz widziano."""
+    widziane = pobierz_widziane_powiadomienia(auto_id)
+    obecne = {klucz_powiadomienia(p) for p in powiadomienia}
+    przyciete = {k: v for k, v in widziane.items() if k in obecne}
+    if auto_id and przyciete != widziane:
+        _zapisz_widziane_powiadomienia(auto_id, przyciete)
+    return przyciete
+
+
+def oznacz_powiadomienia_jako_widziane(auto_id, powiadomienia) -> set[str]:
+    """Zapamiętuje stan, w jakim użytkownik właśnie zobaczył KAŻDE powiadomienie
+    z listy, i zapomina te, których na niej nie ma. Zwraca klucze powiadomień,
+    które do tej chwili były nowe — panel je oznacza, żeby nie ginęły wśród
+    już znanych."""
+    if not auto_id:
+        return set()
+    widziane = pobierz_widziane_powiadomienia(auto_id)
+    nowe = {klucz_powiadomienia(p) for p in niewidziane_powiadomienia(powiadomienia, widziane)}
+    biezace = {klucz_powiadomienia(p): _sygnatura_powiadomienia(p) for p in powiadomienia}
+    if biezace != widziane:
+        _zapisz_widziane_powiadomienia(auto_id, biezace)
+    return nowe
+
+
 def pobierz_odlozone_powiadomienia(auto_id) -> list[dict[str, Any]]:
     """Lista odłożonych powiadomień do sekcji „Odkładane” w panelu:
     [{klucz, tytul, do_dnia, data_tekst, dni_do_powrotu}] posortowana po dacie
@@ -291,10 +524,18 @@ def pobierz_odlozone_powiadomienia(auto_id) -> list[dict[str, Any]]:
 
 __all__ = [
     "DNI_ODLOZENIA_OPCJE",
+    "DNI_W_MIESIACU_INTERWALU",
+    "WAGA_STATUSU_POWIADOMIENIA",
     "_posprzataj_wygasle_wyciszenia",
+    "klucz_powiadomienia",
+    "niewidziane_powiadomienia",
+    "oblicz_stan_interwalu",
     "odloz_powiadomienie",
+    "oznacz_powiadomienia_jako_widziane",
     "pobierz_odlozone_powiadomienia",
     "pobierz_powiadomienia",
+    "pobierz_widziane_powiadomienia",
     "pobierz_wyciszone_klucze",
+    "przytnij_widziane_powiadomienia",
     "przywroc_powiadomienie",
 ]

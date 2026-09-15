@@ -39,6 +39,7 @@ import pomoce
 WYWOLANIA = {
     "generuj_eksport_csv": lambda k: (db.pobierz_dane_eksportu(k["id"]["auto_id"], list(db.KATEGORIE_EKSPORTU)),),
     "napraw_sciezki_zalacznikow": lambda k: (),
+    "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
     "parsuj_zapytanie_kwotowe": lambda k: ("powyżej 100 zł",),
     "pobierz_budzety": lambda k: (k["id"]["auto_id"],),
     "pobierz_checklisty": lambda k: (k["id"]["auto_id"],),

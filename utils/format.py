@@ -80,6 +80,14 @@ def oblicz_prognoze_terminu(zostalo_km, sredni_dzienny_przebieg):
     return dni, date.today() + timedelta(days=dni)
 
 
+def _opis_prognozy_dni(dni):
+    if dni <= 0:
+        return "dziś"
+    if dni == 1:
+        return "jutro"
+    return f"ok. {dni} dni"
+
+
 def formatuj_prognoze_km(zostalo_km, sredni_dzienny_przebieg):
     tekst_km = f"{formatuj_liczba(zostalo_km, 0)} km"
 
@@ -87,14 +95,103 @@ def formatuj_prognoze_km(zostalo_km, sredni_dzienny_przebieg):
     if dni is None:
         return tekst_km
 
-    if dni <= 0:
-        opis_dni = "dziś"
-    elif dni == 1:
-        opis_dni = "jutro"
-    else:
-        opis_dni = f"ok. {dni} dni"
+    return f"{tekst_km} ({_opis_prognozy_dni(dni)} - {formatuj_date_pl(data)})"
 
-    return f"{tekst_km} ({opis_dni} - {formatuj_date_pl(data)})"
+
+def formatuj_dni(n):
+    """„1 dzień”, „2 dni”, „1 234 dni” — liczba dni z jednostką w dobrej formie."""
+    return f"{formatuj_liczba(n, 0)} {'dzień' if abs(n) == 1 else 'dni'}"
+
+
+def formatuj_okres(dni):
+    """Odległość w czasie do pokazania na karcie: dni do dwóch miesięcy, dalej
+    miesiące. „143 dni” trzeba przeliczać w głowie, „~5 mies.” już nie."""
+    dni = abs(int(dni))
+    if dni == 0:
+        return "dziś"
+    if dni <= 60:
+        return formatuj_dni(dni)
+    return f"~{formatuj_liczba(round(dni / db.DNI_W_MIESIACU_INTERWALU), 0)} mies."
+
+
+# ---------------------------------------------------------------------------
+#  Interwał podzespołu słowami (liczby liczy db.oblicz_stan_interwalu)
+# ---------------------------------------------------------------------------
+
+def _zostalo(liczba, reszta):
+    """Czasownik zgodny z liczbą: „Został 1 dzień”, „Zostały 3 dni”, „Zostało 640 km”."""
+    return f"{_odmiana_liczby(abs(liczba), 'Został', 'Zostały', 'Zostało')} {reszta}"
+
+
+def _zdanie_pierwszego_licznika(licznik):
+    """Pełne zdanie o liczniku, który skończy się pierwszy — z datą, bo to
+    właśnie ona jest terminem wynikowym całego podzespołu."""
+    zostalo = licznik["zostalo"]
+    if licznik["rodzaj"] == "km":
+        if zostalo < 0:
+            return f"Przekroczono o {formatuj_liczba(-zostalo, 0)} km"
+        tekst = _zostalo(zostalo, f"{formatuj_liczba(zostalo, 0)} km")
+        if licznik.get("dni") is not None and licznik.get("data"):
+            tekst += f" ({_opis_prognozy_dni(licznik['dni'])} - {formatuj_date_pl(licznik['data'])})"
+        return tekst
+    if zostalo < 0:
+        return f"Przekroczono o {formatuj_dni(-zostalo)}"
+    if zostalo == 0:
+        return f"Termin mija dziś ({formatuj_date_pl(licznik['data'])})"
+    return _zostalo(zostalo, f"{formatuj_dni(zostalo)} ({formatuj_date_pl(licznik['data'])})")
+
+
+def _zdanie_drugiego_licznika(licznik):
+    """Krótsze zdanie o liczniku, który przyjdzie później. „Dopiero” jest tu
+    całym znacznikiem kolejności — mówi, że to nie on wyznacza termin."""
+    zostalo = licznik["zostalo"]
+    if licznik["rodzaj"] == "km":
+        if zostalo < 0:
+            return f"Limit km też przekroczony (o {formatuj_liczba(-zostalo, 0)} km)"
+        tekst = f"Limit km dopiero za {formatuj_liczba(zostalo, 0)} km"
+        if licznik.get("data"):
+            tekst += f" (ok. {formatuj_date_pl(licznik['data'])})"
+        return tekst
+    if zostalo < 0:
+        return f"Termin też minął ({formatuj_date_pl(licznik['data'])})"
+    return f"Termin dopiero {formatuj_date_pl(licznik['data'])}"
+
+
+def linie_opisu_interwalu(stan):
+    """[zdanie o liczniku, który przyjdzie pierwszy, zdanie o drugim]. Drugiego
+    nie ma, gdy interwał ma jeden licznik; pusta lista — gdy nie ma żadnego."""
+    pierwsze = (stan or {}).get("pierwsze")
+    if not pierwsze:
+        return []
+    drugie = "czas" if pierwsze == "km" else "km"
+    linie = [_zdanie_pierwszego_licznika(stan[pierwsze])]
+    if stan.get(drugie):
+        linie.append(_zdanie_drugiego_licznika(stan[drugie]))
+    return linie
+
+
+def polacz_linie_opisu(linie):
+    """Linie opisu jako jedno zdanie — dla miejsc, które mają na tekst jedną
+    linijkę (kafel „Termin” na kokpicie, rozpiska kondycji)."""
+    if not linie:
+        return ""
+    return " • ".join([linie[0]] + [linia[:1].lower() + linia[1:] for linia in linie[1:]])
+
+
+def opis_licznika_na_karte(licznik):
+    """(wartość, podpis) licznika do kolumny na karcie podzespołu. Wartość jest
+    krótka, bo stoi obok drugiej; datę niesie podpis."""
+    zostalo = licznik["zostalo"]
+    if licznik["rodzaj"] == "km":
+        wartosc = f"{formatuj_liczba(abs(zostalo), 0)} km"
+        if zostalo < 0:
+            return wartosc, "ponad limit"
+        if licznik.get("data"):
+            return wartosc, f"ok. {licznik['data'].strftime('%d.%m.%Y')}"
+        return wartosc, f"z {formatuj_liczba(licznik['interwal'], 0)} km"
+    if zostalo < 0:
+        return formatuj_okres(zostalo), "po terminie"
+    return formatuj_okres(zostalo), f"do {licznik['data'].strftime('%d.%m.%Y')}"
 
 
 def kolor_i_tekst_terminu(termin_str):
@@ -137,11 +234,16 @@ __all__ = [
     "_odmiana_liczby",
     "bez_ogonkow",
     "formatuj_date_pl",
+    "formatuj_dni",
+    "formatuj_okres",
     "formatuj_prognoze_km",
     "formatuj_spalanie",
     "kolor_i_tekst_terminu",
+    "linie_opisu_interwalu",
     "oblicz_prognoze_terminu",
+    "opis_licznika_na_karte",
     "parsuj_float",
     "parsuj_int",
+    "polacz_linie_opisu",
     "symbol_waluty",
 ]

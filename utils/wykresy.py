@@ -8,8 +8,9 @@ from state import MIESIACE_NAZWY
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import _odmiana_liczby, symbol_waluty
-from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_toru
+from .format import _odmiana_liczby, opis_licznika_na_karte, symbol_waluty
+from .typografia import etykieta, podpis, wartosc
+from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_odznaki, tlo_toru
 from .formularze import karta_formularza
 
 
@@ -465,11 +466,10 @@ def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
 def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8, scena=None):
     """Wspólny 'wiersz postępu': etykieta + wartość nad kolorowym ProgressBar.
     procent: 0.0-1.0 (spoza zakresu jest przycinane). Wydzielone z _pasek_porownania
-    (porownanie_view.py) — używane tam i na kartach zadań serwisowych (buduj_serwis).
+    (porownanie_view.py). Karta podzespołu w Serwisie ma dwa liczniki naraz, więc
+    rysuje je `liczniki_interwalu` niżej — każdy z własnym paskiem.
 
-    `scena` (utils.ScenaWejscia) każe paskowi wypełnić się przy wejściu od zera —
-    na karcie podzespołu to ta sama informacja, co przy terminie: ile z interwału
-    już minęło."""
+    `scena` (utils.ScenaWejscia) każe paskowi wypełnić się przy wejściu od zera."""
     scena = scena or ScenaWejscia(wlaczona=False)
     scena.nastepny_wiersz()
     return ft.Column([
@@ -486,6 +486,62 @@ def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8, sce
             height=wysokosc, border_radius=4,
         ))
     ], spacing=4)
+
+
+# Status licznika interwału (db.oblicz_stan_interwalu) -> rola w KOLOR_STATUS.
+ROLA_STATUSU_INTERWALU = {"przeterminowane": "critical", "pilne": "warning", "ok": "ok"}
+
+
+def liczniki_interwalu(stan, scena=None, page=None):
+    """Oba liczniki interwału podzespołu obok siebie — kilometry z lewej, czas
+    z prawej. Kolejność jest stała, żeby na liście kart oko wiedziało, gdzie
+    czego szukać; to, który licznik przyjdzie PIERWSZY, mówi znacznik „najpierw”.
+    Przestawiane kolumny kazałyby czytać każdą kartę od nowa.
+
+    Każdy licznik ma własny pasek zużycia interwału w kolorze swojego statusu:
+    trzy tysiące kilometrów zapasu wyglądają inaczej obok dwóch tygodni do
+    terminu niż obok pół roku. Oba paski ruszają w jednym kroku kaskady, bo to
+    jeden wiersz listy. `stan` to wynik db.oblicz_stan_interwalu; bez liczników
+    zwraca None."""
+    liczniki = [stan[rodzaj] for rodzaj in ("km", "czas") if (stan or {}).get(rodzaj)]
+    if not liczniki:
+        return None
+
+    scena = scena or ScenaWejscia(wlaczona=False)
+    scena.nastepny_wiersz()
+    oba = len(liczniki) == 2
+
+    kolumny = []
+    for licznik in liczniki:
+        czy_km = licznik["rodzaj"] == "km"
+        kolor = KOLOR_STATUS[ROLA_STATUSU_INTERWALU.get(licznik["status"], "ok")]
+        tekst_wartosci, tekst_podpisu = opis_licznika_na_karte(licznik)
+
+        naglowek = [
+            ft.Icon(ft.Icons.SPEED if czy_km else ft.Icons.EVENT, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+            # Luźne rozciągnięcie: etykieta bierze tyle, ile potrzebuje, więc
+            # znacznik stoi tuż przy niej — a na wąskim ekranie to ona się
+            # zawija, zamiast wypychać znacznik poza kartę.
+            etykieta("Kilometry" if czy_km else "Czas", expand=True, expand_loose=True),
+        ]
+        if oba and licznik["rodzaj"] == stan.get("pierwsze"):
+            naglowek.append(ft.Container(
+                padding=ft.Padding(6, 1, 6, 1), border_radius=RADIUS["pill"],
+                bgcolor=tlo_odznaki(page),
+                content=ft.Text("najpierw", size=10, color=ft.Colors.ON_SURFACE, no_wrap=True),
+            ))
+
+        kolumny.append(ft.Column([
+            ft.Row(naglowek, spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            wartosc(tekst_wartosci, color=kolor),
+            podpis(tekst_podpisu),
+            scena.wskaznik(ft.ProgressBar(
+                value=max(0.03, min(1.0, licznik["zuzycie"])), color=kolor,
+                bgcolor=tlo_toru(page), height=6, border_radius=3,
+            )),
+        ], spacing=2, expand=True))
+
+    return ft.Row(kolumny, spacing=SPACING["md"], vertical_alignment=ft.CrossAxisAlignment.START)
 
 
 def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53):
@@ -570,11 +626,13 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53):
 
 
 __all__ = [
+    "ROLA_STATUSU_INTERWALU",
     "_SKALA_KONDYCJI",
     "gauge_kondycji",
     "heatmapa_aktywnosci",
     "karta_analizy",
     "kolor_kondycji_plynny",
+    "liczniki_interwalu",
     "odznaka_zrodla_przebiegu",
     "pasek_budzetu",
     "pasek_postepu",

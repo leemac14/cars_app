@@ -6,7 +6,14 @@ import sqlite3
 import sync
 import utils
 from date import parsuj_date
-from datetime import datetime, timedelta
+
+
+# Status podzespołu (db.oblicz_stan_interwalu) -> kolor paska karty i ikona.
+STATUS_KARTY_PODZESPOLU = {
+    "przeterminowane": (utils.KOLOR_STATUS["critical"], ft.Icons.WARNING),
+    "pilne": (utils.KOLOR_STATUS["warning"], ft.Icons.HOURGLASS_BOTTOM),
+    "ok": (utils.KOLOR_STATUS["ok"], ft.Icons.CHECK_CIRCLE),
+}
 
 
 class MiksinZakladkiSerwis:
@@ -139,70 +146,32 @@ class MiksinZakladkiSerwis:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
                 for z in po_filtrach:
-                    kol, ico = utils.KOLOR_STATUS["ok"], ft.Icons.CHECK_CIRCLE  # domyślny status
-                    stxt = []
-                    procent_km = None
-                    procent_dni = None
-                    prog_km_z = int(z.get('prog_km') or prog_km)
-                    prog_dni_z = int(z.get('prog_dni') or prog_dni)
-                    if z.get('interwal_km') and z.get('przebieg'):
-                        interwal_km = int(z.get('interwal_km'))
-                        zost_km = (int(z.get('przebieg')) + interwal_km) - akt_prz
-                        procent_km = (interwal_km - zost_km) / interwal_km if interwal_km > 0 else None
-                        if zost_km < 0:
-                            stxt.append(f"{utils.formatuj_liczba(abs(zost_km), 0)} km po!")
-                            kol, ico = utils.KOLOR_STATUS["critical"], ft.Icons.WARNING
-                        elif zost_km <= prog_km_z:
-                            prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny)
-                            stxt.append(prognoza or f"{utils.formatuj_liczba(zost_km, 0)} km")
-                            kol, ico = utils.KOLOR_STATUS["warning"], ft.Icons.HOURGLASS_BOTTOM
-                        else:
-                            prognoza = utils.formatuj_prognoze_km(zost_km, sredni_dzienny)
-                            stxt.append(prognoza or f"{utils.formatuj_liczba(zost_km, 0)} km")
+                    # Oba liczniki liczy to samo miejsce, co powiadomienia — karta
+                    # i dzwonek nie mogą się nie zgadzać co do tego, co jest pilne
+                    # ani który licznik skończy się pierwszy.
+                    stan_interwalu = db.oblicz_stan_interwalu(
+                        z, akt_prz, sredni_dzienny, prog_km=prog_km, prog_dni=prog_dni)
+                    wiersz_statusu = utils.liczniki_interwalu(
+                        stan_interwalu, scena=self._scena_zakladki, page=self._page)
 
-                    if z.get('interwal_miesiace') and z.get('data'):
-                        d_w = parsuj_date(z.get('data'))
-                        if d_w != datetime.min.date():
-                            interwal_dni = int(float(z.get('interwal_miesiace')) * 30.5)
-                            zost_dni = (d_w + timedelta(days=interwal_dni) - datetime.now().date()).days
-                            procent_dni = (interwal_dni - zost_dni) / interwal_dni if interwal_dni > 0 else None
-                            if zost_dni < 0:
-                                stxt.append(f"{abs(zost_dni)} dni po!")
-                                kol, ico = utils.KOLOR_STATUS["critical"], ft.Icons.WARNING
-                            elif zost_dni <= prog_dni_z:
-                                stxt.append(f"{zost_dni} dni")
-                                if kol != utils.KOLOR_STATUS["critical"]: kol, ico = utils.KOLOR_STATUS["warning"], ft.Icons.HOURGLASS_BOTTOM
-                            else: stxt.append(f"~{zost_dni//30} m-cy")
-
-                    if stxt: final_status = " | ".join(stxt)
+                    if wiersz_statusu is not None:
+                        kol, ico = STATUS_KARTY_PODZESPOLU[stan_interwalu["status"]]
+                        final_status = " ".join(
+                            " ".join(utils.opis_licznika_na_karte(stan_interwalu[r]))
+                            for r in ("km", "czas") if stan_interwalu[r])
                     else:
                         final_status = "Brak interwału" if not z.get('interwal_km') and not z.get('interwal_miesiace') else "Brak wpisów"
                         kol, ico = ft.Colors.ON_SURFACE_VARIANT, ft.Icons.INFO_OUTLINE
+                        # „Brak wpisów" i „Brak interwału" to informacja o BRAKU
+                        # danych, a nie status pilności — pogrubione konkurowały
+                        # z nazwą podzespołu nad nimi, nie mając czego powiedzieć.
+                        wiersz_statusu = utils.etykieta(final_status, size=utils.FS["body_strong"])
 
                     data_w = str(z.get('data')) if z.get('data') else '-'
                     prz_w = f"{utils.formatuj_liczba(int(z.get('przebieg')), 0)} km" if z.get('przebieg') else '-'
 
                     zid = z.get('id')
                     zn = z.get('nazwa')
-
-                    # Jeśli podzespół ma zarówno interwał km, jak i miesięczny,
-                    # pasek pokazuje ten, który jest BLIŻEJ przekroczenia (wyższy
-                    # procent zużycia) — to ten sam interwał, który decyduje
-                    # o kolorze/pilności karty wyliczonym wyżej.
-                    kandydaci_procent = [p for p in (procent_km, procent_dni) if p is not None]
-                    procent_do_paska = max(kandydaci_procent) if kandydaci_procent else None
-
-                    if procent_do_paska is not None:
-                        wiersz_statusu = utils.pasek_postepu(
-                            final_status, f"{int(max(0.0, min(1.0, procent_do_paska)) * 100)}%",
-                            procent_do_paska, kol, scena=self._scena_zakladki)
-                    elif kol == ft.Colors.ON_SURFACE_VARIANT:
-                        # „Brak wpisów" i „Brak interwału" to informacja o BRAKU
-                        # danych, a nie status pilności — pogrubione konkurowały
-                        # z nazwą podzespołu nad nimi, nie mając czego powiedzieć.
-                        wiersz_statusu = utils.etykieta(final_status, size=utils.FS["body_strong"])
-                    else:
-                        wiersz_statusu = utils.wartosc(final_status, color=kol)
                     karta_z, kontener = utils.karta_listy(
                         ft.Column([
                             ft.Row([ft.Text(str(zn), weight="bold", size=utils.FS["title"], expand=True), ft.Icon(ico, color=kol)]),

@@ -19,7 +19,10 @@ class AppState:
         # od zera. Kopiuje wszystko poza datą, załącznikiem i zużyciem magazynu.
         self.duplikuj_zrodlo_wizyta = None
         self.wybrane_zadanie_nazwa = ""
-        self.powiadomienia_widziane = {}   # zamiast pojedynczej sygnatury
+        # „Widziane” w dzwonku nie mieszka już w stanie: liczy się osobno dla
+        # każdego powiadomienia i jest zapisywane w bazie, per pojazd (patrz
+        # db.powiadomienia) — inaczej każdy zimny start telefonu zapalałby
+        # odznakę na wszystkim od nowa.
         # Pojazd, dla którego odliczanie liczb na kokpicie już zagrało. Kokpit
         # przebudowuje się przy każdej zmianie zakładki i po wyjściu z dowolnego
         # ekranu — bez tego znacznika animacja wejścia grałaby kilkanaście razy
