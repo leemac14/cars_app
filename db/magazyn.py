@@ -4,10 +4,13 @@ import os
 import shutil
 import sqlite3
 import uuid
+from date import parsuj_date
 from datetime import datetime
+from typing import Any
 
 from .stale import MIESIACE_ZIMOWE, SEZONY_PRZELACZALNE
 from .polaczenie import polacz_baze
+from .pomocnicze import _na_liczbe, bez_emoji
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
 from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika
 
@@ -61,18 +64,23 @@ def _przywroc_czesci(zrodlo, rekord_id, conn=None):
 
 
 def _rozlicz_czesci(zrodlo, rekord_id, uzyte, conn=None):
+    """Zapisuje zużycie i zdejmuje sztuki ze stanu. `uzyte` to pary
+    (magazyn_id, ilosc) albo — już wycenione — trójki (magazyn_id, ilosc, koszt),
+    patrz wycen_zuzycie. Para zapisuje zużycie bez kosztu, czyli „nie doliczone”."""
     tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
     if not uzyte:
         return
 
     def _wykonaj(c):
         cur = c.cursor()
-        for magazyn_id, ilosc in uzyte:
+        for pozycja in uzyte:
+            magazyn_id, ilosc = pozycja[0], pozycja[1]
+            koszt = pozycja[2] if len(pozycja) > 2 else None
             if not ilosc or ilosc <= 0:
                 continue
             cur.execute(
-                f"INSERT INTO {tabela} ({kolumna}, magazyn_id, ilosc_uzyta) VALUES (?,?,?)",
-                (rekord_id, magazyn_id, ilosc)
+                f"INSERT INTO {tabela} ({kolumna}, magazyn_id, ilosc_uzyta, koszt) VALUES (?,?,?,?)",
+                (rekord_id, magazyn_id, ilosc, koszt)
             )
             cur.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?", (ilosc, magazyn_id))
 
@@ -107,6 +115,167 @@ def przywroc_czesci_wpisu(historia_id, conn=None):
 
 def rozlicz_czesci_z_magazynu_wpisu(historia_id, uzyte, conn=None):
     return _rozlicz_czesci("historia", historia_id, uzyte, conn)
+
+
+# ============================================================================
+#  KOSZT ZUŻYCIA
+# ============================================================================
+# Część z magazynu jest kupiona wcześniej, ale jej koszt „wydarza się” dopiero
+# wtedy, gdy ląduje w aucie. Dlatego doliczamy go przy ZUŻYCIU, nie przy
+# zakupie — i zapisujemy wprost w `historia.cena` albo `wizyty.koszt_calkowity`.
+# Statystyki, budżety, eksport i raporty czytają te dwie kolumny w kilkunastu
+# miejscach; każde z nich widzi pełny koszt serwisu bez jednej poprawki.
+#
+# Ile z tej kwoty przyszło z magazynu, pamięta powiązanie zużycia (kolumna
+# `koszt`). Formularz odejmuje to przy edycji, żeby w polu kosztu stała sama
+# usługa — inaczej każdy kolejny zapis doliczałby części od nowa.
+
+
+def cena_jednostkowa_z_zakupu(koszt_zakupu, ilosc) -> float | None:
+    """Cena jednej sztuki (litra, grama) z tego, ile zapłacono za całą ilość.
+    None, gdy nie da się jej uczciwie policzyć — zero sztuk nie znaczy „darmo”."""
+    koszt, ile = _na_liczbe(koszt_zakupu), _na_liczbe(ilosc)
+    if koszt is None or ile is None or koszt < 0 or ile <= 0:
+        return None
+    return round(koszt / ile, 4)
+
+
+def pobierz_czesci_do_zuzycia(auto_id) -> list[dict[str, Any]]:
+    """Pozycje magazynu do wyboru w formularzu wpisu i wizyty — razem z ceną za
+    jednostkę, bo formularz pokazuje koszt zużycia, zanim cokolwiek zapisze."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            "SELECT id, nazwa, ilosc, jednostka, cena_jednostkowa FROM magazyn_czesci "
+            "WHERE auto_id=? ORDER BY nazwa",
+            (auto_id,)
+        )
+        return [
+            {"id": r["id"], "nazwa": str(r["nazwa"] or ""), "ilosc": _na_liczbe(r["ilosc"]) or 0.0,
+             "jednostka": str(r["jednostka"] or "szt"), "cena_jednostkowa": _na_liczbe(r["cena_jednostkowa"])}
+            for r in c.fetchall()
+        ]
+
+
+def pobierz_zuzycie_czesci(zrodlo, rekord_id) -> dict[int, dict[str, Any]]:
+    """Co rekord (wizyta albo pojedynczy wpis) już zdjął z magazynu:
+    {magazyn_id: {"ilosc": float, "koszt": float | None}}.
+
+    `koszt` None znaczy, że to zużycie NIE jest doliczone do kosztu rekordu:
+    zapisała je starsza wersja aplikacji albo pozycja nie miała ceny."""
+    tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
+    if not rekord_id:
+        return {}
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(f"SELECT magazyn_id, ilosc_uzyta, koszt FROM {tabela} WHERE {kolumna}=?", (rekord_id,))
+        wiersze = c.fetchall()
+
+    wynik = {}
+    for magazyn_id, ilosc, koszt in wiersze:
+        pozycja = wynik.setdefault(magazyn_id, {"ilosc": 0.0, "koszt": None})
+        pozycja["ilosc"] += _na_liczbe(ilosc) or 0.0
+        if _na_liczbe(koszt) is not None:
+            pozycja["koszt"] = round((pozycja["koszt"] or 0.0) + _na_liczbe(koszt), 2)
+    return wynik
+
+
+def koszt_doliczony(zuzycie) -> float:
+    """Ile z kosztu rekordu przyszło z magazynu — suma zapamiętanych kosztów
+    zużycia (wynik pobierz_zuzycie_czesci)."""
+    return round(sum(p["koszt"] for p in (zuzycie or {}).values() if p.get("koszt") is not None), 2)
+
+
+def cena_zuzycia(magazyn_id, ceny_jednostkowe, poprzednie=None) -> float | None:
+    """Po jakiej cenie liczyć jednostkę tej pozycji w tym rekordzie.
+
+    Pozycja, którą rekord już miał Z KOSZTEM, liczy się po tamtej cenie —
+    poprawienie daty w wizycie sprzed roku nie może przepisać jej kosztu po
+    dzisiejszej cenie oleju. Pozostałe biorą bieżącą cenę z magazynu."""
+    poprzednia = (poprzednie or {}).get(magazyn_id) or {}
+    ilosc = _na_liczbe(poprzednia.get("ilosc")) or 0.0
+    if poprzednia.get("koszt") is not None and ilosc > 0:
+        return float(poprzednia["koszt"]) / ilosc
+    return _na_liczbe((ceny_jednostkowe or {}).get(magazyn_id))
+
+
+def wycen_zuzycie(uzyte, ceny_jednostkowe, poprzednie=None) -> list[tuple[int, float, float | None]]:
+    """[(magazyn_id, ilosc)] -> [(magazyn_id, ilosc, koszt)].
+
+    Koszt None = pozycja bez ceny: zużycie zapisze się i zejdzie ze stanu, ale
+    nic nie doliczy. Taki rekord dopłaci się sam przy najbliższej edycji, jeśli
+    pozycja zdąży dostać cenę."""
+    wynik = []
+    for magazyn_id, ilosc in uzyte or []:
+        ilosc = _na_liczbe(ilosc) or 0.0
+        if ilosc <= 0:
+            continue
+        cena = cena_zuzycia(magazyn_id, ceny_jednostkowe, poprzednie)
+        wynik.append((magazyn_id, ilosc, round(ilosc * cena, 2) if cena is not None else None))
+    return wynik
+
+
+def suma_kosztu_zuzycia(wycenione) -> float:
+    """Łączny koszt wycenionego zużycia (wynik wycen_zuzycie)."""
+    return round(sum(pozycja[2] for pozycja in (wycenione or []) if pozycja[2] is not None), 2)
+
+
+def srednia_cena_jednostkowa(pozycje) -> float | None:
+    """Cena za jednostkę po zsypaniu kilku pozycji w jedną — średnia ważona stanem.
+
+    `pozycje` to [(ilosc, cena_jednostkowa)], pierwsza jest pozycją docelową.
+    Pozycje bez ceny nie zaniżają średniej: nie wiadomo, ile były warte, więc
+    nie udajemy, że nic. Gdy żadna nie ma nic na stanie, wygrywa pierwsza znana."""
+    znane = []
+    for ilosc, cena in pozycje or []:
+        cena = _na_liczbe(cena)
+        if cena is not None:
+            znane.append((max(0.0, _na_liczbe(ilosc) or 0.0), cena))
+    if not znane:
+        return None
+    waga = sum(ilosc for ilosc, _ in znane)
+    if waga <= 0:
+        return round(znane[0][1], 4)
+    return round(sum(ilosc * cena for ilosc, cena in znane) / waga, 4)
+
+
+def pobierz_zuzycie_rekordow(zrodlo, rekord_ids) -> dict[int, dict[str, Any]]:
+    """Zużycie z magazynu dla kart na listach wizyt i wpisów:
+    {rekord_id: {"pozycje": [{"nazwa", "ilosc", "jednostka", "koszt"}], "koszt": float}}.
+
+    Jedno zapytanie na całą listę zamiast jednego na kartę. Celowo osobno od
+    zapytania o same wizyty — JOIN z podzespołami i częściami naraz zdublowałby
+    wiersze przy wizycie, która ma po kilka jednych i drugich."""
+    tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
+    identyfikatory = [i for i in dict.fromkeys(rekord_ids or []) if i]
+    wynik = {}
+    if not identyfikatory:
+        return wynik
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        for poczatek in range(0, len(identyfikatory), 500):
+            paczka = identyfikatory[poczatek:poczatek + 500]
+            znaki = ",".join("?" for _ in paczka)
+            c.execute(
+                f"SELECT x.{kolumna}, m.nazwa, x.ilosc_uzyta, m.jednostka, x.koszt FROM {tabela} x "
+                f"JOIN magazyn_czesci m ON m.id = x.magazyn_id "
+                f"WHERE x.{kolumna} IN ({znaki}) ORDER BY m.nazwa",
+                tuple(paczka)
+            )
+            for rekord_id, nazwa, ilosc, jednostka, koszt in c.fetchall():
+                pozycja = wynik.setdefault(rekord_id, {"pozycje": [], "koszt": 0.0})
+                koszt = _na_liczbe(koszt)
+                pozycja["pozycje"].append({
+                    "nazwa": str(nazwa or ""), "ilosc": _na_liczbe(ilosc) or 0.0,
+                    "jednostka": str(jednostka or "szt"), "koszt": koszt,
+                })
+                if koszt is not None:
+                    pozycja["koszt"] = round(pozycja["koszt"] + koszt, 2)
+    return wynik
 
 
 def _zdejmij_powiazania_czesci_wpisow(historia_ids):
@@ -327,6 +496,118 @@ def pobierz_stan_magazynu(auto_id):
     return {"razem": len(wiersze), "niski": len(niskie), "nazwy_niskich": niskie}
 
 
+def pobierz_wartosc_magazynu(auto_id) -> dict[str, Any]:
+    """Ile jest wart magazyn: suma stan × cena za jednostkę po pozycjach na stanie.
+
+    `bez_ceny` liczy pozycje na stanie, których nie da się wycenić — bez tej
+    liczby suma udawałaby kompletną, a to akurat ta kwota, którą łatwo wziąć
+    za pewnik."""
+    wynik = {"wartosc": 0.0, "na_stanie": 0, "bez_ceny": 0}
+    if not auto_id:
+        return wynik
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT ilosc, cena_jednostkowa FROM magazyn_czesci WHERE auto_id=?", (auto_id,))
+        wiersze = c.fetchall()
+
+    for ilosc, cena in wiersze:
+        ilosc = _na_liczbe(ilosc) or 0.0
+        if ilosc <= 0:
+            continue
+        wynik["na_stanie"] += 1
+        cena = _na_liczbe(cena)
+        if cena is None:
+            wynik["bez_ceny"] += 1
+        else:
+            wynik["wartosc"] += ilosc * cena
+    wynik["wartosc"] = round(wynik["wartosc"], 2)
+    return wynik
+
+
+def pobierz_podsumowanie_zuzycia(auto_id) -> dict[int, dict[str, Any]]:
+    """{magazyn_id: {"liczba", "ilosc", "koszt", "ostatnio"}} dla całego magazynu.
+
+    Jedno zapytanie na pojazd, żeby karta pozycji na liście nie pytała bazy sama
+    za siebie. `koszt` sumuje wyłącznie zużycia doliczone do serwisu."""
+    if not auto_id:
+        return {}
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT wcm.magazyn_id, wcm.ilosc_uzyta, wcm.koszt, w.data "
+            "FROM wizyta_czesci_magazynu wcm "
+            "JOIN wizyty w ON w.id = wcm.wizyta_id "
+            "JOIN magazyn_czesci m ON m.id = wcm.magazyn_id WHERE m.auto_id=? "
+            "UNION ALL "
+            "SELECT hcm.magazyn_id, hcm.ilosc_uzyta, hcm.koszt, h.data "
+            "FROM historia_czesci_magazynu hcm "
+            "JOIN historia h ON h.id = hcm.historia_id "
+            "JOIN magazyn_czesci m ON m.id = hcm.magazyn_id WHERE m.auto_id=?",
+            (auto_id, auto_id)
+        )
+        wiersze = c.fetchall()
+
+    wynik = {}
+    for magazyn_id, ilosc, koszt, data in wiersze:
+        pozycja = wynik.setdefault(magazyn_id, {"liczba": 0, "ilosc": 0.0, "koszt": 0.0, "ostatnio": None})
+        pozycja["liczba"] += 1
+        pozycja["ilosc"] += _na_liczbe(ilosc) or 0.0
+        pozycja["koszt"] = round(pozycja["koszt"] + (_na_liczbe(koszt) or 0.0), 2)
+        if data and (pozycja["ostatnio"] is None or parsuj_date(data) > parsuj_date(pozycja["ostatnio"])):
+            pozycja["ostatnio"] = str(data)
+    return wynik
+
+
+def pobierz_historie_zuzycia(czesc_id) -> list[dict[str, Any]]:
+    """Gdzie ta pozycja zeszła z magazynu — wizyty i pojedyncze wpisy razem, od
+    najnowszego. Każdy element: {"zrodlo", "rekord_id", "data", "tytul",
+    "opis", "ilosc", "koszt", "trasa"}; `trasa` prowadzi do edycji rekordu."""
+    if not czesc_id:
+        return []
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            "SELECT w.id AS rekord_id, w.data, w.wykonawca, wcm.ilosc_uzyta, wcm.koszt, "
+            "(SELECT GROUP_CONCAT(z.nazwa, ', ') FROM historia h JOIN zadania z ON z.id = h.zadanie_id "
+            " WHERE h.wizyta_id = w.id) AS podzespoly "
+            "FROM wizyta_czesci_magazynu wcm JOIN wizyty w ON w.id = wcm.wizyta_id "
+            "WHERE wcm.magazyn_id=?",
+            (czesc_id,)
+        )
+        wizyty = c.fetchall()
+        c.execute(
+            "SELECT h.id AS rekord_id, h.wizyta_id, h.data, h.wykonawca, hcm.ilosc_uzyta, hcm.koszt, "
+            "z.nazwa AS podzespol "
+            "FROM historia_czesci_magazynu hcm JOIN historia h ON h.id = hcm.historia_id "
+            "JOIN zadania z ON z.id = h.zadanie_id "
+            "WHERE hcm.magazyn_id=?",
+            (czesc_id,)
+        )
+        wpisy = c.fetchall()
+
+    wynik = []
+    for r in wizyty:
+        wynik.append({
+            "zrodlo": "wizyty", "rekord_id": r["rekord_id"], "data": str(r["data"] or ""),
+            "tytul": bez_emoji(r["podzespoly"]) or "Wizyta w warsztacie",
+            "opis": "Wizyta w warsztacie" + (f" • {r['wykonawca']}" if r["wykonawca"] else ""),
+            "ilosc": _na_liczbe(r["ilosc_uzyta"]) or 0.0, "koszt": _na_liczbe(r["koszt"]),
+            "trasa": f"/wizyty/edytuj/{r['rekord_id']}",
+        })
+    for r in wpisy:
+        trasa = f"/wizyty/edytuj/{r['wizyta_id']}" if r["wizyta_id"] else f"/wpis/edytuj/{r['rekord_id']}"
+        wynik.append({
+            "zrodlo": "historia", "rekord_id": r["rekord_id"], "data": str(r["data"] or ""),
+            "tytul": bez_emoji(r["podzespol"]) or "Wpis serwisowy",
+            "opis": "Wpis serwisowy" + (f" • {r['wykonawca']}" if r["wykonawca"] else ""),
+            "ilosc": _na_liczbe(r["ilosc_uzyta"]) or 0.0, "koszt": _na_liczbe(r["koszt"]),
+            "trasa": trasa,
+        })
+    wynik.sort(key=lambda w: (parsuj_date(w["data"]), w["rekord_id"]), reverse=True)
+    return wynik
+
+
 # ============================================================================
 #  SEZONOWA ZMIANA OPON
 # ============================================================================
@@ -440,15 +721,27 @@ __all__ = [
     "_przywroc_powiazania_czesci_wpisow",
     "_rozlicz_czesci",
     "_zdejmij_powiazania_czesci_wpisow",
+    "cena_jednostkowa_z_zakupu",
+    "cena_zuzycia",
+    "koszt_doliczony",
+    "pobierz_czesci_do_zuzycia",
+    "pobierz_historie_zuzycia",
+    "pobierz_podsumowanie_zuzycia",
     "pobierz_stan_magazynu",
     "pobierz_stan_opon",
     "pobierz_uzyte_czesci_wizyty",
     "pobierz_uzyte_czesci_wpisu",
+    "pobierz_wartosc_magazynu",
+    "pobierz_zuzycie_czesci",
+    "pobierz_zuzycie_rekordow",
     "przelacz_zestaw_sezonowy",
     "przywroc_czesci_wizyty",
     "przywroc_czesci_wpisu",
     "rozlicz_czesci_z_magazynu",
     "rozlicz_czesci_z_magazynu_wpisu",
+    "srednia_cena_jednostkowa",
+    "suma_kosztu_zuzycia",
     "usun_czesc_magazynu_z_cofnieciem",
     "usun_wiele_czesci_magazynu_z_cofnieciem",
+    "wycen_zuzycie",
 ]

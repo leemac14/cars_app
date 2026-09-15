@@ -25,6 +25,7 @@ from .listy import *
 from .filtry import *
 from .sync_ui import *
 from .formularze import *
+from .magazyn import *
 from .notatki import *
 from .zalaczniki import *
 from .wykresy import *
@@ -51,6 +52,7 @@ from . import (
     filtry,
     sync_ui,
     formularze,
+    magazyn,
     notatki,
     zalaczniki,
     wykresy,

@@ -5,6 +5,7 @@ from typing import Any
 from .polaczenie import polacz_baze
 from .pomocnicze import bez_emoji
 from .synchronizacja import zarejestruj_nagrobek
+from .magazyn import srednia_cena_jednostkowa
 from .przebieg import przelicz_wszystkie_zadania
 
 
@@ -164,6 +165,20 @@ def scal_duplikaty_nazw(auto_id, tabela, id_docelowy, ids_zrodlowe):
         zdalne_do_nagrobka = [r[2] for r in znikajace if r[2]]
 
         if tabela == "magazyn_czesci":
+            # Cena za jednostkę idzie za sztukami: zsypane pozycje dostają średnią
+            # ważoną stanem. Bez tego wartość magazynu i koszt kolejnego zużycia
+            # liczyłyby się po cenie tej pisowni, która akurat wygrała scalanie.
+            c.execute("SELECT ilosc, cena_jednostkowa FROM magazyn_czesci WHERE id=?", (id_docelowy,))
+            pozycje_cen = [tuple(c.fetchone() or (0, None))]
+            c.execute(
+                f"SELECT ilosc, cena_jednostkowa FROM magazyn_czesci WHERE id IN ({placeholders})",
+                tuple(ids_zrodlowe)
+            )
+            pozycje_cen += [tuple(r) for r in c.fetchall()]
+            cena_po_scaleniu = srednia_cena_jednostkowa(pozycje_cen)
+            if cena_po_scaleniu is not None:
+                c.execute("UPDATE magazyn_czesci SET cena_jednostkowa=? WHERE id=?", (cena_po_scaleniu, id_docelowy))
+
             c.execute(
                 f"SELECT COALESCE(SUM(ilosc), 0) FROM magazyn_czesci WHERE id IN ({placeholders})",
                 tuple(ids_zrodlowe)

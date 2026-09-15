@@ -30,7 +30,7 @@ class FormularzWizytyView(ft.View):
                 c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi FROM wizyty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
-                    d_val, p_val, wyk_val, kosz_val, not_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), str(w[3] or ""), str(w[4] or "")
+                    d_val, p_val, wyk_val, kosz_val, not_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), w[3], str(w[4] or "")
                     self.zalacznik_val = w[5]
                     tagi_val = str(w[6] or "")
                 c.execute("SELECT zadanie_id, kategoria FROM historia WHERE wizyta_id=?", (zrodlo_id,))
@@ -48,10 +48,20 @@ class FormularzWizytyView(ft.View):
             p_val = str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
             self.zalacznik_val = None
 
+        # Części z magazynu doliczają się do kosztu wizyty, więc w polu kosztu
+        # stoi sam rachunek warsztatu: od zapisanego kosztu odejmujemy to, co
+        # doliczył magazyn — przy edycji tej wizyty i przy duplikacie innej.
+        self.zuzycie = utils.ZuzycieMagazynu(page, self.state.auto_id, "wizyty", w_id)
+        if zrodlo_id:
+            doliczone = (self.zuzycie.koszt_doliczony if w_id
+                         else db.koszt_doliczony(db.pobierz_zuzycie_czesci("wizyty", duplikuj_id)))
+            kosz_val = utils.koszt_bez_czesci_do_pola(kosz_val, doliczone)
+
         self.e_d = utils.pole_daty(page, "Data odebrania z warsztatu", d_val)
         self.e_p = ft.TextField(label="Przebieg podczas wizyty (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, wyk_val)
         self.e_k = ft.TextField(label=f"Całkowity koszt naprawy ({utils.symbol_waluty()})", value=kosz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.podpis_kosztu = self.zuzycie.podepnij_pole_kosztu(self.e_k)
         self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
@@ -88,57 +98,11 @@ class FormularzWizytyView(ft.View):
             **utils.styl_dropdown()
         )
 
-        poprzednio_uzyte = dict(db.pobierz_uzyte_czesci_wizyty(w_id)) if w_id else {}
-        with db.polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id, nazwa, ilosc, jednostka FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa", (self.state.auto_id,))
-            wszystkie_czesci_magazynu = c.fetchall()
-
-        self.magazyn_kontrolki = []
-        wiersze_magazynu = []
-        for m_id, m_nazwa, m_ilosc, m_jedn in wszystkie_czesci_magazynu:
-            juz_uzyto = float(poprzednio_uzyte.get(m_id, 0) or 0)
-            dostepna = float(m_ilosc or 0) + juz_uzyto
-            if dostepna <= 0:
-                continue
-
-            zaznaczone = m_id in poprzednio_uzyte
-            pole_ilosc = ft.TextField(
-                value=utils.formatuj_liczba(juz_uzyto, 2) if zaznaczone else "1",
-                width=90, visible=zaznaczone,
-                keyboard_type=ft.KeyboardType.NUMBER,
-                **utils.styl_pola(page=page)
-            )
-
-            def _przelacz(e, pole=pole_ilosc):
-                pole.visible = e.control.value
-                pole.update()
-
-            chk = ft.Checkbox(
-                label=f"{m_nazwa} (dost.: {utils.formatuj_liczba(dostepna, 2)} {m_jedn or 'szt'})",
-                value=zaznaczone, data=m_id, on_change=_przelacz
-            )
-
-            self.magazyn_kontrolki.append((chk, pole_ilosc, {"id": m_id, "dostepna": dostepna}))
-            wiersze_magazynu.append(ft.Row([chk, pole_ilosc], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER))
-
-        self.magazyn_lista_kontener = ft.Column(wiersze_magazynu, spacing=8, visible=bool(poprzednio_uzyte))
-
-        def _przelacz_magazyn(e):
-            self.magazyn_lista_kontener.visible = e.control.value
-            self.magazyn_lista_kontener.update()
-
-        self.c_uzyj_magazynu = ft.Checkbox(
-            label="Wykorzystaj własne części z magazynu",
-            value=bool(poprzednio_uzyte),
-            on_change=_przelacz_magazyn
-        )
-
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", "/wizyty", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza(
-            [self.e_d, self.e_p, self.k_wykonawca, self.e_k, self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
+            [self.e_d, self.e_p, self.k_wykonawca, self.e_k, self.podpis_kosztu, self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
             "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True, page=page
         )
         k1b = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
@@ -156,19 +120,16 @@ class FormularzWizytyView(ft.View):
                 content=ft.Row([
                     ft.Icon(ft.Icons.CONTENT_COPY, size=16, color=ft.Colors.PRIMARY),
                     ft.Text(
-                        "Duplikat wizyty: przeniesiono warsztat, koszt, notatki, tagi i zaznaczone "
-                        "podzespoły. Data i przebieg są dzisiejsze, a zużycie z magazynu zaznacz "
-                        "ponownie — stan mógł się zmienić.",
+                        "Duplikat wizyty: przeniesiono warsztat, koszt naprawy (bez części z magazynu), "
+                        "notatki, tagi i zaznaczone podzespoły. Data i przebieg są dzisiejsze, a zużycie "
+                        "z magazynu zaznacz ponownie — stan mógł się zmienić.",
                         size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
                     ),
                 ], spacing=8),
             ))
 
-        if self.magazyn_kontrolki:
-            k3 = utils.karta_formularza(
-                [self.c_uzyj_magazynu, self.magazyn_lista_kontener],
-                "Magazyn części", ft.Icons.INVENTORY_2
-            )
+        k3 = self.zuzycie.karta()
+        if k3:
             elementy.append(k3)
 
         elementy.append(utils.przyciski_akcji(page, "Zapisz wizytę", self.zapisz, "/wizyty"))
@@ -505,8 +466,7 @@ class FormularzWizytyView(ft.View):
             self.e_d.value, self.e_p.value, self.get_wykonawca(), self.e_k.value, self.e_n.value,
             self.get_tagi(), self.e_kat_wizyty.value,
             tuple(chk.value for chk in self.chk_czesci),
-            self.c_uzyj_magazynu.value,
-            tuple((chk.value, pole.value) for chk, pole, _ in self.magazyn_kontrolki),
+            self.zuzycie.migawka(),
         )
 
     def _czy_zmieniono(self):
@@ -523,17 +483,11 @@ class FormularzWizytyView(ft.View):
         wybrane = [chk.data for chk in self.chk_czesci if chk.value]
         self.blad_czesci.value = "Zaznacz co najmniej jedną część!" if not wybrane else ""
 
-        nowe_uzyte = []
-        for chk, pole_ilosc, poz in self.magazyn_kontrolki:
-            utils.ustaw_blad(pole_ilosc)
-            if self.c_uzyj_magazynu.value and chk.value:
-                ilosc = utils.parsuj_float(pole_ilosc.value, None)
-                if ilosc is None or ilosc <= 0 or ilosc > poz["dostepna"] + 1e-9:
-                    utils.ustaw_blad(pole_ilosc, f"Maks. {utils.formatuj_liczba(poz['dostepna'], 2)}")
-                else:
-                    nowe_uzyte.append((poz["id"], ilosc))
-
-        blad_magazynu = any(utils.blad_kontrolki(pole) for _, pole, _ in self.magazyn_kontrolki)
+        # Zużycie przychodzi już wycenione — ten sam koszt trafia do powiązania
+        # i do kosztu całkowitego wizyty.
+        nowe_uzyte, blad_magazynu = self.zuzycie.sprawdz()
+        koszt_czesci = db.suma_kosztu_zuzycia(nowe_uzyte)
+        koszt_razem = round(kos + koszt_czesci, 2)
 
         if bledy or self.blad_czesci.value or blad_magazynu:
             self._page.update()
@@ -566,7 +520,7 @@ class FormularzWizytyView(ft.View):
                 cur.execute("SELECT dodane_przez FROM wizyty WHERE id=?", (self.w_id,))
                 w_osoba = cur.fetchone()
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
-                cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
+                cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, koszt_razem, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
 
                 # Zapamiętujemy zdalne_id usuwanych wpisów historii — DELETE+INSERT
                 # niżej to z punktu widzenia sync'a "usunięcie starych + utworzenie
@@ -583,7 +537,7 @@ class FormularzWizytyView(ft.View):
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
             else:
                 osoba_wizyty = db.pobierz_moje_imie()
-                cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, kos, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
+                cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, koszt_razem, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
                 wizyta_id = cur.lastrowid
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
@@ -603,7 +557,10 @@ class FormularzWizytyView(ft.View):
         db.przelicz_wszystkie_zadania(self.state.auto_id)
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "wizyta")
         utils.przejdz(self._page, "/wizyty")
-        utils.pokaz_komunikat(self._page, "Zapisano wizytę!")
+        if koszt_czesci > 0:
+            utils.pokaz_komunikat(self._page, f"Zapisano wizytę! Doliczono części z magazynu: {utils.formatuj_liczba(koszt_czesci)} {utils.symbol_waluty()}.")
+        else:
+            utils.pokaz_komunikat(self._page, "Zapisano wizytę!")
 
 
 __all__ = [

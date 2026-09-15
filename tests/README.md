@@ -37,6 +37,7 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `test_start.py` | Podział startu: `init_db()` robi tylko schemat, `porzadki_startowe()` sprząta kosz, odroczone załączniki i (raz) ścieżki. |
 | `test_sync_pakiet.py` | Pakiet `sync/`: zależności tylko w dół, `__init__.py` bez logiki, nazwy przypisywane przez `global` nie wychodzą z modułu, blokada sieci sięga każdego wiązania, aplikacja nie woła nazwy, której pakiet nie wystawia. |
 | `test_log.py` | Rotujący log błędów: co łapie (połknięty wyjątek, wątek, porzucona korutyna asyncio, cudze ostrzeżenia), czego nie łapie (cudze INFO), rotacja, raport do wysłania i to, że brak miejsca na log nie wywala aplikacji. |
+| `test_magazyn_koszt.py` | Koszt części z magazynu w koszcie serwisu, przez prawdziwe formularze: nowy wpis i wizyta, edycja bez podwójnego doliczenia i po cenie zapamiętanej przy rekordzie, duplikat bez kosztu części, usunięcie z cofnięciem. Migracja 41 bez doliczania wstecz. Wartość magazynu, historia zużycia, ostrzeżenie przy usuwaniu, przeliczanie ceny w formularzu pozycji, średnia cena po scaleniu duplikatów. |
 
 Listy widoków ani migracji nie ma tu przepisanej ręcznie — pierwsza bierze się
 z przejścia pakietu `views`, druga z odczytu AST z `db/migracje.py`. Nowy ekran
@@ -50,7 +51,7 @@ nie zmienia niczego w ich bazie, a zmienia wszystko w bazie zakładanej od zera:
 nie widać, bo obie ścieżki przechodzą przez ten sam, zmieniony kod. Dlatego są
 trzy sprawdzenia, a nie jedno.
 
-**1. Drabinka odtworzona z kodu.** Baza w każdej z 41 wersji po `init_db()` ma
+**1. Drabinka odtworzona z kodu.** Baza w każdej z 42 wersji po `init_db()` ma
 mieć dokładnie ten sam schemat, co świeża. Łapie migrację, która nie jest
 powtarzalna albo psuje się przy starcie z konkretnej wersji.
 

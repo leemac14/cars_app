@@ -42,6 +42,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 c = conn.cursor()
                 c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
                 wpisy = c.fetchall()
+            # Części z magazynu przy pojedynczych wpisach — ich koszt siedzi już
+            # w cenie wpisu, a dopisek mówi, ile z niej przyszło z półki.
+            zuzycie_wpisow = db.pobierz_zuzycie_rekordow("historia", [w[0] for w in wpisy if w[4] is None])
 
             if not wpisy:
                 elementy.append(ft.Text("Brak wpisów w historii. Kliknij + aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
@@ -151,6 +154,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         k_str = f"{utils.formatuj_liczba(float(cena or 0))}  {utils.symbol_waluty()}"
                     sub_tekst = f"Przebieg: {utils.formatuj_liczba(int(prz or 0), 0)} km  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
                     if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
+                    opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wpisow.get(h_id))
 
                     tresc_h = [
                         ft.Row([
@@ -162,6 +166,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
                     ]
+                    if opis_magazynu:
+                        tresc_h.append(ft.Text(opis_magazynu, size=13, color=ft.Colors.TEAL_700))
                     tresc_h.append(utils.podglad_notatki(
                         self._page, notatka, notatka_autor, notatka_data, "Notatka do wpisu",
                         on_edytuj=lambda rid=h_id: utils.szybka_notatka(
@@ -198,7 +204,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     kontener.on_click = _on_click
                     kontener.on_long_press = _on_long_press
 
-                    tekst_szukaj = f"{data} {sub_tekst} {k_str} {notatka or ''}".lower()
+                    tekst_szukaj = f"{data} {sub_tekst} {k_str} {opis_magazynu} {notatka or ''}".lower()
                     self.wszystkie_karty.append({
                         "karta": karta, "szukaj": tekst_szukaj, "data": data,
                         # Wpis z wizyty zbiorczej niesie koszt CAŁEJ wizyty — do
@@ -366,21 +372,10 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             """, (self.state.auto_id,))
             wizyty_lista = c.fetchall()
 
-            # Osobne zapytanie o zużyte części z magazynu — celowo NIE w tym samym
-            # JOIN-ie co historia/zadania, żeby uniknąć krzyżowego zdublowania wierszy
-            # (i tym samym duplikatów w GROUP_CONCAT) przy wizytach z >1 podzespołem
-            # ORAZ >1 zużytą częścią jednocześnie.
-            c.execute("""
-                SELECT wcm.wizyta_id, mc.nazwa, wcm.ilosc_uzyta, mc.jednostka
-                FROM wizyta_czesci_magazynu wcm
-                JOIN magazyn_czesci mc ON wcm.magazyn_id = mc.id
-                JOIN wizyty w ON wcm.wizyta_id = w.id
-                WHERE w.auto_id = ?
-            """, (self.state.auto_id,))
-            czesci_magazynu_wg_wizyty = {}
-            for wiz_id, m_nazwa, m_ilosc, m_jedn in c.fetchall():
-                opis = f"{m_nazwa} ({utils.formatuj_liczba(m_ilosc, 2)} {m_jedn or 'szt'})"
-                czesci_magazynu_wg_wizyty.setdefault(wiz_id, []).append(opis)
+        # Zużyte części z magazynu osobnym zapytaniem — celowo NIE w tym samym
+        # JOIN-ie co historia/zadania (patrz db.pobierz_zuzycie_rekordow). Razem
+        # z nazwami idzie koszt, który jest już wliczony w koszt wizyty.
+        zuzycie_wizyt = db.pobierz_zuzycie_rekordow("wizyty", [w[0] for w in wizyty_lista])
 
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "wizyty", opcje_sort)
         filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "wizyty_rok", wizyty_lista, 1)
@@ -493,7 +488,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 (w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez,
                  zmodyfikowane_przez, data_modyfikacji, notatka_wizyty) = w
                 czesci = czesci or "Brak podpiętych części"
-                czesci_magazynowe = czesci_magazynu_wg_wizyty.get(w_id)
+                opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wizyt.get(w_id))
 
                 tresc_karty = [
                     ft.Row([
@@ -509,8 +504,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     ], spacing=4),
                     ft.Text(f"Części: {czesci}", size=13, color=ft.Colors.PRIMARY),
                 ]
-                if czesci_magazynowe:
-                    tresc_karty.append(ft.Text(f"Z magazynu: {', '.join(czesci_magazynowe)}", size=13, color=ft.Colors.TEAL_700))
+                if opis_magazynu:
+                    tresc_karty.append(ft.Text(opis_magazynu, size=13, color=ft.Colors.TEAL_700))
                 if tagi:
                     tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id, mapa_tagow))
                 # Wizyta ma pole „Notatki i uwagi” od zawsze, tylko nigdy nie było
@@ -548,7 +543,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 kontener.on_click = _on_click
                 kontener.on_long_press = _on_long_press
 
-                magazyn_szukaj = " ".join(czesci_magazynowe) if czesci_magazynowe else ""
+                magazyn_szukaj = opis_magazynu
                 tekst_szukaj = f"{data} {wyk} {czesci} {kosz} {tagi} {magazyn_szukaj} {notatka_wizyty or ''}".lower()
                 self.wszystkie_karty.append({
                     "karta": karta, "szukaj": tekst_szukaj,

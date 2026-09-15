@@ -261,6 +261,15 @@ def test_probka_przechodzi_migracje_uzupelniajace_dane(magazyn, probka):
             c.execute("SELECT COUNT(*) FROM wydatki_cykliczne WHERE typ IS NULL OR TRIM(typ)=''")
             assert c.fetchone()[0] == 0, f"{probka.stem}: wydatek cykliczny bez rodzaju"
 
+            # Migracja 41: pozycja z kosztem zakupu i ilością dostaje cenę za
+            # jednostkę — bez niej jej zużycie nie doliczyłoby nic do serwisu.
+            if wersja <= 40:
+                c.execute(
+                    "SELECT COUNT(*) FROM magazyn_czesci "
+                    "WHERE cena IS NOT NULL AND cena >= 0 AND ilosc > 0 AND cena_jednostkowa IS NULL"
+                )
+                assert c.fetchone()[0] == 0, f"{probka.stem}: pozycja magazynu bez ceny za jednostkę"
+
     if wersja <= 37:
         # Migracja 38: układ zakładek zmienił ZNACZENIE numerów. Kto skończył na
         # dawnym „Paliwie" (2), ma trafić na Koszty z podzakładką Tankowania.

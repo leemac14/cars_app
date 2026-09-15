@@ -157,7 +157,31 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             utils.przejdz(self._page, "/magazyn")
             utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} elementów.", wynik)
 
-        utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno chcesz usunąć {ile} zaznaczonych elementów?", wykonaj)
+        tresc = f"Czy na pewno chcesz usunąć {ile} zaznaczonych elementów?"
+        if tabela == "magazyn_czesci":
+            tresc += self._ostrzezenie_o_zuzyciu(self.zaznaczone_id)
+        utils.potwierdz(self._page, "Usuwanie", tresc, wykonaj)
+
+    def _ostrzezenie_o_zuzyciu(self, ids):
+        """Dopisek do potwierdzenia usunięcia, gdy pozycja była już użyta w serwisie.
+
+        Usunięcie pozycji kasuje też jej zużycia (inaczej wpisy wskazywałyby
+        część, której nie ma). Koszt zostaje we wpisach i wizytach — ale znika
+        ślad, skąd się wziął, a tego nie widać, dopóki się nie zajrzy."""
+        podsumowanie = db.pobierz_podsumowanie_zuzycia(self.state.auto_id)
+        uzycia = [podsumowanie[i] for i in ids if i in podsumowanie]
+        if not uzycia:
+            return ""
+        liczba = sum(u["liczba"] for u in uzycia)
+        koszt = round(sum(u["koszt"] for u in uzycia), 2)
+        tekst = f"\n\nUżyto jej w serwisie {liczba} {utils._odmiana_liczby(liczba, 'raz', 'razy', 'razy')}"
+        if len(ids) > 1:
+            tekst = f"\n\nZaznaczone pozycje użyto w serwisie {liczba} {utils._odmiana_liczby(liczba, 'raz', 'razy', 'razy')}"
+        if koszt > 0:
+            tekst += f" (doliczono {utils.formatuj_liczba(koszt)} {utils.symbol_waluty()})"
+        return (tekst + ". Koszt zostanie w tamtych wpisach i wizytach, ale zniknie z nich informacja "
+                "o zużytej części. Jeśli po prostu się skończyła, możesz zostawić ją z zerowym stanem.")
+
     # ============== ZAKŁADKA: OPONY ==============
     def _buduj_opony(self):
         elementy = []
@@ -425,7 +449,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia "
+                "SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa "
                 "FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa",
                 (self.state.auto_id,)
             )
@@ -435,10 +459,20 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             elementy.append(ft.Text("Brak części i płynów w magazynie. Kliknij + poniżej, aby dodać pierwszą pozycję.", color=ft.Colors.ON_SURFACE_VARIANT))
             return elementy
 
+        # Zużycie całego magazynu jednym zapytaniem — karta pozycji nie pyta
+        # bazy sama za siebie.
+        self._zuzycie_czesci = db.pobierz_podsumowanie_zuzycia(self.state.auto_id)
+        wartosc = db.pobierz_wartosc_magazynu(self.state.auto_id)
+        # Bez ani jednej wycenionej pozycji na stanie karta nie ma nic do
+        # powiedzenia poza „0,00” — a to czyta się jak pusty magazyn.
+        if wartosc["na_stanie"] > wartosc["bez_ceny"]:
+            elementy.append(self._karta_wartosci_magazynu(wartosc))
+
         sort_opcje = [
             ("Nazwa", "nazwa", lambda x: str(x[1]).lower()),
             ("Ilość", "ilosc", lambda x: float(x[3] or 0)),
             ("Kategoria", "kategoria", lambda x: str(x[2] or "").lower()),
+            ("Wartość", "wartosc", lambda x: float(x[3] or 0) * float(x[10] or 0)),
         ]
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "magazyn_czesci", sort_opcje)
         filtr_kat_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "magazyn_kategoria", czesci, 2, "Kategoria")
@@ -472,7 +506,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         for cz in czesci:
             karta = self._karta_czesci(cz)
-            c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia = cz
+            c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn = cz
             tekst_szukaj = f"{nazwa} {kategoria} {notatki}".lower()
             self.wszystkie_karty_czesci.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_czesci.controls.append(karta)
@@ -481,9 +515,30 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         elementy.append(self.lista_kart_czesci)
         return elementy
 
+    def _karta_wartosci_magazynu(self, wartosc):
+        """Ile wart jest magazyn — stan razy cena za jednostkę. Pozycje bez ceny
+        podane osobno: bez tej liczby suma udawałaby kompletną."""
+        na_stanie = wartosc["na_stanie"]
+        opis = [f"{na_stanie} {utils._odmiana_liczby(na_stanie, 'pozycja', 'pozycje', 'pozycji')} na stanie"]
+        if wartosc["bez_ceny"]:
+            opis.append(f"{wartosc['bez_ceny']} bez ceny, nie wliczone")
+        return ft.Container(
+            padding=ft.Padding(16, 12, 16, 12),
+            **utils.powierzchnia(self._page, "karta"),
+            content=ft.Row([
+                ft.Icon(ft.Icons.INVENTORY_2, size=22, color=ft.Colors.PRIMARY),
+                ft.Column([
+                    utils.etykieta("Wartość magazynu"),
+                    utils.wartosc(f"{utils.formatuj_liczba(wartosc['wartosc'])} {utils.symbol_waluty()}"),
+                    utils.podpis(" · ".join(opis)),
+                ], spacing=2, tight=True, expand=True),
+            ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
     def _karta_czesci(self, cz):
-        c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia = cz
+        c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn = cz
         ikona = IKONY_KATEGORII_MAGAZYNU.get(kategoria, ft.Icons.BUILD)
+        waluta = utils.symbol_waluty()
 
         try:
             ilosc_f = float(ilosc or 0)
@@ -509,11 +564,30 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             content=ft.Text(tekst_stan, size=11, weight="bold", color=kolor_stan)
         )
 
+        # Cena za jednostkę i wartość tego, co leży na półce — to z niej liczy się
+        # koszt zużycia. Sam koszt zakupu zostaje tylko tam, gdzie ceny za
+        # jednostkę nie da się ustalić.
         stopka_bits = []
-        if cena is not None and str(cena).strip():
-            stopka_bits.append(f"Cena: {utils.formatuj_liczba(cena)} {utils.symbol_waluty()}")
+        cena_jedn_f = float(cena_jedn) if cena_jedn is not None else None
+        if cena_jedn_f is not None:
+            tekst_ceny = f"{utils.tekst_ceny(cena_jedn_f)} {waluta}/{jednostka}"
+            if ilosc_f > 0:
+                tekst_ceny += f" · wartość {utils.formatuj_liczba(ilosc_f * cena_jedn_f)} {waluta}"
+            stopka_bits.append(tekst_ceny)
+        elif cena is not None and str(cena).strip():
+            stopka_bits.append(f"Koszt zakupu: {utils.formatuj_liczba(cena)} {waluta}")
         if data_zakupu:
             stopka_bits.append(f"Zakup: {data_zakupu}")
+
+        zuzycie = (getattr(self, "_zuzycie_czesci", None) or {}).get(c_id)
+        tekst_zuzycia = ""
+        if zuzycie:
+            czesci_zuzycia = [f"Użyto {zuzycie['liczba']}×, razem {utils.tekst_ilosci(zuzycie['ilosc'])} {jednostka}"]
+            if zuzycie["koszt"] > 0:
+                czesci_zuzycia.append(f"doliczono {utils.formatuj_liczba(zuzycie['koszt'])} {waluta}")
+            if zuzycie["ostatnio"]:
+                czesci_zuzycia.append(f"ostatnio {zuzycie['ostatnio']}")
+            tekst_zuzycia = " · ".join(czesci_zuzycia)
 
         tresc = [
             ft.Row([
@@ -528,23 +602,80 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         ]
         if stopka_bits:
             tresc.append(ft.Text("  |  ".join(stopka_bits), size=12, color=ft.Colors.ON_SURFACE_VARIANT))
+        if tekst_zuzycia:
+            tresc.append(ft.Text(tekst_zuzycia, size=12, color=ft.Colors.ON_SURFACE_VARIANT))
 
         karta, kontener = utils.karta_listy(
             ft.Column(tresc, spacing=4), kolor_paska=kolor_stan, page=self._page
         )
 
         self.karty_ref[c_id] = kontener
-        self.podepnij_zdarzenia_grupowe(kontener, c_id, lambda cid=c_id, cn=nazwa, czal=zalacznik: self._pokaz_menu_czesci(cid, cn, czal), "magazyn_czesci")
+        self.podepnij_zdarzenia_grupowe(kontener, c_id, lambda cid=c_id, cn=nazwa, czal=zalacznik, cj=jednostka, uz=bool(zuzycie): self._pokaz_menu_czesci(cid, cn, czal, cj, uz), "magazyn_czesci")
 
         return karta
 
-    def _pokaz_menu_czesci(self, cid, nazwa, zalacznik=None):
+    def _pokaz_historie_zuzycia(self, cid, nazwa, jednostka):
+        """Gdzie ta pozycja zeszła z magazynu. Dotknięcie wpisu otwiera jego
+        edycję — to tam poprawia się ilość albo oddaje część na stan."""
+        historia = db.pobierz_historie_zuzycia(cid)
+        waluta = utils.symbol_waluty()
+        bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
+
+        def otworz(trasa):
+            utils.zamknij_dno(self._page, bs)
+            utils.przejdz(self._page, trasa)
+
+        razem_ilosc = sum(p["ilosc"] for p in historia)
+        razem_koszt = round(sum(p["koszt"] or 0 for p in historia), 2)
+        podsumowanie = f"Zużyto razem {utils.tekst_ilosci(razem_ilosc)} {jednostka}"
+        if razem_koszt > 0:
+            podsumowanie += f" · doliczono {utils.formatuj_liczba(razem_koszt)} {waluta}"
+
+        zawartosc = [
+            ft.Row([
+                ft.Icon(ft.Icons.HISTORY, size=22, color=ft.Colors.PRIMARY),
+                ft.Column([
+                    ft.Text(f"Historia zużycia: {nazwa}", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                    utils.podpis(podsumowanie),
+                ], spacing=0, tight=True, expand=True),
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Divider(height=14),
+        ]
+        if not historia:
+            zawartosc.append(utils.podpis("Ta pozycja nie była jeszcze użyta w żadnym wpisie ani wizycie."))
+        for pozycja in historia:
+            kwota = (f"{utils.formatuj_liczba(pozycja['koszt'])} {waluta}" if pozycja["koszt"] is not None
+                     else "bez doliczenia")
+            zawartosc.append(ft.Container(
+                padding=ft.Padding(12, 10, 12, 10), ink=True,
+                on_click=lambda e, t=pozycja["trasa"]: otworz(t),
+                **utils.powierzchnia(self._page, "blok"),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.HOME_REPAIR_SERVICE if pozycja["zrodlo"] == "wizyty" else ft.Icons.BUILD,
+                            size=18, color=ft.Colors.PRIMARY),
+                    ft.Column([
+                        ft.Text(pozycja["tytul"], size=utils.FS["body"], weight="w500",
+                                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                        utils.podpis(f"{pozycja['data']} · {pozycja['opis']}"),
+                    ], spacing=1, tight=True, expand=True),
+                    ft.Column([
+                        utils.wartosc(f"{utils.tekst_ilosci(pozycja['ilosc'])} {jednostka}", size=utils.FS["body"]),
+                        utils.podpis(kwota),
+                    ], spacing=1, tight=True, horizontal_alignment=ft.CrossAxisAlignment.END),
+                ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ))
+
+        bs.content.content = ft.Column(zawartosc, tight=True, spacing=8)
+        utils.otworz_dno(self._page, bs)
+
+    def _pokaz_menu_czesci(self, cid, nazwa, zalacznik=None, jednostka="szt", uzyta=False):
         def usun_czesc():
             def wykonaj():
                 wynik = db.usun_czesc_magazynu_z_cofnieciem(cid)   # było: db.usun_z_cofnieciem("magazyn_czesci", cid)
                 utils.przejdz(self._page, "/magazyn")
                 utils.pokaz_komunikat_cofnij(self._page, f"Usunięto '{nazwa}'.", wynik)
-            utils.potwierdz(self._page, "Usunąć?", f"Czy na pewno usunąć pozycję „{nazwa}”?", wykonaj)
+            tresc = f"Czy na pewno usunąć pozycję „{nazwa}”?" + self._ostrzezenie_o_zuzyciu([cid])
+            utils.potwierdz(self._page, "Usunąć?", tresc, wykonaj)
 
         async def dodaj_zmien_zdj():
             await utils.szybkie_dodanie_zdjecia(self._page, "magazyn_czesci", cid, zalacznik, lambda: utils.przejdz(self._page, "/magazyn"))
@@ -556,6 +687,9 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         else:
             pozycje_menu.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/część)", "akcja": dodaj_zmien_zdj})
 
+        if uzyta:
+            pozycje_menu.append({"ikona": ft.Icons.HISTORY, "tekst": "Historia zużycia",
+                                 "akcja": lambda: self._pokaz_historie_zuzycia(cid, nazwa, jednostka)})
         pozycje_menu.extend([
             {"ikona": ft.Icons.EDIT, "tekst": "Edytuj pozycję", "akcja": lambda: utils.przejdz(self._page, f"/magazyn/czesci/edytuj/{cid}")},
             {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_czesc, "kolor": utils.KOLOR_STATUS["destructive"]}
@@ -744,7 +878,7 @@ class FormularzCzesciView(ft.View):
         self.czesc_id = czesc_id
 
         nazwa_val, kat_val, il_val, jedn_val = "", db.KATEGORIE_MAGAZYNU[0], "1", "szt"
-        cena_val, data_val, not_val = "", "", ""
+        cena_val, cena_jedn_val, data_val, not_val = "", "", "", ""
         prog_val = "1"
         self.zalacznik_val = None
 
@@ -752,7 +886,7 @@ class FormularzCzesciView(ft.View):
             with db.polacz_baze() as conn:
                 c = conn.cursor()
                 c.execute(
-                    "SELECT nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia "
+                    "SELECT nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa "
                     "FROM magazyn_czesci WHERE id=?", (czesc_id,)
                 )
                 w = c.fetchone()
@@ -761,11 +895,12 @@ class FormularzCzesciView(ft.View):
                     kat_val = str(w[1] or db.KATEGORIE_MAGAZYNU[0])
                     il_val = str(w[2]) if w[2] is not None else "1"
                     jedn_val = str(w[3] or "szt")
-                    cena_val = str(w[4]) if w[4] not in (None, "") else ""
+                    cena_val = utils.liczba_do_pola(w[4])
                     data_val = str(w[5] or "")
                     not_val = str(w[6] or "")
                     self.zalacznik_val = w[7] if len(w) > 7 else None
                     prog_val = str(w[8]) if len(w) > 8 and w[8] is not None else "1"
+                    cena_jedn_val = utils.liczba_do_pola(w[9]) if len(w) > 9 else ""
 
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
         self.e_nazwa = ft.TextField(label="Nazwa*", value=nazwa_val, hint_text="np. Olej 5W-30, żarówka H7", **utils.styl_pola())
@@ -784,9 +919,21 @@ class FormularzCzesciView(ft.View):
             label="Próg niskiego stanu (ostrzegaj poniżej)", value=prog_val, hint_text="np. 1",
             keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola()
         )
-        self.e_cena = ft.TextField(label=f"Koszt zakupu ({utils.symbol_waluty()}, opcjonalnie)", value=cena_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_cena = ft.TextField(label=f"Koszt zakupu ({utils.symbol_waluty()}, opcjonalnie)", value=cena_val, hint_text="ile zapłaciłeś za całą ilość", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_cena_jedn = ft.TextField(label=self._etykieta_ceny_jedn(jedn_val), value=cena_jedn_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_data = utils.pole_daty(page, "Data zakupu", data_val)
         self.e_not = ft.TextField(label="Notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
+
+        # Koszt zakupu i cena za jednostkę liczą się nawzajem przez ilość:
+        # wpisujesz to, co wiesz (zwykle kwotę z paragonu), a drugie pole
+        # uzupełnia się samo. Pole wpisane ręcznie przestaje być przeliczane —
+        # poprawiona cena za litr nie może zniknąć tylko dlatego, że ktoś
+        # dopisał ilość.
+        self._wyliczane = {"zakup": not cena_val, "jedn": not cena_jedn_val}
+        self.e_cena.on_change = lambda e: self._przelicz_ceny("zakup")
+        self.e_cena_jedn.on_change = lambda e: self._przelicz_ceny("jedn")
+        self.e_ilosc.on_change = lambda e: self._przelicz_ceny("ilosc")
+        self.e_jedn.on_select = lambda e: self._zmien_jednostke()
 
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if czesc_id else "Nowa część / płyn", "/magazyn", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
@@ -795,7 +942,11 @@ class FormularzCzesciView(ft.View):
 
         k1 = utils.karta_formularza([self.e_nazwa, self.e_kat], "Co to jest", ft.Icons.INVENTORY_2, domyslnie_otwarte=True)
         k2 = utils.karta_formularza([wiersz_ilosc, self.e_prog], "Stan magazynowy", ft.Icons.NUMBERS)
-        k3 = utils.karta_formularza([self.e_cena, self.e_data, self.e_not], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
+        k3 = utils.karta_formularza([
+            self.e_cena, self.e_cena_jedn,
+            utils.podpis("Cena za jednostkę dolicza się do kosztu wpisu albo wizyty, gdy użyjesz tej części z magazynu."),
+            self.e_data, self.e_not,
+        ], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
         k4 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
 
         elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz pozycję", self.zapisz, "/magazyn")]
@@ -807,13 +958,49 @@ class FormularzCzesciView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_nazwa.value, self.e_kat.value, self.e_ilosc.value, self.e_jedn.value,
-                self.e_prog.value, self.e_cena.value, self.e_data.value, self.e_not.value)
+                self.e_prog.value, self.e_cena.value, self.e_cena_jedn.value, self.e_data.value, self.e_not.value)
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
 
+    @staticmethod
+    def _etykieta_ceny_jedn(jednostka):
+        return f"Cena za 1 {jednostka or 'szt'} ({utils.symbol_waluty()})"
+
+    def _zmien_jednostke(self):
+        self.e_cena_jedn.label = self._etykieta_ceny_jedn(self.e_jedn.value)
+        self._odswiez()
+
+    def _przelicz_ceny(self, zrodlo):
+        """Uzupełnia pole wyliczane z drugiego pola i ilości (patrz _wyliczane)."""
+        ilosc = utils.parsuj_float(self.e_ilosc.value, None)
+        zakup = utils.parsuj_float(self.e_cena.value, None) if (self.e_cena.value or "").strip() else None
+        jedn = utils.parsuj_float(self.e_cena_jedn.value, None) if (self.e_cena_jedn.value or "").strip() else None
+
+        if zrodlo == "zakup":
+            self._wyliczane["zakup"] = zakup is None
+        elif zrodlo == "jedn":
+            self._wyliczane["jedn"] = jedn is None
+
+        if zrodlo in ("zakup", "ilosc") and self._wyliczane["jedn"] and not self._wyliczane["zakup"]:
+            self.e_cena_jedn.value = utils.liczba_do_pola(db.cena_jednostkowa_z_zakupu(zakup, ilosc))
+        elif zrodlo in ("jedn", "ilosc") and self._wyliczane["zakup"] and not self._wyliczane["jedn"]:
+            wyliczony = round(jedn * ilosc, 2) if jedn is not None and ilosc is not None and ilosc > 0 else None
+            self.e_cena.value = utils.liczba_do_pola(wyliczony)
+        elif zrodlo == "zakup" and self._wyliczane["zakup"] and self._wyliczane["jedn"]:
+            self.e_cena_jedn.value = ""
+        elif zrodlo == "jedn" and self._wyliczane["jedn"] and self._wyliczane["zakup"]:
+            self.e_cena.value = ""
+        self._odswiez()
+
+    def _odswiez(self):
+        try:
+            self._page.update()
+        except Exception:
+            log.polkniety("odświeżenie formularza pozycji magazynu")
+
     def zapisz(self, e):
-        for pole in (self.e_nazwa, self.e_ilosc, self.e_cena, self.e_prog):
+        for pole in (self.e_nazwa, self.e_ilosc, self.e_cena, self.e_cena_jedn, self.e_prog):
             utils.ustaw_blad(pole)
 
         # Wpisanie innego wariantu zapisu ("filtr Oleju ") nie zakłada nowej
@@ -834,6 +1021,18 @@ class FormularzCzesciView(ft.View):
             if cena is not None and cena < 0:
                 bledy.append((self.e_cena, "Cena nie może być ujemna"))
 
+        # Cena za jednostkę jest tym, co naprawdę trafia do kosztu serwisu. Puste
+        # pole przy znanym koszcie zakupu i ilości liczymy tak samo, jak robi to
+        # formularz na żywo — zapis nie może zależeć od tego, czy zdarzenie
+        # zmiany pola zdążyło dojść.
+        cena_jedn = None
+        if (self.e_cena_jedn.value or "").strip():
+            cena_jedn = utils.parsuj_float(self.e_cena_jedn.value, None)
+            if cena_jedn is None or cena_jedn < 0:
+                bledy.append((self.e_cena_jedn, "Podaj poprawną cenę"))
+        elif cena is not None and ilosc:
+            cena_jedn = db.cena_jednostkowa_z_zakupu(cena, ilosc)
+
         prog = utils.parsuj_float(self.e_prog.value, 1.0)
         if prog < 0:
             bledy.append((self.e_prog, "Próg nie może być ujemny"))
@@ -847,14 +1046,14 @@ class FormularzCzesciView(ft.View):
         with db.polacz_baze() as conn:
             if self.czesc_id:
                 conn.execute(
-                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, ilosc=?, jednostka=?, cena=?, data_zakupu=?, notatki=?, zalacznik=?, prog_ostrzezenia=? WHERE id=?",
-                    (nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, self.e_data.value, self.e_not.value, nowy_zalacznik, prog, self.czesc_id)
+                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, ilosc=?, jednostka=?, cena=?, cena_jednostkowa=?, data_zakupu=?, notatki=?, zalacznik=?, prog_ostrzezenia=? WHERE id=?",
+                    (nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog, self.czesc_id)
                 )
             else:
                 conn.execute(
-                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, self.e_data.value, self.e_not.value, nowy_zalacznik, prog)
+                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu, notatki, zalacznik, prog_ostrzezenia) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog)
                 )
 
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)

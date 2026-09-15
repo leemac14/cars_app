@@ -58,9 +58,12 @@ KONFIGURACJA_SYNC = [
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon", "prog_km", "prog_dni"], "fk": {}},
     {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
-    {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "data_zakupu", "notatki", "prog_ostrzezenia"], "fk": {}},
-    {"tabela": "wizyta_czesci_magazynu", "kolumny": ["ilosc_uzyta"], "fk": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"}},
-    {"tabela": "historia_czesci_magazynu", "kolumny": ["ilosc_uzyta"], "fk": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"}},
+    # Koszt zużycia jedzie razem z ilością: to on mówi drugiej osobie, ile
+    # z kosztu wizyty przyszło z magazynu — bez niego jej edycja tej wizyty
+    # doliczyłaby części drugi raz.
+    {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "cena_jednostkowa", "data_zakupu", "notatki", "prog_ostrzezenia"], "fk": {}},
+    {"tabela": "wizyta_czesci_magazynu", "kolumny": ["ilosc_uzyta", "koszt"], "fk": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"}},
+    {"tabela": "historia_czesci_magazynu", "kolumny": ["ilosc_uzyta", "koszt"], "fk": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},

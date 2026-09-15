@@ -42,8 +42,10 @@ WYWOLANIA = {
     "parsuj_zapytanie_kwotowe": lambda k: ("powyżej 100 zł",),
     "pobierz_budzety": lambda k: (k["id"]["auto_id"],),
     "pobierz_checklisty": lambda k: (k["id"]["auto_id"],),
+    "pobierz_czesci_do_zuzycia": lambda k: (k["id"]["auto_id"],),
     "pobierz_dane_timeline": lambda k: (k["id"]["auto_id"],),
     "pobierz_historie_przebiegu": lambda k: (k["id"]["auto_id"],),
+    "pobierz_historie_zuzycia": lambda k: (k["id"]["magazyn"],),
     "pobierz_kolejke_sync": lambda k: (),
     "pobierz_kosz": lambda k: (),
     "pobierz_koszty_innych_wg_kategorii": lambda k: (k["id"]["auto_id"],),
@@ -76,6 +78,7 @@ WYWOLANIA = {
     "stan_budzetow": lambda k: (k["id"]["auto_id"],),
     "utworz_wizyte_z_do_zrobienia": lambda k: (k["id"]["auto_id"], [k["id"]["do_zrobienia"]]),
     "wczytaj_plik_csv": lambda k: (str(k["csv"]),),
+    "wycen_zuzycie": lambda k: ([(k["id"]["magazyn"], 1.0)], {k["id"]["magazyn"]: 39.0}),
     "znajdz_duplikaty_nazw": lambda k: (k["id"]["auto_id"],),
 }
 

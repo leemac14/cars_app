@@ -150,8 +150,8 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
                    _plik_zalacznika(folder, f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "wiz-1"))
         zid["wizyta"] = c.lastrowid
 
-        c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, zalacznik, zdalne_id) VALUES (?,?,?,?,?,?,?,?)",
-                  (auto, "Filtr oleju", "Filtry", 2.0, "szt", 39.0,
+        c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, zalacznik, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (auto, "Filtr oleju", "Filtry", 2.0, "szt", 39.0, 19.5,
                    _plik_zalacznika(folder, f"{nazwa}_czesc.jpg", b"CZESC") if z_zalacznikami else None, "mag-1"))
         zid["magazyn"] = c.lastrowid
 
@@ -215,12 +215,12 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
                    _plik_zalacznika(folder, f"{nazwa}_wpis.jpg", b"WPIS") if z_zalacznikami else None, "hist-1"))
         zid["historia"] = c.lastrowid
 
-        c.execute("INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta, zdalne_id) VALUES (?,?,?,?)",
-                  (zid["wizyta"], zid["magazyn"], 1.0, "wcm-1"))
+        c.execute("INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta, koszt, zdalne_id) VALUES (?,?,?,?,?)",
+                  (zid["wizyta"], zid["magazyn"], 1.0, 19.5, "wcm-1"))
         zid["wizyta_czesc"] = c.lastrowid
 
-        c.execute("INSERT INTO historia_czesci_magazynu (historia_id, magazyn_id, ilosc_uzyta, zdalne_id) VALUES (?,?,?,?)",
-                  (zid["historia"], zid["magazyn"], 1.0, "hcm-1"))
+        c.execute("INSERT INTO historia_czesci_magazynu (historia_id, magazyn_id, ilosc_uzyta, koszt, zdalne_id) VALUES (?,?,?,?,?)",
+                  (zid["historia"], zid["magazyn"], 1.0, 19.5, "hcm-1"))
         zid["historia_czesc"] = c.lastrowid
 
         c.execute("INSERT INTO checklisty_pozycje (checklista_id, tresc, kolejnosc, odhaczone, zdalne_id) VALUES (?,?,?,?,?)",
@@ -528,10 +528,13 @@ def dosyp_dane(auto_id, dni_wstecz=200):
                       (auto_id, data(dni_wstecz - i * 30), strefa,
                        os.path.join(db.FOLDER_ZALACZNIKI, f"brak_{i}.jpg"), f"Zdjęcie {i + 1}", 100000 + i * 500))
 
+        # Połowa pozycji z ceną za jednostkę, połowa bez — karta magazynu ma
+        # dwie gałęzie (cena i wartość albo sam koszt zakupu) i obie mają się rysować.
         for i, kategoria in enumerate(db.KATEGORIE_MAGAZYNU[:4]):
-            c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena) "
-                      "VALUES (?,?,?,?,?,?)",
-                      (auto_id, f"Część {i + 1}", kategoria, 1.0 + i, "szt", 25.0 * (i + 1)))
+            c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa) "
+                      "VALUES (?,?,?,?,?,?,?)",
+                      (auto_id, f"Część {i + 1}", kategoria, 1.0 + i, "szt", 25.0 * (i + 1),
+                       25.0 * (i + 1) / (1.0 + i) if i % 2 == 0 else None))
 
         c.execute("INSERT INTO zestawy_opon (auto_id, sezon, rozmiar, ilosc, zamontowane, os_montazu) "
                   "VALUES (?,?,?,?,?,?)",

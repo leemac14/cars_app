@@ -578,6 +578,30 @@ def init_db():
             ALTER TABLE zdalne_nagrobki ADD COLUMN auto_id INTEGER;
             ALTER TABLE zdalne_nagrobki ADD COLUMN proby INTEGER NOT NULL DEFAULT 0;
             CREATE INDEX IF NOT EXISTS idx_zdalne_nagrobki_auto ON zdalne_nagrobki(auto_id);
+            """,
+            # Wersja 41: koszt części z magazynu doliczany do kosztu serwisu.
+            # Do tej pory olej kupiony do magazynu nie liczył się NIGDZIE: zakup
+            # nie jest wydatkiem w statystykach, a zużycie przy wymianie
+            # zostawiało koszt wpisu taki, jaki ktoś wpisał — zwykle samą
+            # robociznę albo zero.
+            #
+            # (a) `magazyn_czesci.cena_jednostkowa` — cena jednej sztuki, litra
+            #     albo grama. Dotychczasowe `cena` to koszt zakupu CAŁEJ ilości
+            #     („5 l za 150 zł”), a przy zużyciu liczy się to, co zeszło
+            #     z półki: 4 l to 120 zł, nie 150. Osobna kolumna zamiast nowego
+            #     znaczenia `cena`, bo przy współdzielonym aucie telefon ze
+            #     starszą wersją dalej czyta `cena` jako koszt zakupu.
+            #
+            # (b) `koszt` przy zużyciu (wizyta i pojedynczy wpis) — ile z kosztu
+            #     rekordu przyszło z magazynu. Zapamiętany w chwili zapisu:
+            #     późniejsza zmiana ceny w magazynie nie ma prawa przepisywać
+            #     zamkniętej wizyty sprzed roku. NULL znaczy „nie doliczone” —
+            #     i tak zostają wszystkie dotychczasowe zużycia. Wstecz nic się
+            #     nie dolicza; koszt dojdzie dopiero przy edycji takiego wpisu.
+            """
+            ALTER TABLE magazyn_czesci ADD COLUMN cena_jednostkowa REAL;
+            ALTER TABLE wizyta_czesci_magazynu ADD COLUMN koszt REAL;
+            ALTER TABLE historia_czesci_magazynu ADD COLUMN koszt REAL;
             """
         ]
 
@@ -650,6 +674,28 @@ def init_db():
                     "UPDATE samochody SET rola_wspoldzielenia='wlasciciel' "
                     "WHERE rola_wspoldzielenia IS NULL OR TRIM(rola_wspoldzielenia)=''"
                 )
+
+            # Cena za jednostkę dla pozycji, które już leżą w magazynie. Kupiona
+            # ilość to stan na półce PLUS wszystko, co już z niej zeszło —
+            # `ilosc` maleje przy każdym zużyciu, więc sama zaniżałaby dzielnik
+            # (zużyta butelka oleju ma stan 0). To czysta funkcja danych, które
+            # i tak jadą do chmury, więc drugi telefon policzy dokładnie to samo,
+            # niezależnie od tego, kiedy zaktualizuje aplikację. Pozycji bez
+            # żadnej ilości nie zgadujemy — cena zostaje pusta.
+            if i == 40:
+                cursor.execute(
+                    "SELECT m.id, m.cena, COALESCE(m.ilosc, 0)"
+                    " + COALESCE((SELECT SUM(ilosc_uzyta) FROM wizyta_czesci_magazynu WHERE magazyn_id = m.id), 0)"
+                    " + COALESCE((SELECT SUM(ilosc_uzyta) FROM historia_czesci_magazynu WHERE magazyn_id = m.id), 0)"
+                    " FROM magazyn_czesci m WHERE m.cena IS NOT NULL AND m.cena_jednostkowa IS NULL"
+                )
+                for czesc_id, cena, kupiona in cursor.fetchall():
+                    liczby = all(isinstance(x, (int, float)) for x in (cena, kupiona))
+                    if liczby and kupiona > 0 and cena >= 0:
+                        cursor.execute(
+                            "UPDATE magazyn_czesci SET cena_jednostkowa=? WHERE id=?",
+                            (round(cena / kupiona, 4), czesc_id)
+                        )
 
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")
