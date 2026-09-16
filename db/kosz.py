@@ -13,7 +13,7 @@ from .polaczenie import polacz_baze
 from .pomocnicze import parsuj_int_bezpiecznie
 from .ustawienia import _pobierz_ustawienia_pojazdu, _przywroc_ustawienia_pojazdu, _usun_ustawienia_pojazdu, pobierz_ustawienie, zapisz_ustawienie
 from .synchronizacja import usun_z_kolejki_sync, zakolejkuj_synchronizacje, zarejestruj_nagrobek
-from .zalaczniki import usun_plik_zalacznika
+from .zalaczniki import pelna_sciezka_zalacznika, sciezka_pliku_zalacznika, usun_plik_zalacznika, wzgledna_sciezka_zalacznika
 
 
 def _upewnij_folder_kosza():
@@ -155,13 +155,15 @@ def usun_auto_do_kosza(auto_id):
 
     # Zdjęcia wędrują do folderu kosza pod losowymi nazwami; oryginalna ścieżka
     # zostaje zapamiętana, żeby przywrócenie odtworzyło te same odsyłacze w bazie.
-    def schowaj(sciezka, prefiks):
+    # Para w `pliki`: [miejsce w koszu w postaci względnej, wartość z bazy bez zmian].
+    def schowaj(zapisana, prefiks):
+        sciezka = sciezka_pliku_zalacznika(zapisana)
         if not sciezka or not os.path.exists(sciezka):
             return
         cel = os.path.join(folder, f"{prefiks}_{uuid.uuid4().hex}_{os.path.basename(sciezka)}")
         try:
             shutil.move(sciezka, cel)
-            pliki.append([cel, sciezka])
+            pliki.append([wzgledna_sciezka_zalacznika(cel), zapisana])
         except Exception:
             pass
 
@@ -183,7 +185,7 @@ def usun_auto_do_kosza(auto_id):
     rozmiar = 0
     for para in pliki:
         try:
-            rozmiar += os.path.getsize(para[0])
+            rozmiar += os.path.getsize(sciezka_pliku_zalacznika(para[0]))
         except Exception:
             pass
 
@@ -316,26 +318,30 @@ def przywroc_auto_z_kosza(kosz_id):
     tabele = migawka.get("tabele") or {}
 
     # Zdjęcia wracają na swoje stare ścieżki. Gdy któraś jest już zajęta, plik
-    # dostaje nową nazwę, a odwołanie w bazie jest podmieniane.
+    # dostaje nową nazwę, a odwołanie w bazie jest podmieniane. Tak samo dawny
+    # wpis bezwzględny z innego urządzenia: plik wraca do TUTEJSZEGO folderu,
+    # więc odwołanie też się zmienia. Podmiana idzie w postaci względnej, jak
+    # każdy nowy zapis; wpis, który nadal trafia w plik, zostaje bit w bit.
     podmiana = {}
     for para in pliki:
         try:
-            zrodlo, oryginal = para[0], para[1]
+            zrodlo, oryginal = sciezka_pliku_zalacznika(para[0]), para[1]
         except (IndexError, TypeError):
             continue
-        if not zrodlo or not os.path.exists(zrodlo):
+        if not zrodlo or not os.path.exists(zrodlo) or not oryginal:
             continue
-        cel = oryginal
+        wskazana = pelna_sciezka_zalacznika(oryginal)
+        cel = pelna_sciezka_zalacznika(wzgledna_sciezka_zalacznika(oryginal))
         if os.path.exists(cel):
-            trzon, rozszerzenie = os.path.splitext(oryginal)
+            trzon, rozszerzenie = os.path.splitext(cel)
             cel = f"{trzon}_{uuid.uuid4().hex[:8]}{rozszerzenie}"
         try:
             katalog = os.path.dirname(cel)
             if katalog:
                 os.makedirs(katalog, exist_ok=True)
             shutil.move(zrodlo, cel)
-            if cel != oryginal:
-                podmiana[oryginal] = cel
+            if os.path.normcase(os.path.abspath(cel)) != os.path.normcase(os.path.abspath(wskazana)):
+                podmiana[oryginal] = wzgledna_sciezka_zalacznika(cel)
         except Exception:
             pass
 
@@ -530,7 +536,12 @@ def _posprzataj_osierocone_pliki_kosza():
         for (surowe,) in c.fetchall():
             try:
                 for para in json.loads(surowe or "[]"):
-                    uzywane.add(os.path.normcase(os.path.abspath(para[0])))
+                    # Postać względna albo dawna bezwzględna, także z innego
+                    # urządzenia. Bez odszukania pliku kosz przywieziony w kopii
+                    # zapasowej szedłby w całości do skasowania jako „sieroty”.
+                    sciezka = sciezka_pliku_zalacznika(para[0])
+                    if sciezka:
+                        uzywane.add(os.path.normcase(os.path.abspath(sciezka)))
             except (TypeError, ValueError, IndexError):
                 continue
     try:

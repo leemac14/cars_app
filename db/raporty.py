@@ -16,6 +16,7 @@ except ImportError:
     ImageOps = None
 
 from .polaczenie import polacz_baze
+from .zalaczniki import sciezka_pliku_zalacznika
 from .pomocnicze import SEPARATOR_TYSIECY, formatuj_liczba_eksport, liczba_na_tekst
 from .ustawienia import pobierz_walute
 from .energia import formatuj_zuzycie_tekst
@@ -302,6 +303,7 @@ def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikac
     """Strona tytułowa 'Cyfrowego paszportu pojazdu': zdjęcie, nazwa, specyfikacja
     w dwóch kolumnach oraz ważne terminy kolorowane jak w reszcie aplikacji.
     Używane wyłącznie przez generuj_pdf_raportu(tryb_paszportu=True)."""
+    zdjecie_glowne = sciezka_pliku_zalacznika(zdjecie_glowne)
     if zdjecie_glowne and os.path.exists(zdjecie_glowne):
         try:
             szer_strony = pdf.w - pdf.l_margin - pdf.r_margin
@@ -395,6 +397,7 @@ def _rysuj_galerie_karoserii(pdf, zdjecia_karoserii):
             y_wiersza = pdf.get_y()
 
         x = x_start + kol * (szer_zdj + odstep)
+        zalacznik_z = sciezka_pliku_zalacznika(zalacznik_z)
         if zalacznik_z and os.path.exists(zalacznik_z):
             try:
                 pdf.image(zalacznik_z, x=x, y=y_wiersza, w=szer_zdj, h=wys_zdj)

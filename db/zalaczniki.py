@@ -10,7 +10,7 @@ except ImportError:
     Image = None
     ImageOps = None
 
-from .stale import FOLDER_KOSZ, FOLDER_ODROCZONE, FOLDER_ZALACZNIKI, TABELE_Z_ZALACZNIKIEM
+from .stale import FOLDER_KOSZ, FOLDER_ODROCZONE, FOLDER_ZALACZNIKI, STORAGE_PATH, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
 
 
@@ -19,20 +19,104 @@ from .polaczenie import polacz_baze
 KOLUMNY_ZE_SCIEZKAMI = [("samochody", "zdjecie_glowne")] + [(t, "zalacznik") for t in sorted(TABELE_Z_ZALACZNIKIEM)]
 
 
+# ---------------------------------------------------------------- ścieżki w bazie
+# Baza trzyma ścieżkę WZGLĘDNĄ wobec STORAGE_PATH, zawsze z '/':
+# 'zalaczniki/<uuid>.jpg', w kolumnie `pliki` kosza 'kosz_zalaczniki/<plik>'.
+# STORAGE_PATH zależy od urządzenia (Android: /data/user/0/<pakiet>/files/data,
+# komputer: ""), więc ścieżka bezwzględna z jednego urządzenia na drugim wskazuje
+# w pustkę. Sklejenie ze STORAGE_PATH dzieje się dopiero przy odczycie.
+#
+# Starsze bazy mają jeszcze ścieżki bezwzględne (Android) i względne z '\'
+# (Windows). Odczyt rozumie wszystkie, więc migracji danych nie ma: każdą wartość
+# z bazy, zanim trafi do os.path / shutil / ft.Image, przepuszcza się przez
+# sciezka_pliku_zalacznika (albo utils.abs_zalacznik), a zapisuje przez
+# wzgledna_sciezka_zalacznika.
+
+
+def _z_ukosnikami(sciezka) -> str:
+    return str(sciezka).replace("\\", "/")
+
+
+def _czy_bezwzgledna(tekst: str) -> bool:
+    """Bezwzględna na KTÓRYMKOLWIEK systemie: ścieżka z Androida oglądana na
+    Windows i ścieżka z Windows oglądana na Androidzie też się liczą."""
+    return tekst.startswith("/") or (len(tekst) >= 3 and tekst[0].isalpha() and tekst[1:3] == ":/")
+
+
+def _foldery_zalacznikow() -> list[tuple[str, str]]:
+    """(nazwa, ścieżka) folderów aplikacji z plikami wskazywanymi z bazy."""
+    return [(os.path.basename(os.path.normpath(folder)), folder) for folder in (FOLDER_ZALACZNIKI, FOLDER_KOSZ)]
+
+
+def _folder_i_nazwa(sciezka) -> tuple[str, str] | None:
+    """(nazwa folderu, nazwa pliku), gdy plik leży w folderze aplikacji — tutaj
+    albo na innym urządzeniu. Pliki leżą w tych folderach płasko."""
+    czesci = [c for c in _z_ukosnikami(sciezka).split("/") if c not in ("", ".")]
+    if len(czesci) < 2 or czesci[-1] == "..":
+        return None
+    if czesci[-2] not in {nazwa for nazwa, _ in _foldery_zalacznikow()}:
+        return None
+    return czesci[-2], czesci[-1]
+
+
+def wzgledna_sciezka_zalacznika(sciezka):
+    """Postać do zapisu w bazie: 'zalaczniki/<nazwa>' albo 'kosz_zalaczniki/<nazwa>'.
+
+    Działa tak samo dla ścieżki tutejszej, przywiezionej z innego urządzenia
+    i już względnej. Ścieżkę spoza folderów aplikacji oddaje bez zmian, pustą też."""
+    if not sciezka:
+        return sciezka
+    para = _folder_i_nazwa(sciezka)
+    return f"{para[0]}/{para[1]}" if para else sciezka
+
+
+def pelna_sciezka_zalacznika(zapisana) -> str | None:
+    """Ścieżka na dysku dla wartości z bazy, BEZ szukania pliku.
+
+    Względną skleja ze STORAGE_PATH tego urządzenia, bezwzględną (dawny zapis)
+    oddaje bez zmian. Mówi, gdzie wpis każe szukać — nie, gdzie plik jest."""
+    if not zapisana:
+        return None
+    tekst = _z_ukosnikami(zapisana)
+    if _czy_bezwzgledna(tekst):
+        return str(zapisana)
+    return os.path.join(STORAGE_PATH, *[c for c in tekst.split("/") if c not in ("", ".")])
+
+
+def sciezka_pliku_zalacznika(zapisana) -> str | None:
+    """Ścieżka do pliku wskazanego wartością z bazy — do odczytu, przeniesienia, skasowania.
+
+    Najpierw pelna_sciezka_zalacznika. Gdy tam pliku nie ma, a wpis wskazuje
+    folder aplikacji, szuka tej samej nazwy w tutejszym folderze o tej nazwie,
+    potem w drugim (załączniki / kosz) — tak trafia dawny wpis bezwzględny
+    z innego urządzenia. Nazwy to losowe UUID-y, więc dopasowanie jest
+    jednoznaczne. Plików spoza folderów aplikacji (np. odroczonych) nie szuka.
+    Gdy pliku nie ma nigdzie, oddaje ścieżkę pełną: komunikat o braku mówi
+    wtedy o tym, co faktycznie stoi w bazie."""
+    pelna = pelna_sciezka_zalacznika(zapisana)
+    if not pelna or os.path.exists(pelna):
+        return pelna
+    para = _folder_i_nazwa(zapisana)
+    if para:
+        foldery = sorted(_foldery_zalacznikow(), key=lambda f: f[0] != para[0])
+        for _, folder in foldery:
+            kandydat = os.path.join(folder, para[1])
+            if os.path.isfile(kandydat):
+                return kandydat
+    return pelna
+
+
 def napraw_sciezki_zalacznikow() -> tuple[int, int]:
-    """Przepisuje ścieżki załączników na tutejsze i zwraca (naprawione, brakujace).
+    """Przepisuje nieaktualne ścieżki załączników na tutejsze i zwraca (naprawione, brakujace).
 
-    Ścieżka zapisuje się jako `os.path.join(FOLDER_ZALACZNIKI, nazwa)`, a
-    FOLDER_ZALACZNIKI bierze się z FLET_APP_STORAGE_DATA. Na Androidzie jest
-    ABSOLUTNY (/data/user/0/<pakiet>/files/data/zalaczniki), na komputerze pusty
-    — więc ścieżka wychodzi względna. Skutek: kopia zapasowa zrobiona na
-    telefonie i wczytana na komputerze przenosi do bazy ścieżki katalogu,
-    którego tu nie ma. Pliki jadą w ZIP-ie i lądują w folderze załączników,
-    ale żadne zdjęcie się nie pokazuje. Tak samo w drugą stronę.
+    Kopia zapasowa zrobiona na telefonie niesie dawne ścieżki bezwzględne
+    (/data/user/0/<pakiet>/files/data/zalaczniki/...), których na komputerze nie
+    ma. Pliki jadą w ZIP-ie i lądują w folderze załączników, ale wpis wskazuje
+    katalog innego urządzenia. Tak samo w drugą stronę.
 
-    Naprawiamy po NAZWIE pliku (nazwy są losowymi UUID-ami, więc kolizja jest
-    wykluczona): jeśli zapisanego pliku nie ma, a plik o tej samej nazwie leży
-    w folderze załączników albo w koszu, wpisujemy ścieżkę tutejszą. Wpisów,
+    Wpis, który wskazuje istniejący plik, zostaje, jaki jest — także dawny
+    bezwzględny (bez migracji). Wpis bez pliku pod wskazaną ścieżką, którego
+    plik znajduje sciezka_pliku_zalacznika, dostaje postać względną. Wpisów,
     których pliku nie ma nigdzie, NIE ruszamy — lepiej zostawić ślad, dokąd
     prowadziły, niż podmienić je na inną nieistniejącą ścieżkę."""
     naprawione = 0
@@ -54,23 +138,17 @@ def napraw_sciezki_zalacznikow() -> tuple[int, int]:
                 continue  # brak tabeli w starszej bazie — nie ma czego naprawiać
 
             for rekord_id, zapisana in wiersze:
-                if os.path.exists(zapisana):
+                if os.path.exists(pelna_sciezka_zalacznika(zapisana) or ""):
                     continue
-                nazwa = os.path.basename(str(zapisana).replace("\\", "/"))
-                if not nazwa:
+                tutejsza = sciezka_pliku_zalacznika(zapisana)
+                if not tutejsza or not os.path.exists(tutejsza):
                     brakujace += 1
                     continue
-                for folder in (FOLDER_ZALACZNIKI, FOLDER_KOSZ):
-                    tutejsza = os.path.join(folder, nazwa)
-                    if os.path.exists(tutejsza):
-                        conn.execute(
-                            f"UPDATE {tabela} SET {kolumna}=? WHERE id=?",
-                            (tutejsza, rekord_id)
-                        )
-                        naprawione += 1
-                        break
-                else:
-                    brakujace += 1
+                conn.execute(
+                    f"UPDATE {tabela} SET {kolumna}=? WHERE id=?",
+                    (wzgledna_sciezka_zalacznika(tutejsza), rekord_id)
+                )
+                naprawione += 1
 
     return naprawione, brakujace
 
@@ -110,12 +188,14 @@ def zapisz_zalacznik(sciezka_zrodlowa):
     folder = _upewnij_folder_zalacznikow()
     rozszerzenie = os.path.splitext(sciezka_zrodlowa)[1].lower()
 
+    # Do bazy idzie postać względna (wzgledna_sciezka_zalacznika) — bezwzględna
+    # z tego urządzenia nie istniałaby na innym po przeniesieniu kopii.
     # Jeśli to PDF, kopiujemy 1:1, bez zmiany rozszerzenia
     if rozszerzenie == ".pdf":
         nazwa = f"{uuid.uuid4().hex}.pdf"
         docelowa = os.path.join(folder, nazwa)
         shutil.copyfile(sciezka_zrodlowa, docelowa)
-        return docelowa
+        return wzgledna_sciezka_zalacznika(docelowa)
 
     # Domyślnie traktujemy jako obraz – wymuszamy .jpg dla mniejszego rozmiaru
     nazwa = f"{uuid.uuid4().hex}.jpg"
@@ -143,13 +223,13 @@ def zapisz_zalacznik(sciezka_zrodlowa):
                     img = img.resize((max_szerokosc, nowa_wysokosc), Image.Resampling.LANCZOS)
                 
                 img.save(docelowa, "JPEG", quality=85)
-            return docelowa
+            return wzgledna_sciezka_zalacznika(docelowa)
         except Exception:
             pass # W razie problemów z PIL przejdzie do fallbacka poniżej
 
     # Fallback, jeśli obraz nie dał się skompresować lub brak biblioteki
     shutil.copyfile(sciezka_zrodlowa, docelowa)
-    return docelowa
+    return wzgledna_sciezka_zalacznika(docelowa)
 
 
 def polacz_zdjecia_w_pdf(sciezki_zdjec):
@@ -195,8 +275,9 @@ def usun_plik_zalacznika(sciezka_wzgledna):
     if not sciezka_wzgledna:
         return
     try:
-        if os.path.exists(sciezka_wzgledna):
-            os.remove(sciezka_wzgledna)
+        sciezka = sciezka_pliku_zalacznika(sciezka_wzgledna)
+        if os.path.exists(sciezka):
+            os.remove(sciezka)
     except Exception:
         pass
 
@@ -230,10 +311,13 @@ __all__ = [
     "_upewnij_folder_zalacznikow",
     "anuluj_nowy_zalacznik",
     "napraw_sciezki_zalacznikow",
+    "pelna_sciezka_zalacznika",
     "polacz_zdjecia_w_pdf",
     "posprzataj_odroczone_zalaczniki",
     "przygotuj_nowy_zalacznik",
+    "sciezka_pliku_zalacznika",
     "usun_plik_zalacznika",
+    "wzgledna_sciezka_zalacznika",
     "zapisz_zalacznik",
     "zatwierdz_zalacznik",
 ]

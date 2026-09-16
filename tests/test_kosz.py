@@ -15,6 +15,8 @@ import os
 import sqlite3
 from datetime import datetime, timedelta
 
+import pytest
+
 import db
 import pomoce
 
@@ -36,8 +38,9 @@ def pliki_w_koszu():
 # ------------------------------------------------------------- round-trip
 
 
-def test_round_trip_jednego_pojazdu_jest_bit_w_bit(baza):
-    pomoce.utworz_pojazd("Pierwszy")
+@pytest.mark.parametrize("sciezki_wzgledne", [True, False], ids=["sciezki_wzgledne", "dawne_bezwzgledne"])
+def test_round_trip_jednego_pojazdu_jest_bit_w_bit(baza, sciezki_wzgledne):
+    pomoce.utworz_pojazd("Pierwszy", sciezki_wzgledne=sciezki_wzgledne)
     dane_przed, zalaczniki_przed = stan_bazy()
     schemat_przed = pomoce.zrzut_schematu()
 
@@ -220,7 +223,7 @@ def test_zdjecia_ida_do_kosza_i_wracaja_bez_zmiany_tresci(baza):
 
     # Pliki zniknęły z folderu załączników i siedzą w koszu.
     for sciezka in odciski_przed:
-        assert not os.path.exists(sciezka)
+        assert not os.path.exists(db.pelna_sciezka_zalacznika(sciezka))
     assert len(pliki_w_koszu()) == len(odciski_przed)
 
     db.przywroc_auto_z_kosza(wynik["kosz_id"])
@@ -238,7 +241,7 @@ def test_zajeta_sciezka_pliku_daje_nowa_nazwe_i_podmieniony_odsylacz(baza):
     wynik = db.usun_auto_do_kosza(1)
 
     # Ktoś zajmuje dokładnie tę ścieżkę INNĄ treścią.
-    with open(stara_sciezka, "wb") as plik:
+    with open(db.pelna_sciezka_zalacznika(stara_sciezka), "wb") as plik:
         plik.write(b"CUDZY-PLIK")
 
     db.przywroc_auto_z_kosza(wynik["kosz_id"])
@@ -247,10 +250,11 @@ def test_zajeta_sciezka_pliku_daje_nowa_nazwe_i_podmieniony_odsylacz(baza):
         nowa_sciezka = conn.execute("SELECT zalacznik FROM tankowania WHERE auto_id=1").fetchone()[0]
 
     assert nowa_sciezka != stara_sciezka
-    assert os.path.exists(nowa_sciezka)
-    with open(nowa_sciezka, "rb") as plik:
+    assert nowa_sciezka.startswith("zalaczniki/"), "podmieniony odsyłacz to nowy zapis — w postaci względnej"
+    assert os.path.exists(db.pelna_sciezka_zalacznika(nowa_sciezka))
+    with open(db.pelna_sciezka_zalacznika(nowa_sciezka), "rb") as plik:
         assert plik.read() == b"PARAGON", "przywrócony ma być plik z kosza, nie ten, który zajął ścieżkę"
-    with open(stara_sciezka, "rb") as plik:
+    with open(db.pelna_sciezka_zalacznika(stara_sciezka), "rb") as plik:
         assert plik.read() == b"CUDZY-PLIK", "cudzy plik nie może zostać nadpisany"
 
 

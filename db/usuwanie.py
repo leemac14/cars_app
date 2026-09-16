@@ -8,7 +8,7 @@ import uuid
 from .stale import OSIE_MONTAZU, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika
+from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
 from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow
 
 
@@ -116,8 +116,11 @@ def usun_z_cofnieciem(tabela, rekord_id):
     zdalny_id_usuniety = dane.get("zdalne_id")
 
     sciezka_tymczasowa = None
+    oryginalna = None
     if tabela in TABELE_Z_ZALACZNIKIEM:
-        oryginalna = dane.get("zalacznik")
+        # W bazie może stać postać względna: plik na dysku wskazuje dopiero
+        # sklejenie ze STORAGE_PATH. Cofnięcie odkłada plik tam, skąd go wziął.
+        oryginalna = sciezka_pliku_zalacznika(dane.get("zalacznik"))
         if oryginalna and os.path.exists(oryginalna):
             folder_tmp = _upewnij_folder_odroczonych()
             sciezka_tymczasowa = os.path.join(folder_tmp, os.path.basename(oryginalna))
@@ -159,7 +162,7 @@ def usun_z_cofnieciem(tabela, rekord_id):
 
         if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
             try:
-                shutil.move(sciezka_tymczasowa, dane["zalacznik"])
+                shutil.move(sciezka_tymczasowa, oryginalna)
             except Exception:
                 pass
 
@@ -226,7 +229,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
     if tabela in TABELE_Z_ZALACZNIKIEM:
         folder_tmp = _upewnij_folder_odroczonych()
         for dane in dane_lista:
-            oryginalna = dane.get("zalacznik")
+            oryginalna = sciezka_pliku_zalacznika(dane.get("zalacznik"))
             if oryginalna and os.path.exists(oryginalna):
                 # Unikalny prefiks, by pliki o tej samej nazwie się nie nadpisały przy usuwaniu wielu
                 sciezka_tmp = os.path.join(folder_tmp, f"bulk_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
@@ -333,7 +336,7 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
     sciezki_tymczasowe = []
     folder_tmp = _upewnij_folder_odroczonych()
     for d in historia_dane:
-        zal = d.get("zalacznik")
+        zal = sciezka_pliku_zalacznika(d.get("zalacznik"))
         if zal and os.path.exists(zal):
             tmp = os.path.join(folder_tmp, f"h_{uuid.uuid4().hex}_{os.path.basename(zal)}")
             try:

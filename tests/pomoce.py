@@ -97,7 +97,10 @@ def odciski_zalacznikow():
                 continue
             c.execute(f"SELECT {kolumna} FROM {tabela} WHERE {kolumna} IS NOT NULL AND TRIM({kolumna})<>''")
             for (sciezka,) in c.fetchall():
-                odciski[sciezka] = suma_pliku(sciezka) if os.path.exists(sciezka) else None
+                # Sklejenie ze STORAGE_PATH BEZ szukania po nazwie: odcisk ma
+                # zaświadczyć, że wpis trafia w plik dokładnie tam, gdzie mówi.
+                plik = db.pelna_sciezka_zalacznika(sciezka)
+                odciski[sciezka] = suma_pliku(plik) if os.path.exists(plik) else None
     return odciski
 
 
@@ -117,8 +120,12 @@ def _plik_zalacznika(katalog, nazwa, tresc):
     return sciezka
 
 
-def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
+def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_wzgledne=True):
     """Pojazd z wpisem w KAŻDEJ tabeli potomnej kosza plus załączniki na dysku.
+
+    Ścieżki idą do bazy tak, jak zapisuje je aplikacja: względne
+    ('zalaczniki/<nazwa>'). `sciezki_wzgledne=False` daje dawny zapis
+    bezwzględny (Android sprzed zmiany) — baza czyta oba formaty.
 
     Zwraca słownik z `auto_id` i identyfikatorami wpisów, których potrzebują
     testy przemapowania kluczy obcych. Wstawiamy SQL-em, a nie przez formularze,
@@ -126,11 +133,17 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
     folder = db.FOLDER_ZALACZNIKI
     zid = {}
 
+    def wpis(sciezka):
+        return db.wzgledna_sciezka_zalacznika(sciezka) if sciezki_wzgledne else sciezka
+
+    def plik(nazwa_pliku, tresc):
+        return wpis(_plik_zalacznika(folder, nazwa_pliku, tresc))
+
     with db.polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
 
-        zdjecie = _plik_zalacznika(folder, f"{nazwa}_glowne.jpg", b"GLOWNE-" + nazwa.encode()) if z_zalacznikami else None
+        zdjecie = plik(f"{nazwa}_glowne.jpg", b"GLOWNE-" + nazwa.encode()) if z_zalacznikami else None
         c.execute(
             "INSERT INTO samochody (nazwa, marka, model, typ_paliwa, nadwozie, status, "
             "zdjecie_glowne, wspolny_pojazd_id, info_zdalne_id, rola_wspoldzielenia) "
@@ -147,12 +160,12 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
 
         c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, zalacznik, zdalne_id) VALUES (?,?,?,?,?,?,?)",
                   (auto, "2026-01-10", 100000, "Warsztat u Janka", 480.0,
-                   _plik_zalacznika(folder, f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "wiz-1"))
+                   plik(f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "wiz-1"))
         zid["wizyta"] = c.lastrowid
 
         c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, zalacznik, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?)",
                   (auto, "Filtr oleju", "Filtry", 2.0, "szt", 39.0, 19.5,
-                   _plik_zalacznika(folder, f"{nazwa}_czesc.jpg", b"CZESC") if z_zalacznikami else None, "mag-1"))
+                   plik(f"{nazwa}_czesc.jpg", b"CZESC") if z_zalacznikami else None, "mag-1"))
         zid["magazyn"] = c.lastrowid
 
         c.execute("INSERT INTO tagi (auto_id, nazwa, kolor, zdalne_id) VALUES (?,?,?,?)", (auto, "Trasa", "#FF0000", "tag-1"))
@@ -161,7 +174,7 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
         c.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, rodzaj_energii, notatka, zalacznik, zdalne_id) "
                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                   (auto, "2026-02-01", 100500, 500.0, 32.5, 210.0, 1, "Orlen", db.ENERGIA_PALIWO, "Pełny bak przed trasą",
-                   _plik_zalacznika(folder, f"{nazwa}_paragon.jpg", b"PARAGON") if z_zalacznikami else None, "tank-1"))
+                   plik(f"{nazwa}_paragon.jpg", b"PARAGON") if z_zalacznikami else None, "tank-1"))
         zid["tankowanie"] = c.lastrowid
 
         c.execute("INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, zdalne_id) VALUES (?,?,?,?,?,?)",
@@ -174,7 +187,7 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
 
         c.execute("INSERT INTO zdjecia_karoserii (auto_id, data, strefa, zalacznik, opis) VALUES (?,?,?,?,?)",
                   (auto, "2026-01-05", "Przód",
-                   _plik_zalacznika(folder, f"{nazwa}_karoseria.jpg", b"KAROSERIA") if z_zalacznikami else os.path.join(folder, "brak.jpg"),
+                   plik(f"{nazwa}_karoseria.jpg", b"KAROSERIA") if z_zalacznikami else wpis(os.path.join(folder, "brak.jpg")),
                    "Rysa na zderzaku"))
         zid["karoseria"] = c.lastrowid
 
@@ -212,7 +225,7 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False):
         c.execute("INSERT INTO historia (zadanie_id, wizyta_id, data, przebieg, kategoria, cena, wykonawca, notatka, zalacznik, zdalne_id) "
                   "VALUES (?,?,?,?,?,?,?,?,?,?)",
                   (zid["zadanie"], zid["wizyta"], "2026-01-10", 100000, "Serwis", 480.0, "Warsztat u Janka", "Olej Castrol",
-                   _plik_zalacznika(folder, f"{nazwa}_wpis.jpg", b"WPIS") if z_zalacznikami else None, "hist-1"))
+                   plik(f"{nazwa}_wpis.jpg", b"WPIS") if z_zalacznikami else None, "hist-1"))
         zid["historia"] = c.lastrowid
 
         c.execute("INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta, koszt, zdalne_id) VALUES (?,?,?,?,?)",

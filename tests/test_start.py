@@ -155,7 +155,8 @@ def test_porzadki_naprawiaja_sciezke_z_innego_urzadzenia(baza):
         sciezka = conn.execute(
             "SELECT zalacznik FROM tankowania WHERE id=?", (identyfikatory["tankowanie"],)
         ).fetchone()[0]
-    assert os.path.exists(sciezka), "po naprawie ścieżka ma wskazywać istniejący plik"
+    assert sciezka == "zalaczniki/przeniesione.jpg", "naprawa wpisuje postać względną, nie tutejszą bezwzględną"
+    assert os.path.exists(db.pelna_sciezka_zalacznika(sciezka)), "po naprawie ścieżka ma wskazywać istniejący plik"
 
 
 # ============================================================================

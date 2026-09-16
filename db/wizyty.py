@@ -10,7 +10,7 @@ from typing import Any
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_moje_imie
 from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika
+from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
 from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow, przywroc_czesci_wizyty
 from .przebieg import pobierz_aktualny_przebieg, przelicz_wszystkie_zadania
 from .nazwy import klucz_nazwy
@@ -174,7 +174,7 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
     sciezki_tymczasowe = []
     folder_tmp = _upewnij_folder_odroczonych()
     for d in historia_dane:
-        zal = d.get("zalacznik")
+        zal = sciezka_pliku_zalacznika(d.get("zalacznik"))
         if zal and os.path.exists(zal):
             tmp = os.path.join(folder_tmp, f"h_{uuid.uuid4().hex}_{os.path.basename(zal)}")
             try:
@@ -297,7 +297,7 @@ def usun_wizyty_z_cofnieciem(ids_list):
     sciezki_tymczasowe = []
     folder_tmp = _upewnij_folder_odroczonych()
     for dane in wizyty_dane:
-        oryginalna = dane.get("zalacznik")
+        oryginalna = sciezka_pliku_zalacznika(dane.get("zalacznik"))
         if oryginalna and os.path.exists(oryginalna):
             sciezka_tmp = os.path.join(folder_tmp, f"wizyta_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
             try:

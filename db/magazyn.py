@@ -12,7 +12,7 @@ from .stale import MIESIACE_ZIMOWE, SEZONY_PRZELACZALNE
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika
+from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
 
 
 # Zużycie części z magazynu ma dwa nośniki: wizytę zbiorczą i pojedynczy wpis
@@ -384,7 +384,7 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
         uzycia_wpisow = [{k: r[k] for k in kol_hw} for r in c.fetchall()]
 
     sciezka_tymczasowa = None
-    oryginalna = dane_czesc.get("zalacznik")
+    oryginalna = sciezka_pliku_zalacznika(dane_czesc.get("zalacznik"))
     if oryginalna and os.path.exists(oryginalna):
         folder_tmp = _upewnij_folder_odroczonych()
         sciezka_tymczasowa = os.path.join(folder_tmp, f"magazyn_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
