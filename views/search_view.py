@@ -25,7 +25,7 @@ class SzukajView(ft.View):
         "inne koszty, warsztaty, wydatki cykliczne, zapisane trasy, checklisty, "
         "notatki wpisów i listę Do zrobienia "
         "bieżącego pojazdu. Sama liczba szuka po kwocie. Szukanie obejmuje też EKRANY "
-        "aplikacji — wpisz „rok”, „limit” albo „licznik”, żeby wejść prosto tam, gdzie trzeba."
+        "aplikacji — wpisz „rok”, „budżet” albo „przebieg”, żeby wejść prosto tam, gdzie trzeba."
     )
 
     def __init__(self, page: ft.Page, state):
@@ -88,8 +88,12 @@ class SzukajView(ft.View):
         # pytaniem w rozrosłej aplikacji nie jest „ile zapłaciłem na Orlenie”,
         # tylko „gdzie to było” — więc to samo pole odpowiada teraz na oba.
         # Ekrany stoją NAD wpisami, bo kto wpisuje „budżet”, chce wejść na ekran
-        # budżetu, a nie przeczytać wpis, w którym padło to słowo.
+        # budżetu, a nie przeczytać wpis, w którym padło to słowo. Ale „rozrząd”
+        # czy „olej” to słowa z danych: przy frazie od DLUGA_FRAZA_OD znaków,
+        # która trafiła we wpisy, ekran znaleziony tylko przez słowa pomocnicze
+        # schodzi POD wpisy (utils.rozstaw_ekrany). Trafienie w tytuł zostaje u góry.
         self.sekcja_ekranow = ft.Column(spacing=8, visible=False)
+        self.sekcja_ekranow_pod = ft.Column(spacing=8, visible=False)
 
         self.lista_wynikow = ft.ListView(
             spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False
@@ -99,6 +103,7 @@ class SzukajView(ft.View):
         elementy = [
             self.pole_wyszukiwarki, self.podpowiedz_kwot, self.pasek_trybu_kwoty,
             self.sekcja_ekranow, self.kontener_pomocniczy, self.lista_wynikow,
+            self.sekcja_ekranow_pod,
         ]
 
         super().__init__(
@@ -137,25 +142,30 @@ class SzukajView(ft.View):
         prostu nie pojawia się w wynikach, zamiast prowadzić donikąd."""
         return utils.akcje_nawigacji(self._page, self.state)
 
-    def _pokaz_ekrany(self, zapytanie):
-        """Zwraca liczbę dopasowanych ekranów — wołający używa jej do rozróżnienia
-        „nic nie znaleziono” od „znaleziono tylko ekran, ale żadnego wpisu”."""
-        ekrany = utils.znajdz_ekrany(
-            zapytanie, akcje=self._akcje_ekranow(), ma_pojazd=bool(self.state.auto_id))
-        self.sekcja_ekranow.controls.clear()
+    def _wypelnij_sekcje_ekranow(self, sekcja, ekrany, naglowek):
+        sekcja.controls.clear()
+        sekcja.visible = bool(ekrany)
         if not ekrany:
-            self.sekcja_ekranow.visible = False
-            return 0
-
-        self.sekcja_ekranow.controls.append(ft.Row([
+            return
+        sekcja.controls.append(ft.Row([
             ft.Icon(ft.Icons.APPS, size=16, color=ft.Colors.PRIMARY),
-            ft.Text("Ekrany i funkcje", size=utils.FS["label"], weight="bold",
+            ft.Text(naglowek, size=utils.FS["label"], weight="bold",
                     color=ft.Colors.PRIMARY, expand=True),
         ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER))
         for ekran in ekrany:
-            self.sekcja_ekranow.controls.append(self._wiersz_ekranu(ekran))
-        self.sekcja_ekranow.visible = True
-        return len(ekrany)
+            sekcja.controls.append(self._wiersz_ekranu(ekran))
+
+    def _pokaz_ekrany(self, zapytanie, sa_wpisy):
+        """Zwraca liczbę dopasowanych ekranów — wołający używa jej do rozróżnienia
+        „nic nie znaleziono” od „znaleziono tylko ekran, ale żadnego wpisu”.
+        Puste zapytanie chowa obie sekcje."""
+        nad, pod = utils.rozstaw_ekrany(
+            zapytanie, sa_wpisy, akcje=self._akcje_ekranow(), ma_pojazd=bool(self.state.auto_id))
+        self._wypelnij_sekcje_ekranow(self.sekcja_ekranow, nad, "Ekrany i funkcje")
+        # Inny nagłówek niż u góry: przy „opony” obie sekcje stoją naraz, a dwa
+        # identyczne napisy na jednym ekranie wyglądają jak zdublowana lista.
+        self._wypelnij_sekcje_ekranow(self.sekcja_ekranow_pod, pod, "Powiązane ekrany")
+        return len(nad) + len(pod)
 
     def _karta_wyniku(self, w):
         ikona, kolor = IKONY_WYSZUKIWANIA.get(w["typ"], (ft.Icons.EVENT_NOTE, ft.Colors.ON_SURFACE_VARIANT))
@@ -206,7 +216,7 @@ class SzukajView(ft.View):
             self.tekst_pomocniczy.value = self.PODPOWIEDZ_STARTOWA
             self.kontener_pomocniczy.visible = True
             self.pasek_trybu_kwoty.visible = False
-            self.sekcja_ekranow.visible = False
+            self._pokaz_ekrany("", sa_wpisy=False)
             self.update()
             return
 
@@ -225,11 +235,13 @@ class SzukajView(ft.View):
             self.pasek_trybu_kwoty.visible = False
             self.podpowiedz_kwot.visible = True
 
-        # Zapytanie kwotowe („>1000”) nie jest nazwą ekranu — pokazywanie przy nim
-        # listy ekranów byłoby szumem.
-        ile_ekranow = 0 if zakres else self._pokaz_ekrany(zapytanie)
-
+        # Najpierw wpisy: od tego, czy fraza w nie trafiła, zależy, gdzie staną ekrany.
         wyniki = db.globalne_wyszukiwanie(self.state.auto_id, zapytanie)
+
+        # Zapytanie kwotowe („>1000”) nie jest nazwą ekranu — pokazywanie przy nim
+        # listy ekranów byłoby szumem. Sekcje trzeba wtedy jawnie schować: bez tego
+        # szybka zamiana „olej” na „450” zostawiała ekrany z poprzedniej frazy.
+        ile_ekranow = self._pokaz_ekrany("" if zakres else zapytanie, sa_wpisy=bool(wyniki))
 
         if not wyniki:
             self.tekst_pomocniczy.value = (

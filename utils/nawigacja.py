@@ -3,6 +3,7 @@
 import db
 import flet as ft
 import inspect
+import re
 
 from .stale import FS, KOLOR_STATUS, RADIUS
 from .format import bez_ogonkow
@@ -334,15 +335,38 @@ def otworz_ekran(page: ft.Page, state, ekran, akcje=None, widok=None):
         przejdz(page, ekran["trasa"])
 
 
-def _tekst_do_szukania(ekran):
-    czesci = [ekran.get("tytul", ""), ekran.get("opis", "")] + list(ekran.get("slowa") or [])
-    return bez_ogonkow(" ".join(czesci).lower())
+# Fraza od tylu znaków, trafiająca w treść wpisu, może wygrać z ekranem.
+# „Budżet” to nazwa funkcji — ekran budżetu ma stać nad wpisami. Ale „rozrząd”
+# czy „olej” to słowa z DANYCH: kto je wpisuje, szuka swojego wpisu, a ekran
+# Podzespołów łapie się na nie tylko przez słowa pomocnicze. Krótka fraza
+# („rok”, „oc”) mówi za mało, żeby ekrany ustępowały wpisom.
+DLUGA_FRAZA_OD = 4
+
+# Od tej wagi trafienie nie jest już w tytule, tylko w opisie albo słowach
+# pomocniczych — przy długiej frazie z trafieniami we wpisy taki ekran schodzi
+# pod wpisy.
+WAGA_POMOCNICZA = 2
 
 
-def znajdz_ekrany(fraza, akcje=None, ma_pojazd=True, limit=6):
-    """Dopasowanie ekranów do frazy z wyszukiwarki. Trafienie w TYTUŁ waży więcej
-    niż w opis czy słowa pomocnicze — kto wpisuje „rok”, szuka Roku w pigułce, a
-    nie każdego ekranu, który ma gdzieś słowo „roczny”."""
+def _tekst_pomocniczy(ekran):
+    """Opis i słowa pomocnicze w jednym tekście. Sklejone znakiem nowej linii,
+    którego nie da się wpisać w pole wyszukiwarki — fraza nie łączy się przez
+    granicę dwóch różnych słów pomocniczych."""
+    czesci = [ekran.get("opis", "")] + list(ekran.get("slowa") or [])
+    return bez_ogonkow("\n".join(czesci).lower())
+
+
+def _zaczyna_slowo(fraza, tekst):
+    """Fraza musi ZACZYNAĆ słowo. Fragment ze środka to przypadek: „oc” siedzi
+    w „samochód”, „klocki” i „tryb nocny”, a nie jest o żadnym z tych ekranów.
+    Fraza wielowyrazowa („wymiana op”) działa tak samo — liczy się jej początek."""
+    return re.search(r"(?<!\w)" + re.escape(fraza), tekst) is not None
+
+
+def _trafienia_ekranow(fraza, akcje=None, ma_pojazd=True):
+    """[(waga, ekran)] od najlepszego: 0 — tytuł zaczyna się od frazy, 1 — fraza
+    gdziekolwiek w tytule, WAGA_POMOCNICZA — fraza zaczyna słowo opisu albo słów
+    pomocniczych."""
     fraza = bez_ogonkow((fraza or "").strip().lower())
     if not fraza:
         return []
@@ -359,14 +383,37 @@ def znajdz_ekrany(fraza, akcje=None, ma_pojazd=True, limit=6):
             waga = 0
         elif fraza in tytul:
             waga = 1
-        elif fraza in _tekst_do_szukania(ekran):
-            waga = 2
+        elif _zaczyna_slowo(fraza, _tekst_pomocniczy(ekran)):
+            waga = WAGA_POMOCNICZA
         else:
             continue
         trafienia.append((waga, ekran))
 
     trafienia.sort(key=lambda p: (p[0], p[1]["tytul"]))
-    return [e for _, e in trafienia[:limit]]
+    return trafienia
+
+
+def znajdz_ekrany(fraza, akcje=None, ma_pojazd=True, limit=6):
+    """Dopasowanie ekranów do frazy z wyszukiwarki. Trafienie w TYTUŁ waży więcej
+    niż w opis czy słowa pomocnicze — kto wpisuje „rok”, szuka Roku w pigułce, a
+    nie każdego ekranu, który ma gdzieś słowo „roczny”."""
+    return [e for _, e in _trafienia_ekranow(fraza, akcje, ma_pojazd)[:limit]]
+
+
+def rozstaw_ekrany(fraza, sa_wpisy, akcje=None, ma_pojazd=True, limit=6):
+    """(nad_wpisami, pod_wpisami) — gdzie wyszukiwarka stawia pasujące ekrany.
+
+    Wszystkie idą NAD wpisy, gdy fraza jest krótsza niż DLUGA_FRAZA_OD albo nie
+    trafiła w żaden wpis. Inaczej każdy ekran rozstrzyga osobno: trafienie
+    w tytuł zostaje nad wpisami („opony” → Opony), trafienie tylko w opis albo
+    słowa pomocnicze schodzi pod nie („opony” → Magazyn, „rozrząd” →
+    Podzespoły i interwały). Limit obejmuje obie grupy razem."""
+    trafienia = _trafienia_ekranow(fraza, akcje, ma_pojazd)[:limit]
+    if not sa_wpisy or len((fraza or "").strip()) < DLUGA_FRAZA_OD:
+        return [e for _, e in trafienia], []
+    nad = [e for waga, e in trafienia if waga < WAGA_POMOCNICZA]
+    pod = [e for waga, e in trafienia if waga >= WAGA_POMOCNICZA]
+    return nad, pod
 
 
 def _akcja_pozycji(po_kliknieciu, ekran):
@@ -964,11 +1011,15 @@ __all__ = [
     "GRUPY_EKRANOW",
     "GRUPY_WG_ID",
     "_akcja_pozycji",
+    "DLUGA_FRAZA_OD",
+    "WAGA_POMOCNICZA",
     "_chip_ekranu",
     "_naglowek_grupy_szuflady",
     "_naglowek_szuflady",
-    "_tekst_do_szukania",
+    "_tekst_pomocniczy",
+    "_trafienia_ekranow",
     "_wiersz_szuflady",
+    "_zaczyna_slowo",
     "_zamknij_szuflade",
     "akcje_nawigacji",
     "ekrany_grupy",
@@ -980,6 +1031,7 @@ __all__ = [
     "pasek_sekcji",
     "pokaz_edytor_skrotow",
     "pokaz_nawigacje_awaryjna",
+    "rozstaw_ekrany",
     "zanotuj_ekran_dla_trasy",
     "zbuduj_pasek_glowny",
     "zbuduj_pasek_z_powrotem",
