@@ -138,9 +138,12 @@ def usun_z_cofnieciem(tabela, rekord_id):
 
     # Nagrobek dostaje przypisanie do pojazdu (patrz db/synchronizacja), żeby
     # usunięcie z auta A nie próbowało się wysłać przy synchronizacji auta B —
-    # a przy pojeździe „tylko do podglądu” nie wysłało się w ogóle. Tabele bez
-    # własnego auto_id (historia) zostają z NULL-em i zachowują się jak dotąd.
-    auto_nagrobka = dane.get("auto_id")
+    # a przy pojeździe „tylko do podglądu” nie wysłało się w ogóle. Historia
+    # nie ma własnej kolumny auto_id, więc jedzie tym samym JOIN-em co przy
+    # sprawdzaniu uprawnień: nagrobek bez pojazdu nie daje się odfiltrować
+    # przy synchronizacji przyrostowej i wraca w każdym cyklu, aż licznik
+    # MAKS_PROB_NAGROBKA go ucisza.
+    auto_nagrobka = _auto_wiersza(tabela, dane)
     if zdalny_id_usuniety:
         zarejestruj_nagrobek(tabela, zdalny_id_usuniety, auto_nagrobka)
     for w in czesci_wpisu:
@@ -223,7 +226,26 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
         ids_list = [d["id"] for d in dane_lista]
         placeholders = ",".join("?" for _ in ids_list)
 
-    zdalne_id_usuniete = [d.get("zdalne_id") for d in dane_lista if d.get("zdalne_id")]
+    # Do którego pojazdu należy każdy z usuwanych wierszy — dokładnie tak samo
+    # jak w ścieżce pojedynczej. Ścieżka zbiorcza zostawiała tu NULL, a nagrobek
+    # bez pojazdu nie daje się odfiltrować przy synchronizacji przyrostowej:
+    # wraca w każdym cyklu i dopiero MAKS_PROB_NAGROBKA (5) go ucisza — po
+    # pięciu nieudanych podejściach. Wynik JOIN-u dla historii zapamiętujemy,
+    # bo zaznaczenie zbiorcze to zwykle kilkadziesiąt wpisów spod kilku zadań.
+    auta_zadan = {}
+
+    def _auto_nagrobka(dane):
+        if dane.get("auto_id"):
+            return dane["auto_id"]
+        zadanie = dane.get("zadanie_id")
+        if tabela == "historia" and zadanie:
+            if zadanie not in auta_zadan:
+                auta_zadan[zadanie] = _auto_wiersza(tabela, dane)
+            return auta_zadan[zadanie]
+        return _auto_wiersza(tabela, dane)
+
+    auta_wierszy = {d["id"]: _auto_nagrobka(d) for d in dane_lista}
+    zdalne_id_usuniete = [(d["zdalne_id"], auta_wierszy[d["id"]]) for d in dane_lista if d.get("zdalne_id")]
 
     sciezki_tymczasowe = []
     if tabela in TABELE_Z_ZALACZNIKIEM:
@@ -246,11 +268,12 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_list))
 
-    for zid in zdalne_id_usuniete:
-        zarejestruj_nagrobek(tabela, zid)
+    for zid, auto_nagrobka in zdalne_id_usuniete:
+        zarejestruj_nagrobek(tabela, zid, auto_nagrobka)
     for w in czesci_wpisow:
         if w.get("zdalne_id"):
-            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"])
+            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"],
+                                 auta_wierszy.get(w.get("historia_id")))
 
     stan = {"cofniete": False, "trwale_usuniete": False}
 
@@ -259,7 +282,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
             return
         stan["cofniete"] = True
 
-        for zid in zdalne_id_usuniete:
+        for zid, _ in zdalne_id_usuniete:
             usun_nagrobek(zid)
         for w in czesci_wpisow:
             if w.get("zdalne_id"):

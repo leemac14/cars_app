@@ -124,23 +124,30 @@ class MiksinZakladkiSerwis:
                 self.state.wybrane_zadanie_id = zid
                 self.state.wybrane_zadanie_nazwa = str(zn)
 
-                def usun_zadanie(e):
-                    utils.zamknij_dno(self._page, bs)
+                def usun_zadanie():
                     def wykonaj():
                         wynik = db.usun_zadanie_z_cofnieciem(zid)
                         utils.przejdz(self._page, "/")
                         utils.pokaz_komunikat_cofnij(self._page, "Usunięto podzespół.", wynik)
                     utils.potwierdz(self._page, "Usunąć?", "Na pewno usunąć ten podzespół?", wykonaj)
 
-                bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE, content=ft.Column([
-                    ft.Text(str(zn), weight="bold", size=20, color=ft.Colors.PRIMARY), ft.Divider(),
-                    ft.ListTile(leading=ft.Icon(ft.Icons.ADD_CIRCLE, color=ft.Colors.GREEN), title=ft.Text("Dodaj Wymianę", weight="bold"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/wpis/nowy/{zid}"))),
-                    ft.ListTile(leading=ft.Icon(ft.Icons.HISTORY), title=ft.Text("Historia wymian"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/historia/{zid}"))),
-                    ft.ListTile(leading=ft.Icon(ft.Icons.TIMER), title=ft.Text("Ustaw interwał przypomnień"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/interwal/{zid}"))),
-                    ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Zmień nazwę"), on_click=lambda e: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/zadanie/edytuj/{zid}"))),
-                    ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=utils.KOLOR_STATUS["destructive"]), title=ft.Text("Usuń podzespół", color=utils.KOLOR_STATUS["destructive"]), on_click=usun_zadanie),
-                ], tight=True)))
-                utils.otworz_dno(self._page, bs)
+                # Jak w pozostałych zakładkach: słowniki zamiast ręcznego
+                # BottomSheetu, żeby menu dało się przepuścić przez
+                # utils.odsiej_akcje. Historia wymian to jedyna pozycja, która
+                # niczego nie zmienia — przy podglądzie zostaje tylko ona.
+                pozycje = utils.odsiej_akcje(self.state.auto_id, [
+                    {"ikona": ft.Icons.ADD_CIRCLE, "tekst": "Dodaj Wymianę", "kolor": ft.Colors.GREEN,
+                     "akcja": lambda: utils.przejdz(self._page, f"/wpis/nowy/{zid}")},
+                    {"ikona": ft.Icons.HISTORY, "tekst": "Historia wymian", "czyta": True,
+                     "akcja": lambda: utils.przejdz(self._page, f"/historia/{zid}")},
+                    {"ikona": ft.Icons.TIMER, "tekst": "Ustaw interwał przypomnień",
+                     "akcja": lambda: utils.przejdz(self._page, f"/interwal/{zid}")},
+                    {"ikona": ft.Icons.EDIT, "tekst": "Zmień nazwę",
+                     "akcja": lambda: utils.przejdz(self._page, f"/zadanie/edytuj/{zid}")},
+                    {"ikona": ft.Icons.DELETE, "tekst": "Usuń podzespół", "akcja": usun_zadanie,
+                     "kolor": utils.KOLOR_STATUS["destructive"]},
+                ], "zadania", zid)
+                utils.pokaz_menu_kontekstowe(self._page, str(zn), pozycje)
 
             if not po_filtrach:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))

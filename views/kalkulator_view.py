@@ -242,8 +242,8 @@ class KalkulatorTrasyView(ft.View):
             self._odswiez_trasy()
             utils.pokaz_komunikat(self._page, f"Usunięto trasę „{trasa['nazwa']}”.")
 
-        utils.pokaz_menu_kontekstowe(self._page, f"Trasa: {trasa['nazwa']}", [
-            {"ikona": ft.Icons.PLAY_ARROW, "tekst": "Wczytaj do kalkulatora",
+        utils.pokaz_menu_kontekstowe(self._page, f"Trasa: {trasa['nazwa']}", utils.odsiej_akcje(self.state.auto_id, [
+            {"ikona": ft.Icons.PLAY_ARROW, "tekst": "Wczytaj do kalkulatora", "czyta": True,
              "akcja": lambda: self._wczytaj_trase(trasa)},
             {"ikona": ft.Icons.SAVE_AS, "tekst": "Nadpisz obecnymi wartościami",
              "opis": "Zapisze dystans, powrót, liczbę osób i opłaty z ekranu",
@@ -252,7 +252,7 @@ class KalkulatorTrasyView(ft.View):
              "akcja": lambda: utils.potwierdz(
                  self._page, "Usunąć trasę?",
                  f"Czy na pewno usunąć zapisaną trasę „{trasa['nazwa']}”?", usun)},
-        ])
+        ]))
 
     def _pobierz_float(self, kontrolka):
         return utils.parsuj_float(kontrolka.value, 0.0)

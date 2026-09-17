@@ -171,7 +171,10 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
         ft.Divider()
     ]
 
-    for poz in pozycje:
+    # Pozycje puste/None pomijamy tak samo jak w pokaz_menu_grupowane — dzięki
+    # temu wołający może budować listę warunkowo (patrz utils.odsiej_akcje,
+    # które wycina z menu akcje niedostępne przy bieżącej roli).
+    for poz in [p for p in pozycje if p]:
         ikona = poz.get("ikona")
         tekst = poz.get("tekst")
         akcja = poz.get("akcja")

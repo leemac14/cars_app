@@ -163,7 +163,7 @@ class MiksinZakladkiTankowania:
 
                 pozycje = []
                 if zalacznik:
-                    pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Tankowanie")})
+                    pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Tankowanie")})
                     pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
                 else:
                     pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon)", "akcja": dodaj_zmien_zdj})
@@ -176,6 +176,7 @@ class MiksinZakladkiTankowania:
                 pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_tankowanie", tid), utils.przejdz(self._page, "/tankowanie/nowe"))})
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": utils.KOLOR_STATUS["destructive"]})
 
+                pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "tankowania", tid)
                 utils.pokaz_menu_kontekstowe(self._page, "Opcje tankowania", pozycje)
 
             if not po_filtrach:

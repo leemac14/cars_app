@@ -95,45 +95,44 @@ class MiksinZakladkiInne:
                 po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "inne_autor", "dodane_przez")
             utils.posortuj_liste(po_filtrach, self.state, "inne", opcje_sort)
 
+            # Menu kosztu składa się tak samo jak menu tankowania i wpisu
+            # serwisowego — słownikami przez pokaz_menu_kontekstowe. Ręcznie
+            # budowany BottomSheet robił to samo o kilkanaście linii dłużej
+            # (własne zamykanie arkusza przy każdej pozycji) i, co ważniejsze,
+            # nie dawał się przepuścić przez utils.odsiej_akcje.
             def otworz_menu_i(iid, zalacznik=None, notatka=None):
-                def usun_koszt(e):
-                    utils.zamknij_dno(self._page, bs)
+                def usun_koszt():
                     def wykonaj():
                         wynik = db.usun_z_cofnieciem("inne_koszty", iid)
                         utils.przejdz(self._page, "/")
                         utils.pokaz_komunikat_cofnij(self._page, "Usunięto koszt.", wynik)
                     utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten koszt?", wykonaj)
 
-                async def dodaj_zmien_zdj(ev):
-                    utils.zamknij_dno(self._page, bs)
+                async def dodaj_zmien_zdj():
                     await utils.szybkie_dodanie_zdjecia(self._page, "inne_koszty", iid, zalacznik, lambda: utils.przejdz(self._page, "/"))
 
-                pozycje = [ft.Text("Opcje kosztu", weight="bold", size=18)]
+                pozycje = []
                 if zalacznik:
-                    pozycje.append(ft.ListTile(
-                        leading=ft.Icon(ft.Icons.IMAGE),
-                        title=ft.Text("Pokaż zdjęcie"),
-                        on_click=lambda ev: (utils.zamknij_dno(self._page, bs), utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Koszt"))
-                    ))
-                    pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT_DOCUMENT), title=ft.Text("Zmień zdjęcie"), on_click=dodaj_zmien_zdj))
+                    pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True,
+                                    "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Koszt")})
+                    pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
                 else:
-                    pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.ADD_A_PHOTO), title=ft.Text("Dodaj zdjęcie (faktura/paragon)"), on_click=dodaj_zmien_zdj))
+                    pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/paragon)", "akcja": dodaj_zmien_zdj})
 
-                poz_notatka = utils.pozycja_menu_notatki(
+                pozycje.append(utils.pozycja_menu_notatki(
                     self._page, "inne_koszty", iid, notatka,
                     lambda: utils.przejdz(self._page, "/"), "Notatka do kosztu"
-                )
-                pozycje.append(ft.ListTile(
-                    leading=ft.Icon(poz_notatka["ikona"]),
-                    title=ft.Text(poz_notatka["tekst"]),
-                    on_click=lambda ev: (utils.zamknij_dno(self._page, bs), poz_notatka["akcja"]())
                 ))
-                pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.EDIT), title=ft.Text("Edytuj koszt"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), utils.przejdz(self._page, f"/inne/edytuj/{iid}"))))
-                pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.CONTENT_COPY), title=ft.Text("Duplikuj"), on_click=lambda ev: (utils.zamknij_dno(self._page, bs), setattr(self.state, "duplikuj_zrodlo_koszt", iid), utils.przejdz(self._page, "/inne/nowy"))))
-                pozycje.append(ft.ListTile(leading=ft.Icon(ft.Icons.DELETE, color=utils.KOLOR_STATUS["destructive"]), title=ft.Text("Usuń koszt", color=utils.KOLOR_STATUS["destructive"]), on_click=usun_koszt))
+                pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj koszt",
+                                "akcja": lambda: utils.przejdz(self._page, f"/inne/edytuj/{iid}")})
+                pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj",
+                                "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_koszt", iid),
+                                                  utils.przejdz(self._page, "/inne/nowy"))})
+                pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń koszt", "akcja": usun_koszt,
+                                "kolor": utils.KOLOR_STATUS["destructive"]})
 
-                bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE, content=ft.Column(pozycje, tight=True)))
-                utils.otworz_dno(self._page, bs)
+                pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "inne_koszty", iid)
+                utils.pokaz_menu_kontekstowe(self._page, "Opcje kosztu", pozycje)
 
             if not po_filtrach:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))

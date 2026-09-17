@@ -294,6 +294,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             pozycje.append({
                 "ikona": ft.Icons.OPEN_IN_NEW,
                 "tekst": f"Otwórz wpis ({w['etykieta_zrodla'].lower()})",
+                "czyta": True,
                 "akcja": lambda: utils.przejdz(self._page, w["trasa"]),
             })
 
@@ -311,6 +312,11 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń odczyt",
                             "akcja": usun, "kolor": utils.KOLOR_STATUS["destructive"]})
 
+        # O uprawnienie pytamy w tabeli ŹRÓDŁOWEJ wpisu (odczyt, tankowanie,
+        # wizyta albo serwis) — lista miesza je ze sobą, a współautor może mieć
+        # prawo do swojego tankowania i nie mieć do cudzego odczytu.
+        pozycje = utils.odsiej_akcje(
+            self.state.auto_id, pozycje, self.TABELE_NOTATKI[w["zrodlo"]], w["id"])
         podtytul = f"{w['data']} • {utils.formatuj_liczba(w['przebieg'], 0)} km"
         utils.pokaz_menu_kontekstowe(self._page, f"{w['etykieta_zrodla']}: {podtytul}", pozycje)
 

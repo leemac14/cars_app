@@ -3,6 +3,7 @@
 import flet as ft
 
 from .stale import KOLOR_STATUS
+from .sync_ui import wolno_zmieniac_rekord
 from .formularze import dopasuj_wysokosc_listy
 
 
@@ -66,9 +67,22 @@ class ZaznaczanieGrupowe:
             kontener.border = None
         self.update()
 
+    def wolno_zmieniac_zaznaczone(self):
+        """Czy pasek zaznaczania ma w ogóle pokazywać akcje zmieniające dane
+        (kosz, a w widokach pochodnych także edycję zbiorczą).
+
+        Pytamy o samą rolę, bez tabeli: przy roli podglądu grupowe usuwanie
+        odbije się o db i nie skasuje niczego, więc ikona obiecywałaby coś,
+        czego nie ma. Współautorowi zostaje — zaznaczenie zbiorcze wolno mu
+        mieć mieszane, a usun_wiele_z_cofnieciem kasuje to, do czego ma prawo,
+        i melduje, ile cudzych wpisów pominął."""
+        auto_id = getattr(getattr(self, "state", None), "auto_id", None)
+        return wolno_zmieniac_rekord(auto_id)
+
     def aktualizuj_appbar_zaznaczania(self, dodatkowe_akcje=None):
         akcje = list(dodatkowe_akcje or [])
-        akcje.append(ft.IconButton(ft.Icons.DELETE, icon_color=KOLOR_STATUS["destructive"], tooltip="Usuń zaznaczone", on_click=self.potwierdz_grupowe_usuwanie))
+        if self.wolno_zmieniac_zaznaczone():
+            akcje.append(ft.IconButton(ft.Icons.DELETE, icon_color=KOLOR_STATUS["destructive"], tooltip="Usuń zaznaczone", on_click=self.potwierdz_grupowe_usuwanie))
         akcje.append(ft.Container(width=10))
         self.appbar = ft.AppBar(
             leading=ft.IconButton(ft.Icons.CLOSE, on_click=self.zakoncz_zaznaczanie),

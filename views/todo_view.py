@@ -293,13 +293,13 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             )
 
         def menu(e):
-            utils.pokaz_menu_kontekstowe(self._page, f"Checklista: {lista['nazwa']}", [
+            utils.pokaz_menu_kontekstowe(self._page, f"Checklista: {lista['nazwa']}", utils.odsiej_akcje(self.state.auto_id, [
                 {"ikona": ft.Icons.EDIT, "tekst": "Edytuj listę i pozycje",
                  "akcja": lambda: self._okno_edytora_checklisty(lista)},
                 {"ikona": ft.Icons.DONE_ALL, "tekst": "Odhacz wszystko", "akcja": odhacz_wszystko},
                 {"ikona": ft.Icons.RESTART_ALT, "tekst": "Wyzeruj ptaszki", "akcja": wyzeruj},
                 {"ikona": ft.Icons.DELETE, "tekst": "Usuń checklistę", "kolor": utils.KOLOR_STATUS["destructive"], "akcja": usun},
-            ])
+            ]))
 
         podpis = []
         if lista["ostatnie_uzycie"]:
@@ -488,12 +488,12 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 f"Z pozycji „{tytul}” powstanie nowa Wizyta w warsztacie, gotowa do uzupełnienia szczegółów."
             )
 
-        utils.pokaz_menu_kontekstowe(self._page, str(tytul), [
+        utils.pokaz_menu_kontekstowe(self._page, str(tytul), utils.odsiej_akcje(self.state.auto_id, [
             {"ikona": ft.Icons.BUILD_CIRCLE, "tekst": "Utwórz wizytę w warsztacie", "akcja": poprosz_o_wizyte, "kolor": ft.Colors.PRIMARY},
             {"ikona": ft.Icons.UNDO if zrobione else ft.Icons.CHECK_CIRCLE, "tekst": "Cofnij ukończenie" if zrobione else "Oznacz jako zrobione", "akcja": przelacz_status, "kolor": ft.Colors.GREEN},
             {"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/do-zrobienia/edytuj/{p_id}")},
             {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_pozycje, "kolor": utils.KOLOR_STATUS["destructive"]}
-        ])
+        ], "do_zrobienia", p_id))
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
@@ -551,7 +551,9 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         )
 
     def aktualizuj_appbar_zaznaczania(self, dodatkowe_akcje=None):
-        extra = [ft.IconButton(ft.Icons.BUILD_CIRCLE, tooltip="Utwórz wizytę z zaznaczonych", on_click=self.utworz_wizyte_z_zaznaczonych)]
+        extra = []
+        if self.wolno_zmieniac_zaznaczone():
+            extra.append(ft.IconButton(ft.Icons.BUILD_CIRCLE, tooltip="Utwórz wizytę z zaznaczonych", on_click=self.utworz_wizyte_z_zaznaczonych))
         super().aktualizuj_appbar_zaznaczania(dodatkowe_akcje=extra)
 
 class FormularzDoZrobieniaView(ft.View):

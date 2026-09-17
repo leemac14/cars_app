@@ -66,12 +66,12 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                     utils.przejdz(self._page, "/karoseria")
                     utils.pokaz_komunikat_cofnij(self._page, "Usunięto wpis z galerii.", wynik)
 
-                utils.pokaz_menu_kontekstowe(self._page, "Opcje zdjęcia", [
-                    {"ikona": ft.Icons.IMAGE, "tekst": "Pełny ekran", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, z_sciezka, "Galeria")},
-                    {"ikona": ft.Icons.COMPARE, "tekst": "Wybierz do porównania", "akcja": lambda: self.wymus_tryb_zaznaczania(zid)},
+                utils.pokaz_menu_kontekstowe(self._page, "Opcje zdjęcia", utils.odsiej_akcje(self.state.auto_id, [
+                    {"ikona": ft.Icons.IMAGE, "tekst": "Pełny ekran", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, z_sciezka, "Galeria")},
+                    {"ikona": ft.Icons.COMPARE, "tekst": "Wybierz do porównania", "czyta": True, "akcja": lambda: self.wymus_tryb_zaznaczania(zid)},
                     {"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/karoseria/edytuj/{zid}")},
                     {"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": lambda: utils.potwierdz(self._page, "Usunąć?", "Na pewno?", wykonaj), "kolor": utils.KOLOR_STATUS["destructive"]}
-                ])
+                ], "zdjecia_karoserii", zid))
 
             for z in zdjecia:
                 z_id, z_data, z_strefa, z_zal, z_typ, z_opis = z
@@ -122,7 +122,12 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         utils.pokaz_komunikat(self._page, "Zaznacz jeszcze jedno zdjęcie do porównania.", ft.Colors.PRIMARY)
 
     def aktualizuj_appbar_zaznaczania(self, dodatkowe_akcje=None):
-        extra = [ft.IconButton(ft.Icons.EDIT, tooltip="Edytuj zaznaczone zbiorczo", on_click=self.edytuj_zaznaczone_zbiorczo)]
+        # Porównanie zostaje przy każdej roli — niczego nie zapisuje. Edycja
+        # zbiorcza znika razem z koszem, bo przy podglądzie i tak nie ma czego
+        # zapisać.
+        extra = []
+        if self.wolno_zmieniac_zaznaczone():
+            extra.append(ft.IconButton(ft.Icons.EDIT, tooltip="Edytuj zaznaczone zbiorczo", on_click=self.edytuj_zaznaczone_zbiorczo))
         if len(self.zaznaczone_id) == 2:
             extra.append(ft.IconButton(ft.Icons.COMPARE, tooltip="Porównaj zaznaczone", on_click=self.otworz_porownanie))
         super().aktualizuj_appbar_zaznaczania(dodatkowe_akcje=extra)

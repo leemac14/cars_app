@@ -127,7 +127,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
 
                     pozycje = []
                     if zalacznik:
-                        pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Historia")})
+                        pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Historia")})
                         pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
                     else:
                         pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon/faktura)", "akcja": dodaj_zmien_zdj})
@@ -140,6 +140,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_wpis", h_id), utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))})
                     pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": utils.KOLOR_STATUS["destructive"]})
 
+                    pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "historia", h_id)
                     utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
 
                 for w in wpisy:
@@ -450,7 +451,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
             pozycje = []
             if zalacznik:
-                pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Wizyta")})
+                pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Wizyta")})
                 pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
             else:
                 pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie", "akcja": dodaj_zmien_zdj})
@@ -478,6 +479,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 })
             pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wizytę", "akcja": usun_wizyte, "kolor": utils.KOLOR_STATUS["destructive"]})
 
+            pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "wizyty", wid)
             utils.pokaz_menu_kontekstowe(self._page, "Opcje wizyty", pozycje)
 
         if not wizyty_lista:

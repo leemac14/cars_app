@@ -428,7 +428,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         pozycje_menu = []
         if zalacznik:
-            pozycje_menu.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Zestaw opon")})
+            pozycje_menu.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Zestaw opon")})
             pozycje_menu.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
         else:
             pozycje_menu.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/opona)", "akcja": dodaj_zmien_zdj})
@@ -441,6 +441,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             {"ikona": ft.Icons.DELETE, "tekst": "Usuń zestaw", "akcja": usun_zestaw, "kolor": utils.KOLOR_STATUS["destructive"]}
         ])
 
+        pozycje_menu = utils.odsiej_akcje(self.state.auto_id, pozycje_menu, "zestawy_opon", zid)
         utils.pokaz_menu_kontekstowe(self._page, f"Zestaw: {sezon}", pozycje_menu)
 
     # ============== ZAKŁADKA: CZĘŚCI I PŁYNY ==============
@@ -682,19 +683,20 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         pozycje_menu = []
         if zalacznik:
-            pozycje_menu.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Część/płyn")})
+            pozycje_menu.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Część/płyn")})
             pozycje_menu.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
         else:
             pozycje_menu.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/część)", "akcja": dodaj_zmien_zdj})
 
         if uzyta:
-            pozycje_menu.append({"ikona": ft.Icons.HISTORY, "tekst": "Historia zużycia",
+            pozycje_menu.append({"ikona": ft.Icons.HISTORY, "tekst": "Historia zużycia", "czyta": True,
                                  "akcja": lambda: self._pokaz_historie_zuzycia(cid, nazwa, jednostka)})
         pozycje_menu.extend([
             {"ikona": ft.Icons.EDIT, "tekst": "Edytuj pozycję", "akcja": lambda: utils.przejdz(self._page, f"/magazyn/czesci/edytuj/{cid}")},
             {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_czesc, "kolor": utils.KOLOR_STATUS["destructive"]}
         ])
 
+        pozycje_menu = utils.odsiej_akcje(self.state.auto_id, pozycje_menu, "magazyn_czesci", cid)
         utils.pokaz_menu_kontekstowe(self._page, f"Pozycja: {nazwa}", pozycje_menu)
 
 class FormularzOponyView(ft.View):

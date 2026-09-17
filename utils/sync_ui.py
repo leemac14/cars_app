@@ -383,6 +383,55 @@ def wolno_zmieniac(auto_id, autor=None):
         return True
 
 
+def wolno_zmieniac_rekord(auto_id, tabela=None, rekord_id=None, autor=None):
+    """To samo pytanie co `wolno_zmieniac`, ale zadane o konkretny rekord.
+
+    Autora dobiera sobie samo (`db.czy_moge_edytowac_w_tabeli`), więc wołający
+    nie musi go mieć pod ręką — to jedno zapytanie w chwili otwarcia menu, czyli
+    raz na wpis, a nie raz na kartę listy. Tabela spoza `TABELE_Z_AUTOREM`
+    (podzespoły, magazyn, opony) i wywołanie bez tabeli wracają do pytania
+    o samą rolę."""
+    try:
+        if tabela and rekord_id is not None and autor is None:
+            return db.czy_moge_edytowac_w_tabeli(auto_id, tabela, rekord_id)
+        return db.czy_moge_zmieniac_rekord(auto_id, tabela, autor)
+    except Exception:
+        return True
+
+
+def odsiej_akcje(auto_id, pozycje, tabela=None, rekord_id=None, autor=None):
+    """Zostawia w menu wpisu tylko to, co przy tej roli da się kliknąć.
+
+    Pozycja liczy się domyślnie jako zmieniająca dane; czytającą trzeba oznaczyć
+    `"czyta": True`. Odwrotnie pisałoby się wygodniej, ale akcja dopisana kiedyś
+    do menu bez flagi pokazywałaby się podglądowi i odbijała komunikatem — czyli
+    dokładnie to, co ta funkcja ma likwidować. Przycisk, który zawsze odmawia,
+    uczy, że aplikacja jest nieprzewidywalna, i sugeruje, że gdzieś jest sposób,
+    żeby jednak zadziałał.
+
+    Pusty wynik zastępuje jedna linijka z powodem: arkusz bez niczego wygląda
+    jak awaria, a nie jak odpowiedź."""
+    pozycje = [p for p in pozycje if p]
+    if wolno_zmieniac_rekord(auto_id, tabela, rekord_id, autor):
+        return pozycje
+
+    zostaje = [p for p in pozycje if p.get("czyta")]
+    if zostaje:
+        return zostaje
+
+    try:
+        powod = db.OPISY_ROL.get(db.rola_pojazdu(auto_id), "")
+    except Exception:
+        powod = ""
+    return [{
+        "ikona": ft.Icons.VISIBILITY,
+        "tekst": powod or "Przy tej roli nie zmieniasz wpisów tego pojazdu.",
+        "kolor": ft.Colors.ON_SURFACE_VARIANT,
+        "akcja": None,
+        "czyta": True,
+    }]
+
+
 def zablokowane(page: ft.Page, auto_id, autor=None, pokaz=True):
     """Jedno pytanie zadawane przed każdą akcją zmieniającą dane: „czy to jest
     zabronione?”. Zwraca True i — domyślnie — tłumaczy dlaczego.
@@ -508,6 +557,7 @@ __all__ = [
     "TRASY_BEZPIECZNE_DO_ODSWIEZENIA",
     "_moment_ostatniej_synchronizacji",
     "funkcja_szybkiej_synchronizacji",
+    "odsiej_akcje",
     "odznaka_roli",
     "pasek_roli",
     "podsumowanie_konfliktow",
@@ -519,6 +569,7 @@ __all__ = [
     "uruchom_auto_synchronizacje",
     "wolno_dodawac",
     "wolno_zmieniac",
+    "wolno_zmieniac_rekord",
     "wskaznik_synchronizacji",
     "wypchnij_w_tle",
     "zablokowane",
