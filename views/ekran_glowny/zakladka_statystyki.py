@@ -671,11 +671,15 @@ class MiksinZakladkiStatystyki:
                 kolor_tr = (utils.KOLOR_STATUS["critical"] if trend["kierunek"] == "wzrost"
                             else utils.KOLOR_STATUS["ok"] if trend["kierunek"] == "spadek"
                             else ft.Colors.BLUE_GREY_700)
-                opis_kierunku = {
-                    "wzrost": "Zużycie rośnie",
-                    "spadek": "Zużycie spada",
-                    "stabilnie": "Zużycie bez zmian",
-                }[trend["kierunek"]]
+                # Pigułka opisuje SUROWĄ zmianę — te same dwie liczby, co obok —
+                # a kolor bierze się z kierunku po odjęciu sezonu. Dzięki temu
+                # listopadowy skok nadal widać, ale nie świeci już na czerwono.
+                zmiana_tr = trend["zmiana_proc"]
+                istotna_tr = abs(zmiana_tr) >= db.PROG_ISTOTNOSCI_TRENDU
+                opis_kierunku = ("Zużycie bez większych zmian" if not istotna_tr
+                                 else "Zużycie rośnie" if zmiana_tr > 0 else "Zużycie spada")
+                tekst_pigulki = (f"{opis_kierunku} o {utils.formatuj_liczba(abs(zmiana_tr), 0)}%"
+                                 if istotna_tr else opis_kierunku)
                 rocznie = db.koszt_trendu_rocznie(self.state.auto_id, trend)
 
                 wiersze_trendu = [
@@ -701,15 +705,31 @@ class MiksinZakladkiStatystyki:
                             padding=ft.Padding(10, 4, 10, 4), border_radius=utils.RADIUS["pill"],
                             bgcolor=ft.Colors.with_opacity(0.15, kolor_tr),
                             content=ft.Row([
-                                ft.Icon(ft.Icons.TRENDING_UP if trend["kierunek"] == "wzrost"
-                                        else ft.Icons.TRENDING_DOWN if trend["kierunek"] == "spadek"
+                                ft.Icon(ft.Icons.TRENDING_UP if istotna_tr and zmiana_tr > 0
+                                        else ft.Icons.TRENDING_DOWN if istotna_tr
                                         else ft.Icons.TRENDING_FLAT, size=14, color=kolor_tr),
-                                ft.Text(f"{opis_kierunku} o {utils.formatuj_liczba(abs(trend['zmiana_proc']), 0)}%",
+                                ft.Text(tekst_pigulki,
                                         size=utils.FS["label"], weight="bold", color=kolor_tr),
                             ], spacing=5, tight=True),
                         ),
                     ]),
                 ]
+                opis_sezonu = db.opis_sezonowosci_trendu(trend)
+                if opis_sezonu:
+                    wiersze_trendu.append(ft.Text(
+                        opis_sezonu, size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
+                    ))
+                if trend.get("rdr_proc") is not None:
+                    rdr = trend["rdr_proc"]
+                    rok_temu = utils.formatuj_spalanie(trend["srednia_rok_temu"],
+                                                       elektryczny=czy_prad_tr)
+                    opis_rdr = ("zużycie praktycznie takie samo" if abs(rdr) < 1
+                                else f"zużycie {'wyższe' if rdr > 0 else 'niższe'} "
+                                     f"o {utils.formatuj_liczba(abs(rdr), 0)}%")
+                    wiersze_trendu.append(ft.Text(
+                        f"Wobec tego samego okresu rok temu ({rok_temu}): {opis_rdr}.",
+                        size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
+                    ))
                 if rocznie and abs(rocznie) >= 20:
                     wiersze_trendu.append(ft.Text(
                         (f"Przy dotychczasowym przebiegu rocznym to około "
@@ -720,7 +740,10 @@ class MiksinZakladkiStatystyki:
                 wiersze_trendu.append(ft.Text(
                     f"Porównanie {trend['odcinkow_ostatnio']} ostatnich odcinków „do pełna” "
                     f"ze średnią {trend['odcinkow_wczesniej']} wcześniejszych"
-                    + (f" (okno {trend['dni_okna']} dni)." if trend["dni_okna"] else "."),
+                    + (f" (okno {trend['dni_okna']} dni)." if trend["dni_okna"] else ".")
+                    + (" Sezon policzony z tego samego odcinka kalendarza w poprzednich "
+                       "latach; kolor i obserwacje biorą się ze zmiany po jego odjęciu."
+                       if trend.get("sezon_proc") is not None else ""),
                     size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                 ))
                 self.elementy.append(utils.karta_analizy(

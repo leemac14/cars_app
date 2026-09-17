@@ -37,6 +37,22 @@ PROG_UWAGI_BUDZETU = 0.80
 PROG_ISTOTNOSCI_TRENDU = 5.0
 
 
+# Sezon. Listopad zawsze wypadnie gorzej od września — zimna, krótkie trasy,
+# opony, dłuższe rozgrzewanie. Alarm, który zapala się co roku o tej samej porze,
+# przestaje być alarmem, więc zanim ogłosimy trend, odejmujemy tyle, ile ta sama
+# zmiana kalendarza dawała w poprzednich latach.
+#   TOLERANCJA — tankowania nie wypadają rok w rok tego samego dnia, więc okna
+#   sprzed roku poszerzamy w obie strony;
+#   MIN_ODCINKOW — jeden odcinek sprzed roku to anegdota, nie sezon;
+#   PROG_POKAZANIA — poniżej tego sezon jest tak mały, że zdanie o nim tylko
+#   zaśmieciłoby komunikat;
+#   MAX_LAT — dalej w przeszłość nie ma po co schodzić, a pętla musi się kończyć.
+TOLERANCJA_SEZONU_DNI = 21
+MIN_ODCINKOW_SEZONU = 2
+PROG_POKAZANIA_SEZONU = 2.0
+MAX_LAT_SEZONU = 10
+
+
 # Dystanse do porównań w „Roku w pigułce”. Cel jest jeden: zamienić 18 000 km
 # w coś, co da się sobie wyobrazić.
 _DYSTANSE_ODNIESIENIA = [
@@ -193,6 +209,64 @@ def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
 
 # -------------------- TREND ZUŻYCIA --------------------
 
+def _przesun_o_lata(d, lat):
+    """Ta sama data `lat` lat wcześniej. 29 lutego cofamy na 28 — jeden dzień
+    w roku nie ma prawa wywrócić całej analizy."""
+    try:
+        return d.replace(year=d.year - lat)
+    except ValueError:
+        return d.replace(year=d.year - lat, day=28)
+
+
+def _srednia_okna(seria_dat, od, do):
+    """Średnie zużycie z odcinków, których data mieści się w oknie.
+    Zwraca (średnia, ile_odcinków) albo (None, 0), gdy odcinków za mało."""
+    wartosci = [w for d, w in seria_dat if od <= d <= do]
+    if len(wartosci) < MIN_ODCINKOW_SEZONU:
+        return None, 0
+    return sum(wartosci) / len(wartosci), len(wartosci)
+
+
+def _sezonowosc_zmiany(seria_dat, tlo_od, tlo_do, ost_od, ost_do):
+    """Ile punktów procentowych dawało samo przejście przez ten sam kawałek
+    kalendarza w poprzednich latach.
+
+    Bierzemy oba okna — „tło” i „ostatnie odcinki” — cofamy je o rok, dwa, trzy
+    i liczymy na tamtych danych dokładnie tę samą zmianę. Średnia z tych zmian
+    to sezon: tyle zużycie rośnie na przełomie września i listopada co roku,
+    niezależnie od stanu auta. Okna poszerzamy o TOLERANCJA_SEZONU_DNI, ale nie
+    pozwalamy im na siebie zachodzić — ten sam odcinek po obu stronach
+    porównania ściągnąłby wynik do zera.
+
+    Zwraca (sezon_w_procentach, liczba_lat) albo (None, 0), gdy nie ma z czym
+    porównywać. Brak historii sprzed roku nie jest błędem: aplikacja działa
+    wtedy tak, jak działała zawsze."""
+    if not seria_dat:
+        return None, 0
+
+    najstarsza = seria_dat[0][0]
+    tol = timedelta(days=TOLERANCJA_SEZONU_DNI)
+    zmiany = []
+    for lat in range(1, MAX_LAT_SEZONU + 1):
+        t_od, t_do = _przesun_o_lata(tlo_od, lat), _przesun_o_lata(tlo_do, lat)
+        o_od, o_do = _przesun_o_lata(ost_od, lat), _przesun_o_lata(ost_do, lat)
+        if o_do < najstarsza:
+            break
+        a_od, a_do = t_od - tol, t_do + tol
+        b_od, b_do = o_od - tol, o_do + tol
+        if b_od <= a_do:
+            srodek = t_do + (o_od - t_do) / 2
+            a_do, b_od = min(a_do, srodek), max(b_od, srodek + timedelta(days=1))
+        sr_tlo, _ile_tlo = _srednia_okna(seria_dat, a_od, a_do)
+        sr_ost, _ile_ost = _srednia_okna(seria_dat, b_od, b_do)
+        if sr_tlo and sr_ost and sr_tlo > 0:
+            zmiany.append((sr_ost - sr_tlo) / sr_tlo * 100)
+
+    if not zmiany:
+        return None, 0
+    return sum(zmiany) / len(zmiany), len(zmiany)
+
+
 def analizuj_trend_spalania(auto_id, rodzaj=None, ostatnie=3, tlo=6):
     """Porównuje zużycie z OSTATNICH odcinków ze średnią z odcinków
     wcześniejszych i mówi, czy auto zaczęło palić więcej.
@@ -202,6 +276,13 @@ def analizuj_trend_spalania(auto_id, rodzaj=None, ostatnie=3, tlo=6):
     kilometrom. Świadomie NIE porównujemy „miesiąc do miesiąca”: przy dwóch
     tankowaniach na miesiąc taki podział daje skoki rzędu 20%, które są
     wyłącznie efektem tego, gdzie wypadła granica kalendarza.
+
+    Granica kalendarza to nie jedyna pułapka: samo porównanie września
+    z listopadem zawsze wyjdzie na wzrost, bo zima. Dlatego obok surowej zmiany
+    liczymy SEZON (`_sezonowosc_zmiany`) i to dopiero różnica po jego odjęciu
+    (`zmiana_po_sezonie`) decyduje o `kierunek` — alarm ma się zapalać, gdy auto
+    pali więcej, a nie gdy kalendarz pokazuje listopad. Bez danych sprzed roku
+    `sezon_proc` jest None, a wszystko działa jak wcześniej.
 
     Zwraca None, dopóki nie ma czym porównywać (min. `ostatnie` + 2 odcinki) —
     lepiej nie powiedzieć nic, niż ogłosić trend z dwóch pomiarów."""
@@ -225,12 +306,35 @@ def analizuj_trend_spalania(auto_id, rodzaj=None, ostatnie=3, tlo=6):
         return None
 
     zmiana = (sr_ostatnie - sr_wczesniej) / sr_wczesniej * 100
-    if abs(zmiana) < PROG_ISTOTNOSCI_TRENDU:
+
+    seria_dat = [(parsuj_date(d), w) for d, w in seria]
+    poczatek_tla = max(0, len(seria) - ostatnie - tlo)
+    sezon_proc, lat_sezonu = _sezonowosc_zmiany(
+        seria_dat,
+        seria_dat[poczatek_tla][0], seria_dat[len(seria) - ostatnie - 1][0],
+        seria_dat[len(seria) - ostatnie][0], seria_dat[-1][0],
+    )
+    zmiana_po_sezonie = zmiana - sezon_proc if sezon_proc is not None else zmiana
+
+    # Kierunek — i cały alarm — z różnicy PO odjęciu sezonu.
+    if abs(zmiana_po_sezonie) < PROG_ISTOTNOSCI_TRENDU:
         kierunek = "stabilnie"
-    elif zmiana > 0:
+    elif zmiana_po_sezonie > 0:
         kierunek = "wzrost"
     else:
         kierunek = "spadek"
+
+    # Osobne pytanie niż sezon: czy auto pali więcej niż rok temu o tej samej
+    # porze. Tu porównujemy ostatnie odcinki z tym samym oknem kalendarza
+    # sprzed roku, więc pora roku wypada z równania sama z siebie.
+    tol = timedelta(days=TOLERANCJA_SEZONU_DNI)
+    sr_rok_temu, odcinkow_rok_temu = _srednia_okna(
+        seria_dat,
+        _przesun_o_lata(seria_dat[len(seria) - ostatnie][0], 1) - tol,
+        _przesun_o_lata(seria_dat[-1][0], 1) + tol,
+    )
+    rdr_proc = ((sr_ostatnie - sr_rok_temu) / sr_rok_temu * 100
+                if sr_rok_temu and sr_rok_temu > 0 else None)
 
     najstarsza = parsuj_date(seria[max(0, len(seria) - ostatnie - tlo)][0])
     najnowsza = parsuj_date(seria[-1][0])
@@ -241,6 +345,13 @@ def analizuj_trend_spalania(auto_id, rodzaj=None, ostatnie=3, tlo=6):
         "srednia_ostatnia": sr_ostatnie,
         "srednia_wczesniej": sr_wczesniej,
         "zmiana_proc": zmiana,
+        # Ile z tej zmiany to sama pora roku i co zostaje po jej odjęciu.
+        "sezon_proc": sezon_proc,
+        "zmiana_po_sezonie": zmiana_po_sezonie,
+        "lat_sezonu": lat_sezonu,
+        "srednia_rok_temu": sr_rok_temu,
+        "odcinkow_rok_temu": odcinkow_rok_temu,
+        "rdr_proc": rdr_proc,
         "kierunek": kierunek,
         "odcinkow_ostatnio": len(ostatnie_w),
         "odcinkow_wczesniej": len(wczesniejsze),
@@ -249,14 +360,43 @@ def analizuj_trend_spalania(auto_id, rodzaj=None, ostatnie=3, tlo=6):
         # Różnica w koszcie na 100 km — sam procent nie mówi, czy to problem
         # wart reakcji, czy pół złotówki.
         "roznica_na_100km": sr_ostatnie - sr_wczesniej,
+        # To samo, ale bez części, którą tłumaczy kalendarz — z tego liczymy
+        # złotówki na rok, żeby nie obiecywać oszczędności, która i tak sama
+        # wróci na wiosnę.
+        "roznica_po_sezonie_na_100km": sr_wczesniej * zmiana_po_sezonie / 100,
     }
+
+
+def opis_sezonowosci_trendu(trend):
+    """Jedno zdanie o tym, ile ze zmiany zużycia to zwykła pora roku.
+
+    Zwraca None, gdy nie ma danych sprzed roku albo sezon jest na tyle mały, że
+    zdanie o nim tylko zaśmieciłoby komunikat."""
+    if not trend or trend.get("sezon_proc") is None:
+        return None
+
+    sezon = trend["sezon_proc"]
+    if abs(sezon) < PROG_POKAZANIA_SEZONU:
+        return None
+
+    reszta = trend["zmiana_po_sezonie"]
+    if abs(reszta) < PROG_ISTOTNOSCI_TRENDU:
+        koniec = "po odjęciu sezonu nie zostaje nic, co odstawałoby od normy"
+    else:
+        koniec = (f"po odjęciu sezonu zostaje {formatuj_liczba_eksport(abs(reszta), 0)}% "
+                  f"{'w górę' if reszta > 0 else 'w dół'}")
+    return (f"Typowo o tej porze roku zużycie {'rośnie' if sezon > 0 else 'spada'} "
+            f"o {formatuj_liczba_eksport(abs(sezon), 0)} pkt proc. — {koniec}.")
 
 
 def koszt_trendu_rocznie(auto_id, trend):
     """Ile kosztuje (albo oszczędza) zmiana zużycia z analizuj_trend_spalania,
     przeliczona na rok przy dotychczasowym przebiegu rocznym i ostatniej znanej
     cenie jednostkowej. Procent robi wrażenie, ale dopiero złotówki na rok
-    odpowiadają na pytanie, czy warto jechać do mechanika."""
+    odpowiadają na pytanie, czy warto jechać do mechanika.
+
+    Liczymy z różnicy PO odjęciu sezonu: zimowy skok wróci sam na wiosnę, więc
+    mnożenie go przez cały rok obiecywałoby koszt, którego nie będzie."""
     if not trend or trend["kierunek"] == "stabilnie":
         return None
 
@@ -282,7 +422,8 @@ def koszt_trendu_rocznie(auto_id, trend):
     cena_jedn = sum(float(r[0] or 0) for r in ostatnie) / litry_razem
 
     km_rocznie = sredni_dzienny * 365
-    roznica_jednostek = trend["roznica_na_100km"] / 100 * km_rocznie
+    roznica = trend.get("roznica_po_sezonie_na_100km", trend["roznica_na_100km"])
+    roznica_jednostek = roznica / 100 * km_rocznie
     return roznica_jednostek * cena_jedn
 
 
@@ -759,20 +900,24 @@ def obserwacje_analityczne(auto_id, limit=None):
         rocznie = koszt_trendu_rocznie(auto_id, trend)
         ogon = (f" To około {_kwota_txt(abs(rocznie))} rocznie."
                 if rocznie and abs(rocznie) >= 50 else "")
-        if trend["kierunek"] == "wzrost":
-            obserwacje.append(_obserwacja(
-                "trend_spalania", "uwaga", "spalanie", "Zużycie w górę",
-                f"Ostatnie {trend['odcinkow_ostatnio']} odcinki: {teraz} wobec {wczesniej} "
-                f"wcześniej — zużycie wyższe o {procent}%.{ogon}",
-                80, "/",
-            ))
+        # Słowo „wyższe/niższe” opisuje SUROWĄ zmianę (te dwie liczby widać na
+        # ekranie), a tytuł i sam fakt pojawienia się obserwacji biorą się ze
+        # zmiany po odjęciu sezonu. Te dwie rzeczy mogą się rozjechać i tak ma
+        # być: spadek o 3% w maju to i tak wzrost, jeśli w maju zwykle spada o 9%.
+        if abs(trend["zmiana_proc"]) < 1:
+            surowa = "zużycie praktycznie bez zmian"
         else:
-            obserwacje.append(_obserwacja(
-                "trend_spalania", "dobry", "spalanie", "Zużycie w dół",
-                f"Ostatnie {trend['odcinkow_ostatnio']} odcinki: {teraz} wobec {wczesniej} "
-                f"wcześniej — zużycie niższe o {procent}%.{ogon}",
-                60, "/",
-            ))
+            surowa = (f"zużycie {'wyższe' if trend['zmiana_proc'] > 0 else 'niższe'} "
+                      f"o {procent}%")
+        sezon = opis_sezonowosci_trendu(trend)
+        tresc = (f"Ostatnie {trend['odcinkow_ostatnio']} odcinki: {teraz} wobec {wczesniej} "
+                 f"wcześniej — {surowa}." + (f" {sezon}" if sezon else "") + ogon)
+        w_gore = trend["kierunek"] == "wzrost"
+        obserwacje.append(_obserwacja(
+            "trend_spalania", "uwaga" if w_gore else "dobry", "spalanie",
+            "Zużycie w górę" if w_gore else "Zużycie w dół",
+            tresc, 80 if w_gore else 60, "/",
+        ))
 
     # 4. Prognoza roczna i zestawienie z poprzednim rokiem.
     prognoza = prognoza_kosztow(auto_id, dzis)
@@ -860,18 +1005,26 @@ def obserwacje_analityczne(auto_id, limit=None):
 
 
 __all__ = [
+    "MAX_LAT_SEZONU",
+    "MIN_ODCINKOW_SEZONU",
     "OKRESY_BUDZETU",
     "PROG_ISTOTNOSCI_TRENDU",
+    "PROG_POKAZANIA_SEZONU",
     "PROG_UWAGI_BUDZETU",
+    "TOLERANCJA_SEZONU_DNI",
     "_DYSTANSE_ODNIESIENIA",
     "_granice_okresu",
     "_kwota_txt",
     "_obserwacja",
     "_porownanie_dystansu",
+    "_przesun_o_lata",
+    "_sezonowosc_zmiany",
+    "_srednia_okna",
     "analizuj_trend_spalania",
     "koszt_trendu_rocznie",
     "lata_z_danymi",
     "obserwacje_analityczne",
+    "opis_sezonowosci_trendu",
     "pobierz_budzety",
     "pobierz_zasieg_na_baku",
     "podsumowanie_roku",
