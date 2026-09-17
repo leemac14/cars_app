@@ -24,7 +24,17 @@ from .statystyki import pobierz_serie_spalania
 # db.py nie zna Fleta (korzysta z niego też eksport PDF i synchronizacja), więc
 # obserwacje wracają stąd z KLUCZEM ikony i tonem, a nie z gotową kontrolką.
 
-OKRESY_BUDZETU = {"miesiac": "Miesięcznie", "rok": "Rocznie"}
+OKRESY_BUDZETU = {"miesiac": "Miesięcznie", "30dni": "Ostatnie 30 dni", "rok": "Rocznie"}
+
+
+# Okres RUCHOMY: okno kończy się dzisiaj i przesuwa się z każdym dniem — najstarszy
+# dzień z niego wypada. Miesiąc kalendarzowy pasuje do pensji, ale nie do kosztów
+# auta: dwa tankowania i przegląd potrafią wypaść w jednym tygodniu na przełomie
+# miesiąca i w żadnym z nich nie wyglądać groźnie. Takie okno jest CAŁE za nami,
+# więc nie ma w nim czego prognozować ani ile „okresu minęło” — pasek pokazuje samą
+# sumę, bez znacznika upływu i bez daty przekroczenia.
+OKRESY_RUCHOME = {"30dni"}
+DNI_OKNA_BUDZETU = 30
 
 
 # Od ilu procent limitu budżet przestaje być „w normie”. 80% wybrane świadomie:
@@ -123,11 +133,15 @@ def zapisz_budzet(auto_id, kategoria, okres, kwota):
 
 
 def _granice_okresu(okres, dzis=None):
-    """(początek, koniec, dni_okresu, dni_minione) bieżącego miesiąca albo roku.
+    """(początek, koniec, dni_okresu, dni_minione) bieżącego okresu budżetu.
     'dni_minione' liczy dzisiejszy dzień jako miniony — inaczej pierwszego dnia
-    okresu tempo wydatków dzieliłoby przez zero."""
+    okresu tempo wydatków dzieliłoby przez zero. Okno ruchome kończy się dzisiaj,
+    więc minione = całość — i właśnie dlatego nic w nim nie prognozujemy."""
     dzis = dzis or datetime.now().date()
-    if okres == "rok":
+    if okres in OKRESY_RUCHOME:
+        poczatek = dzis - timedelta(days=DNI_OKNA_BUDZETU - 1)
+        koniec = dzis
+    elif okres == "rok":
         poczatek = date_cls(dzis.year, 1, 1)
         koniec = date_cls(dzis.year, 12, 31)
     else:
@@ -144,7 +158,8 @@ def _granice_okresu(okres, dzis=None):
 def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
     """Stan wykorzystania każdego ustawionego limitu. Dla każdego zwraca m.in.:
     wydano, limit, procent, pozostalo, tempo (prognoza całego okresu przy
-    dotychczasowym tempie), status ('ok' / 'uwaga' / 'przekroczony') oraz
+    dotychczasowym tempie), 'ruchomy' (okno kończące się dzisiaj — bez prognozy),
+    status ('ok' / 'uwaga' / 'przekroczony') oraz
     'dzien_przekroczenia' — datę, na którą wypada wyczerpanie limitu, jeśli
     tempo się utrzyma. To ostatnie jest sednem: ostrzeżenie ma przyjść ZANIM
     limit padnie, a nie w dniu, w którym już nic się nie da zrobić."""
@@ -157,6 +172,7 @@ def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
     wynik = []
 
     for b in budzety:
+        ruchomy = b["okres"] in OKRESY_RUCHOME
         poczatek, koniec, dni_okresu, dni_minione = _granice_okresu(b["okres"], dzis)
         if b["okres"] not in cache_kosztow:
             cache_kosztow[b["okres"]] = koszty_w_okresie(auto_id, poczatek, dzis)
@@ -165,7 +181,9 @@ def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
 
         procent = (wydano / limit * 100) if limit > 0 else 0.0
         na_dzien = wydano / dni_minione
-        tempo = na_dzien * dni_okresu
+        # W oknie ruchomym „ile wyjdzie do końca okresu” to dokładnie tyle, ile już
+        # wydano — koniec okna to dzisiaj, więc ekstrapolacja nie ma czego liczyć.
+        tempo = wydano if ruchomy else na_dzien * dni_okresu
 
         if wydano > limit:
             status = "przekroczony"
@@ -175,7 +193,7 @@ def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
             status = "ok"
 
         dzien_przekroczenia = None
-        if status != "przekroczony" and na_dzien > 0 and limit > 0:
+        if not ruchomy and status != "przekroczony" and na_dzien > 0 and limit > 0:
             dni_do_limitu = limit / na_dzien
             if dni_do_limitu <= dni_okresu:
                 kandydat = poczatek + timedelta(days=int(dni_do_limitu))
@@ -187,6 +205,7 @@ def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
             "etykieta_kategorii": KATEGORIE_BUDZETU[b["kategoria"]],
             "okres": b["okres"],
             "etykieta_okresu": OKRESY_BUDZETU[b["okres"]],
+            "ruchomy": ruchomy,
             "limit": limit,
             "wydano": wydano,
             "pozostalo": limit - wydano,
@@ -1025,6 +1044,7 @@ __all__ = [
     "lata_z_danymi",
     "obserwacje_analityczne",
     "opis_sezonowosci_trendu",
+    "OKRESY_RUCHOME",
     "pobierz_budzety",
     "pobierz_zasieg_na_baku",
     "podsumowanie_roku",

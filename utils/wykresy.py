@@ -101,7 +101,9 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
     """Wykorzystanie jednego limitu. Poza samym paskiem rysujemy pionowy
     ZNACZNIK UPŁYWU OKRESU — miejsce, w którym wypadałoby być dzisiaj, gdyby
     wydawać równo. Bez niego „62% limitu” nic nie mówi: w połowie miesiąca to
-    kłopot, a 28. dnia powód do zadowolenia."""
+    kłopot, a 28. dnia powód do zadowolenia. Okno ruchome („ostatnie 30 dni”)
+    znacznika nie dostaje — całe leży w przeszłości, więc kreska stałaby zawsze
+    na końcu paska i nie mówiłaby nic."""
     scena = scena or ScenaWejscia(wlaczona=False)
     scena.nastepny_wiersz()
     kolor = {
@@ -111,6 +113,7 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
     }.get(stan.get("status"), ft.Colors.PRIMARY)
 
     udzial = min(1.0, (stan["procent"] or 0) / 100)
+    ruchomy = bool(stan.get("ruchomy"))
     udzial_czasu = min(1.0, stan["dni_minione"] / stan["dni_okresu"]) if stan.get("dni_okresu") else 0
 
     WYSOKOSC = 10
@@ -125,20 +128,22 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
     reszta_paska = ft.Container(expand=max(1, int((1 - udzial) * 1000)))
     scena.udzial(wypelnienie, reszta_paska, udzial)
 
-    pasek = ft.Stack([
+    warstwy = [
         ft.Container(
             height=WYSOKOSC, border_radius=RADIUS["xs"],
             bgcolor=tlo_toru(page),
         ),
         ft.Row([wypelnienie, reszta_paska], spacing=0),
+    ]
+    if not ruchomy:
         # Znacznik „gdzie powinieneś być dzisiaj” — cienka kreska w poprzek paska.
-        ft.Row([
+        warstwy.append(ft.Row([
             ft.Container(expand=max(1, int(udzial_czasu * 1000))),
             ft.Container(width=2, height=WYSOKOSC + 6, bgcolor=ft.Colors.ON_SURFACE,
                          border_radius=1, tooltip="Tyle okresu już minęło"),
             ft.Container(expand=max(1, int((1 - udzial_czasu) * 1000))),
-        ], spacing=0, alignment=ft.MainAxisAlignment.START),
-    ], height=WYSOKOSC + 6)
+        ], spacing=0, alignment=ft.MainAxisAlignment.START))
+    pasek = ft.Stack(warstwy, height=WYSOKOSC + 6)
 
     naglowek = ft.Row([
         ft.Text(stan["etykieta_kategorii"], size=FS["body_strong"], weight="bold", expand=True,
@@ -159,6 +164,11 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
         elif stan.get("dzien_przekroczenia"):
             podpis = (f"Zostało {formatuj_liczba(stan['pozostalo'])} {symbol_waluty()}"
                       f" • w tym tempie limit padnie {stan['dzien_przekroczenia']}")
+        elif ruchomy:
+            # Okno kończy się dzisiaj, więc nie ma „ile dni jeszcze zostało” —
+            # jest tylko tyle, ile do limitu brakuje w ostatnich 30 dniach.
+            podpis = (f"Zostało {formatuj_liczba(stan['pozostalo'])} {symbol_waluty()}"
+                      f" do limitu na {stan['etykieta_okresu'].lower()}")
         else:
             podpis = (f"Zostało {formatuj_liczba(stan['pozostalo'])} {symbol_waluty()}"
                       f" na {stan['dni_pozostalo']} dni ({stan['etykieta_okresu'].lower()})")

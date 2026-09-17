@@ -515,7 +515,7 @@ class MiksinKokpitu:
                 width=SZER_KAFLA + 80, padding=15,
                 **utils.powierzchnia(self._page, "kafel", stan=stan_budzetu),
                 ink=True, on_click=lambda e: utils.przejdz(self._page, "/budzet"),
-                tooltip=f"Budżet {stan['etykieta_okresu'].lower()} — dotknij, aby zmienić limity",
+                tooltip=f"Budżet: {stan['etykieta_okresu'].lower()} — dotknij, aby zmienić limity",
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.SAVINGS, size=15, color=ft.Colors.PRIMARY),

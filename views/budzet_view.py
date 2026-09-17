@@ -4,6 +4,15 @@ import sync
 import utils
 
 
+# Ikona karty okresu. Okno ruchome dostaje zegar z historią — to jedyny okres,
+# który nie ma pierwszego dnia w kalendarzu.
+IKONY_OKRESU = {
+    "miesiac": ft.Icons.CALENDAR_MONTH,
+    "30dni": ft.Icons.HISTORY,
+    "rok": ft.Icons.CALENDAR_TODAY,
+}
+
+
 class BudzetView(ft.View):
     """Limity wydatków pojazdu. Jeden ekran łączy dwie rzeczy, które zwykle są
     rozdzielone: USTAWIENIE limitu i JEGO STAN. Bez tego drugiego ustawianie
@@ -68,8 +77,9 @@ class BudzetView(ft.View):
 
             elementy.append(utils.karta_formularza(
                 wiersze,
-                f"Limit {etykieta_okresu.lower()}",
-                ft.Icons.CALENDAR_MONTH if okres == "miesiac" else ft.Icons.CALENDAR_TODAY,
+                (f"Limit na {etykieta_okresu.lower()}" if okres in db.OKRESY_RUCHOME
+                 else f"Limit {etykieta_okresu.lower()}"),
+                IKONY_OKRESU.get(okres, ft.Icons.CALENDAR_TODAY),
                 domyslnie_otwarte=(okres == "miesiac" or any(k[1] == okres for k in ustawione)),
                 page=page,
             ))
@@ -88,7 +98,8 @@ class BudzetView(ft.View):
         tekst = (
             "Limit pilnuje wydatków tego pojazdu. „Wszystko razem” liczy paliwo, "
             "serwis i inne koszty łącznie — możesz ustawić sam limit zbiorczy, same "
-            "szczegółowe albo jedno i drugie naraz."
+            "szczegółowe albo jedno i drugie naraz. Okres wybierasz sam: miesiąc, "
+            "rok albo ruchome okno ostatnich 30 dni."
         )
         if wspolny_id:
             tekst += " Pojazd jest współdzielony, więc limit obowiązuje obie osoby."
@@ -111,11 +122,14 @@ class BudzetView(ft.View):
                     utils.podpis("Jak liczony jest stan"),
                 ], spacing=6),
                 ft.Text(
-                    "Wydatki sumują się od pierwszego dnia okresu do dzisiaj. Wizyta zbiorcza "
-                    "wchodzi jako całość, a jej pozycje nie liczą się drugi raz. Ostrzeżenie "
+                    "Miesiąc i rok sumują się od pierwszego dnia okresu do dzisiaj: ostrzeżenie "
                     "zapala się przy 80% limitu ALBO wtedy, gdy dotychczasowe tempo wskazuje "
                     "na przekroczenie przed końcem okresu — czarna kreska na pasku pokazuje, "
-                    "ile okresu już minęło.",
+                    "ile okresu już minęło. „Ostatnie 30 dni” to okno kończące się dzisiaj: "
+                    "z każdym dniem najstarszy dzień z niego wypada, więc na przełomie miesiąca "
+                    "nic się nie zeruje. Takie okno jest całe za nami, dlatego nie ma na nim "
+                    "kreski ani prognozy — pokazuje samą sumę. Wizyta zbiorcza wchodzi wszędzie "
+                    "jako całość, a jej pozycje nie liczą się drugi raz.",
                     size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
             ], spacing=4),
