@@ -264,7 +264,8 @@ class PojazdView(ft.View):
         if m.get("data_zakupu"):
             opis = [f"kupione {m['data_zakupu']}"]
             if m.get("lata_posiadania"):
-                opis.append(f"masz je {utils.formatuj_liczba(m['lata_posiadania'], 1)} roku")
+                opis.append(f"{'miałeś' if m.get('zamkniete_na') else 'masz'} je "
+                            f"{utils.formatuj_liczba(m['lata_posiadania'], 1)} roku")
             if m.get("km_u_ciebie"):
                 opis.append(f"przejechałeś {utils.formatuj_liczba(m['km_u_ciebie'], 0)} km")
             wiersze.append(ft.Text(" • ".join(opis), size=utils.FS["body"],
@@ -284,7 +285,8 @@ class PojazdView(ft.View):
                                         f"{utils.formatuj_liczba(m['cena_zakupu'])} {waluta}"))
         if m.get("wartosc_szacowana") is not None:
             wiersze.append(wiersz_kwoty(
-                "Wartość dziś", f"{utils.formatuj_liczba(m['wartosc_szacowana'])} {waluta}",
+                "Cena sprzedaży" if m.get("zamkniete_na") else "Wartość dziś",
+                f"{utils.formatuj_liczba(m['wartosc_szacowana'])} {waluta}",
                 sufiks=(f"{utils.formatuj_liczba(m['procent_wartosci'], 0)}% ceny"
                         if m.get("procent_wartosci") else None)))
         if m.get("utrata_wartosci") is not None:
@@ -309,6 +311,15 @@ class PojazdView(ft.View):
             wiersze.append(wiersz_kwoty(
                 "Miesięcznie", f"{utils.formatuj_liczba(m['koszt_miesieczny'])} {waluta}",
                 ft.Colors.PRIMARY))
+
+        if m.get("zamkniete_na"):
+            wiersze.append(ft.Row([
+                ft.Icon(ft.Icons.LOCK_CLOCK, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(
+                    f"Rachunek zamknięty {m['zamkniete_na']} — po sprzedaży wydatki i czas "
+                    "posiadania przestają rosnąć, więc te liczby już się nie zmienią.",
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+            ], spacing=6))
 
         if m.get("koszt_km_pelny") and m.get("utrata_na_km"):
             wiersze.append(ft.Row([

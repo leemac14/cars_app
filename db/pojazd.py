@@ -205,6 +205,20 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
         return None
 
     dzis = datetime.now().date()
+
+    # Sprzedane auto ma rachunek ZAMKNIĘTY. Utrata wartości domyka się ceną
+    # sprzedaży, ale czas leci dalej — a że dzielimy przez okres posiadania,
+    # koszt miesięczny sprzedanego auta malałby z każdym miesiącem sam z siebie,
+    # bez żadnego zdarzenia w danych. Dlatego wszystkie metryki liczymy na dzień
+    # sprzedaży: i licznik (wydatki), i mianownik (dni). Bez wpisanej daty nie ma
+    # czym domknąć, więc zostaje dzisiaj; data z przyszłości (literówka) nie może
+    # rozciągać posiadania, więc jej też nie używamy.
+    sprzedany = str(dane.get("status") or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_SPRZEDANY
+    data_sprzedazy = parsuj_date(dane.get("data_sprzedazy")) if sprzedany else None
+    if data_sprzedazy == datetime.min.date() or (data_sprzedazy and data_sprzedazy > dzis):
+        data_sprzedazy = None
+    dzien_odniesienia = data_sprzedazy or dzis
+
     przebieg = pobierz_aktualny_przebieg(auto_id) or 0
 
     # --- wiek: pierwsza rejestracja jest dokładniejsza niż sam rocznik ---
@@ -213,10 +227,10 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
         data_rej = None
     rok_prod = parsuj_int_bezpiecznie(dane.get("rok_produkcji"), 0)
     if data_rej:
-        dni_wieku = (dzis - data_rej).days
-    elif ROK_MIN <= rok_prod <= dzis.year:
+        dni_wieku = (dzien_odniesienia - data_rej).days
+    elif ROK_MIN <= rok_prod <= dzien_odniesienia.year:
         # Bez dnia i miesiąca zakładamy środek roku — mniejszy błąd niż 1 stycznia.
-        dni_wieku = (dzis - date_cls(rok_prod, 7, 1)).days
+        dni_wieku = (dzien_odniesienia - date_cls(rok_prod, 7, 1)).days
     else:
         dni_wieku = None
     wiek_lat = (dni_wieku / 365.25) if dni_wieku and dni_wieku > 0 else None
@@ -229,7 +243,9 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
     data_zakupu = parsuj_date(dane.get("data_zakupu"))
     if data_zakupu == datetime.min.date():
         data_zakupu = None
-    dni_posiadania = (dzis - data_zakupu).days if data_zakupu else None
+    dni_posiadania = (dzien_odniesienia - data_zakupu).days if data_zakupu else None
+    if dni_posiadania is not None and dni_posiadania < 0:
+        dni_posiadania = None  # data sprzedaży przed zakupem albo zakup w przyszłości
     przebieg_zakupu = parsuj_int_bezpiecznie(dane.get("przebieg_zakupu"), 0)
     km_u_ciebie = (przebieg - przebieg_zakupu) if (przebieg_zakupu > 0 and przebieg > przebieg_zakupu) else None
     if km_u_ciebie is None and dni_posiadania and przebieg > 0 and not przebieg_zakupu:
@@ -247,7 +263,6 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
     # szacowana”, żeby koszt posiadania sprzedanego auta był rachunkiem
     # zamkniętym, a nie prognozą.
     cena_sprzedazy = _liczba_lub_none(dane.get("cena_sprzedazy"))
-    sprzedany = str(dane.get("status") or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_SPRZEDANY
     wartosc = cena_sprzedazy if (sprzedany and cena_sprzedazy is not None) else _liczba_lub_none(dane.get("wartosc_szacowana"))
     utrata = (cena_zakupu - wartosc) if (cena_zakupu and wartosc is not None) else None
     utrata_rocznie = (
@@ -258,7 +273,10 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
     procent_wartosci = (wartosc / cena_zakupu * 100) if (cena_zakupu and wartosc is not None) else None
 
     # --- koszt posiadania: wydatki + utrata wartości ---
-    wydatki = koszty_w_okresie(auto_id, data_zakupu, dzis)["razem"] if data_zakupu else koszty_w_okresie(auto_id)["razem"]
+    wydatki = (
+        koszty_w_okresie(auto_id, data_zakupu, dzien_odniesienia)["razem"] if data_zakupu
+        else koszty_w_okresie(auto_id, None, data_sprzedazy)["razem"]
+    )
     koszt_calkowity = wydatki + (utrata or 0)
     koszt_km_pelny = (koszt_calkowity / km_u_ciebie) if km_u_ciebie else None
     koszt_miesieczny = (
@@ -270,6 +288,7 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
         "przebieg": przebieg,
         "sprzedany": sprzedany,
         "data_sprzedazy": dane.get("data_sprzedazy"),
+        "zamkniete_na": dzien_odniesienia.strftime("%d.%m.%Y") if data_sprzedazy else None,
         "cena_sprzedazy": cena_sprzedazy,
         "wiek_lat": wiek_lat,
         "dni_wieku": dni_wieku,
