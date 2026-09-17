@@ -260,7 +260,7 @@ def pobierz_widgety_kokpitu(auto_id=None) -> list[str]:
 
 def zapisz_widgety_kokpitu(lista_id, auto_id=None):
     """Zapisuje ZESTAW oraz KOLEJNOŚĆ widżetów kokpitu — lista wchodzi tu już
-    ułożona tak, jak ma wyglądać karuzela. Duplikaty i nieznane ID odpadają.
+    ułożona tak, jak ma wyglądać siatka kokpitu. Duplikaty i nieznane ID odpadają.
     Z auto_id zapis odpina pojazd od wspólnego układu; bez niego zmienia układ
     wspólny (i tym samym wszystkie auta, które nadal go dziedziczą)."""
     poprawne, widziane = [], set()

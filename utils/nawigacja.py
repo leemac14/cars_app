@@ -768,7 +768,7 @@ def pasek_sekcji(page: ft.Page, state, identyfikatory, akcje=None, liczniki=None
     """Wstęga kart sekcji. PRZEWIJA się w bok — przy szerokości karty (190 px)
     na telefonie i tak mieści się najwyżej jedna w rzędzie, więc zawijanie
     (wrap) zamieniało pasek w kolumnę pojedynczych kart zamiast rzędu obok
-    siebie. Ten sam wzorzec co karuzela kokpitu (pasek_przewijany)."""
+    siebie. Ten sam wzorzec co mapa cieplna aktywności (pasek_przewijany)."""
     karty = [
         karta_sekcji(page, state, EKRANY_WG_ID[eid], akcje, liczniki, szerokosc)
         for eid in identyfikatory if eid in EKRANY_WG_ID

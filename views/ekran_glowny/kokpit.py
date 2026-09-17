@@ -1,4 +1,4 @@
-"""Kokpit: kafelki wybrane przez użytkownika, karuzela/układanie i siatka skrótów."""
+"""Kokpit: kafelki wybrane przez użytkownika w siatce, tryb układania i skróty."""
 
 import calendar
 import db
@@ -9,15 +9,29 @@ from datetime import datetime
 from state import MIESIACE_NAZWY
 
 
-class MiksinKokpitu:
-    """Kokpit: kafelki wybrane przez użytkownika, karuzela/układanie i siatka skrótów."""
+# Ile miejsca potrzebuje kafelek kokpitu. Kiedyś była to jego NARYSOWANA
+# szerokość w karuzeli; dziś budowniczy nadal deklarują nią swoje potrzeby,
+# a siatka zamienia deklarację na rozmiar komórki (patrz _kokpit_siatka).
+SZER_KAFLA = 160
+# Powyżej tego progu kafelek dostaje w siatce dwie komórki zamiast jednej.
+PROG_KAFLA_2X1 = SZER_KAFLA + 40
 
-    # ================= KOKPIT / DASHBOARD STARTOWY (karuzela pozioma) =================
+# Dwa rozmiary kafelka w dwunastokolumnowej siatce ResponsiveRow: 1×1 i 2×1.
+# Telefon dzieli wiersz na dwie komórki, tablet na trzy, szeroki ekran na cztery.
+KOL_KAFLA_1X1 = {"xs": 6, "sm": 4, "md": 3}
+KOL_KAFLA_2X1 = {"xs": 12, "sm": 8, "md": 6}
+
+
+class MiksinKokpitu:
+    """Kokpit: kafelki wybrane przez użytkownika w siatce, tryb układania i skróty."""
+
+    # ================= KOKPIT / DASHBOARD STARTOWY (siatka kafelków) =================
     def _buduj_kokpit(self):
         """Mini-dashboard nad listą podzespołów, złożony z widżetów wybranych przez
         użytkownika w Ustawieniach (patrz db.KOKPIT_WIDGETY / db.pobierz_widgety_kokpitu).
-        Renderowany jako pozioma, przewijalna karuzela (ft.Row scroll=AUTO) z kafelkami
-        o stałej szerokości — zamiast układu kolumnowego z parowaniem "połówek".
+        Renderowany jako siatka (ft.ResponsiveRow) z kafelkami w dwóch rozmiarach
+        — 1×1 i 2×1 — zamiast poziomej karuzeli, która chowała część kafelków za
+        krawędzią ekranu (patrz _kokpit_siatka).
 
         Układ jest WŁASNOŚCIĄ POJAZDU: auto służbowe może mieć inne kafelki niż
         prywatne. Pojazd bez własnego układu dziedziczy wspólny (patrz
@@ -35,7 +49,6 @@ class MiksinKokpitu:
         if not wlaczone:
             return ft.Container()
 
-        SZER_KAFLA = 160
         dzisiaj = datetime.now()
 
         # --- Dane wspólne, liczone tylko gdy faktycznie potrzebne przez wybrane widżety ---
@@ -806,7 +819,7 @@ class MiksinKokpitu:
         self.kokpit_kontener = ft.Container(content=self._zawartosc_kokpitu())
         return self.kokpit_kontener
 
-    # ----- Przełączanie kokpitu: karuzela <-> układanie kafelków -----
+    # ----- Przełączanie kokpitu: siatka <-> układanie kafelków -----
     def _zawartosc_kokpitu(self):
         """Zawartość kontenera kokpitu zależna od trybu. Kolejność bierzemy za
         każdym razem z bazy, więc po przeciągnięciu kafelka wystarczy odświeżyć
@@ -816,7 +829,7 @@ class MiksinKokpitu:
             return ft.Container()
         if self.kokpit_edycja:
             return self._kokpit_ukladanie(wlaczone)
-        return self._kokpit_karuzela(wlaczone)
+        return self._kokpit_siatka(wlaczone)
 
     def _odswiez_kokpit(self):
         if not self.kokpit_kontener:
@@ -853,12 +866,35 @@ class MiksinKokpitu:
         self.kokpit_edycja = bool(wlaczony)
         self._odswiez_kokpit()
 
-    def _kokpit_karuzela(self, wlaczone):
-        """Normalny tryb: pozioma karuzela kafelków. Długie przytrzymanie
-        dowolnego kafelka (albo przycisk „Ułóż”) wchodzi w tryb układania."""
+    def _kokpit_siatka(self, wlaczone):
+        """Normalny tryb: siatka kafelków. Długie przytrzymanie dowolnego kafelka
+        (albo kafelek „Ułóż”) wchodzi w tryb układania.
+
+        Siatka zamiast poziomej karuzeli. Karuzela chowała część kafelków za
+        krawędzią ekranu, a Flutter nie przewija zawartości myszą — stąd brał się
+        wymuszony, zawsze widoczny suwak, który mówił tylko tyle, że coś tam
+        jeszcze jest. Siatka pokazuje wszystkie kafelki naraz i zamienia ruch
+        w bok na zwykłe przewijanie ekranu w dół.
+
+        Szerokość komórki liczy Flet, a nie my — z dokładnie tego powodu, co
+        w siatce skrótów (patrz _buduj_skroty): przy PIERWSZYM uruchomieniu
+        aplikacji `page.width` nie jest jeszcze znane, więc dzielenie szerokości
+        ekranu w Pythonie dawało jeden kafelek w wierszu aż do zmiany rozmiaru okna.
+
+        Rozmiar kafelka bierze się z szerokości, którą budowniczy sam sobie
+        zadeklarował: kafelek z iskrą, słupkami albo dłuższym tekstem prosił
+        o więcej niż SZER_KAFLA i dostaje 2×1, pozostałe 1×1. Nowy widżet nie
+        musi się więc dopisywać do żadnej listy rozmiarów, a kafelek, który bywa
+        i z iskrą, i bez niej („Wydatki tego miesiąca”), zmienia rozmiar razem
+        ze swoją zawartością."""
         kafelki = []
         for wid in wlaczone:
             kafel = self._kokpit_budowniczy[wid]()
+            # Deklarowana szerokość zostaje tylko miarą potrzeb — o tym, ile
+            # kafelek naprawdę zajmie, decyduje komórka siatki.
+            potrzebna = getattr(kafel, "width", None) or SZER_KAFLA
+            kafel.width = None
+            kafel.col = KOL_KAFLA_2X1 if potrzebna > PROG_KAFLA_2X1 else KOL_KAFLA_1X1
             # Wszystkie widżety zwracają ft.Container, więc uchwyt long-press
             # dopinamy z zewnątrz zamiast powtarzać go w każdym budowniczym.
             try:
@@ -870,19 +906,21 @@ class MiksinKokpitu:
         if not kafelki:
             return ft.Container()
 
-        przycisk_ukladania = ft.Container(
-            width=44, height=44, border_radius=22,
-            bgcolor=utils.tlo_karty(self._page, poziom=1),
-            alignment=ft.Alignment.CENTER,
-            tooltip="Ułóż kafelki (możesz też przytrzymać kafelek)",
+        # Wejście w układanie jako ostatnia komórka siatki, a nie okrągły guzik
+        # doklejony za karuzelą: siatka nie ma „końca”, za którym dałoby się coś
+        # doczepić, a kafelek w rytmie pozostałych czyta się jak część kokpitu.
+        kafelki.append(ft.Container(
+            col=KOL_KAFLA_1X1, padding=15,
+            **utils.powierzchnia(self._page, "kafel"),
             ink=True, on_click=lambda e: self._ustaw_tryb_ukladania(True),
-            content=ft.Icon(ft.Icons.DRAG_INDICATOR, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
-        )
+            tooltip="Ułóż kafelki (możesz też przytrzymać kafelek)",
+            content=ft.Row([
+                ft.Icon(ft.Icons.DRAG_INDICATOR, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
+                utils.etykieta("Ułóż kafelki", expand=True),
+            ], spacing=6),
+        ))
 
-        # Suwak ZAWSZE widoczny i z własnym marginesem pod kafelkami: przy
-        # ukrytym pasku nic nie mówiło, że karuzela ma ciąg dalszy, a myszą nie
-        # dało się jej przeciągnąć (Flutter nie przewija zawartości kursorem).
-        return utils.pasek_przewijany(kafelki + [przycisk_ukladania], spacing=10)
+        return ft.ResponsiveRow(kafelki, spacing=10, run_spacing=10)
 
     def _kokpit_ukladanie(self, wlaczone):
         """Tryb układania: kafelki zamieniają się w przeciągalne „klocki”

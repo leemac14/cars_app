@@ -334,9 +334,10 @@ def pasek_przewijany(kontrolki, spacing=10, miejsce_na_suwak=MIEJSCE_NA_SUWAK,
     szerokich tabelach: treść siedzi w kontenerze z dolnym paddingiem WEWNĄTRZ
     przewijanego wiersza, więc suwak ląduje w tym marginesie, a nie na kaflach.
 
-    Używać tylko tam, gdzie zawartość naprawdę musi jechać w bok (karuzela
-    kokpitu, mapa cieplna). Paski filtrów i chipów lepiej ZAWIJAĆ — wtedy nie ma
-    czego przewijać i nic nie ginie za krawędzią."""
+    Używać tylko tam, gdzie zawartość naprawdę musi jechać w bok (mapa cieplna,
+    pasek kart sekcji). Paski filtrów i chipów lepiej ZAWIJAĆ — wtedy nie ma
+    czego przewijać i nic nie ginie za krawędzią. Kokpit z tego zrezygnował:
+    kafelki chowające się za krawędzią zamieniono na siatkę (ResponsiveRow)."""
     if not kontrolki:
         return ft.Container()
     return ft.Row(

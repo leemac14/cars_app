@@ -52,7 +52,7 @@ class MainView(
         self.karty_ref = {}   # Przechowuje referencje do kontenerów kart, by je podświetlać
         self.uzyj_wirtualizacji = False  # True gdy w tej zakładce renderujemy przewijaną listę kart
         self.kokpit_edycja = False       # True = kafelki kokpitu można przeciągać (patrz _buduj_kokpit)
-        self.kokpit_kontener = None      # kontener przełączany między karuzelą a trybem układania
+        self.kokpit_kontener = None      # kontener przełączany między siatką a trybem układania
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
         self._scena_zakladki = None      # animacja wejścia aktywnej zakładki (utils.ScenaWejscia)
         self.przelacznik_zakladek = None # zawartość zakładki żyje w nim (patrz przelacz_zakladke)
