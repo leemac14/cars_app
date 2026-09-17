@@ -119,6 +119,11 @@ class FormularzAutoView(ft.View):
         self.e_poj = ft.TextField(label="Pojemność silnika (cm³)", value=poj_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_moc = ft.TextField(label="Moc silnika (KM)", value=moc_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_pal = ft.Dropdown(label="Typ paliwa", options=[ft.DropdownOption(key=x, text=x) for x in db.TYPY_PALIWA], value=pal_val, **utils.styl_dropdown())
+        # Typ paliwa Z WEJŚCIA do formularza — przy zapisie porównujemy go
+        # z wybranym. Montaż instalacji gazowej w prowadzonym już aucie to
+        # jedyny moment, w którym wolno zaproponować brakujące podzespoły.
+        self._typ_paliwa_przy_wejsciu = pal_val
+        self.odrzucone_podzespoly = set()
         self.e_skrz = ft.Dropdown(label="Skrzynia biegów", options=[ft.DropdownOption(key=x, text=x) for x in ["Manualna", "Automatyczna"]], value=skrz_val, **utils.styl_dropdown())
         # Nadwozie służy przede wszystkim ODZNACE w selektorze pojazdów: sylwetka
         # w kolorze auta pozwala rozpoznać je bez czytania nazwy. Puste = ogólna
@@ -280,6 +285,68 @@ class FormularzAutoView(ft.View):
             [ft.Text("Ten kolor będzie używany w całym interfejsie, gdy ten pojazd jest aktywny.", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT), self.k_kolor],
             "Kolor interfejsu dla tego pojazdu", ft.Icons.PALETTE
         )
+        # --- LISTA STARTOWA PODZESPOŁÓW (tylko nowy pojazd) ---
+        # Dotąd zakładała się po cichu przy zapisie i to wystarczało, bo była
+        # jedna, benzynowa. Odkąd skład zależy od napędu, trzeba go pokazać
+        # PRZED zapisem: inaczej użytkownik nie wie ani co dostał, ani czego
+        # w jego aucie brakuje. Odklikanie zostaje zapamiętane po kluczu nazwy,
+        # więc przełączenie napędu w tę i z powrotem go nie gubi.
+        self.pasek_podzespolow = ft.Container()
+        self.podpis_podzespolow = ft.Text("", size=utils.FS["caption"],
+                                          color=ft.Colors.ON_SURFACE_VARIANT)
+
+        def opis_terminu(miesiace):
+            """„co 10 lat” czyta się lepiej niż „co 120 mies.”, a to jedyne
+            miejsce, w którym ten interwał widać przed zapisem."""
+            if not miesiace:
+                return ""
+            if miesiace % 12:
+                return f" · co {miesiace} mies."
+            lata = miesiace // 12
+            if lata == 1:
+                return " · co rok"
+            return f" · co {lata} lata" if lata <= 4 else f" · co {lata} lat"
+
+        def chip_podzespolu(nazwa, miesiace):
+            klucz = db.klucz_nazwy(nazwa)
+            wybrany = klucz not in self.odrzucone_podzespoly
+
+            def przelacz(e=None):
+                if klucz in self.odrzucone_podzespoly:
+                    self.odrzucone_podzespoly.discard(klucz)
+                else:
+                    self.odrzucone_podzespoly.add(klucz)
+                na_zmiane_paliwa()
+
+            return ft.Container(
+                on_click=przelacz,
+                padding=ft.Padding(10, 6, 10, 6),
+                border_radius=utils.RADIUS["pill"],
+                bgcolor=ft.Colors.with_opacity(
+                    0.12 if wybrany else 0.05,
+                    ft.Colors.PRIMARY if wybrany else ft.Colors.ON_SURFACE),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.CHECK if wybrany else ft.Icons.ADD, size=13,
+                            color=ft.Colors.PRIMARY if wybrany else ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(f"{nazwa}{opis_terminu(miesiace)}", size=utils.FS["caption"],
+                            color=ft.Colors.ON_SURFACE if wybrany else ft.Colors.ON_SURFACE_VARIANT),
+                ], spacing=4, tight=True),
+            )
+
+        def odswiez_podzespoly():
+            """Sama przebudowa kontrolek — odrysowanie robi na_zmiane_paliwa()
+            jednym page.update(), bo chipy siedzą w karcie tego samego ekranu."""
+            if self.auto_id:
+                return
+            pozycje = db.domyslne_zadania(self.e_pal.value)
+            self.pasek_podzespolow.content = utils.pasek_zawijany(
+                [chip_podzespolu(nazwa, miesiace) for nazwa, miesiace, _ in pozycje])
+            self.podpis_podzespolow.value = (
+                f"Zaznaczone {len(self._wybrane_podzespoly())} z {len(pozycje)} — "
+                "kliknij, żeby odrzucić albo przywrócić pozycję. Interwały "
+                "kilometrowe ustawisz potem przy podzespole."
+            )
+
         def na_zmiane_paliwa(e=None):
             widoczne = czy_naped_z_pradem(self.e_pal.value)
             for kontrolka in (self.e_bateria, self.e_zasieg, self.info_bateria, self.e_zlacze):
@@ -287,6 +354,7 @@ class FormularzAutoView(ft.View):
             widoczne_paliwo = czy_naped_z_paliwem(self.e_pal.value)
             for kontrolka in (self.e_bak, self.info_bak):
                 kontrolka.visible = widoczne_paliwo
+            odswiez_podzespoly()
             try:
                 self._page.update()
             except Exception:
@@ -316,8 +384,18 @@ class FormularzAutoView(ft.View):
             "Ubezpieczenie i pomoc", ft.Icons.SUPPORT_AGENT,
             domyslnie_otwarte=bool(ub_val or tel_val), page=page)
         k4 = utils.karta_formularza([self.e_not], "Uwagi", ft.Icons.NOTES)
-        
-        elementy = [k0, k1, kk, k2, k3, k7, k8, k5, k6, k4, utils.przyciski_akcji(page, "Zapisz pojazd", self.zapisz, "/")]
+
+        odswiez_podzespoly()
+        # Karta tylko przy zakładaniu pojazdu — auto już prowadzone ma swoją
+        # listę podzespołów i nie wolno jej podmieniać z formularza danych.
+        k2b = None if auto_id else utils.karta_formularza(
+            [self.podpis_podzespolow, self.pasek_podzespolow],
+            "Podzespoły na start", ft.Icons.BUILD_CIRCLE, domyslnie_otwarte=True, page=page)
+
+        elementy = [k0, k1, kk, k2]
+        if k2b is not None:
+            elementy.append(k2b)
+        elementy += [k3, k7, k8, k5, k6, k4, utils.przyciski_akcji(page, "Zapisz pojazd", self.zapisz, "/")]
         super().__init__(route=f"/auto/edytuj/{auto_id}" if auto_id else "/auto/nowy", padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO)
 
     async def rozkoduj_vin(self, e):
@@ -460,10 +538,52 @@ class FormularzAutoView(ft.View):
             self.e_ac.value, self.e_asy.value, self.e_gas.value, self.e_apt.value,
             self.e_gw.value, self.e_gwp.value,
             self.get_kolor(),
+            tuple(sorted(self.odrzucone_podzespoly)),
         )
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy            
+
+    def _wybrane_podzespoly(self):
+        """Pozycje listy startowej, których użytkownik nie odklikał. Przy edycji
+        istniejącego pojazdu pusto — tam podzespoły już są."""
+        if self.auto_id:
+            return []
+        return [poz for poz in db.domyslne_zadania(self.e_pal.value)
+                if db.klucz_nazwy(poz[0]) not in self.odrzucone_podzespoly]
+
+    def _zaproponuj_podzespoly_po_zmianie_napedu(self):
+        """Po zmianie typu paliwa w istniejącym aucie: propozycja dopisania
+        pozycji, których ten napęd wymaga, a pojazd ich nie ma.
+
+        Pyta, a nie dopisuje po cichu, bo to lista użytkownika. Niczego nie
+        usuwa — auto po demontażu instalacji gazowej ma prawo zachować historię
+        reduktora i butli. Dialog otwieramy PO przejściu na kokpit (dialog żyje
+        na page, nie w widoku), więc „Anuluj” zostawia użytkownika tam, gdzie
+        i tak by wylądował."""
+        if not self.auto_id:
+            return
+        nowy = db.klucz_nazwy(self.e_pal.value)
+        if not nowy or nowy == db.klucz_nazwy(self._typ_paliwa_przy_wejsciu):
+            return
+        brakujace = db.brakujace_podzespoly(self.auto_id, self.e_pal.value)
+        if not brakujace:
+            return
+
+        def dopisz():
+            ile = db.dodaj_domyslne_zadania(self.auto_id, brakujace)
+            utils.wypchnij_w_tle(self._page, self.auto_id, "podzespoły napędu")
+            utils.pokaz_komunikat(self._page, f"Dodano brakujące podzespoły ({ile}).")
+            utils.odswiez_ekran(self._page)
+
+        utils.potwierdz(
+            self._page,
+            f"Napęd: {self.e_pal.value}",
+            "Ten napęd ma podzespoły, których pojazd jeszcze nie ma: "
+            + ", ".join(poz[0] for poz in brakujace)
+            + ". Dodać je do listy serwisowej? Nic nie zniknie — dopisujemy tylko brakujące.",
+            dopisz, tekst_potwierdzenia="Dodaj", destrukcyjne=False,
+        )
 
     def zapisz(self, e):
         for pole in (self.e_marka, self.e_model, self.e_rok, self.e_vin):
@@ -562,6 +682,10 @@ class FormularzAutoView(ft.View):
             "zdjecie_glowne": nowe_zdj, "kolor_motywu": nowy_kolor,
         }
 
+        # Skład listy startowej czytamy PRZED zapisem — po przejściu na kokpit
+        # formularz już nie istnieje, a chipy są jego stanem.
+        pozycje_startowe = self._wybrane_podzespoly()
+
         try:
             with db.polacz_baze() as conn:
                 if self.auto_id:
@@ -581,17 +705,6 @@ class FormularzAutoView(ft.View):
                         tuple(dane_pojazdu.values())
                     )
                     n_id = cur.lastrowid
-                    # Elektryk nie ma oleju ani filtra oleju — startuje z listą
-                    # dopasowaną do swojego napędu.
-                    lista_startowa = (db.DOMYSLNE_ZADANIA_EV
-                                      if self.e_pal.value in db.TYPY_PALIWA_ELEKTRYCZNE
-                                      else db.DOMYSLNE_ZADANIA)
-                    for dz in lista_startowa:
-                        czy_opony = 1 if "opon" in dz.lower() or "kół" in dz.lower() else 0
-                        conn.execute(
-                            "INSERT INTO zadania (auto_id, nazwa, dotyczy_opon) VALUES (?, ?, ?)", 
-                            (n_id, dz, czy_opony)
-                        )
                     self.state.auto_id = n_id
                     self.state.auto_nazwa = n
                 # --- ZAPIS KOREKTY PRZEBIEGU ---
@@ -610,10 +723,16 @@ class FormularzAutoView(ft.View):
 
             db.zatwierdz_zalacznik(self.zg_val, przygotowany_zdj)
 
+            # Podzespoły POZA blokiem with — dodaj_domyslne_zadania otwiera
+            # własne połączenie do tego samego pliku bazy.
+            if not self.auto_id:
+                db.dodaj_domyslne_zadania(n_id, pozycje_startowe)
+
             utils.wypchnij_w_tle(self._page, self.state.auto_id, "pojazd")
 
             utils.przejdz(self._page, "/")
             utils.pokaz_komunikat(self._page, "Zapisano pojazd!")
+            self._zaproponuj_podzespoly_po_zmianie_napedu()
         except Exception as ex:
             db.anuluj_nowy_zalacznik(przygotowany_zdj)
             utils.pokaz_komunikat(self._page, f"Błąd zapisu pojazdu: {ex}", utils.KOLOR_STATUS["error"])

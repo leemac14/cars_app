@@ -168,7 +168,7 @@ class FormularzWizytyView(ft.View):
 
     def _podpis_przycisku_pakietow(self):
         wlasne = len(db.pobierz_pakiety_wlasne(self.state.auto_id))
-        gotowe = len(db.PAKIETY_SERWISOWE)
+        gotowe = len(db.pakiety_dla_pojazdu(self.state.auto_id))
         if not wlasne:
             return f"{gotowe} gotowych — zaznacz kilka podzespołów naraz"
         wlasne_opis = "1 własny" if wlasne == 1 else f"{wlasne} własne" if wlasne < 5 else f"{wlasne} własnych"
@@ -306,10 +306,25 @@ class FormularzWizytyView(ft.View):
                 ),
             ))
 
+        # Gotowe zestawy przefiltrowane przez podzespoły TEGO pojazdu: zestaw
+        # obiecujący olej autu elektrycznemu jest gorszy od braku zestawu,
+        # a pakiet z rozrządem w aucie bez rozrządu zaznacza połowę siebie.
+        pakiety_gotowe = db.pakiety_dla_pojazdu(self.state.auto_id)
         zawartosc.append(ft.Container(height=10))
         zawartosc.append(utils.etykieta("GOTOWE ZESTAWY"))
-        for nazwa, pozycje in db.PAKIETY_SERWISOWE.items():
-            zawartosc.append(self._karta_pakietu(nazwa, list(pozycje), [przycisk_zastosuj(nazwa, list(pozycje))]))
+        if pakiety_gotowe:
+            for nazwa, pozycje in pakiety_gotowe:
+                zawartosc.append(self._karta_pakietu(nazwa, list(pozycje), [przycisk_zastosuj(nazwa, list(pozycje))]))
+        else:
+            zawartosc.append(ft.Container(
+                padding=ft.Padding(12, 14, 12, 14),
+                **utils.powierzchnia(self._page, "blok"),
+                content=ft.Text(
+                    "Żaden wbudowany zestaw nie pasuje do podzespołów tego pojazdu — "
+                    "ułóż własny z tego, co naprawdę mu robisz.",
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+            ))
 
         bs.content.content = ft.Column(zawartosc, tight=True, spacing=10)
         utils.otworz_dno(self._page, bs)

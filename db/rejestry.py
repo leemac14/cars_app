@@ -1,11 +1,13 @@
-"""Warsztaty, wydatki cykliczne, szablony tras i własne pakiety serwisowe."""
+"""Warsztaty, wydatki cykliczne, szablony tras, własne pakiety serwisowe
+i domyślne podzespoły zależne od napędu."""
 
 from date import parsuj_date
 from datetime import datetime, timedelta
 from typing import Any
 
 from .stale import (
-    KATEGORIA_INNE_DOMYSLNA, OKRES_ZMIANY_OPON_DNI,
+    DOMYSLNE_INTERWALY_MIESIACE, DOMYSLNE_ZADANIA, KATEGORIA_INNE_DOMYSLNA,
+    OKRES_ZMIANY_OPON_DNI, PAKIETY_SERWISOWE, PODZESPOLY_NAPEDU,
     TYPY_CYKLICZNE, TYP_CYKLICZNY_OPONY, TYP_CYKLICZNY_WYDATEK,
 )
 from .polaczenie import polacz_baze
@@ -308,15 +310,122 @@ def usun_pakiet_wlasny(pakiet_id):
         zarejestruj_nagrobek("pakiety_serwisowe_wlasne", zdalne)
 
 
+# ==================== DOMYŚLNE PODZESPOŁY NAPĘDU ====================
+
+def _czy_o_oponach(nazwa):
+    """Podzespół oznaczony flagą opon wchodzi w sezonową zmianę kompletu."""
+    tekst = str(nazwa or "").lower()
+    return "opon" in tekst or "kół" in tekst
+
+
+def domyslne_zadania(typ_paliwa) -> list[tuple[str, int | None, int]]:
+    """Lista startowa podzespołów dla napędu: (nazwa, interwał w miesiącach albo
+    None, dotyczy_opon). Składana z DOMYSLNE_ZADANIA i modułu z
+    PODZESPOLY_NAPEDU, więc pozycja wspólna dla wszystkich aut istnieje w kodzie
+    DOKŁADNIE RAZ — zamiast sześciu list, które trzeba poprawiać równolegle.
+
+    Nieznany albo pusty typ paliwa → sama baza, czyli dokładnie to, co robił
+    formularz, zanim napęd cokolwiek zmieniał."""
+    modul = PODZESPOLY_NAPEDU.get(str(typ_paliwa or "").strip(), {})
+    bez = {klucz_nazwy(x) for x in modul.get("usun", ())}
+    wynik, widziane = [], set()
+    for nazwa in list(DOMYSLNE_ZADANIA) + list(modul.get("dodaj", ())):
+        klucz = klucz_nazwy(nazwa)
+        if klucz in bez or klucz in widziane:
+            continue
+        widziane.add(klucz)
+        wynik.append((
+            normalizuj_nazwe(nazwa),
+            DOMYSLNE_INTERWALY_MIESIACE.get(nazwa),
+            1 if _czy_o_oponach(nazwa) else 0,
+        ))
+    return wynik
+
+
+def brakujace_podzespoly(auto_id, typ_paliwa) -> list[tuple[str, int | None, int]]:
+    """Pozycje z listy startowej napędu, których pojazd jeszcze NIE ma.
+
+    Instalacja gazowa powstaje zwykle po zakupie, a lista startowa wykonuje się
+    tylko raz, przy zakładaniu pojazdu — bez tego auto przerobione na LPG
+    zostaje z listą benzynową na zawsze. Porównanie po kluczu nazwy, więc własna
+    pisownia użytkownika („filtr paliwa ”) nie rodzi duplikatu."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT nazwa FROM zadania WHERE auto_id=?", (auto_id,))
+        ma = {klucz_nazwy(w[0]) for w in c.fetchall()}
+    return [poz for poz in domyslne_zadania(typ_paliwa) if klucz_nazwy(poz[0]) not in ma]
+
+
+def dodaj_domyslne_zadania(auto_id, pozycje) -> int:
+    """Zakłada podzespoły z listy (nazwa, interwał miesięcy, dotyczy_opon)
+    i zwraca liczbę dopisanych. Nazwy, które pojazd już ma, pomija — to samo
+    wołanie dwa razy nie zrobi duplikatu.
+
+    Jedno miejsce na ten INSERT: woła je i formularz nowego pojazdu, i dialog po
+    zmianie napędu w aucie już prowadzonym."""
+    if not auto_id or not pozycje:
+        return 0
+    dopisane = 0
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT nazwa FROM zadania WHERE auto_id=?", (auto_id,))
+        ma = {klucz_nazwy(w[0]) for w in c.fetchall()}
+        for nazwa, interwal_miesiace, dotyczy_opon in pozycje:
+            klucz = klucz_nazwy(nazwa)
+            if klucz in ma:
+                continue
+            ma.add(klucz)
+            c.execute(
+                "INSERT INTO zadania (auto_id, nazwa, interwal_miesiace, dotyczy_opon) VALUES (?,?,?,?)",
+                (auto_id, normalizuj_nazwe(nazwa), interwal_miesiace, int(dotyczy_opon or 0)),
+            )
+            dopisane += 1
+    return dopisane
+
+
+def pakiety_dla_pojazdu(auto_id) -> list[tuple[str, list[str]]]:
+    """Wbudowane PAKIETY_SERWISOWE, które da się w TYM pojeździe wykonać w
+    całości — elektryk przestaje dostawać „Przegląd olejowy” i „Duży przegląd
+    (rozrząd)”.
+
+    Warunek jest twardy (wszystkie pozycje, nie choć jedna), bo nazwa gotowego
+    zestawu jest obietnicą składu: „Przegląd olejowy” zawężony do filtra
+    kabinowego kłamie bardziej niż brak zestawu, a niepełny skład użytkownik
+    i tak ułoży lepiej własnym pakietem.
+
+    ŚWIADOMIE po zawartości pojazdu, a nie po typie paliwa: to ta sama decyzja
+    (listę startową składa napęd), ale prawdziwa również wtedy, gdy użytkownik
+    sam coś dołożył albo skasował. Zestaw obiecujący rozrząd autu bez rozrządu
+    kłamie niezależnie od tego, czym to auto jeździ."""
+    if not auto_id:
+        return [(nazwa, list(pozycje)) for nazwa, pozycje in PAKIETY_SERWISOWE.items()]
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT nazwa FROM zadania WHERE auto_id=?", (auto_id,))
+        ma = {klucz_nazwy(w[0]) for w in c.fetchall()}
+    return [
+        (nazwa, list(pozycje))
+        for nazwa, pozycje in PAKIETY_SERWISOWE.items()
+        if all(klucz_nazwy(pozycja) in ma for pozycja in pozycje)
+    ]
+
+
 __all__ = [
+    "_czy_o_oponach",
     "_poprawny_typ",
     "aktualizuj_pakiet_wlasny",
+    "brakujace_podzespoly",
+    "dodaj_domyslne_zadania",
     "dodaj_pakiet_wlasny",
     "dodaj_przypomnienie_o_oponach",
     "dodaj_warsztat",
     "dodaj_wydatek_cykliczny",
+    "domyslne_zadania",
     "edytuj_wydatek_cykliczny",
     "oznacz_zaplacony_wydatek_cykliczny",
+    "pakiety_dla_pojazdu",
     "pobierz_pakiety_wlasne",
     "pobierz_przypomnienia_o_oponach",
     "pobierz_trasy_szablony",

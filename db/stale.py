@@ -21,6 +21,9 @@ FOLDER_KOSZ = os.path.join(STORAGE_PATH, "kosz_zalaczniki")
 # interfejs, a sama nazwa trafia do bazy, do eksportu CSV/PDF i do wyszukiwarki,
 # gdzie emoji tylko przeszkadzało (nie da się go wpisać, psuje sortowanie i nie
 # ma glifu w czcionce raportu).
+#
+# To BAZA dla każdego napędu. Co konkretny napęd dokłada, a czego w nim nie ma,
+# mówi PODZESPOLY_NAPEDU niżej — tu nie ma nic, co zależy od paliwa.
 DOMYSLNE_ZADANIA = [
     "Olej silnikowy i filtr", "Filtr powietrza", "Filtr kabinowy",
     "Pasek / Łańcuch rozrządu", "Wymiana opon / Kół", "Klocki hamulcowe", "Tarcze hamulcowe"
@@ -85,13 +88,42 @@ TYPY_LADOWANIA = ["AC", "DC"]
 OPISY_LADOWANIA = {"AC": "AC — wolne (dom / praca)", "DC": "DC — szybkie (trasa)"}
 
 
-# Elektryk nie ma oleju ani filtra oleju, za to ma własne pozycje serwisowe.
-# Bez tego każdy nowy elektryk startował z listą „Olej silnikowy i filtr”.
-DOMYSLNE_ZADANIA_EV = [
-    "Płyn hamulcowy", "Filtr kabinowy", "Płyn chłodzący baterii",
-    "Wymiana opon / Kół", "Klocki hamulcowe", "Tarcze hamulcowe",
-    "Przegląd układu wysokiego napięcia",
-]
+# Podzespoły zależne od napędu: DOMYSLNE_ZADANIA plus to, co dany napęd DODAJE,
+# minus to, czego w nim nie ma. ŚWIADOMIE nie ma tu sześciu gotowych list —
+# pokrywałyby się w większości, a dopisanie jednej wspólnej pozycji znaczyłoby
+# sześć edycji i szansę na przeoczenie jednej.
+#
+# Klucze muszą pokrywać CAŁE TYPY_PALIWA (pilnuje tests/test_podzespoly_napedu.py):
+# nowy typ paliwa ma wymusić decyzję, a nie po cichu dostać listę benzynową.
+# Puste {} jest taką decyzją — auto na gaz to auto benzynowe z instalacją, więc
+# niczego nie traci, a zwykła hybryda serwisuje się jak benzyna.
+PODZESPOLY_NAPEDU = {
+    "Benzyna": {},
+    "Diesel": {"dodaj": ["Filtr paliwa", "Filtr cząstek stałych (DPF)", "Pasek osprzętu"]},
+    "LPG": {"dodaj": ["Filtr fazy lotnej", "Reduktor LPG", "Legalizacja butli LPG"]},
+    "Hybryda": {},
+    "Hybryda plug-in": {"dodaj": ["Płyn chłodzący baterii", "Przegląd układu wysokiego napięcia"]},
+    # Elektryk nie ma oleju, filtra powietrza ani rozrządu, za to ma własne
+    # pozycje. Wcześniej stała tu osobna lista DOMYSLNE_ZADANIA_EV — ta sama
+    # treść, tylko przepisana w całości i bez widocznego związku z bazą.
+    "Elektryczny": {
+        "usun": ["Olej silnikowy i filtr", "Filtr powietrza", "Pasek / Łańcuch rozrządu"],
+        "dodaj": ["Płyn hamulcowy", "Płyn chłodzący baterii", "Przegląd układu wysokiego napięcia"],
+    },
+}
+
+
+# Interwał podpowiadany podzespołowi zakładanemu automatycznie. ŚWIADOMIE tylko
+# CZASOWY i tylko tam, gdzie termin nie zależy od modelu auta: przebieg
+# międzyobsługowy różni się między silnikami kilkukrotnie, więc zgadnięty
+# interwał km to powiadomienie, które kłamie — km zostawiamy użytkownikowi.
+# Legalizacja butli LPG jest tu jedynym prawdziwym TERMINEM: liczy się dziesięć
+# lat od badania, a przejechane kilometry nie mają z nim nic wspólnego.
+DOMYSLNE_INTERWALY_MIESIACE = {
+    "Legalizacja butli LPG": 120,
+    "Płyn hamulcowy": 24,
+    "Filtr kabinowy": 12,
+}
 
 
 MAKS_BACKOFF_MINUT_SYNC = 60
@@ -300,8 +332,8 @@ __all__ = [
     "CHECKLISTA_PRZEDWYJAZDOWA",
     "DNI_KOSZA_DOMYSLNIE",
     "DNI_KOSZA_OPCJE",
+    "DOMYSLNE_INTERWALY_MIESIACE",
     "DOMYSLNE_ZADANIA",
-    "DOMYSLNE_ZADANIA_EV",
     "ENERGIA_PALIWO",
     "ENERGIA_PRAD",
     "FOLDER_KOSZ",
@@ -325,6 +357,7 @@ __all__ = [
     "OPISY_LADOWANIA",
     "OSIE_MONTAZU",
     "PAKIETY_SERWISOWE",
+    "PODZESPOLY_NAPEDU",
     "POLA_NOTATKI",
     "PRIORYTETY_DO_ZROBIENIA",
     "PROGI_DNI_DOKUMENTU_OPCJE",

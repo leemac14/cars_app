@@ -312,7 +312,11 @@ def pokaz_ostrzezenie(page: ft.Page, tytul, tresc, ikona=ft.Icons.WARNING_AMBER)
     otworz_dialog(page, dlg)
 
 
-def potwierdz(page: ft.Page, tytul, tresc, po_potwierdzeniu, tekst_potwierdzenia="Usuń"):
+def potwierdz(page: ft.Page, tytul, tresc, po_potwierdzeniu, tekst_potwierdzenia="Usuń",
+              destrukcyjne=True):
+    """Pytanie tak/nie. `destrukcyjne=False` zdejmuje czerwień z przycisku
+    potwierdzenia: w tej aplikacji kolor jest nośnikiem informacji, więc
+    propozycja „Dodaj” nie może wyglądać tak samo jak „Usuń”."""
     dlg = ft.AlertDialog(
         modal=True, title=ft.Text(tytul, weight="bold"), content=ft.Text(tresc),
         shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
@@ -325,7 +329,10 @@ def potwierdz(page: ft.Page, tytul, tresc, po_potwierdzeniu, tekst_potwierdzenia
     
     dlg.actions = [
         ft.TextButton("Anuluj", on_click=anuluj),
-        ft.TextButton(tekst_potwierdzenia, style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"]), on_click=zatwierdz),
+        ft.TextButton(
+            tekst_potwierdzenia, on_click=zatwierdz,
+            style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"]) if destrukcyjne else None,
+        ),
     ]
     dlg.actions_alignment = ft.MainAxisAlignment.END
     otworz_dialog(page, dlg)
