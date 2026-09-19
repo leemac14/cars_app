@@ -1,16 +1,18 @@
 """Wykresy i wskaźniki: sparkline, przebieg, heatmapa, kondycja, budżet."""
 
+import db
 import flet as ft
 import flet_charts as fc
 from date import parsuj_date
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from state import MIESIACE_NAZWY
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
 from .format import _odmiana_liczby, opis_licznika_na_karte, symbol_waluty
 from .typografia import etykieta, podpis, wartosc
-from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_odznaki, tlo_toru
+from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_karty, tlo_odznaki, tlo_toru
+from .dialogi import odswiez_ekran
 from .formularze import karta_formularza
 
 
@@ -20,6 +22,173 @@ _SKALA_KONDYCJI = [
     (50, (245, 124, 0)),    # ORANGE_700 — wymaga uwagi
     (100, (46, 125, 50)),   # GREEN_700  — bardzo dobra
 ]
+
+
+# ---------------------- ZAKRES CZASU NAD WYKRESEM ----------------------
+# Jeden komponent dla wszystkich wykresów w aplikacji. Wcześniej każdy wykres
+# miał zakres zaszyty w kodzie — wydatki sześć miesięcy, reszta całą historię —
+# i przy kilkuletnim dzienniku obie wartości były złe, tylko w przeciwnych
+# kierunkach: jedna gubiła poprzedni sezon, druga zgniatała ostatnie miesiące
+# w kreskę przy krawędzi.
+ZAKRESY_CZASU = [("3 mies.", 3), ("6 mies.", 6), ("Rok", 12), ("Wszystko", 0)]
+
+_OPISY_ZAKRESU = {
+    3: "ostatnie 3 miesiące",
+    6: "ostatnie 6 miesięcy",
+    12: "ostatni rok",
+    0: "całą historię",
+}
+
+
+def opis_zakresu(miesiace):
+    """Zakres słowami — do podpisów i podpowiedzi nad wykresem."""
+    return _OPISY_ZAKRESU.get(miesiace, _OPISY_ZAKRESU[12])
+
+
+def _przesun_miesiac(rok, miesiac, wstecz):
+    miesiac -= wstecz
+    while miesiac <= 0:
+        miesiac += 12
+        rok -= 1
+    return rok, miesiac
+
+
+def zakres_wykresu(state, klucz):
+    """Ile miesięcy wstecz pokazuje wykres `klucz` dla bieżącego pojazdu;
+    0 = cała historia. Wybór siedzi w ustawieniach, więc przeżywa restart."""
+    return db.pobierz_zakres_wykresu(getattr(state, "auto_id", None), klucz)
+
+
+def granica_zakresu(miesiace, dzisiaj=None):
+    """Pierwszy dzień najstarszego miesiąca mieszczącego się w zakresie;
+    None dla „Wszystko”.
+
+    Granica jest MIESIĘCZNA, a nie „dzisiaj minus 90 dni”: wykresy grupują dane
+    po miesiącach, więc cięcie w połowie miesiąca zrobiłoby z najstarszego
+    słupka ogryzek i pokazało spadek, którego nie było."""
+    if not miesiace:
+        return None
+    dzis = dzisiaj or datetime.now().date()
+    rok, mies = _przesun_miesiac(dzis.year, dzis.month, miesiace - 1)
+    return date(rok, mies, 1)
+
+
+def klucze_miesiecy_zakresu(miesiace, najstarszy_mc=None, dzisiaj=None):
+    """Kolejne miesiące zakresu jako "RRRR-MM", od najstarszego do bieżącego.
+    Dla „Wszystko” zaczyna od `najstarszy_mc` (najstarszy miesiąc z danymi)."""
+    dzis = dzisiaj or datetime.now().date()
+    if miesiace:
+        rok, mies = _przesun_miesiac(dzis.year, dzis.month, miesiace - 1)
+    elif najstarszy_mc and len(najstarszy_mc) >= 7 and najstarszy_mc[:4].isdigit():
+        rok, mies = int(najstarszy_mc[:4]), int(najstarszy_mc[5:7])
+    else:
+        rok, mies = dzis.year, dzis.month
+
+    klucze = []
+    # Zapis w bazie bywa ręczny, a data z 1900 roku zrobiłaby z tej pętli
+    # tysiąc słupków — stąd twardy sufit na długość osi.
+    while (rok, mies) <= (dzis.year, dzis.month) and len(klucze) < 600:
+        klucze.append(f"{rok}-{mies:02d}")
+        mies += 1
+        if mies > 12:
+            mies, rok = 1, rok + 1
+    return klucze or [f"{dzis.year}-{dzis.month:02d}"]
+
+
+def okresy_slupkow(miesiace, najstarszy_mc=None, dzisiaj=None):
+    """Siatka słupków wykresu słupkowego: [(etykieta, [klucze miesięcy]), ...]
+    od najstarszego do najnowszego.
+
+    Do roku włącznie słupek = miesiąc. „Wszystko” przy dłuższej historii zbija
+    miesiące w kwartały, a powyżej trzech lat w lata — trzydzieści sześć
+    słupków zmieściłoby się na telefonie tylko jako kreski bez podpisów."""
+    klucze = klucze_miesiecy_zakresu(miesiace, najstarszy_mc, dzisiaj)
+
+    if len(klucze) <= 12:
+        return [(f"{k[5:7]}/{k[2:4]}", [k]) for k in klucze]
+
+    grupy = {}
+    if len(klucze) <= 36:
+        for k in klucze:
+            grupy.setdefault((k[:4], (int(k[5:7]) - 1) // 3 + 1), []).append(k)
+        return [(f"{kw}kw/{rok[2:]}", lista) for (rok, kw), lista in grupy.items()]
+
+    for k in klucze:
+        grupy.setdefault(k[:4], []).append(k)
+    return [(rok, lista) for rok, lista in grupy.items()]
+
+
+def tygodnie_zakresu(miesiace, daty_zdarzen=(), dzisiaj=None):
+    """Ile kolumn ma mieć heatmapa aktywności dla wybranego zakresu.
+    Przy „Wszystko” liczy od najstarszego zdarzenia, ale z sufitem — mapa
+    dziesięciu lat to już tylko pasek do przewijania bez końca."""
+    dzis = dzisiaj or datetime.now().date()
+    granica = granica_zakresu(miesiace, dzis)
+    if granica is None:
+        daty = [d for d in (parsuj_date(x) for x in daty_zdarzen) if d != datetime.min.date()]
+        granica = min(daty) if daty else dzis
+    dni = max(0, (dzis - granica).days)
+    return max(5, min(261, -(-dni // 7) + 2))
+
+
+def krok_etykiet_osi(liczba_punktow, ile_podpisow=6):
+    """Co który punkt serii dostaje podpis na osi X, żeby przy długim zakresie
+    podpisy nie nachodziły na siebie."""
+    return max(1, -(-liczba_punktow // max(1, ile_podpisow)))
+
+
+def pasek_zakresu_czasu(page: ft.Page, state, klucz):
+    """Zakres czasu nad wykresem: „3 mies. / 6 mies. / Rok / Wszystko”
+    w jednej pigułce dosuniętej do prawej krawędzi.
+
+    `klucz` nazywa WYKRES (np. "wydatki"), bo każdy pamięta swój zakres
+    osobno — spalanie z roku obok wydatków z kwartału to normalne pytanie,
+    a jeden wspólny przełącznik kazałby zadawać je na raty."""
+    auto_id = getattr(state, "auto_id", None)
+    aktualny = db.pobierz_zakres_wykresu(auto_id, klucz)
+
+    def wybierz(miesiace):
+        db.zapisz_zakres_wykresu(auto_id, klucz, miesiace)
+        # Odświeżenie, a nie przebudowa stosu — zakres zmienia ZAWARTOŚĆ
+        # wykresu, a nie ekran, na którym stoimy (patrz utils.odswiez_ekran).
+        odswiez_ekran(page)
+
+    segmenty = []
+    for etykieta_chipa, miesiace in ZAKRESY_CZASU:
+        aktywny = (miesiace == aktualny)
+        segmenty.append(ft.Container(
+            height=26,
+            padding=ft.Padding(10, 0, 10, 0),
+            border_radius=RADIUS["pill"],
+            ink=True,
+            bgcolor=ft.Colors.PRIMARY if aktywny else ft.Colors.TRANSPARENT,
+            animate=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+            tooltip=f"Pokaż {opis_zakresu(miesiace)}",
+            on_click=lambda e, m=miesiace: wybierz(m),
+            # ANI `alignment`, ANI `expand` — kontener z wyrównaniem rozciąga
+            # się do całej szerokości, jaką dostanie, więc cztery takie chipy
+            # w pasku zawijanym lądowały jeden pod drugim i zjadały ekran.
+            # Bez wyrównania kontener ma rozmiar swojej treści, a `tight=True`
+            # pilnuje tego samego po stronie wiersza.
+            content=ft.Row(
+                [ft.Text(
+                    etykieta_chipa, size=FS["caption"],
+                    weight="bold" if aktywny else "normal",
+                    color=ft.Colors.ON_PRIMARY if aktywny else ft.Colors.ON_SURFACE_VARIANT,
+                    no_wrap=True,
+                )],
+                tight=True,
+            ),
+        ))
+
+    # Jedna pigułka dosunięta do prawej krawędzi, tuż nad wykresem, którego
+    # dotyczy — zajmuje jedną niską linijkę zamiast czterech.
+    grupa = ft.Container(
+        padding=3, border_radius=RADIUS["pill"], bgcolor=tlo_karty(page, poziom=2),
+        content=ft.Row(segmenty, spacing=2, tight=True),
+    )
+    return ft.Row([grupa], alignment=ft.MainAxisAlignment.END,
+                  vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
 
 def kolor_kondycji_plynny(wynik):
@@ -554,12 +723,14 @@ def liczniki_interwalu(stan, scena=None, page=None):
     return ft.Row(kolumny, spacing=SPACING["md"], vertical_alignment=ft.CrossAxisAlignment.START)
 
 
-def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53):
+def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="ostatni rok"):
     """Heatmapa aktywności w stylu GitHub 'contributions': siatka kwadracików
     (kolumna = tydzień, wiersz = dzień tygodnia) pokazująca, w które dni z
     ostatniego roku pojawiło się jakiekolwiek zdarzenie w dzienniku auta.
     `daty_zdarzen`: dowolna iterowalna surowych dat tekstowych (DD.MM.YYYY);
-    kilka zdarzeń tego samego dnia jest sumowanych. Używane przez /timeline."""
+    kilka zdarzeń tego samego dnia jest sumowanych. Używane przez /timeline.
+    `tygodnie` i `opis_okresu` idą z chipów zakresu nad mapą — siatka i jej
+    podpis muszą mówić o tym samym okresie, inaczej podpis kłamie."""
     liczba_wg_dnia = {}
     for data_str in daty_zdarzen:
         d = parsuj_date(data_str)
@@ -627,17 +798,30 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53):
         ft.Text("Więcej", size=10, color=ft.Colors.ON_SURFACE_VARIANT),
     ], spacing=4)
 
-    opis = f"Najnowszy tydzień po lewej • {aktywne_dni} {_odmiana_liczby(aktywne_dni, 'aktywny dzień', 'aktywne dni', 'aktywnych dni')} w ciągu ostatniego roku."
+    opis = (f"Najnowszy tydzień po lewej • {aktywne_dni} "
+            f"{_odmiana_liczby(aktywne_dni, 'aktywny dzień', 'aktywne dni', 'aktywnych dni')} "
+            f"— {opis_okresu}.")
 
     return karta_formularza(
         [siatka, legenda, ft.Text(opis, size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)],
-        "Aktywność w ciągu roku", ft.Icons.CALENDAR_MONTH, domyslnie_otwarte=True, page=page
+        f"Aktywność: {opis_okresu}", ft.Icons.CALENDAR_MONTH, domyslnie_otwarte=True, page=page
     )
 
 
 __all__ = [
     "ROLA_STATUSU_INTERWALU",
+    "ZAKRESY_CZASU",
+    "_OPISY_ZAKRESU",
     "_SKALA_KONDYCJI",
+    "_przesun_miesiac",
+    "granica_zakresu",
+    "klucze_miesiecy_zakresu",
+    "krok_etykiet_osi",
+    "okresy_slupkow",
+    "opis_zakresu",
+    "tygodnie_zakresu",
+    "pasek_zakresu_czasu",
+    "zakres_wykresu",
     "gauge_kondycji",
     "heatmapa_aktywnosci",
     "karta_analizy",

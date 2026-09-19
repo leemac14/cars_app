@@ -256,11 +256,13 @@ def pobierz_stacje_paliw(auto_id) -> list[str]:
     return [nazwa for nazwa, _ in wynik]
 
 
-def pobierz_trend_cen_paliwa(auto_id):
+def pobierz_trend_cen_paliwa(auto_id, od_data=None):
     """Cena za litr w czasie (do wykresu) oraz zestawienie średnich cen per
     stacja (do rankingu „najtańsza stacja, na której tankowałeś”). Uwzględnia
     tylko tankowania z dodatnią liczbą litrów; stacja jest opcjonalna — wpisy
     bez niej trafiają do 'punkty', ale nie do rankingu 'stacje'.
+    `od_data` (zakres wybrany chipami nad wykresem) obcina OBA wyniki naraz —
+    krzywa cen i ranking stacji pod nią muszą mówić o tym samym okresie.
     Zwraca {"punkty": [(data, cena_za_litr), ...] posortowane chronologicznie,
     "stacje": [{"nazwa","srednia_cena","liczba_tankowan","ostatnia_cena","ostatnia_data"}, ...]
     posortowane rosnąco po średniej cenie, "najtansza": pierwszy element stacje albo None}."""
@@ -282,6 +284,8 @@ def pobierz_trend_cen_paliwa(auto_id):
             continue
         cena = float(kwota or 0) / litry_f
         d = parsuj_date(data_str)
+        if od_data and (d == datetime.min.date() or d < od_data):
+            continue
         dane.append((d, data_str, cena, " ".join((stacja or "").split())))
     dane.sort(key=lambda x: x[0])  # chronologicznie po sparsowanej dacie, nie tekście
 

@@ -53,7 +53,16 @@ class TimelineView(ft.View):
                     on_click=lambda e: utils.przejdz(self._page, "/")
                 ))
             else:
-                elementy.append(utils.heatmapa_aktywnosci(self._page, [z[2] for z in zdarzenia]))
+                # Mapa miała zaszyty rok, niezależnie od tego, jak długo auto
+                # jest w aplikacji — chipy nad nią sterują i siatką, i podpisem.
+                daty_zdarzen = [z[2] for z in zdarzenia]
+                zakres_mapy = utils.zakres_wykresu(self.state, "aktywnosc")
+                elementy.append(utils.pasek_zakresu_czasu(self._page, self.state, "aktywnosc"))
+                elementy.append(utils.heatmapa_aktywnosci(
+                    self._page, daty_zdarzen,
+                    utils.tygodnie_zakresu(zakres_mapy, daty_zdarzen),
+                    utils.opis_zakresu(zakres_mapy),
+                ))
 
                 opcje_sort = [
                     ("Data", "data", lambda x: (parsuj_date(x[2]), str(x[0]))),

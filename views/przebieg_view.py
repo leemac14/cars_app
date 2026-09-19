@@ -62,11 +62,23 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 podsumowanie = db.podsumowanie_historii_przebiegu(self.state.auto_id, wpisy)
                 elementy.append(self._karta_podsumowania(podsumowanie))
 
-                wykres = utils.wykres_przebiegu(self._page, wpisy)
-                if wykres:
-                    elementy.append(utils.karta_analizy(
-                        self._page, "Licznik w czasie", ft.Icons.SHOW_CHART, [wykres],
-                    ))
+                # Krzywa licznika brała dotąd CAŁĄ historię: po trzech latach
+                # ostatnie pół roku — czyli to, o co się zwykle pyta — mieściło
+                # się w kilku pikselach przy prawej krawędzi.
+                granica_licznika = utils.granica_zakresu(utils.zakres_wykresu(self.state, "licznik"))
+                wpisy_wykresu = [
+                    w for w in wpisy
+                    if not granica_licznika or (w.get("data_obj") and w["data_obj"] >= granica_licznika)
+                ]
+                wykres = utils.wykres_przebiegu(self._page, wpisy_wykresu)
+                elementy.append(utils.pasek_zakresu_czasu(self._page, self.state, "licznik"))
+                elementy.append(utils.karta_analizy(
+                    self._page, "Licznik w czasie", ft.Icons.SHOW_CHART,
+                    [wykres] if wykres else [ft.Text(
+                        "Za mało odczytów w wybranym zakresie — krzywa potrzebuje co najmniej dwóch.",
+                        size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+                    )],
+                ))
 
                 opcje_sort = [
                     ("Data", "data", lambda x: (x["data_obj"], x["przebieg"])),

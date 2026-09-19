@@ -289,12 +289,65 @@ def _klucz_widzianych_powiadomien(auto_id):
     return f"powiadomienia_widziane_{int(auto_id)}"
 
 
+# --------------------- ZAKRES CZASU WYKRESÓW ---------------------
+# Każdy wykres pyta o swój zakres osobno (chipy nad wykresem, patrz
+# utils.pasek_zakresu_czasu), ale wszystkie zakresy JEDNEGO pojazdu siedzą
+# w jednym kluczu ustawień. Inaczej każdy nowy wykres dokładałby funkcję do
+# USTAWIENIA_PER_POJAZD, a migawka kosza zapisuje je po NAZWIE funkcji —
+# ta lista ma zostać krótka i stabilna.
+ZAKRES_WYKRESU_DOMYSLNY = 12
+ZAKRESY_WYKRESU = (3, 6, 12, 0)  # miesiące wstecz; 0 = cała historia
+
+
+def _klucz_zakresow_wykresow(auto_id):
+    return f"zakresy_wykresow_{int(auto_id)}"
+
+
+def _odczytaj_zakresy_wykresow(auto_id):
+    """{"wydatki": 6, "spalanie": 0, ...} z jednego zapisanego wiersza
+    "wydatki=6,spalanie=0". Nieznane liczby i śmieci po ręcznej edycji bazy
+    wypadają po cichu — wykres wraca wtedy do wartości domyślnej."""
+    zapisane = pobierz_ustawienie(_klucz_zakresow_wykresow(auto_id)) if auto_id else None
+    zakresy = {}
+    for kawalek in (zapisane or "").split(","):
+        nazwa, _, wartosc = kawalek.partition("=")
+        nazwa, wartosc = nazwa.strip(), wartosc.strip()
+        if not nazwa or not wartosc.isdigit():
+            continue
+        miesiace = int(wartosc)
+        if miesiace in ZAKRESY_WYKRESU:
+            zakresy[nazwa] = miesiace
+    return zakresy
+
+
+def pobierz_zakres_wykresu(auto_id, klucz) -> int:
+    """Ile miesięcy wstecz pokazuje wykres `klucz` dla tego pojazdu; 0 = cała
+    historia. Domyślnie ROK: sześć miesięcy zaszyte wcześniej w wykresie
+    wydatków gubiło poprzedni sezon, a cała historia przy kilku latach danych
+    zlewała ostatnie miesiące w jedną kreskę przy krawędzi."""
+    return _odczytaj_zakresy_wykresow(auto_id).get(klucz, ZAKRES_WYKRESU_DOMYSLNY)
+
+
+def zapisz_zakres_wykresu(auto_id, klucz, miesiace):
+    """Zapamiętuje zakres wybrany chipami — osobno dla każdego wykresu."""
+    if not auto_id or not klucz:
+        return
+    if miesiace not in ZAKRESY_WYKRESU:
+        miesiace = ZAKRES_WYKRESU_DOMYSLNY
+    zakresy = _odczytaj_zakresy_wykresow(auto_id)
+    zakresy[klucz] = miesiace
+    zapisz_ustawienie(
+        _klucz_zakresow_wykresow(auto_id),
+        ",".join(f"{k}={v}" for k, v in sorted(zakresy.items())),
+    )
+
+
 # Ustawienia przywiązane do KONKRETNEGO pojazdu — przenoszone razem z nim do
 # kosza i z powrotem (ID po przywróceniu może się zmienić, patrz
 # przywroc_auto_z_kosza), żeby nie zostawały w bazie jako sieroty.
 # Migawka kosza zapisuje je pod NAZWĄ funkcji budującej klucz — zmiana nazwy
 # którejś z nich zgubiłaby to ustawienie w pojazdach, które już leżą w koszu.
-USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien]
+USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien, _klucz_zakresow_wykresow]
 
 
 def _pobierz_ustawienia_pojazdu(auto_id):
@@ -359,8 +412,12 @@ __all__ = [
     "KOKPIT_WIDGETY",
     "KOKPIT_WIDGETY_DOMYSLNE",
     "USTAWIENIA_PER_POJAZD",
+    "ZAKRESY_WYKRESU",
+    "ZAKRES_WYKRESU_DOMYSLNY",
     "_klucz_kokpitu",
     "_klucz_widzianych_powiadomien",
+    "_klucz_zakresow_wykresow",
+    "_odczytaj_zakresy_wykresow",
     "_odczytaj_kolejnosc_kokpitu",
     "_pobierz_ustawienia_pojazdu",
     "_przywroc_ustawienia_pojazdu",
@@ -386,6 +443,7 @@ __all__ = [
     "pobierz_tryb_motywu",
     "pobierz_ustawienie",
     "pobierz_walute",
+    "pobierz_zakres_wykresu",
     "pobierz_widgety_kokpitu",
     "pobierz_wlasny_prog_dni_dokumentu",
     "przywroc_kokpit_wspolny",
@@ -399,5 +457,6 @@ __all__ = [
     "zapisz_prog_dni_dokumentu",
     "zapisz_tryb_motywu",
     "zapisz_ustawienie",
+    "zapisz_zakres_wykresu",
     "zapisz_widgety_kokpitu",
 ]
