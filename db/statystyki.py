@@ -5,66 +5,159 @@ from date import parsuj_date
 from datetime import datetime
 from typing import Any
 
-from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE
+from .stale import (ENERGIA_PALIWO, ENERGIA_PRAD, PRIORYTETY_DO_ZROBIENIA, STATUS_POJAZDU_AKTYWNY,
+                    TERMINY_DOKUMENTOW, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE)
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport
 from .energia import ETYKIETY_RODZAJU, czy_pojazd_dwuzrodlowy, domyslny_rodzaj_energii, etykiety_energii, rodzaje_energii_pojazdu
-from .przebieg import pobierz_historie_przebiegu
+from .przebieg import pobierz_historie_przebiegu, podsumowanie_historii_przebiegu
 from .koszty import pobierz_koszty_miesieczne
 from .powiadomienia import pobierz_powiadomienia
 
 
-# Ile punktów kondycji kosztuje każdy powód. Trzymane w jednym miejscu, bo te
-# same wartości pokazuje teraz rozpiska („−15 pkt: przegląd przeterminowany”).
+# ============================================================================
+#  KONDYCJA POJAZDU
+# ============================================================================
+# Kondycja ściska cały stan auta do JEDNEJ liczby 0-100, więc stoi wyłącznie na
+# proporcjach: każdy powód musi ważyć tyle, ile realnie znaczy dla właściciela.
+# Stąd trzy zasady, których trzyma się tabela niżej.
+#
+# 1. Waga to konsekwencja, nie kategoria. Przeterminowane OC albo przegląd to
+#    zakaz jazdy i brak ochrony przy szkodzie, więc bije mocniej (-30) niż
+#    przeterminowany filtr kabinowy (-10). Koniec gwarancji nie jest usterką
+#    auta, więc nie bije wcale.
+# 2. Sufit na każdą grupę. Bez niego auto z dwunastoma zaległymi podzespołami
+#    miałoby 0/100 dokładnie tak samo jak auto bez OC, bez przeglądu i na łysym
+#    bieżniku — a wskaźnik przestałby cokolwiek różnicować. Dlatego każda grupa
+#    ma własny limit i długa lista drobiazgów nie zjada całej skali.
+# 3. Dane to osobna grupa. Cisza w dzienniku i puste pola nie są usterką auta,
+#    tylko dziurą w wiedzy o nim: karzą lekko, ale karzą — 100/100 na aucie, do
+#    którego nikt nic nie wpisał od roku, to fałszywe „wszystko gra”.
+
 KARY_KONDYCJI = {
-    "podzespol_przeterminowany": 15,
-    "podzespol_pilny": 8,
-    "bieznik_krytyczny": 20,   # poniżej 1,6 mm — minimum prawne
-    "bieznik_niski": 10,       # poniżej 3 mm — zalecana wymiana
+    # Podzespoły z interwałem serwisowym (olej, filtry, rozrząd)
+    "podzespol_przeterminowany": 10,
+    "podzespol_pilny": 4,
+    # Bieżnik zamontowanego kompletu opon
+    "bieznik_krytyczny": 25,   # poniżej 1,6 mm — minimum prawne
+    "bieznik_niski": 8,        # poniżej 3 mm — zalecana wymiana
+    # Terminy z teczki auta; o wadze decyduje WAGA_DOKUMENTU
+    "dokument_krytyczny_przeterminowany": 30,
+    "dokument_krytyczny_pilny": 6,
+    "dokument_wazny_przeterminowany": 8,
+    "dokument_wazny_pilny": 2,
+    "dokument_drobny_przeterminowany": 4,
+    "dokument_drobny_pilny": 1,
+    # Usterka zgłoszona ręcznie: „Do zrobienia”, najwyższy priorytet, termin minął
+    "usterka_po_terminie": 6,
+    # Wiarygodność danych
+    "anomalia_licznika": 4,
+    "cisza_w_danych": 5,
+    "cisza_w_danych_dluga": 10,
+    "brak_terminu_dokumentu": 5,
+    "brak_historii_licznika": 8,
 }
+
+# Ile najwyżej może odjąć CAŁA grupa, choćby powodów było w niej dziesięć.
+SUFITY_KONDYCJI = {
+    "podzespol": 30,
+    "opony": 25,
+    "dokument": 60,
+    "usterka": 12,
+    "licznik": 12,
+    "dane": 15,
+}
+
+ETYKIETY_GRUP_KONDYCJI = {
+    "podzespol": "Podzespoły",
+    "opony": "Opony",
+    "dokument": "Dokumenty i terminy",
+    "usterka": "Zgłoszone usterki",
+    "licznik": "Historia licznika",
+    "dane": "Kompletność danych",
+}
+
+# Czym grozi brak ważnego dokumentu — stąd jego waga. Gwarancja ma None: jej
+# koniec to normalny bieg rzeczy, a nie usterka, którą da się naprawić.
+WAGA_DOKUMENTU = {
+    "oc": "krytyczny",
+    "przeglad": "krytyczny",
+    "ac": "wazny",
+    "assistance": "wazny",
+    "gasnica": "drobny",
+    "apteczka": "drobny",
+    "gwarancja": None,
+}
+
+# Terminy kondycja liczy STAŁYM wyprzedzeniem, a nie progiem powiadomień
+# z ustawień: próg służy do wcześniejszego przypominania, nie do zmieniania
+# oceny auta. Inaczej dwa identyczne auta z różnymi progami miałyby różną
+# kondycję i porównanie pojazdów przestałoby cokolwiek znaczyć.
+HORYZONT_TERMINU_KONDYCJI = 45
+
+# Terminy, których BRAK sam w sobie jest problemem — bez nich nie ma czego
+# pilnować ani z czego policzyć kondycji.
+TERMINY_WYMAGANE_W_KONDYCJI = ("oc", "przeglad")
+
+# Po ilu dniach bez żadnego nowego wpisu (tankowanie, wizyta, wpis serwisowy,
+# odczyt licznika) kondycja opisuje już tylko przeszłość.
+DNI_CISZY_W_DANYCH = 120
+DNI_DLUGIEJ_CISZY_W_DANYCH = 365
+
+# Priorytet, przy którym pozycja z „Do zrobienia” jest traktowana jak usterka.
+PRIORYTET_USTERKI = PRIORYTETY_DO_ZROBIENIA[0]
 
 
 def pobierz_rozbicie_kondycji(auto_id):
     """Kondycja pojazdu wraz z ROZPISKĄ tego, co ją obniżyło. Sam wynik 0-100 nic
     nie podpowiada; lista powodów mówi wprost, co poprawić najpierw.
 
-    Zwraca {"wynik": int|None, "powody": [{opis, szczegol, punkty, trasa, typ}]}
-    posortowaną malejąco po odjętych punktach. Celowo NIE uwzględnia stanu
-    magazynu, dokumentów (OC/przegląd) ani wydatków cyklicznych — kondycja
-    dotyczy stanu technicznego auta, nie papierologii.
+    Liczy: podzespoły po interwale, bieżnik zamontowanych opon, terminy
+    dokumentów (OC, przegląd, AC, assistance, gaśnica, apteczka), zaległe
+    usterki z „Do zrobienia”, nieścisłości w historii licznika oraz braki
+    i ciszę w danych. Magazyn i wydatki cykliczne kondycji NIE ruszają: pusta
+    półka i niezapłacony abonament nie są stanem auta.
+
+    Zwraca {"wynik": int|None, "odjete": int, "powody": [...], "grupy": {...}}.
+    Powód to {typ, kategoria, opis, szczegol, punkty, trasa, waga}, lista
+    posortowana malejąco po punktach. „grupy” to rozliczenie sufitów per
+    kategoria: {etykieta, sufit, surowe, punkty, przyciete} — dzięki niemu
+    rozpiska może powiedzieć wprost, że dziesięć drobiazgów policzono jako
+    tyle, ile wynosi limit grupy.
 
     Powiadomienia bierzemy z pomin_wyciszone=False: odłożenie przypomnienia
     („zrobię za dwa tygodnie”) nie naprawia auta, więc nie może podbijać wyniku.
     """
     if not auto_id:
-        return {"wynik": None, "powody": []}
+        return {"wynik": None, "odjete": 0, "powody": [], "grupy": {}}
 
-    wynik = 100
+    dzis = datetime.now().date()
     powody = []
 
+    def dodaj(kategoria, punkty, opis, szczegol="", trasa=None, waga="ostrzezenie"):
+        powody.append({
+            "typ": kategoria, "kategoria": kategoria, "opis": opis,
+            "szczegol": szczegol, "punkty": punkty, "trasa": trasa, "waga": waga,
+        })
+
     for p in pobierz_powiadomienia(auto_id, pomin_wyciszone=False):
-        # Ignorujemy wszystko, co nie jest bezpośrednio powiązane z podzespołami auta
+        # Z powiadomień bierzemy WYŁĄCZNIE podzespoły. Dokumenty liczymy niżej
+        # samodzielnie, bo potrzebują własnego wyprzedzenia i wykrywają też
+        # pustą datę, której powiadomienie z definicji nie zgłosi.
         if p["typ"] != "podzespol":
             continue
 
         if p["status"] == "przeterminowane":
-            kara = KARY_KONDYCJI["podzespol_przeterminowany"]
-            etykieta = "przeterminowany"
+            punkty, etykieta, waga = KARY_KONDYCJI["podzespol_przeterminowany"], "przeterminowany", "krytyczna"
         elif p["status"] == "pilne":
-            kara = KARY_KONDYCJI["podzespol_pilny"]
-            etykieta = "termin się zbliża"
+            punkty, etykieta, waga = KARY_KONDYCJI["podzespol_pilny"], "termin się zbliża", "ostrzezenie"
         else:
             continue
 
-        wynik -= kara
-        powody.append({
-            "typ": "podzespol",
-            "opis": f"{p['tytul']} — {etykieta}",
-            "szczegol": p.get("opis") or "",
-            "punkty": kara,
-            "trasa": p.get("trasa"),
-        })
+        dodaj("podzespol", punkty, f"{p['tytul']} — {etykieta}",
+              szczegol=p.get("opis") or "", trasa=p.get("trasa"), waga=waga)
 
+    aktywny = True
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -83,27 +176,138 @@ def pobierz_rozbicie_kondycji(auto_id):
                 continue
 
             if g < 1.6:
-                kara = KARY_KONDYCJI["bieznik_krytyczny"]
+                punkty = KARY_KONDYCJI["bieznik_krytyczny"]
                 etykieta = "bieżnik poniżej minimum prawnego (1,6 mm)"
+                waga = "krytyczna"
             elif g < 3.0:
-                kara = KARY_KONDYCJI["bieznik_niski"]
+                punkty = KARY_KONDYCJI["bieznik_niski"]
                 etykieta = "bieżnik poniżej 3 mm — zalecana wymiana"
+                waga = "ostrzezenie"
             else:
                 continue
 
-            wynik -= kara
             nazwa_opon = f"Opony {r['sezon']}" if r["sezon"] else "Zamontowane opony"
-            powody.append({
-                "typ": "opony",
-                "opis": f"{nazwa_opon} — {etykieta}",
-                "szczegol": f"{formatuj_liczba_eksport(g, 1)} mm"
-                            + (f" • {r['rozmiar']}" if r["rozmiar"] else ""),
-                "punkty": kara,
-                "trasa": "/magazyn",
-            })
+            dodaj("opony", punkty, f"{nazwa_opon} — {etykieta}",
+                  szczegol=f"{formatuj_liczba_eksport(g, 1)} mm"
+                           + (f" • {r['rozmiar']}" if r["rozmiar"] else ""),
+                  trasa="/magazyn", waga=waga)
+
+        # ---- Dokumenty i terminy ----
+        # Auto z przeterminowanym OC potrafiło mieć 100/100, bo kondycja patrzyła
+        # tylko na podzespoły. Polisa i przegląd to zakaz jazdy, więc ważą tu
+        # najwięcej ze wszystkiego.
+        kolumny_terminow = ", ".join(kol for _, kol, _ in TERMINY_DOKUMENTOW)
+        c.execute(f"SELECT status, {kolumny_terminow} FROM samochody WHERE id=?", (auto_id,))
+        auto = c.fetchone()
+        if auto:
+            # Sprzedanemu autu nie wypominamy ciszy w dzienniku ani pustych pól —
+            # po sprzedaży nikt już nic nie wpisuje i to jest normalne.
+            aktywny = str(auto["status"] or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_AKTYWNY
+
+            for klucz, kolumna, etykieta in TERMINY_DOKUMENTOW:
+                waga_dokumentu = WAGA_DOKUMENTU.get(klucz)
+                if waga_dokumentu is None:
+                    continue
+
+                txt = str(auto[kolumna] or "").strip()
+                d_w = parsuj_date(txt) if txt else datetime.min.date()
+                if d_w == datetime.min.date():
+                    # Pusta data to nie „wszystko w porządku”, tylko brak wiedzy.
+                    if aktywny and klucz in TERMINY_WYMAGANE_W_KONDYCJI:
+                        dodaj("dane", KARY_KONDYCJI["brak_terminu_dokumentu"],
+                              f"{etykieta} — brak wpisanej daty",
+                              szczegol="Bez daty nie ma przypomnienia ani oceny tego terminu",
+                              trasa=f"/auto/edytuj/{auto_id}")
+                    continue
+
+                zostalo = (d_w - dzis).days
+                if zostalo < 0:
+                    dodaj("dokument", KARY_KONDYCJI[f"dokument_{waga_dokumentu}_przeterminowany"],
+                          f"{etykieta} — po terminie",
+                          szczegol=f"Przekroczono o {abs(zostalo)} dni",
+                          trasa=f"/auto/edytuj/{auto_id}",
+                          waga="krytyczna" if waga_dokumentu == "krytyczny" else "ostrzezenie")
+                elif zostalo <= HORYZONT_TERMINU_KONDYCJI:
+                    dodaj("dokument", KARY_KONDYCJI[f"dokument_{waga_dokumentu}_pilny"],
+                          f"{etykieta} — termin się zbliża",
+                          szczegol=f"Zostało {zostalo} dni",
+                          trasa=f"/auto/edytuj/{auto_id}")
+
+        # ---- Usterki zgłoszone ręcznie ----
+        # Tylko najwyższy priorytet i tylko po terminie: reszta listy „Do
+        # zrobienia” to plany, a nie stan auta.
+        c.execute(
+            "SELECT tytul, termin FROM do_zrobienia "
+            "WHERE auto_id=? AND wykonane=0 AND priorytet=?",
+            (auto_id, PRIORYTET_USTERKI)
+        )
+        for u in c.fetchall():
+            termin = str(u["termin"] or "").strip()
+            if not termin:
+                continue
+            d_u = parsuj_date(termin)
+            if d_u == datetime.min.date() or d_u >= dzis:
+                continue
+            dodaj("usterka", KARY_KONDYCJI["usterka_po_terminie"],
+                  f"{u['tytul']} — zaległa usterka",
+                  szczegol=f"Priorytet {PRIORYTET_USTERKI.lower()} • przekroczono o {(dzis - d_u).days} dni",
+                  trasa="/do-zrobienia")
+
+    # ---- Wiarygodność danych ----
+    # Historia licznika scala odczyty, tankowania, wizyty i wpisy serwisowe, więc
+    # jest jednocześnie miarą nieścisłości i tego, kiedy ostatnio cokolwiek
+    # zapisano. Liczymy ją tym samym wywołaniem, co ekran „Historia licznika”,
+    # żeby rozpiska i tamta lista nigdy nie mówiły dwóch różnych rzeczy.
+    podsumowanie = podsumowanie_historii_przebiegu(auto_id)
+    if podsumowanie is None:
+        if aktywny:
+            dodaj("dane", KARY_KONDYCJI["brak_historii_licznika"],
+                  "Brak jakiegokolwiek stanu licznika",
+                  szczegol="Bez przebiegu nie ma interwałów, spalania ani kosztu na kilometr",
+                  trasa="/przebieg")
+    else:
+        anomalie = podsumowanie["anomalie"]
+        if anomalie:
+            dodaj("licznik",
+                  min(anomalie * KARY_KONDYCJI["anomalia_licznika"], SUFITY_KONDYCJI["licznik"]),
+                  f"Historia licznika — {anomalie} "
+                  + ("nieścisłość" if anomalie == 1 else "nieścisłości"),
+                  szczegol="Cofki i skoki przebiegu podważają wszystko, co z niego liczymy",
+                  trasa="/przebieg")
+
+        cisza = podsumowanie["dni_od_ostatniego"]
+        if aktywny and cisza >= DNI_CISZY_W_DANYCH:
+            dluga = cisza >= DNI_DLUGIEJ_CISZY_W_DANYCH
+            dodaj("dane",
+                  KARY_KONDYCJI["cisza_w_danych_dluga"] if dluga else KARY_KONDYCJI["cisza_w_danych"],
+                  f"Brak nowych danych od {cisza} dni",
+                  szczegol="Ostatni wpis: " + podsumowanie["ostatni"]["data_obj"].strftime("%d.%m.%Y")
+                           + " — kondycja opisuje stan z tamtego dnia",
+                  trasa="/przebieg", waga="krytyczna" if dluga else "ostrzezenie")
+
+    # ---- Sufity ----
+    grupy = {}
+    for p in powody:
+        grupa = grupy.setdefault(p["kategoria"], {
+            "etykieta": ETYKIETY_GRUP_KONDYCJI.get(p["kategoria"], p["kategoria"]),
+            "sufit": SUFITY_KONDYCJI.get(p["kategoria"], 100),
+            "surowe": 0, "punkty": 0, "przyciete": False,
+        })
+        grupa["surowe"] += p["punkty"]
+
+    odjete = 0
+    for grupa in grupy.values():
+        grupa["punkty"] = min(grupa["surowe"], grupa["sufit"])
+        grupa["przyciete"] = grupa["punkty"] < grupa["surowe"]
+        odjete += grupa["punkty"]
 
     powody.sort(key=lambda p: -p["punkty"])
-    return {"wynik": max(0, min(100, int(round(wynik)))), "powody": powody}
+    return {
+        "wynik": max(0, min(100, 100 - odjete)),
+        "odjete": odjete,
+        "powody": powody,
+        "grupy": grupy,
+    }
 
 
 def oblicz_kondycje_pojazdu(auto_id):
@@ -482,7 +686,15 @@ def podsumowanie_do_zrobienia(auto_id):
 
 
 __all__ = [
+    "DNI_CISZY_W_DANYCH",
+    "DNI_DLUGIEJ_CISZY_W_DANYCH",
+    "ETYKIETY_GRUP_KONDYCJI",
+    "HORYZONT_TERMINU_KONDYCJI",
     "KARY_KONDYCJI",
+    "PRIORYTET_USTERKI",
+    "SUFITY_KONDYCJI",
+    "TERMINY_WYMAGANE_W_KONDYCJI",
+    "WAGA_DOKUMENTU",
     "oblicz_kondycje_pojazdu",
     "pobierz_przebieg_miesieczny",
     "pobierz_rozbicie_kondycji",

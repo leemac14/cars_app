@@ -220,25 +220,41 @@ def pokaz_panel_kondycji(page: ft.Page, state):
             content=ft.Column([
                 ft.Icon(ft.Icons.TASK_ALT, size=40, color=KOLOR_STATUS["ok"]),
                 ft.Text("Nic nie obniża kondycji", weight="bold"),
-                ft.Text("Żaden podzespół nie jest przeterminowany, a bieżnik zamontowanych "
-                        "opon mieści się w normie.",
+                ft.Text("Podzespoły są w interwale, terminy dokumentów ważne, bieżnik "
+                        "w normie, a dane aktualne.",
                         size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                         text_align=ft.TextAlign.CENTER),
             ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         ))
     else:
-        suma = sum(p["punkty"] for p in powody)
         zawartosc.append(ft.Text(
-            f"Odjęto łącznie {suma} pkt · {len(powody)} "
+            f"Odjęto łącznie {100 - (wynik or 0)} pkt · {len(powody)} "
             + ("powód" if len(powody) == 1 else "powody" if len(powody) < 5 else "powodów"),
             size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
         ))
 
-        IKONY_POWODU = {"podzespol": ft.Icons.HANDYMAN, "opony": ft.Icons.TIRE_REPAIR}
+        # Grupa, która uderzyła w swój sufit, musi się do tego przyznać: bez tego
+        # minusy z listy nie zsumują się do odjętych punktów i wygląda to na błąd.
+        przyciete = [g for g in rozbicie.get("grupy", {}).values() if g.get("przyciete")]
+        if przyciete:
+            zawartosc.append(ft.Text(
+                "Sufit grupy ograniczył karę — "
+                + " · ".join(f"{g['etykieta']}: −{g['punkty']} zamiast −{g['surowe']}"
+                             for g in przyciete),
+                size=FS["caption"], italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+            ))
+
+        IKONY_POWODU = {
+            "podzespol": ft.Icons.HANDYMAN, "opony": ft.Icons.TIRE_REPAIR,
+            "dokument": ft.Icons.SHIELD, "usterka": ft.Icons.CHECKLIST_RTL,
+            "licznik": ft.Icons.SPEED, "dane": ft.Icons.HELP_OUTLINE,
+        }
         for p in powody:
-            # Największe minusy pierwsze (sortuje db), więc czerwień u góry to
-            # jednocześnie „zajmij się tym najpierw”.
-            kolor_kary = KOLOR_STATUS["critical"] if p["punkty"] >= 15 else KOLOR_STATUS["warning"]
+            # Największe minusy pierwsze (sortuje db), a czerwień bierze się z WAGI
+            # powodu, nie z liczby punktów: brak wpisanej daty OC kosztuje tyle samo,
+            # co zbliżający się drobny termin, ale znaczy co innego.
+            kolor_kary = (KOLOR_STATUS["critical"] if p.get("waga") == "krytyczna"
+                          else KOLOR_STATUS["warning"])
             tresc = [ft.Text(p["opis"], size=FS["label"], weight="bold")]
             if p["szczegol"]:
                 tresc.append(ft.Text(p["szczegol"], size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
@@ -267,8 +283,10 @@ def pokaz_panel_kondycji(page: ft.Page, state):
             ))
 
         zawartosc.append(ft.Text(
-            "Kondycja liczy tylko stan techniczny: podzespoły z przekroczonym interwałem "
-            "i bieżnik zamontowanych opon. Dokumenty, magazyn i wydatki cykliczne jej nie ruszają.",
+            "Kondycja liczy stan techniczny i terminy, które blokują jazdę: podzespoły po "
+            "interwale, bieżnik, dokumenty, zaległe usterki oraz braki i ciszę w danych. Każda "
+            "grupa ma własny sufit, żeby seria drobiazgów nie ważyła tyle, co brak ważnego OC. "
+            "Magazyn i wydatki cykliczne jej nie ruszają.",
             size=FS["caption"], italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
         ))
 
