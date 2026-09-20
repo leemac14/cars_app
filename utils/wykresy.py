@@ -1263,16 +1263,23 @@ def _tekst_roznicy(dane, jedn):
     return f"{formatuj_liczba(abs(roznica))}{jedn} {kierunek}"
 
 
-def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
+def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11,
+                    tekst_bez_trendu=None, ikona_bez_trendu=None):
     """Mały „chip” trendu: strzałka + procent zmiany. `wzrost_zly=True` znaczy,
     że rosnąca wartość jest zła (koszty, spalanie) i dostaje kolor czerwony.
-    Zwraca ft.Row gotowy do wstawienia pod wartością na kafelku."""
+    Zwraca ft.Row gotowy do wstawienia pod wartością na kafelku.
+
+    `tekst_bez_trendu` i `ikona_bez_trendu` podmieniają wariant neutralny, gdy
+    zmiany NIE DA SIĘ policzyć — kokpit mówi wtedy „Za wcześnie na trend”
+    z ikoną informacji, zamiast udawać płaski trend napisem „Brak trendu”."""
     try:
         zmiana = float(zmiana_proc)
     except (TypeError, ValueError):
         return ft.Row([
-            ft.Icon(ft.Icons.TRENDING_FLAT, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Text("Brak trendu", size=rozmiar, color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True),
+            ft.Icon(ikona_bez_trendu or ft.Icons.TRENDING_FLAT, size=13,
+                    color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Text(tekst_bez_trendu or "Brak trendu", size=rozmiar,
+                    color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True),
         ], spacing=4)
 
     if zmiana > prog:

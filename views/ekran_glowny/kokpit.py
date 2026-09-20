@@ -16,6 +16,11 @@ SZER_KAFLA = 160
 # Powyżej tego progu kafelek dostaje w siatce dwie komórki zamiast jednej.
 PROG_KAFLA_2X1 = SZER_KAFLA + 40
 
+# Wysokość „iskry” (mini-wykresu) na kafelku. Jedna dla wszystkich, bo kafelki
+# z iskrą stoją w siatce obok siebie — różnica dwóch pikseli robiła z równego
+# rzędu schodki.
+WYS_ISKRY = 30
+
 # Dwa rozmiary kafelka w dwunastokolumnowej siatce ResponsiveRow: 1×1 i 2×1.
 # Telefon dzieli wiersz na dwie komórki, tablet na trzy, szeroki ekran na cztery.
 KOL_KAFLA_1X1 = {"xs": 6, "sm": 4, "md": 3}
@@ -134,28 +139,38 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        def stopka_iskry(podpis, chip=None):
+            """Dolny wiersz kafelka z iskrą: chip trendu po lewej, krótki podpis
+            po prawej. Jeden układ na wszystkie takie kafelki — wcześniej każdy
+            składał go u siebie i rozmiar tekstu, wyrównanie oraz odstęp
+            rozjeżdżały się między „Kosztem w mies.”, „Kosztem / 1000 km”
+            i resztą."""
+            wiersz = [chip] if chip is not None else []
+            wiersz.append(ft.Text(
+                podpis, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+                text_align=ft.TextAlign.END if chip is not None else ft.TextAlign.START,
+            ))
+            return ft.Row(wiersz, spacing=6)
+
         def kafel_z_iskra(ikona, kolor_ikony, etykieta, wartosc, seria, on_click,
                           wzrost_zly=True, podpis_stopki=None):
             """Kafelek liczbowy wzbogacony o mini-wykres i chip trendu — dokładnie
             ten sam układ, który sprawdził się przy „Śr. spalanie”. Przy mniej niż
             dwóch punktach nie ma czego rysować, więc wracamy do wersji „gołej”,
             zamiast udawać trend z jednego pomiaru."""
-            iskra = utils.sparkline(seria, kolor_ikony, wysokosc=30)
+            iskra = utils.sparkline(seria, kolor_ikony, wysokosc=WYS_ISKRY)
             if iskra is None:
                 return kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click)
 
             pierwsza, ostatnia = seria[0], seria[-1]
             zmiana = ((ostatnia - pierwsza) / pierwsza * 100) if pierwsza > 0 else None
 
-            stopka = ft.Row([
-                utils.znacznik_trendu(zmiana, wzrost_zly=wzrost_zly),
-                ft.Text(
-                    podpis_stopki or f"{len(seria)} ost. pomiarów",
-                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
-                    text_align=ft.TextAlign.END,
-                ),
-            ], spacing=6)
+            stopka = stopka_iskry(
+                podpis_stopki or f"{len(seria)} ost. pomiarów",
+                chip=utils.znacznik_trendu(zmiana, wzrost_zly=wzrost_zly,
+                                           rozmiar=utils.FS["caption"]),
+            )
 
             return ft.Container(
                 width=SZER_KAFLA + 60, padding=15,
@@ -180,8 +195,7 @@ class MiksinKokpitu:
             # jest zbyt szumiące (1 tankowanie 2. dnia potrafi dać "+900%") — nie
             # pokazujemy wtedy żadnej strzałki trendu, tylko neutralny stan.
             if dzien_dzisiaj < 7 or not dane_mc:
-                t_ikona, t_kolor = ft.Icons.INFO_OUTLINE, ft.Colors.ON_SURFACE_VARIANT
-                t_tekst = "Za wcześnie na trend"
+                zmiana_mc, bez_trendu = None, "Za wcześnie na trend"
             else:
                 rok_poprz, mies_poprz = dzisiaj.year, dzisiaj.month - 1
                 if mies_poprz <= 0:
@@ -196,24 +210,21 @@ class MiksinKokpitu:
                     self.state.auto_id, rok_poprz, mies_poprz, do_dnia
                 )
 
+                # Liczenie i kolorowanie chipa oddane do utils.znacznik_trendu:
+                # ten sam próg 5% i ta sama paleta, co na pozostałych kafelkach
+                # z iskrą. Tutaj zostaje wyłącznie to, co jest tu wyjątkowe —
+                # porównanie dzień-do-dnia z poprzednim miesiącem.
                 if koszt_poprzedni_do_dnia > 0:
-                    zmiana = ((koszt_biezacy - koszt_poprzedni_do_dnia) / koszt_poprzedni_do_dnia) * 100
-                    if zmiana > 5:
-                        t_ikona, t_kolor = ft.Icons.TRENDING_UP, utils.KOLOR_STATUS["critical"]
-                        t_tekst = f"+{utils.formatuj_liczba(zmiana, 0)}%"
-                    elif zmiana < -5:
-                        t_ikona, t_kolor = ft.Icons.TRENDING_DOWN, utils.KOLOR_STATUS["ok"]
-                        t_tekst = f"{utils.formatuj_liczba(zmiana, 0)}%"
-                    else:
-                        t_ikona, t_kolor = ft.Icons.TRENDING_FLAT, ft.Colors.ON_SURFACE_VARIANT
-                        t_tekst = "Podobnie"
+                    zmiana_mc = ((koszt_biezacy - koszt_poprzedni_do_dnia)
+                                 / koszt_poprzedni_do_dnia) * 100
+                    bez_trendu = None
                 else:
-                    t_ikona, t_kolor = ft.Icons.INFO_OUTLINE, ft.Colors.ON_SURFACE_VARIANT
-                    t_tekst = "Brak danych"
+                    zmiana_mc, bez_trendu = None, "Brak porównania"
 
             # Iskra z sum miesięcznych: sześć słupków z kafelka „Wydatki 6 mies.”
             # w formie linii, żeby kwota od razu miała tło historyczne.
-            iskra_mc = utils.sparkline([s for _, _, s in dane_mc], ft.Colors.PRIMARY, wysokosc=28)
+            iskra_mc = utils.sparkline([s for _, _, s in dane_mc], ft.Colors.PRIMARY,
+                                       wysokosc=WYS_ISKRY)
 
             zawartosc = [
                 ft.Row([
@@ -225,12 +236,13 @@ class MiksinKokpitu:
             ]
             if iskra_mc is not None:
                 zawartosc.append(iskra_mc)
-            zawartosc.append(
-                ft.Row([
-                    ft.Icon(t_ikona, size=13, color=t_kolor),
-                    ft.Text(t_tekst, size=utils.FS["caption"], color=t_kolor, no_wrap=True, expand=True),
-                ], spacing=4)
-            )
+            zawartosc.append(stopka_iskry(
+                f"{len(dane_mc)} ost. mies." if iskra_mc is not None else "",
+                chip=utils.znacznik_trendu(
+                    zmiana_mc, wzrost_zly=True, rozmiar=utils.FS["caption"],
+                    tekst_bez_trendu=bez_trendu, ikona_bez_trendu=ft.Icons.INFO_OUTLINE,
+                ),
+            ))
 
             return ft.Container(
                 width=SZER_KAFLA + (60 if iskra_mc is not None else 0),
@@ -334,7 +346,7 @@ class MiksinKokpitu:
             tu żadnej informacji; stopka mówi zamiast tego, od kiedy liczy się
             rachunek i ile wychodzi na dzień."""
             iskra = utils.sparkline(dane_skumulowane.get("iskra") or [],
-                                    ft.Colors.PRIMARY, wysokosc=30)
+                                    ft.Colors.PRIMARY, wysokosc=WYS_ISKRY)
             if iskra is None:
                 return kafel_wartosci(
                     ft.Icons.STACKED_LINE_CHART, ft.Colors.PRIMARY, "Koszt skumulowany",
@@ -364,9 +376,7 @@ class MiksinKokpitu:
                         lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
                     )),
                     iskra,
-                    ft.Text(" · ".join(stopka), size=utils.FS["caption"],
-                            color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    stopka_iskry(" · ".join(stopka)),
                 ], spacing=6),
             )
 
@@ -376,7 +386,8 @@ class MiksinKokpitu:
             Chip trendu bierze zmianę ROK DO ROKU, a nie początek kontra koniec
             iskry: przy dziesięcioletniej historii ta druga porównywałaby dzisiaj
             z czasami, których nikt już nie pamięta."""
-            iskra = utils.sparkline(dane_1000km.get("iskra") or [], ft.Colors.PRIMARY, wysokosc=30)
+            iskra = utils.sparkline(dane_1000km.get("iskra") or [], ft.Colors.PRIMARY,
+                                    wysokosc=WYS_ISKRY)
             if iskra is None or not dane_1000km.get("biezacy"):
                 return kafel_wartosci(
                     ft.Icons.AUTO_GRAPH, ft.Colors.BLUE_GREY_700, "Koszt / 1000 km",
@@ -388,11 +399,9 @@ class MiksinKokpitu:
             if srednia:
                 stopka_tekst += (f" • średnio {utils.formatuj_liczba(srednia, 0)} "
                                  f"{utils.symbol_waluty()}")
-            stopka = [ft.Text(stopka_tekst, size=utils.FS["caption"],
-                              color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
-                              no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)]
-            if dane_1000km.get("zmiana_rdr") is not None:
-                stopka.insert(0, utils.znacznik_trendu(dane_1000km["zmiana_rdr"], wzrost_zly=True))
+            chip_rdr = (utils.znacznik_trendu(dane_1000km["zmiana_rdr"], wzrost_zly=True,
+                                              rozmiar=utils.FS["caption"])
+                        if dane_1000km.get("zmiana_rdr") is not None else None)
 
             return ft.Container(
                 width=SZER_KAFLA + 60, padding=15,
@@ -409,7 +418,7 @@ class MiksinKokpitu:
                         lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
                     )),
                     iskra,
-                    ft.Row(stopka, spacing=6),
+                    stopka_iskry(stopka_tekst, chip=chip_rdr),
                 ], spacing=6),
             )
 
