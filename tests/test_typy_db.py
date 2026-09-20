@@ -54,6 +54,7 @@ WYWOLANIA = {
     "pobierz_kosz": lambda k: (),
     "pobierz_koszty_innych_wg_kategorii": lambda k: (k["id"]["auto_id"],),
     "pobierz_koszty_miesieczne": lambda k: (k["id"]["auto_id"],),
+    "pobierz_koszty_miesieczne_wg_kategorii": lambda k: (k["id"]["auto_id"],),
     "pobierz_nagrobki": lambda k: (k["id"]["auto_id"],),
     "pobierz_notatke": lambda k: ("tankowania", k["id"]["tankowanie"]),
     "pobierz_odlozone_powiadomienia": lambda k: (k["id"]["auto_id"],),

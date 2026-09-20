@@ -212,6 +212,7 @@ KOKPIT_WIDGETY = {
     "termin": "Najbliższy termin",
     "wykres": "Wykres wydatków (6 mies.)",
     "skumulowany": "Koszt skumulowany",
+    "koszt_1000km": "Koszt na 1000 km (okno)",
     "koszt_km": "Koszt eksploatacji / km",
     "spalanie": "Średnie spalanie",
     "przebieg_dzienny": "Średni przebieg dzienny",
@@ -316,6 +317,15 @@ def _klucz_widzianych_powiadomien(auto_id):
 ZAKRES_WYKRESU_DOMYSLNY = 12
 ZAKRESY_WYKRESU = (3, 6, 12, 0)  # miesiące wstecz; 0 = cała historia
 
+# Okno kroczące wykresu „koszt na 1000 km”. To NIE jest zakres widoku, tylko
+# długość okna, w którym liczy się jeden punkt krzywej — dlatego ma własne
+# wartości (24 miesiące) i własny domyślny rok: krótsze okno reaguje szybciej,
+# dłuższe wygładza sezon. Siedzi w tym samym zapisanym wierszu, co zakresy
+# wykresów, żeby nie dokładać funkcji do USTAWIENIA_PER_POJAZD.
+OKNA_1000KM = (6, 12, 24)
+OKNO_1000KM_DOMYSLNE = 12
+KLUCZ_OKNA_1000KM = "okno1000"
+
 
 def _klucz_zakresow_wykresow(auto_id):
     return f"zakresy_wykresow_{int(auto_id)}"
@@ -333,7 +343,7 @@ def _odczytaj_zakresy_wykresow(auto_id):
         if not nazwa or not wartosc.isdigit():
             continue
         miesiace = int(wartosc)
-        if miesiace in ZAKRESY_WYKRESU:
+        if miesiace in ZAKRESY_WYKRESU or miesiace in OKNA_1000KM:
             zakresy[nazwa] = miesiace
     return zakresy
 
@@ -344,6 +354,27 @@ def pobierz_zakres_wykresu(auto_id, klucz) -> int:
     wydatków gubiło poprzedni sezon, a cała historia przy kilku latach danych
     zlewała ostatnie miesiące w jedną kreskę przy krawędzi."""
     return _odczytaj_zakresy_wykresow(auto_id).get(klucz, ZAKRES_WYKRESU_DOMYSLNY)
+
+
+def pobierz_okno_kroczace(auto_id) -> int:
+    """Ile miesięcy obejmuje okno kroczące wykresu kosztu na 1000 km."""
+    okno = _odczytaj_zakresy_wykresow(auto_id).get(KLUCZ_OKNA_1000KM, OKNO_1000KM_DOMYSLNE)
+    return okno if okno in OKNA_1000KM else OKNO_1000KM_DOMYSLNE
+
+
+def zapisz_okno_kroczace(auto_id, miesiace):
+    """Zapamiętuje okno wybrane chipami — per pojazd, w tym samym wierszu, co
+    zakresy wykresów."""
+    if not auto_id:
+        return
+    if miesiace not in OKNA_1000KM:
+        miesiace = OKNO_1000KM_DOMYSLNE
+    zakresy = _odczytaj_zakresy_wykresow(auto_id)
+    zakresy[KLUCZ_OKNA_1000KM] = miesiace
+    zapisz_ustawienie(
+        _klucz_zakresow_wykresow(auto_id),
+        ",".join(f"{n}={w}" for n, w in sorted(zakresy.items())),
+    )
 
 
 def zapisz_zakres_wykresu(auto_id, klucz, miesiace):
@@ -430,6 +461,9 @@ __all__ = [
     "KOKPIT_WIDGETY",
     "KOKPIT_WIDGETY_DOMYSLNE",
     "USTAWIENIA_PER_POJAZD",
+    "KLUCZ_OKNA_1000KM",
+    "OKNA_1000KM",
+    "OKNO_1000KM_DOMYSLNE",
     "ZAKRESY_WYKRESU",
     "ZAKRES_WYKRESU_DOMYSLNY",
     "_klucz_kokpitu",
@@ -462,6 +496,7 @@ __all__ = [
     "pobierz_tryb_motywu",
     "pobierz_ustawienie",
     "pobierz_walute",
+    "pobierz_okno_kroczace",
     "pobierz_zakres_wykresu",
     "pobierz_widgety_kokpitu",
     "pobierz_wlasny_prog_dni_dokumentu",
@@ -477,6 +512,7 @@ __all__ = [
     "zapisz_prog_dni_dokumentu",
     "zapisz_tryb_motywu",
     "zapisz_ustawienie",
+    "zapisz_okno_kroczace",
     "zapisz_zakres_wykresu",
     "zapisz_widgety_kokpitu",
 ]

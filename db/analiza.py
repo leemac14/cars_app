@@ -8,12 +8,12 @@ from typing import Any
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, parsuj_int_bezpiecznie
-from .ustawienia import pobierz_walute
+from .ustawienia import pobierz_okno_kroczace, pobierz_walute
 from .synchronizacja import zarejestruj_nagrobek
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu
 from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_trend_cen_paliwa
-from .statystyki import pobierz_serie_spalania
+from .statystyki import koszt_na_1000km, pobierz_serie_spalania
 from .pojazd import pobierz_dane_pojazdu
 
 
@@ -46,6 +46,12 @@ PROG_UWAGI_BUDZETU = 0.80
 # Zmiana spalania poniżej tego progu to szum (inna stacja, inaczej dolany „pełny”
 # bak, jedna trasa autostradą), a nie trend — nie ma o czym informować.
 PROG_ISTOTNOSCI_TRENDU = 5.0
+
+
+# Od ilu procent NAD średnią życiową koszt na 1000 km przestaje być szumem.
+# Pięć procent mieści się w jednym droższym przeglądzie; piętnaście to już
+# zmiana, o której warto powiedzieć zdaniem, a nie tylko krzywą.
+PROG_DROZENIA_1000KM = 15.0
 
 
 # Sezon. Listopad zawsze wypadnie gorzej od września — zimna, krótkie trasy,
@@ -661,6 +667,37 @@ def _porownanie_dystansu(km):
     return None
 
 
+def _zmiana_1000km(koszt, km, koszt_poprzedni, km_poprzedni):
+    """Procentowa zmiana kosztu na 1000 km rok do roku; None, gdy któregoś roku
+    nie da się policzyć (brak kilometrów albo brak wydatków)."""
+    if not (km and km_poprzedni and koszt_poprzedni > 0):
+        return None
+    teraz = koszt / km
+    wczesniej = koszt_poprzedni / km_poprzedni
+    return ((teraz - wczesniej) / wczesniej * 100) if wczesniej > 0 else None
+
+
+def _km_w_roku(historia_prz, rok, granica=None):
+    """Kilometry przejechane w danym roku, z historii odczytów licznika.
+
+    Punkt startowy to ostatni odczyt SPRZED roku, jeśli istnieje — inaczej
+    styczniowy stan licznika policzyłby się jako „przejechane od zera”."""
+    poczatek = date_cls(rok, 1, 1)
+    kres = granica or date_cls(rok, 12, 31)
+    przed_rokiem, w_roku = None, []
+    for data_str, prz in historia_prz:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date():
+            continue
+        if d < poczatek:
+            przed_rokiem = prz
+        elif d <= kres:
+            w_roku.append(prz)
+    start = przed_rokiem if przed_rokiem is not None else (min(w_roku) if w_roku else None)
+    koniec = max(w_roku) if w_roku else None
+    return (koniec - start) if (start is not None and koniec is not None and koniec > start) else 0
+
+
 def podsumowanie_roku(auto_id, rok=None):
     """Wszystko, co da się powiedzieć o jednym roku pojazdu: przejechane
     kilometry, koszty w rozbiciu, najdroższy i najtańszy miesiąc, ulubiona
@@ -718,20 +755,10 @@ def podsumowanie_roku(auto_id, rok=None):
 
     # --- kilometry ---
     historia_prz = pobierz_historie_przebiegu(auto_id)
-    przed_rokiem, w_roku = None, []
-    for data_str, prz in historia_prz:
-        d = parsuj_date(data_str)
-        if d == datetime.min.date():
-            continue
-        if d < poczatek:
-            przed_rokiem = prz
-        elif d <= granica:
-            w_roku.append(prz)
-    # Punkt startowy to ostatni odczyt SPRZED roku, jeśli istnieje — inaczej
-    # styczniowy przebieg policzyłby się jako „przejechane od zera”.
-    start = przed_rokiem if przed_rokiem is not None else (min(w_roku) if w_roku else None)
-    koniec_prz = max(w_roku) if w_roku else None
-    km = (koniec_prz - start) if (start is not None and koniec_prz is not None and koniec_prz > start) else 0
+    km = _km_w_roku(historia_prz, rok, granica)
+    # Rok poprzedni liczymy tą samą miarą — bez niego „koszt na 1000 km” nie ma
+    # z czym się porównać, a sama kwota nie mówi, czy auto drożeje.
+    km_poprzedni = _km_w_roku(historia_prz, rok - 1)
 
     # --- tankowania roku ---
     tank_roku = []
@@ -802,6 +829,10 @@ def podsumowanie_roku(auto_id, rok=None):
         "km": km,
         "koszty": kategorie,
         "koszt_km": (kategorie["razem"] / km) if km > 0 else None,
+        "koszt_1000km": (kategorie["razem"] / km * 1000) if km > 0 else None,
+        "km_poprzedni": km_poprzedni or None,
+        "koszt_1000km_poprzedni": ((poprzedni / km_poprzedni * 1000)
+                                   if (poprzedni > 0 and km_poprzedni > 0) else None),
         "miesiace": miesiace,
         "najdrozszy_miesiac": {"miesiac": najdrozszy[0], "kwota": najdrozszy[1]},
         "najtanszy_miesiac": {"miesiac": najtanszy[0], "kwota": najtanszy[1]},
@@ -820,6 +851,9 @@ def podsumowanie_roku(auto_id, rok=None):
                                if najwiekszy else None),
         "poprzedni_rok": poprzedni if poprzedni > 0 else None,
         "zmiana_rdr": ((kategorie["razem"] - poprzedni) / poprzedni * 100) if poprzedni > 0 else None,
+        # Zmiana kwoty rok do roku rośnie także wtedy, gdy po prostu jeździsz
+        # więcej. Ta druga liczba dzieli przez dystans, więc mówi o CENIE jazdy.
+        "zmiana_1000km": _zmiana_1000km(kategorie["razem"], km, poprzedni, km_poprzedni),
         "porownanie_dystansu": _porownanie_dystansu(km),
         "sredni_koszt_miesiaca": (kategorie["razem"] / len(miesiace_z_danymi)) if miesiace_z_danymi else 0.0,
     }
@@ -1215,6 +1249,33 @@ def obserwacje_analityczne(auto_id, limit=None):
                 35,
             ))
 
+    # 8. Koszt na 1000 km w oknie kroczącym — liczba, która mówi „sprzedaj”.
+    #    Roczna suma rośnie też wtedy, gdy po prostu jeździsz więcej; ta nie,
+    #    bo dzieli wydatek przez dystans, za który go poniesiono.
+    krzywa = koszt_na_1000km(auto_id, pobierz_okno_kroczace(auto_id))
+    srednia_1000 = krzywa.get("srednia_zyciowa")
+    biezacy_1000 = krzywa.get("biezacy")
+    if srednia_1000 and biezacy_1000 and srednia_1000 > 0:
+        nad = (biezacy_1000 - srednia_1000) / srednia_1000 * 100
+        if nad >= PROG_DROZENIA_1000KM:
+            obserwacje.append(_obserwacja(
+                "drozeje_1000km", "zly" if nad >= 2 * PROG_DROZENIA_1000KM else "uwaga",
+                "koszt_km", "Auto drożeje",
+                f"Ostatnie {krzywa['okno']} miesięcy to {_kwota_txt(biezacy_1000)} na 1000 km — "
+                f"o {formatuj_liczba_eksport(nad, 0)}% więcej niż średnia z całej historii "
+                f"({_kwota_txt(srednia_1000)}). Sama suma roczna tego nie pokaże: rośnie też "
+                f"wtedy, gdy po prostu jeździsz więcej.",
+                85,
+            ))
+        elif nad <= -PROG_DROZENIA_1000KM:
+            obserwacje.append(_obserwacja(
+                "tanieje_1000km", "dobry", "koszt_km", "Auto tanieje",
+                f"Ostatnie {krzywa['okno']} miesięcy to {_kwota_txt(biezacy_1000)} na 1000 km — "
+                f"o {formatuj_liczba_eksport(abs(nad), 0)}% taniej niż średnia z całej historii "
+                f"({_kwota_txt(srednia_1000)}).",
+                45,
+            ))
+
     obserwacje.sort(key=lambda o: -o["waga"])
     return obserwacje[:limit] if limit else obserwacje
 
@@ -1224,6 +1285,7 @@ __all__ = [
     "MAX_LAT_SEZONU",
     "MIN_ODCINKOW_SEZONU",
     "OKRESY_BUDZETU",
+    "PROG_DROZENIA_1000KM",
     "PROG_ISTOTNOSCI_TRENDU",
     "PROG_WYROZNIENIA_WYDATKU",
     "PUNKTOW_ISKRY_SKUMULOWANEJ",
@@ -1232,12 +1294,14 @@ __all__ = [
     "TOLERANCJA_SEZONU_DNI",
     "_DYSTANSE_ODNIESIENIA",
     "_granice_okresu",
+    "_km_w_roku",
     "_kwota_txt",
     "_obserwacja",
     "_porownanie_dystansu",
     "_przesun_o_lata",
     "_sezonowosc_zmiany",
     "_srednia_okna",
+    "_zmiana_1000km",
     "_wiersze_kosztow_z_opisem",
     "analizuj_trend_spalania",
     "koszt_skumulowany",

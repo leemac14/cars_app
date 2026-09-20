@@ -8,11 +8,11 @@ from typing import Any
 from .stale import ROK_MIN, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, parsuj_int_bezpiecznie
-from .ustawienia import pobierz_prog_dni_dokumentu
+from .ustawienia import pobierz_okno_kroczace, pobierz_prog_dni_dokumentu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .koszty import DNI_W_MIESIACU, koszty_w_okresie
 from .powiadomienia import pobierz_powiadomienia
-from .statystyki import oblicz_kondycje_pojazdu
+from .statystyki import koszt_na_1000km, oblicz_kondycje_pojazdu
 
 
 # ==================== TOŻSAMOŚĆ I METRYKI POJAZDU ====================
@@ -391,6 +391,14 @@ def pobierz_dane_do_porownania(auto_id):
     powiadomienia = pobierz_powiadomienia(auto_id)
     dane["przeterminowane"] = sum(1 for p in powiadomienia if p["status"] == "przeterminowane")
     dane["pilne"] = sum(1 for p in powiadomienia if p["status"] == "pilne")
+
+    # Koszt z CAŁEGO życia auta (`koszt_km` wyżej) porównuje dwa auta tak, jakby
+    # oba stały w tym samym miejscu historii. Okno kroczące porównuje je DZIŚ —
+    # dziesięcioletni kombi w dobrej formie może być teraz tańszy od trzyletniego
+    # po gwarancji, choć średnia życiowa mówi co innego.
+    krzywa = koszt_na_1000km(auto_id, pobierz_okno_kroczace(auto_id))
+    dane["koszt_1000km_okno"] = krzywa.get("biezacy")
+    dane["okno_1000km"] = krzywa.get("okno")
 
     return dane
 

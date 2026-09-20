@@ -75,6 +75,9 @@ class MiksinKokpitu:
         dane_skumulowane = db.koszt_skumulowany(
             self.state.auto_id, z_cena_zakupu=db.czy_skumulowany_z_cena_zakupu()
         ) if "skumulowany" in wlaczone else {}
+        dane_1000km = db.koszt_na_1000km(
+            self.state.auto_id, db.pobierz_okno_kroczace(self.state.auto_id)
+        ) if "koszt_1000km" in wlaczone else {}
 
         def idz_do_statystyk(podzakladka=0):
             def handler(e):
@@ -364,6 +367,49 @@ class MiksinKokpitu:
                     ft.Text(" · ".join(stopka), size=utils.FS["caption"],
                             color=ft.Colors.ON_SURFACE_VARIANT,
                             no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            )
+
+        def widget_koszt_1000km():
+            """Cena jazdy w oknie kroczącym — ta liczba mówi „sprzedaj”.
+
+            Chip trendu bierze zmianę ROK DO ROKU, a nie początek kontra koniec
+            iskry: przy dziesięcioletniej historii ta druga porównywałaby dzisiaj
+            z czasami, których nikt już nie pamięta."""
+            iskra = utils.sparkline(dane_1000km.get("iskra") or [], ft.Colors.PRIMARY, wysokosc=30)
+            if iskra is None or not dane_1000km.get("biezacy"):
+                return kafel_wartosci(
+                    ft.Icons.AUTO_GRAPH, ft.Colors.BLUE_GREY_700, "Koszt / 1000 km",
+                    "Za mało danych", idz_do_statystyk(1),
+                )
+
+            stopka_tekst = f"okno {dane_1000km['okno']} mies."
+            srednia = dane_1000km.get("srednia_zyciowa")
+            if srednia:
+                stopka_tekst += (f" • średnio {utils.formatuj_liczba(srednia, 0)} "
+                                 f"{utils.symbol_waluty()}")
+            stopka = [ft.Text(stopka_tekst, size=utils.FS["caption"],
+                              color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                              no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)]
+            if dane_1000km.get("zmiana_rdr") is not None:
+                stopka.insert(0, utils.znacznik_trendu(dane_1000km["zmiana_rdr"], wzrost_zly=True))
+
+            return ft.Container(
+                width=SZER_KAFLA + 60, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
+                ink=True, on_click=idz_do_statystyk(1),
+                tooltip="Cena jazdy w oknie kroczącym — dotknij, aby zobaczyć krzywą",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.AUTO_GRAPH, size=15, color=ft.Colors.PRIMARY),
+                        utils.etykieta("Koszt / 1000 km", expand=True),
+                    ], spacing=6),
+                    tekst_wartosci(liczba_kafelka(
+                        dane_1000km.get("biezacy"),
+                        lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+                    )),
+                    iskra,
+                    ft.Row(stopka, spacing=6),
                 ], spacing=6),
             )
 
@@ -849,6 +895,7 @@ class MiksinKokpitu:
             "termin": widget_termin,
             "wykres": widget_wykres,
             "skumulowany": widget_skumulowany,
+            "koszt_1000km": widget_koszt_1000km,
             "koszt_km": widget_koszt_km,
             "spalanie": widget_spalanie,
             "przebieg_dzienny": widget_przebieg_dzienny,

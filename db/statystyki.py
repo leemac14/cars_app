@@ -8,10 +8,11 @@ from typing import Any
 from .stale import (ENERGIA_PALIWO, ENERGIA_PRAD, PRIORYTETY_DO_ZROBIENIA, STATUS_POJAZDU_AKTYWNY,
                     TERMINY_DOKUMENTOW, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE)
 from .polaczenie import polacz_baze
+from .ustawienia import OKNO_1000KM_DOMYSLNE
 from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport
 from .energia import ETYKIETY_RODZAJU, czy_pojazd_dwuzrodlowy, domyslny_rodzaj_energii, etykiety_energii, rodzaje_energii_pojazdu
 from .przebieg import pobierz_historie_przebiegu, podsumowanie_historii_przebiegu
-from .koszty import pobierz_koszty_miesieczne
+from .koszty import KATEGORIE_BUDZETU, pobierz_koszty_miesieczne, pobierz_koszty_miesieczne_wg_kategorii, siatka_miesiecy
 from .powiadomienia import pobierz_powiadomienia
 
 
@@ -420,14 +421,7 @@ def pobierz_przebieg_miesieczny(auto_id, liczba_miesiecy=6) -> list[tuple[int, i
         if klucz not in wg_miesiaca or przebieg > wg_miesiaca[klucz]:
             wg_miesiaca[klucz] = przebieg
 
-    dzisiaj = datetime.now()
-    klucze = []
-    for i in range(liczba_miesiecy - 1, -1, -1):
-        m, y = dzisiaj.month - i, dzisiaj.year
-        while m <= 0:
-            m += 12
-            y -= 1
-        klucze.append((y, m))
+    klucze = siatka_miesiecy(liczba_miesiecy)
 
     def stan_na_koniec(klucz):
         """Ostatni znany stan licznika NIE PÓŹNIEJ niż koniec danego miesiąca —
@@ -465,6 +459,114 @@ def pobierz_serie_kosztu_km(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, 
         if km > 0:
             seria.append((rok, mies, suma / km))
     return seria
+
+
+# ============================================================================
+#  KOSZT NA 1000 KM W OKNIE KROCZĄCYM
+# ============================================================================
+# Roczna suma kosztów rośnie także wtedy, gdy po prostu jeździsz więcej —
+# i dlatego nie odpowiada na pytanie, czy auto DROŻEJE. Koszt na przejechany
+# dystans odpowiada, bo dzieli wydatek przez to, co się za niego dostało.
+#
+# Okno KROCZĄCE, a nie rok kalendarzowy: przegląd w grudniu i ten sam przegląd
+# w styczniu to dla właściciela ta sama rzecz, a w rozbiciu na lata wyglądają
+# jak dwa różne zjawiska. Okno kończy się w każdym kolejnym miesiącu, więc
+# punkt na krzywej mówi: „gdyby wtedy podsumować ostatnie N miesięcy, wyszłoby
+# tyle”.
+#
+# Na 1000 km, nie na kilometr: przy realnych kosztach na kilometr wychodzi
+# 0,73 zł i każda zmiana dzieje się na drugim miejscu po przecinku.
+
+# Sufit długości osi. Dziesięć lat miesięcznych punktów to i tak więcej, niż
+# da się pokazać na telefonie, a pętla musi się kończyć.
+MAKS_MIESIECY_1000KM = 120
+
+
+def koszt_na_1000km(auto_id, okno_miesiecy=OKNO_1000KM_DOMYSLNE, dzis=None) -> dict[str, Any]:
+    """Koszt eksploatacji na 1000 km liczony w oknie kroczącym, miesiąc po
+    miesiącu — krzywa, na której widać moment, w którym auto zaczyna drożeć.
+
+    Punkt powstaje dopiero wtedy, gdy CAŁE okno mieści się w danych: pierwszy
+    miesiąc z policzonymi kilometrami wyznacza początek. Inaczej najstarsze
+    punkty liczyłyby koszty przez niepełny dystans i krzywa zaczynałaby się od
+    fałszywego szczytu — dokładnie tam, gdzie oko szuka trendu.
+
+    Zwraca też `srednia_zyciowa` (ta sama liczba dla całej dostępnej historii),
+    `szczyt` (najdroższe okno), `zmiana_rdr` (ostatnie okno wobec okna sprzed
+    roku) i `iskra` do kafelka kokpitu."""
+    okno = max(1, int(okno_miesiecy or OKNO_1000KM_DOMYSLNE))
+    pusty = {
+        "punkty": [], "iskra": [], "okno": okno, "biezacy": None,
+        "srednia_zyciowa": None, "szczyt": None, "zmiana_rdr": None,
+    }
+    if not auto_id:
+        return pusty
+
+    koszty = pobierz_koszty_miesieczne_wg_kategorii(auto_id, MAKS_MIESIECY_1000KM)
+    kilometry = pobierz_przebieg_miesieczny(auto_id, MAKS_MIESIECY_1000KM)
+    if not koszty or len(kilometry) != len(koszty):
+        return pusty
+
+    km_mies = [km for _y, _m, km in kilometry]
+    # Pierwszy miesiąc z POLICZONYM dystansem. Wcześniejsze mają zero nie
+    # dlatego, że auto stało, tylko dlatego, że nie ma jeszcze dwóch odczytów
+    # licznika, z których da się cokolwiek odjąć.
+    pierwszy = next((i for i, km in enumerate(km_mies) if km > 0), None)
+    if pierwszy is None:
+        return pusty
+
+    kategorie = [k for k in KATEGORIE_BUDZETU if k != "razem"]
+    punkty = []
+    for i in range(max(okno - 1, pierwszy + okno - 1), len(koszty)):
+        okien = range(i - okno + 1, i + 1)
+        km_okna = sum(km_mies[j] for j in okien)
+        if km_okna <= 0:
+            continue
+        sumy = {kat: sum(koszty[j][2][kat] for j in okien) for kat in kategorie}
+        razem = sum(sumy.values())
+        rok, miesiac, _ = koszty[i]
+        punkt = {
+            "rok": rok, "miesiac": miesiac, "klucz": f"{rok}-{miesiac:02d}",
+            "km": km_okna, "razem": razem,
+            "koszt": razem / km_okna * 1000,
+        }
+        punkt.update({kat: sumy[kat] / km_okna * 1000 for kat in kategorie})
+        punkty.append(punkt)
+
+    if not punkty:
+        return pusty
+
+    # Średnia życiowa liczona z TEJ SAMEJ historii, co krzywa — inaczej linia
+    # odniesienia leżałaby wobec wykresu krzywo i nic by nie znaczyła.
+    km_calosc = sum(km_mies[pierwszy:])
+    koszt_calosc = sum(koszty[j][2]["razem"] for j in range(pierwszy, len(koszty)))
+    srednia_zyciowa = (koszt_calosc / km_calosc * 1000) if km_calosc > 0 else None
+
+    szczyt = max(punkty, key=lambda p: p["koszt"])
+    ostatni = punkty[-1]
+
+    # Rok do roku bierzemy po KLUCZU miesiąca, nie po pozycji w liście: punkt
+    # bez kilometrów wypada z krzywej, więc „dwanaście pozycji wstecz” bywa
+    # czymś innym niż „dwanaście miesięcy wstecz”.
+    rok_temu_klucz = f"{ostatni['rok'] - 1}-{ostatni['miesiac']:02d}"
+    rok_temu = next((p for p in punkty if p["klucz"] == rok_temu_klucz), None)
+    zmiana_rdr = (((ostatni["koszt"] - rok_temu["koszt"]) / rok_temu["koszt"] * 100)
+                  if rok_temu and rok_temu["koszt"] > 0 else None)
+
+    krok = max(1, -(-len(punkty) // 24))
+    iskra = [p["koszt"] for p in punkty[::krok]]
+    if iskra and iskra[-1] != ostatni["koszt"]:
+        iskra.append(ostatni["koszt"])
+
+    return {
+        "punkty": punkty,
+        "iskra": iskra,
+        "okno": okno,
+        "biezacy": ostatni["koszt"],
+        "srednia_zyciowa": srednia_zyciowa,
+        "szczyt": szczyt,
+        "zmiana_rdr": zmiana_rdr,
+    }
 
 
 def pobierz_statystyki_energii(auto_id) -> list[dict[str, Any]]:
@@ -687,6 +789,7 @@ def podsumowanie_do_zrobienia(auto_id):
 
 __all__ = [
     "DNI_CISZY_W_DANYCH",
+    "MAKS_MIESIECY_1000KM",
     "DNI_DLUGIEJ_CISZY_W_DANYCH",
     "ETYKIETY_GRUP_KONDYCJI",
     "HORYZONT_TERMINU_KONDYCJI",
@@ -695,6 +798,7 @@ __all__ = [
     "SUFITY_KONDYCJI",
     "TERMINY_WYMAGANE_W_KONDYCJI",
     "WAGA_DOKUMENTU",
+    "koszt_na_1000km",
     "oblicz_kondycje_pojazdu",
     "pobierz_przebieg_miesieczny",
     "pobierz_rozbicie_kondycji",

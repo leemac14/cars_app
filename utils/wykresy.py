@@ -153,9 +153,19 @@ def pasek_zakresu_czasu(page: ft.Page, state, klucz):
         # wykresu, a nie ekran, na którym stoimy (patrz utils.odswiez_ekran).
         odswiez_ekran(page)
 
+    return _pigulka_chipow(page, ZAKRESY_CZASU, aktualny, wybierz,
+                           lambda m: f"Pokaż {opis_zakresu(m)}")
+
+
+def _pigulka_chipow(page: ft.Page, opcje, aktualny, wybierz, podpowiedz=None):
+    """Grupa chipów w jednej pigułce dosuniętej do prawej krawędzi, tuż nad
+    wykresem, którego dotyczy — jedna niska linijka zamiast czterech.
+
+    Wspólna dla paska zakresu i paska okna kroczącego: to ten sam gest w tym
+    samym miejscu, więc ma wyglądać identycznie."""
     segmenty = []
-    for etykieta_chipa, miesiace in ZAKRESY_CZASU:
-        aktywny = (miesiace == aktualny)
+    for etykieta_chipa, wartosc_chipa in opcje:
+        aktywny = (wartosc_chipa == aktualny)
         segmenty.append(ft.Container(
             height=26,
             padding=ft.Padding(10, 0, 10, 0),
@@ -163,8 +173,8 @@ def pasek_zakresu_czasu(page: ft.Page, state, klucz):
             ink=True,
             bgcolor=ft.Colors.PRIMARY if aktywny else ft.Colors.TRANSPARENT,
             animate=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
-            tooltip=f"Pokaż {opis_zakresu(miesiace)}",
-            on_click=lambda e, m=miesiace: wybierz(m),
+            tooltip=podpowiedz(wartosc_chipa) if podpowiedz else None,
+            on_click=lambda e, w=wartosc_chipa: wybierz(w),
             # ANI `alignment`, ANI `expand` — kontener z wyrównaniem rozciąga
             # się do całej szerokości, jaką dostanie, więc cztery takie chipy
             # w pasku zawijanym lądowały jeden pod drugim i zjadały ekran.
@@ -181,8 +191,6 @@ def pasek_zakresu_czasu(page: ft.Page, state, klucz):
             ),
         ))
 
-    # Jedna pigułka dosunięta do prawej krawędzi, tuż nad wykresem, którego
-    # dotyczy — zajmuje jedną niską linijkę zamiast czterech.
     grupa = ft.Container(
         padding=3, border_radius=RADIUS["pill"], bgcolor=tlo_karty(page, poziom=2),
         content=ft.Row(segmenty, spacing=2, tight=True),
@@ -827,6 +835,193 @@ def karta_kosztu_skumulowanego(page: ft.Page, dane, od_daty=None, wysokosc=210):
     )
 
 
+# ---------------------- KOSZT NA 1000 KM W OKNIE ----------------------
+# Suma roczna rośnie także wtedy, gdy po prostu jeździsz więcej — koszt na
+# dystans nie, bo dzieli wydatek przez to, co się za niego dostało. Dlatego
+# to jest krzywa, na której widać moment, w którym auto zaczyna drożeć.
+
+OKNA_CZASU = [("6 mies.", 6), ("Rok", 12), ("2 lata", 24)]
+
+# Od ilu procent nad średnią życiową krzywa znaczy „drożeje”, a nie „szum”.
+# Pięć procent mieści się w jednym droższym przeglądzie, piętnaście już nie.
+PROG_DROZENIA = 15.0
+
+
+def pasek_okna_kroczacego(page: ft.Page, state):
+    """Długość okna kroczącego nad wykresem kosztu na 1000 km.
+
+    To NIE jest pasek zakresu widoku: chipy zmieniają tu sposób LICZENIA
+    każdego punktu, a nie wycinek osi. Oś pokazuje zawsze całą historię, dla
+    której okno jest pełne — przy krótszym oknie krzywa jest dłuższa i bardziej
+    nerwowa, przy dłuższym krótsza i gładsza."""
+    auto_id = getattr(state, "auto_id", None)
+    aktualne = db.pobierz_okno_kroczace(auto_id)
+
+    def wybierz(miesiace):
+        db.zapisz_okno_kroczace(auto_id, miesiace)
+        odswiez_ekran(page)
+
+    return _pigulka_chipow(
+        page, OKNA_CZASU, aktualne, wybierz,
+        lambda m: f"Licz każdy punkt z ostatnich {m} miesięcy",
+    )
+
+
+def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
+    """Krzywa kosztu na 1000 km w oknie kroczącym: gruba „Razem”, trzy cienkie
+    serie kategorii, przerywana linia średniej życiowej i znacznik w szczycie.
+
+    Oś pionowa zaczyna się w ZERZE, a nie tuż pod najniższym punktem. Obcięta
+    oś robi z dziesięcioprocentowej zmiany urwisko — a to jest wykres, na
+    którego podstawie sprzedaje się auto."""
+    punkty = dane.get("punkty") or []
+    if len(punkty) < 2:
+        return None
+
+    wartosci = [p["koszt"] for p in punkty]
+    srednia = dane.get("srednia_zyciowa")
+    maks_y = max(wartosci + ([srednia] if srednia else [])) * 1.12 or 1.0
+    szczyt = dane.get("szczyt") or {}
+    ostatni_x = len(punkty) - 1
+
+    def punkt_razem(i, p):
+        wspolne = {"tooltip": (f"{p['miesiac']:02d}/{p['rok']}\n"
+                               f"{formatuj_liczba(p['koszt'])} {symbol_waluty()} / 1000 km\n"
+                               f"{formatuj_liczba(p['km'], 0)} km w oknie")}
+        if p["klucz"] == szczyt.get("klucz"):
+            return fc.LineChartDataPoint(
+                i, p["koszt"],
+                point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=4.5, stroke_width=0),
+                **wspolne,
+            )
+        return fc.LineChartDataPoint(i, p["koszt"], **wspolne)
+
+    serie = [
+        fc.LineChartData(
+            points=[fc.LineChartDataPoint(i, p[kategoria]) for i, p in enumerate(punkty)],
+            stroke_width=1.5, color=kolor, curved=False, rounded_stroke_cap=True,
+        )
+        for kategoria, kolor in KOLORY_SERII_KOSZTU.items()
+    ]
+    if srednia:
+        serie.append(fc.LineChartData(
+            points=[fc.LineChartDataPoint(0, srednia), fc.LineChartDataPoint(ostatni_x, srednia)],
+            stroke_width=1.5, color=ft.Colors.ON_SURFACE_VARIANT,
+            dash_pattern=[6, 4], curved=False,
+        ))
+    serie.append(fc.LineChartData(
+        points=[punkt_razem(i, p) for i, p in enumerate(punkty)],
+        stroke_width=3, color=ft.Colors.PRIMARY, curved=False, rounded_stroke_cap=True,
+        below_line_bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
+    ))
+
+    krok = krok_etykiet_osi(len(punkty))
+    etykiety_x = [
+        fc.ChartAxisLabel(
+            value=i,
+            label=ft.Text(f"{p['miesiac']:02d}/{str(p['rok'])[2:]}", size=9,
+                          color=ft.Colors.ON_SURFACE_VARIANT),
+        )
+        for i, p in enumerate(punkty)
+        if i % krok == 0 or i == ostatni_x
+    ]
+
+    wykres = ft.Container(
+        height=wysokosc,
+        padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
+        content=fc.LineChart(
+            data_series=serie,
+            horizontal_grid_lines=fc.ChartGridLines(
+                interval=max(1, int(maks_y / 4) or 1),
+                color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE), width=1,
+            ),
+            left_axis=fc.ChartAxis(
+                labels=[
+                    fc.ChartAxisLabel(
+                        value=w,
+                        label=ft.Text(_kwota_osi(w), size=9, color=ft.Colors.ON_SURFACE_VARIANT),
+                    )
+                    for w in (0, maks_y / 2, maks_y)
+                ],
+                label_size=46, title_size=0,
+            ),
+            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_size=22, title_size=0),
+            right_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            top_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            min_x=0, max_x=ostatni_x, min_y=0, max_y=maks_y,
+            interactive=True,
+            expand=True,
+        ),
+    )
+
+    legenda = [_kropka_legendy(ft.Colors.PRIMARY, "Razem")]
+    legenda += [_kropka_legendy(kolor, db.KATEGORIE_BUDZETU.get(kat, kat))
+                for kat, kolor in KOLORY_SERII_KOSZTU.items()]
+    if srednia:
+        legenda.append(_kropka_legendy(ft.Colors.ON_SURFACE_VARIANT, "średnia życiowa", obwodka=True))
+    if szczyt:
+        legenda.append(_kropka_legendy(KOLOR_STATUS["accent"], "najdroższe okno", obwodka=True))
+
+    return ft.Column([
+        wykres,
+        ft.Row(legenda, spacing=SPACING["md"], wrap=True, run_spacing=4),
+    ], spacing=SPACING["sm"])
+
+
+def karta_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
+    """Cała karta: bieżące okno wielką liczbą, chip zmiany rok do roku, krzywa
+    i dwa zdania przypisu — najdroższe okno i średnia życiowa."""
+    wykres = wykres_kosztu_1000km(page, dane, wysokosc=wysokosc)
+    if wykres is None:
+        return ft.Container(
+            padding=SPACING["lg"],
+            **powierzchnia(page, "karta", cien="md"),
+            content=podpis(
+                "Za mało danych na koszt w oknie kroczącym — potrzeba odczytów licznika "
+                "i wydatków z co najmniej dwóch pełnych okien. Krótsze okno (6 mies.) "
+                "wystarcza wcześniej."
+            ),
+        )
+
+    naglowek = [
+        ft.Column([
+            etykieta(f"Ostatnie {dane['okno']} mies."),
+            wartosc(f"{formatuj_liczba(dane['biezacy'])} {symbol_waluty()} / 1000 km"),
+        ], spacing=2, expand=True),
+    ]
+    if dane.get("zmiana_rdr") is not None:
+        naglowek.append(znacznik_trendu(dane["zmiana_rdr"], wzrost_zly=True))
+
+    przypisy = []
+    srednia = dane.get("srednia_zyciowa")
+    if srednia:
+        nad = ((dane["biezacy"] - srednia) / srednia * 100) if srednia > 0 else 0
+        if nad >= PROG_DROZENIA:
+            ocena = f"o {formatuj_liczba(nad, 0)}% DROŻEJ niż średnia życiowa"
+        elif nad <= -PROG_DROZENIA:
+            ocena = f"o {formatuj_liczba(abs(nad), 0)}% taniej niż średnia życiowa"
+        else:
+            ocena = "w okolicach średniej życiowej"
+        przypisy.append(podpis(
+            f"Średnia życiowa: {formatuj_liczba(srednia)} {symbol_waluty()} / 1000 km — "
+            f"bieżące okno jest {ocena}."))
+    szczyt = dane.get("szczyt")
+    if szczyt and szczyt.get("klucz"):
+        przypisy.append(podpis(
+            f"Najdroższe okno kończyło się w {szczyt['miesiac']:02d}/{szczyt['rok']}: "
+            f"{formatuj_liczba(szczyt['koszt'])} {symbol_waluty()} / 1000 km."))
+
+    return ft.Container(
+        padding=SPACING["lg"],
+        **powierzchnia(page, "karta", cien="md"),
+        content=ft.Column(
+            [ft.Row(naglowek, spacing=SPACING["md"],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER), wykres] + przypisy,
+            spacing=SPACING["md"],
+        ),
+    )
+
+
 def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
     """Mały „chip” trendu: strzałka + procent zmiany. `wzrost_zly=True` znaczy,
     że rosnąca wartość jest zła (koszty, spalanie) i dostaje kolor czerwony.
@@ -1027,12 +1222,15 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="o
 
 __all__ = [
     "KOLORY_SERII_KOSZTU",
+    "OKNA_CZASU",
+    "PROG_DROZENIA",
     "MAKS_PUNKTOW_KRZYWEJ",
     "ROLA_STATUSU_INTERWALU",
     "ZAKRESY_CZASU",
     "_OPISY_ZAKRESU",
     "_SKALA_KONDYCJI",
     "_kropka_legendy",
+    "_pigulka_chipow",
     "_kwota_osi",
     "_przesun_miesiac",
     "granica_zakresu",
@@ -1041,11 +1239,13 @@ __all__ = [
     "okresy_slupkow",
     "opis_zakresu",
     "tygodnie_zakresu",
+    "pasek_okna_kroczacego",
     "pasek_zakresu_czasu",
     "zakres_wykresu",
     "gauge_kondycji",
     "heatmapa_aktywnosci",
     "karta_analizy",
+    "karta_kosztu_1000km",
     "karta_kosztu_skumulowanego",
     "kolor_kondycji_plynny",
     "liczniki_interwalu",
@@ -1054,6 +1254,7 @@ __all__ = [
     "pasek_postepu",
     "sparkline",
     "wskaznik_baku",
+    "wykres_kosztu_1000km",
     "wykres_kosztu_skumulowanego",
     "wykres_przebiegu",
     "znacznik_trendu",

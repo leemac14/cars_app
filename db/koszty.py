@@ -122,50 +122,58 @@ def koszty_w_okresie(auto_id, od_data=None, do_data=None):
     return wynik
 
 
-def pobierz_koszty_miesieczne(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, float]]:
-    """Suma kosztów (paliwo + serwis + inne) dla ostatnich `liczba_miesiecy`
-    miesięcy, włącznie z bieżącym — używane przez mini-wykres na dashboardzie
-    startowym (patrz MainView._buduj_kokpit). Zwraca listę (rok, miesiac, suma)
-    posortowaną chronologicznie rosnąco; miesiące bez wydatków mają sumę 0.0."""
-    if not auto_id:
-        return []
+def siatka_miesiecy(liczba_miesiecy, dzisiaj=None):
+    """Kolejne (rok, miesiac) od najstarszego do bieżącego WŁĄCZNIE.
 
-    dzisiaj = datetime.now()
+    Jedna siatka dla kosztów i dla kilometrów — tylko dlatego obie listy da się
+    zestawić pozycja w pozycję, bez dopasowywania po kluczu."""
+    dzis = dzisiaj or datetime.now()
     klucze = []
     for i in range(liczba_miesiecy - 1, -1, -1):
-        m = dzisiaj.month - i
-        y = dzisiaj.year
+        m, y = dzis.month - i, dzis.year
         while m <= 0:
             m += 12
             y -= 1
         klucze.append((y, m))
+    return klucze
 
-    sumy = {k: 0.0 for k in klucze}
+
+def pobierz_koszty_miesieczne_wg_kategorii(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, dict[str, float]]]:
+    """Koszty kolejnych miesięcy w ROZBICIU na kategorie budżetu (plus „razem”).
+
+    Zwraca [(rok, miesiac, {paliwo, serwis, inne, razem})] chronologicznie
+    rosnąco; miesiąc bez wydatków ma same zera, więc wołający nie musi sprawdzać
+    obecności klucza. Podstawa wykresu kosztu na 1000 km — tam cienkie krzywe
+    kategorii muszą leżeć w dokładnie tej samej siatce, co gruba krzywa razem."""
+    if not auto_id:
+        return []
+
+    klucze = siatka_miesiecy(liczba_miesiecy)
+    sumy = {k: {kat: 0.0 for kat in KATEGORIE_BUDZETU} for k in klucze}
 
     with polacz_baze() as conn:
-        c = conn.cursor()
-        wiersze = []
-        c.execute("SELECT data, kwota FROM tankowania WHERE auto_id=?", (auto_id,))
-        wiersze += c.fetchall()
-        c.execute(
-            "SELECT h.data, h.cena FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
-        )
-        wiersze += c.fetchall()
-        c.execute("SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?", (auto_id,))
-        wiersze += c.fetchall()
-        c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
-        wiersze += c.fetchall()
+        wiersze = _wiersze_kosztow(conn, auto_id)
 
-    for data_str, kwota in wiersze:
+    for data_str, kwota, kategoria in wiersze:
         d = parsuj_date(data_str)
         if d == datetime.min.date():
             continue
         klucz = (d.year, d.month)
         if klucz in sumy:
-            sumy[klucz] += float(kwota or 0.0)
+            wartosc = float(kwota or 0.0)
+            sumy[klucz][kategoria] += wartosc
+            sumy[klucz]["razem"] += wartosc
 
     return [(y, m, sumy[(y, m)]) for (y, m) in klucze]
+
+
+def pobierz_koszty_miesieczne(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, float]]:
+    """Suma kosztów (paliwo + serwis + inne) dla ostatnich `liczba_miesiecy`
+    miesięcy, włącznie z bieżącym — używane przez mini-wykres na dashboardzie
+    startowym (patrz MainView._buduj_kokpit). Zwraca listę (rok, miesiac, suma)
+    posortowaną chronologicznie rosnąco; miesiące bez wydatków mają sumę 0.0."""
+    return [(y, m, kwoty["razem"])
+            for y, m, kwoty in pobierz_koszty_miesieczne_wg_kategorii(auto_id, liczba_miesiecy)]
 
 
 def pobierz_koszt_miesiaca_do_dnia(auto_id, rok, miesiac, do_dnia):
@@ -396,7 +404,9 @@ __all__ = [
     "pobierz_koszt_miesiaca_do_dnia",
     "pobierz_koszty_innych_wg_kategorii",
     "pobierz_koszty_miesieczne",
+    "pobierz_koszty_miesieczne_wg_kategorii",
     "pobierz_podzial_kosztow",
+    "siatka_miesiecy",
     "pobierz_stacje_paliw",
     "pobierz_trend_cen_paliwa",
     "suma_kategorii_innych",

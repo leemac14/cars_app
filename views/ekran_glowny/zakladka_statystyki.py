@@ -703,6 +703,14 @@ class MiksinZakladkiStatystyki:
                     ], spacing=5, tight=True),
                 ))
 
+            # ----- Koszt na 1000 km w oknie kroczącym -----
+            # Krzywa skumulowana mówi ILE auto kosztowało; ta mówi, czy zaczyna
+            # kosztować WIĘCEJ. Roczne sumy tego nie pokażą, bo rosną także
+            # wtedy, gdy po prostu jeździsz więcej.
+            dane_1000 = db.koszt_na_1000km(
+                self.state.auto_id, db.pobierz_okno_kroczace(self.state.auto_id))
+            karta_1000km = utils.karta_kosztu_1000km(self._page, dane_1000)
+
             karta_skumulowanego = utils.karta_kosztu_skumulowanego(
                 self._page, dane_skum,
                 od_daty=utils.granica_zakresu(utils.zakres_wykresu(self.state, "skumulowany")),
@@ -714,6 +722,10 @@ class MiksinZakladkiStatystyki:
                 ft.Row(naglowek_skum, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 utils.pasek_zakresu_czasu(self._page, self.state, "skumulowany"),
                 karta_skumulowanego,
+                ft.Divider(height=20),
+                ft.Text("Koszt na 1000 km", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                utils.pasek_okna_kroczacego(self._page, self.state),
+                karta_1000km,
                 ft.Divider(height=20),
                 ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 utils.pasek_zakresu_czasu(self._page, self.state, "struktura"),

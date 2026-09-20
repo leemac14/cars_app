@@ -114,6 +114,7 @@ IKONY_KOKPITU = {
     "termin": ft.Icons.EVENT,
     "wykres": ft.Icons.BAR_CHART,
     "skumulowany": ft.Icons.STACKED_LINE_CHART,
+    "koszt_1000km": ft.Icons.AUTO_GRAPH,
     "koszt_km": ft.Icons.ADD_ROAD,
     "spalanie": ft.Icons.LOCAL_GAS_STATION,
     "przebieg_dzienny": ft.Icons.TIMELAPSE,
@@ -188,6 +189,7 @@ IKONY_OBSERWACJI = {
     "miesiac": ft.Icons.CALENDAR_MONTH,
     "stacja": ft.Icons.STORE,
     "cisza": ft.Icons.NOTIFICATIONS_PAUSED,
+    "koszt_km": ft.Icons.AUTO_GRAPH,
 }
 
 

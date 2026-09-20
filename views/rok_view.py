@@ -153,8 +153,10 @@ class RokWPigulceView(ft.View):
                 ], spacing=4),
             )
 
-        koszt_km = (f"{utils.formatuj_liczba(d['koszt_km'], 2)} {utils.symbol_waluty()}"
-                    if d.get("koszt_km") else "—")
+        # Na 1000 km, nie na kilometr: przy 0,73 zł/km każda zmiana dzieje się
+        # na drugim miejscu po przecinku i nie da się jej zobaczyć.
+        koszt_1000 = (f"{utils.formatuj_liczba(d['koszt_1000km'], 0)} {utils.symbol_waluty()}"
+                      if d.get("koszt_1000km") else "—")
         zuzycie = (utils.formatuj_spalanie(d["srednie_zuzycie"], elektryczny=elektryczny)
                    if d.get("srednie_zuzycie") else "—")
         ilosc = (f"{utils.formatuj_liczba(d['kwh'], 0)} kWh" if elektryczny and d.get("kwh")
@@ -162,7 +164,7 @@ class RokWPigulceView(ft.View):
 
         return ft.Column([
             ft.Row([
-                kafel(ft.Icons.ADD_ROAD, "Koszt kilometra", koszt_km, ft.Colors.PURPLE_700),
+                kafel(ft.Icons.ADD_ROAD, "Koszt / 1000 km", koszt_1000, ft.Colors.PURPLE_700),
                 kafel(ft.Icons.SPEED, "Średnie zużycie", zuzycie, ft.Colors.TEAL_700),
             ], spacing=10),
             ft.Row([
@@ -270,6 +272,21 @@ class RokWPigulceView(ft.View):
                 f"Względem {d['rok'] - 1} roku",
                 f"{'Drożej' if drozej else 'Taniej'} o {utils.formatuj_liczba(abs(d['zmiana_rdr']), 0)}% "
                 f"({utils.formatuj_liczba(d['poprzedni_rok'])} {utils.symbol_waluty()})"
+            ))
+
+        # Cena JAZDY, nie rachunek. Kwota rok do roku rośnie także wtedy, gdy
+        # przejechałeś więcej — ta liczba dzieli przez dystans, więc mówi
+        # osobno o tym, czy auto zaczyna drożeć.
+        if d.get("zmiana_1000km") is not None and d.get("koszt_1000km_poprzedni"):
+            drozej_km = d["zmiana_1000km"] > 0
+            pozycje.append((
+                ft.Icons.AUTO_GRAPH,
+                utils.KOLOR_STATUS["critical"] if drozej_km else utils.KOLOR_STATUS["ok"],
+                "Cena jazdy na 1000 km",
+                f"{utils.formatuj_liczba(d['koszt_1000km'], 0)} {utils.symbol_waluty()} — "
+                f"{'drożej' if drozej_km else 'taniej'} o "
+                f"{utils.formatuj_liczba(abs(d['zmiana_1000km']), 0)}% niż w {d['rok'] - 1} "
+                f"({utils.formatuj_liczba(d['koszt_1000km_poprzedni'], 0)} {utils.symbol_waluty()})"
             ))
 
         wiersze = [

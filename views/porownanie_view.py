@@ -21,6 +21,16 @@ BRAK_PIATEJ_OSI = "Brak (4 osie)"
 # Korzysta WYŁĄCZNIE z pól już liczonych przez db.pobierz_dane_do_porownania()
 # — żadnych nowych zapytań do bazy.
 OSIE_OPCJONALNE_RADARU = {
+    # Koszt „teraz”, a nie z całego życia auta — patrz db.pobierz_dane_do_porownania.
+    # Waluta SKŁADA SIĘ w lambdzie, nie w stałej modułu: stała liczy się przy
+    # imporcie, a wtedy baza bywa jeszcze nieotwarta i `symbol_waluty()` nie ma
+    # skąd wziąć ustawienia.
+    "Koszt / 1000 km (okno)": (
+        "na 1000 km",
+        lambda d: d.get("koszt_1000km_okno"),
+        lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+        True, False,
+    ),
     "Otwarte usterki": (
         "szt.",
         lambda d: d.get("do_zrobienia_aktywne"),
