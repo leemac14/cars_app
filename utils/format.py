@@ -62,6 +62,13 @@ MIESIACE_DOPELNIACZ = [
     "lipca", "sierpnia", "września", "października", "listopada", "grudnia"
 ]
 
+# Miejscownik — do zdań „w maju”, „w grudniu”. Dopełniacz („w maja”) brzmi jak
+# błąd literowy, a aplikacja jest po polsku od pierwszej etykiety.
+MIESIACE_MIEJSCOWNIK = [
+    "styczniu", "lutym", "marcu", "kwietniu", "maju", "czerwcu",
+    "lipcu", "sierpniu", "wrześniu", "październiku", "listopadzie", "grudniu"
+]
+
 
 def formatuj_date_pl(d):
     tekst = f"{d.day} {MIESIACE_DOPELNIACZ[d.month - 1]}"
@@ -230,6 +237,7 @@ def _odmiana_liczby(n, forma_1, forma_2_4, forma_pozostale):
 
 __all__ = [
     "MIESIACE_DOPELNIACZ",
+    "MIESIACE_MIEJSCOWNIK",
     "_MAPA_OGONKOW",
     "_odmiana_liczby",
     "bez_ogonkow",

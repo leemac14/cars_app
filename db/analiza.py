@@ -1069,6 +1069,203 @@ def koszt_skumulowany(auto_id, z_cena_zakupu=True, dzis=None) -> dict[str, Any]:
     }
 
 
+# -------------------- ROK DO ROKU NA JEDNEJ OSI --------------------
+# Porównanie rok do roku istniało dotąd jako ZDANIE („drożej o 23%”) i liczba
+# w podsumowaniu roku. Obie odpowiadają na pytanie „o ile”, żadna na pytanie
+# „od kiedy” — a to drugie jest zwykle ważniejsze, bo wskazuje zdarzenie:
+# miesiąc, w którym zaczął się abonament, wymiana rozrządu albo dłuższe dojazdy.
+# Dwie krzywe na jednej osi miesięcy idą razem do tego miesiąca i od niego się
+# rozchodzą.
+
+WIELKOSCI_RDR = {
+    "razem": ("Koszty razem", "waluta", True),
+    "paliwo": ("Paliwo", "waluta", True),
+    "serwis": ("Serwis", "waluta", True),
+    "inne": ("Inne", "waluta", True),
+    "km": ("Kilometry", "km", False),
+    "koszt1000": ("Koszt / 1000 km", "waluta", True),
+}
+
+# Jaki udział w końcowej różnicy musi mieć JEDEN miesiąc, żeby dało się
+# powiedzieć „wtedy się rozjechało”. Poniżej tego progu różnica narastała
+# stopniowo i wskazywanie palcem jednego miesiąca byłoby zmyślaniem.
+PROG_ROZJAZDU = 0.25
+
+
+def _km_miesiecznie_w_roku(historia_prz, rok):
+    """Kilometry w kolejnych miesiącach roku — dwanaście liczb, także zer.
+
+    Ta sama zasada, co w `pobierz_przebieg_miesieczny`: miesiąc bez odczytu ma
+    zero, a dystans dopisuje się do miesiąca, w którym licznik został wreszcie
+    odczytany. Inaczej luka w zapiskach robiłaby ujemny przebieg."""
+    odczyty = []
+    for data_str, prz in historia_prz:
+        d = parsuj_date(data_str)
+        if d != datetime.min.date():
+            odczyty.append((d, prz))
+
+    def stan_na_koniec(rok_k, mies_k):
+        koniec = (date_cls(rok_k + 1, 1, 1) if mies_k == 12
+                  else date_cls(rok_k, mies_k + 1, 1)) - timedelta(days=1)
+        wczesniejsze = [p for d, p in odczyty if d <= koniec]
+        return max(wczesniejsze) if wczesniejsze else None
+
+    wynik = []
+    for m in range(1, 13):
+        poprz_m, poprz_r = (m - 1, rok) if m > 1 else (12, rok - 1)
+        koniec = stan_na_koniec(rok, m)
+        poczatek = stan_na_koniec(poprz_r, poprz_m)
+        km = (koniec - poczatek) if (koniec is not None and poczatek is not None) else 0
+        wynik.append(max(0, km))
+    return wynik
+
+
+def _serie_roku(wiersze_kosztow, historia_prz, rok, wielkosc):
+    """Dwanaście wartości miesięcznych wybranej wielkości dla jednego roku."""
+    koszty = {kat: [0.0] * 12 for kat in KATEGORIE_BUDZETU}
+    for data_str, kwota, kategoria in wiersze_kosztow:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date() or d.year != rok:
+            continue
+        wartosc = float(kwota or 0.0)
+        koszty[kategoria][d.month - 1] += wartosc
+        koszty["razem"][d.month - 1] += wartosc
+
+    if wielkosc == "km":
+        return [float(km) for km in _km_miesiecznie_w_roku(historia_prz, rok)]
+    if wielkosc == "koszt1000":
+        # Wielkość ILORAZOWA — miesięcznych ilorazów nie wolno sumować, więc
+        # wracają tu składniki, a dzielenie robi się dopiero po zsumowaniu okna.
+        km = _km_miesiecznie_w_roku(historia_prz, rok)
+        return [(koszty["razem"][i], float(km[i])) for i in range(12)]
+    return list(koszty.get(wielkosc, koszty["razem"]))
+
+
+def _narastajaco(seria, wielkosc):
+    """Suma narastająca od stycznia. Iloraz liczy się z sum składników, a nie
+    jako suma ilorazów — inaczej tani miesiąc z jednym kilometrem ważyłby tyle,
+    co cały grudzień."""
+    wynik, suma = [], 0.0
+    if wielkosc == "koszt1000":
+        koszt, km = 0.0, 0.0
+        for k, kilometry in seria:
+            koszt += k
+            km += kilometry
+            wynik.append((koszt / km * 1000) if km > 0 else None)
+        return wynik
+    for wartosc in seria:
+        suma += wartosc
+        wynik.append(suma)
+    return wynik
+
+
+def _miesiecznie(seria, wielkosc):
+    if wielkosc == "koszt1000":
+        return [(k / km * 1000) if km > 0 else None for k, km in seria]
+    return list(seria)
+
+
+def koszty_rok_do_roku(auto_id, rok=None, wielkosc="razem", narastajaco=True, dzis=None) -> dict[str, Any]:
+    """Dwie krzywe — wybrany rok i poprzedni — na jednej osi miesięcy.
+
+    `narastajaco` decyduje o postaci: suma od stycznia (wtedy widać MIESIĄC,
+    w którym lata się rozeszły) albo wartości miesięczne (wtedy widać, czy skok
+    był jednorazowy). Miesiąc rozjazdu liczy się zawsze z krzywych narastających
+    — w postaci miesięcznej byłby tylko najwyższym słupkiem.
+
+    Rok w toku kończy się na bieżącym miesiącu, a procent liczy się wobec tych
+    SAMYCH miesięcy roku poprzedniego: styczeń–maj kontra styczeń–maj."""
+    dzien = dzis or datetime.now().date()
+    etykieta, jednostka, wzrost_zly = WIELKOSCI_RDR.get(wielkosc) or WIELKOSCI_RDR["razem"]
+    if wielkosc not in WIELKOSCI_RDR:
+        wielkosc = "razem"
+    lata = lata_z_danymi(auto_id)
+    wybrany = int(rok) if rok else (lata[0] if lata else dzien.year)
+
+    pusty = {
+        "rok": wybrany, "rok_poprzedni": wybrany - 1, "lata": lata,
+        "wielkosc": wielkosc, "etykieta": etykieta, "jednostka": jednostka,
+        "wzrost_zly": wzrost_zly, "narastajaco": bool(narastajaco),
+        "biezacy": [], "poprzedni": [], "roznice": [],
+        "ostatni_miesiac": 0, "niepelny": False,
+        "miesiac_rozjazdu": None, "roznica_koncowa": None, "zmiana_proc": None,
+    }
+    if not auto_id or not lata:
+        return pusty
+
+    with polacz_baze() as conn:
+        wiersze = _wiersze_kosztow(conn, auto_id)
+    historia_prz = pobierz_historie_przebiegu(auto_id)
+
+    surowe_b = _serie_roku(wiersze, historia_prz, wybrany, wielkosc)
+    surowe_p = _serie_roku(wiersze, historia_prz, wybrany - 1, wielkosc)
+
+    # Rok, w którym nie ma ANI JEDNEGO wpisu, to brak danych — nie zero. Płaska
+    # linia przy zerze mówiłaby „wtedy nic nie kosztowało”, a prawda jest taka,
+    # że wtedy nikt nic nie zapisywał (albo auta jeszcze nie było).
+    if wybrany - 1 not in lata:
+        return dict(pusty, biezacy=[], poprzedni=[], roznice=[],
+                    ostatni_miesiac=(dzien.month if wybrany == dzien.year else 12),
+                    niepelny=wybrany == dzien.year)
+
+    niepelny = wybrany == dzien.year
+    ostatni = dzien.month if niepelny else 12
+
+    kum_b = _narastajaco(surowe_b, wielkosc)
+    kum_p = _narastajaco(surowe_p, wielkosc)
+    pokaz_b = kum_b if narastajaco else _miesiecznie(surowe_b, wielkosc)
+    pokaz_p = kum_p if narastajaco else _miesiecznie(surowe_p, wielkosc)
+
+    # Rok w toku urywa się na bieżącym miesiącu: krzywa ciągnąca się do grudnia
+    # po zerach wyglądałaby jak nagły spadek kosztów.
+    biezacy = [w if (i < ostatni) else None for i, w in enumerate(pokaz_b)]
+
+    roznice = [
+        (biezacy[i] - pokaz_p[i])
+        if (biezacy[i] is not None and pokaz_p[i] is not None) else None
+        for i in range(12)
+    ]
+
+    # Rozjazd zawsze z krzywych NARASTAJĄCYCH: szukamy miesiąca, w którym luka
+    # między latami urosła najbardziej w stronę wyniku końcowego.
+    luki = [
+        (kum_b[i] - kum_p[i]) if (kum_b[i] is not None and kum_p[i] is not None) else None
+        for i in range(ostatni)
+    ]
+    luki_znane = [l for l in luki if l is not None]
+    koncowa = luki_znane[-1] if luki_znane else None
+
+    miesiac_rozjazdu = None
+    if koncowa:
+        kierunek = 1 if koncowa > 0 else -1
+        przyrosty = []
+        poprzednia = 0.0
+        for i, luka in enumerate(luki):
+            if luka is None:
+                continue
+            przyrosty.append((i + 1, (luka - poprzednia) * kierunek))
+            poprzednia = luka
+        if przyrosty:
+            miesiac, przyrost = max(przyrosty, key=lambda p: p[1])
+            if przyrost / abs(koncowa) >= PROG_ROZJAZDU:
+                miesiac_rozjazdu = miesiac
+
+    baza = kum_p[ostatni - 1] if ostatni else None
+    teraz = kum_b[ostatni - 1] if ostatni else None
+    zmiana = (((teraz - baza) / baza * 100)
+              if (baza and teraz is not None and baza > 0) else None)
+
+    return {
+        "rok": wybrany, "rok_poprzedni": wybrany - 1, "lata": lata,
+        "wielkosc": wielkosc, "etykieta": etykieta, "jednostka": jednostka,
+        "wzrost_zly": wzrost_zly, "narastajaco": bool(narastajaco),
+        "biezacy": biezacy, "poprzedni": list(pokaz_p), "roznice": roznice,
+        "ostatni_miesiac": ostatni, "niepelny": niepelny,
+        "miesiac_rozjazdu": miesiac_rozjazdu,
+        "roznica_koncowa": koncowa, "zmiana_proc": zmiana,
+    }
+
+
 # -------------------- SILNIK OBSERWACJI --------------------
 # Jedno miejsce, w którym liczby zamieniają się w zdania. Każda reguła zwraca
 # obserwację z WAGĄ; kokpit bierze najważniejszą, zakładka Analiza wszystkie.
@@ -1286,25 +1483,32 @@ __all__ = [
     "MIN_ODCINKOW_SEZONU",
     "OKRESY_BUDZETU",
     "PROG_DROZENIA_1000KM",
+    "PROG_ROZJAZDU",
     "PROG_ISTOTNOSCI_TRENDU",
     "PROG_WYROZNIENIA_WYDATKU",
     "PUNKTOW_ISKRY_SKUMULOWANEJ",
     "PROG_POKAZANIA_SEZONU",
     "PROG_UWAGI_BUDZETU",
     "TOLERANCJA_SEZONU_DNI",
+    "WIELKOSCI_RDR",
     "_DYSTANSE_ODNIESIENIA",
     "_granice_okresu",
+    "_km_miesiecznie_w_roku",
     "_km_w_roku",
     "_kwota_txt",
     "_obserwacja",
     "_porownanie_dystansu",
     "_przesun_o_lata",
     "_sezonowosc_zmiany",
+    "_miesiecznie",
+    "_narastajaco",
+    "_serie_roku",
     "_srednia_okna",
     "_zmiana_1000km",
     "_wiersze_kosztow_z_opisem",
     "analizuj_trend_spalania",
     "koszt_skumulowany",
+    "koszty_rok_do_roku",
     "koszt_trendu_rocznie",
     "lata_z_danymi",
     "obserwacje_analityczne",

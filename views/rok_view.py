@@ -77,6 +77,11 @@ class RokWPigulceView(ft.View):
                 elementy.append(self._kafle())
                 elementy.append(self._rozbicie_kosztow())
                 elementy.append(self._wykres_miesiecy())
+                # Liczba „względem 2025 roku” stoi w Werdykcie niżej; ta karta
+                # jest jej rozwinięciem — pokazuje, OD KTÓREGO miesiąca lata
+                # się rozeszły. Rok bierze się z selektora tego ekranu, a nie
+                # ze stanu wykresów w Analizie.
+                elementy.append(utils.karta_rok_do_roku(page, self.state, rok=self.rok))
                 elementy.append(self._werdykty())
                 elementy.append(self._przycisk_grafiki())
 

@@ -10,6 +10,12 @@ class AppState:
         self.zakladka = 0            # 0 Kokpit, 1 Serwis, 2 Koszty, 3 Analiza
         self.koszty_podzakladka = 0  # 0 Tankowania, 1 Inne koszty
         self.stat_podzakladka = 0
+        # Wykres „rok do roku": wybór roku, wielkości i postaci krzywej. Stan
+        # widoku, nie ustawienie — po zamknięciu aplikacji wraca do bieżącego
+        # roku i kosztów razem, tak jak zakładki wyżej.
+        self.rdr_rok = None            # None = najnowszy rok z danymi
+        self.rdr_wielkosc = "razem"    # klucz z db.WIELKOSCI_RDR
+        self.rdr_narastajaco = True
         self.wybrane_zadanie_id = None
         self.duplikuj_zrodlo_tankowanie = None
         self.duplikuj_zrodlo_wpis = None

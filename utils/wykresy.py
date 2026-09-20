@@ -9,7 +9,7 @@ from state import MIESIACE_NAZWY
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import _odmiana_liczby, opis_licznika_na_karte, symbol_waluty
+from .format import MIESIACE_MIEJSCOWNIK, _odmiana_liczby, opis_licznika_na_karte, symbol_waluty
 from .typografia import etykieta, podpis, wartosc
 from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_karty, tlo_odznaki, tlo_toru
 from .dialogi import odswiez_ekran
@@ -1022,6 +1022,247 @@ def karta_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
     )
 
 
+# ---------------------- ROK DO ROKU NA JEDNEJ OSI ----------------------
+# Zdanie „drożej o 23%” i liczba w podsumowaniu roku mówią O ILE. Dwie krzywe
+# na jednej osi miesięcy mówią OD KIEDY — a to zwykle wskazuje zdarzenie:
+# miesiąc, w którym zaczął się abonament albo wypadł drogi serwis.
+
+POSTACIE_RDR = [("Narastająco", True), ("Miesięcznie", False)]
+
+
+def _chip_maly(tekst, aktywny, on_click, tooltip=None):
+    """Chip wyboru w pasku przewijanym — własna szerokość, więc nie rozpycha
+    się na cały pasek (patrz uwaga przy `pasek_zawijany`)."""
+    return ft.Container(
+        height=28, padding=ft.Padding(12, 0, 12, 0),
+        border_radius=RADIUS["pill"], ink=True,
+        bgcolor=ft.Colors.PRIMARY if aktywny else ft.Colors.TRANSPARENT,
+        border=None if aktywny else ft.Border.all(1, ft.Colors.OUTLINE),
+        animate=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+        tooltip=tooltip,
+        on_click=on_click,
+        content=ft.Row([ft.Text(
+            tekst, size=FS["caption"], weight="bold" if aktywny else "normal",
+            color=ft.Colors.ON_PRIMARY if aktywny else ft.Colors.ON_SURFACE_VARIANT,
+            no_wrap=True,
+        )], tight=True),
+    )
+
+
+def pasek_lat_rdr(page: ft.Page, state):
+    """Wybór roku nad wykresem rok do roku. Cztery najnowsze lata z danymi —
+    dalej wstecz i tak nie ma z czym porównywać, a pigułka nie mieści więcej."""
+    lata = db.lata_z_danymi(getattr(state, "auto_id", None))
+    if len(lata) < 2:
+        return ft.Container()
+    wybrany = getattr(state, "rdr_rok", None) or lata[0]
+
+    def wybierz(rok):
+        state.rdr_rok = rok
+        odswiez_ekran(page)
+
+    return _pigulka_chipow(page, [(str(r), r) for r in lata[:4]], wybrany, wybierz,
+                           lambda r: f"Porównaj {r} z rokiem {r - 1}")
+
+
+def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
+    """Dwie krzywe na jednej osi miesięcy: wybrany rok grubą linią, poprzedni
+    przerywaną. Między nimi pionowe słupki różnicy — dzięki nim nie trzeba
+    czytać osi, żeby zobaczyć, gdzie i jak bardzo lata się rozchodzą.
+
+    Oś pionowa zaczyna się w ZERZE. Przy dwóch krzywych obcięta oś kłamie
+    podwójnie: nie tylko wyolbrzymia zmianę, ale i odległość między latami."""
+    biezacy = list(dane.get("biezacy") or [])
+    poprzedni = list(dane.get("poprzedni") or [])
+    znane_b = [w for w in biezacy if w is not None]
+    znane_p = [w for w in poprzedni if w is not None]
+    if len(znane_b) < 2 or len(znane_p) < 2:
+        return None
+
+    maks_y = (max(znane_b + znane_p) * 1.12) or 1.0
+    rozjazd = dane.get("miesiac_rozjazdu")
+
+    def punkty(seria, z_rozjazdem=False):
+        wynik = []
+        for i, w in enumerate(seria):
+            if w is None:
+                continue
+            if z_rozjazdem and rozjazd == i + 1:
+                wynik.append(fc.LineChartDataPoint(
+                    i, w,
+                    point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=5, stroke_width=0),
+                    tooltip=f"{MIESIACE_NAZWY[i]}\nod tego miesiąca lata się rozchodzą",
+                ))
+            else:
+                wynik.append(fc.LineChartDataPoint(i, w, tooltip=f"{MIESIACE_NAZWY[i]}\n{_kwota_osi(w)}"))
+        return wynik
+
+    # Słupki różnicy rysujemy PIERWSZE, żeby leżały pod krzywymi. Każdy miesiąc
+    # to osobna dwupunktowa seria — wykresy liniowe Fleta nie umieją wypełnić
+    # obszaru MIĘDZY dwiema krzywymi, a pionowa kreska mówi dokładnie to samo.
+    kolor_gorszy = KOLOR_STATUS["critical"] if dane.get("wzrost_zly") else ft.Colors.PRIMARY
+    kolor_lepszy = KOLOR_STATUS["ok"] if dane.get("wzrost_zly") else ft.Colors.PRIMARY
+    serie = []
+    for i in range(12):
+        a, b = biezacy[i], poprzedni[i]
+        if a is None or b is None or a == b:
+            continue
+        kolor = kolor_gorszy if a > b else kolor_lepszy
+        serie.append(fc.LineChartData(
+            points=[fc.LineChartDataPoint(i, min(a, b)), fc.LineChartDataPoint(i, max(a, b))],
+            stroke_width=7, color=ft.Colors.with_opacity(0.18, kolor), curved=False,
+        ))
+
+    serie.append(fc.LineChartData(
+        points=punkty(poprzedni), stroke_width=2, color=ft.Colors.ON_SURFACE_VARIANT,
+        dash_pattern=[6, 4], curved=False, rounded_stroke_cap=True,
+    ))
+    serie.append(fc.LineChartData(
+        points=punkty(biezacy, z_rozjazdem=True), stroke_width=3, color=ft.Colors.PRIMARY,
+        curved=False, rounded_stroke_cap=True,
+    ))
+
+    etykiety_x = [
+        fc.ChartAxisLabel(
+            value=i,
+            label=ft.Text(MIESIACE_NAZWY[i][:3], size=9, color=ft.Colors.ON_SURFACE_VARIANT),
+        )
+        for i in range(0, 12, 2)
+    ]
+
+    wykres = ft.Container(
+        height=wysokosc,
+        padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
+        content=fc.LineChart(
+            data_series=serie,
+            horizontal_grid_lines=fc.ChartGridLines(
+                interval=max(1, int(maks_y / 4) or 1),
+                color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE), width=1,
+            ),
+            left_axis=fc.ChartAxis(
+                labels=[
+                    fc.ChartAxisLabel(
+                        value=w,
+                        label=ft.Text(_kwota_osi(w), size=9, color=ft.Colors.ON_SURFACE_VARIANT),
+                    )
+                    for w in (0, maks_y / 2, maks_y)
+                ],
+                label_size=46, title_size=0,
+            ),
+            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_size=22, title_size=0),
+            right_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            top_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            min_x=0, max_x=11, min_y=0, max_y=maks_y,
+            interactive=True,
+            expand=True,
+        ),
+    )
+
+    legenda = [
+        _kropka_legendy(ft.Colors.PRIMARY, str(dane["rok"])),
+        _kropka_legendy(ft.Colors.ON_SURFACE_VARIANT, str(dane["rok_poprzedni"]), obwodka=True),
+    ]
+    if len(serie) > 2:
+        legenda.append(_kropka_legendy(kolor_gorszy, "różnica"))
+    if rozjazd:
+        legenda.append(_kropka_legendy(KOLOR_STATUS["accent"], "rozjazd", obwodka=True))
+
+    return ft.Column([
+        wykres,
+        ft.Row(legenda, spacing=SPACING["md"], wrap=True, run_spacing=4),
+    ], spacing=SPACING["sm"])
+
+
+def _jednostka_rdr(dane):
+    return (f" {symbol_waluty()}/1000 km" if dane["wielkosc"] == "koszt1000"
+            else (" km" if dane["jednostka"] == "km" else f" {symbol_waluty()}"))
+
+
+def karta_rok_do_roku(page: ft.Page, state, rok=None, wysokosc=210):
+    """Cała karta: chipy wielkości, przełącznik postaci krzywej, dwie krzywe
+    i zdanie o miesiącu, w którym lata się rozeszły.
+
+    `rok` podaje ekran, który ma własny selektor roku (Rok w pigułce); bez
+    niego rok bierze się ze stanu i wybiera go pasek nad kartą."""
+    wielkosc = getattr(state, "rdr_wielkosc", "razem")
+    narastajaco = bool(getattr(state, "rdr_narastajaco", True))
+    dane = db.koszty_rok_do_roku(
+        getattr(state, "auto_id", None),
+        rok=rok or getattr(state, "rdr_rok", None),
+        wielkosc=wielkosc, narastajaco=narastajaco,
+    )
+
+    def wybierz_wielkosc(klucz):
+        state.rdr_wielkosc = klucz
+        odswiez_ekran(page)
+
+    def wybierz_postac(czy_narastajaco):
+        state.rdr_narastajaco = czy_narastajaco
+        odswiez_ekran(page)
+
+    chipy = ft.Row(
+        [
+            _chip_maly(opis[0], klucz == dane["wielkosc"],
+                       lambda e, k=klucz: wybierz_wielkosc(k))
+            for klucz, opis in db.WIELKOSCI_RDR.items()
+        ],
+        scroll=ft.ScrollMode.ADAPTIVE, spacing=8,
+    )
+    przelacznik = _pigulka_chipow(
+        page, POSTACIE_RDR, narastajaco, wybierz_postac,
+        lambda czy: ("Suma od stycznia — widać miesiąc, w którym lata się rozeszły"
+                     if czy else "Wartości miesięczne — widać pojedyncze skoki"),
+    )
+
+    wykres = wykres_rok_do_roku(page, dane, wysokosc=wysokosc)
+    if wykres is None:
+        tresc = [podpis(
+            f"Brak danych do porównania {dane['rok']} z rokiem {dane['rok_poprzedni']} "
+            f"w tej wielkości — potrzeba wpisów w obu latach."
+        )]
+    else:
+        jedn = _jednostka_rdr(dane)
+        naglowek = [ft.Column([
+            etykieta(f"{dane['etykieta']} • {dane['rok']} kontra {dane['rok_poprzedni']}"),
+            wartosc(_tekst_roznicy(dane, jedn)),
+        ], spacing=2, expand=True)]
+        if dane.get("zmiana_proc") is not None:
+            naglowek.append(znacznik_trendu(dane["zmiana_proc"], wzrost_zly=dane["wzrost_zly"]))
+
+        przypisy = []
+        if dane.get("miesiac_rozjazdu"):
+            nazwa_mc = MIESIACE_MIEJSCOWNIK[dane["miesiac_rozjazdu"] - 1]
+            przypisy.append(podpis(
+                f"Rozjechało się w {nazwa_mc}: wtedy różnica między latami urosła najmocniej. "
+                f"Wcześniej oba lata szły niemal równo."))
+        elif dane.get("roznica_koncowa"):
+            przypisy.append(podpis(
+                "Różnica narastała stopniowo — nie ma jednego miesiąca, który by ją zrobił."))
+        if dane.get("niepelny"):
+            przypisy.append(podpis(
+                f"Rok w toku: porównanie obejmuje styczeń–{MIESIACE_NAZWY[dane['ostatni_miesiac'] - 1].lower()} "
+                f"po obu stronach."))
+        tresc = [ft.Row(naglowek, spacing=SPACING["md"],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER), wykres] + przypisy
+
+    return ft.Container(
+        padding=SPACING["lg"],
+        **powierzchnia(page, "karta", cien="md"),
+        content=ft.Column([chipy, przelacznik] + tresc, spacing=SPACING["md"]),
+    )
+
+
+def _tekst_roznicy(dane, jedn):
+    """Nagłówek karty: różnica w jednostkach wielkości, słowami."""
+    roznica = dane.get("roznica_koncowa")
+    if roznica is None:
+        return "—"
+    if abs(roznica) < 0.005:
+        return "bez zmian wobec poprzedniego roku"
+    kierunek = "więcej" if roznica > 0 else "mniej"
+    return f"{formatuj_liczba(abs(roznica))}{jedn} {kierunek}"
+
+
 def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
     """Mały „chip” trendu: strzałka + procent zmiany. `wzrost_zly=True` znaczy,
     że rosnąca wartość jest zła (koszty, spalanie) i dostaje kolor czerwony.
@@ -1223,14 +1464,18 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="o
 __all__ = [
     "KOLORY_SERII_KOSZTU",
     "OKNA_CZASU",
+    "POSTACIE_RDR",
     "PROG_DROZENIA",
     "MAKS_PUNKTOW_KRZYWEJ",
     "ROLA_STATUSU_INTERWALU",
     "ZAKRESY_CZASU",
     "_OPISY_ZAKRESU",
     "_SKALA_KONDYCJI",
+    "_chip_maly",
+    "_jednostka_rdr",
     "_kropka_legendy",
     "_pigulka_chipow",
+    "_tekst_roznicy",
     "_kwota_osi",
     "_przesun_miesiac",
     "granica_zakresu",
@@ -1239,6 +1484,7 @@ __all__ = [
     "okresy_slupkow",
     "opis_zakresu",
     "tygodnie_zakresu",
+    "pasek_lat_rdr",
     "pasek_okna_kroczacego",
     "pasek_zakresu_czasu",
     "zakres_wykresu",
@@ -1246,6 +1492,7 @@ __all__ = [
     "heatmapa_aktywnosci",
     "karta_analizy",
     "karta_kosztu_1000km",
+    "karta_rok_do_roku",
     "karta_kosztu_skumulowanego",
     "kolor_kondycji_plynny",
     "liczniki_interwalu",
@@ -1255,6 +1502,7 @@ __all__ = [
     "sparkline",
     "wskaznik_baku",
     "wykres_kosztu_1000km",
+    "wykres_rok_do_roku",
     "wykres_kosztu_skumulowanego",
     "wykres_przebiegu",
     "znacznik_trendu",

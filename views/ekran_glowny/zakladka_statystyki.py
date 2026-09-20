@@ -727,6 +727,12 @@ class MiksinZakladkiStatystyki:
                 utils.pasek_okna_kroczacego(self._page, self.state),
                 karta_1000km,
                 ft.Divider(height=20),
+                # Rok do roku odpowiada na inne pytanie niż dwa wykresy wyżej:
+                # nie „ile” i nie „czy drożeje”, tylko „od którego miesiąca”.
+                ft.Text("Rok do roku", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                utils.pasek_lat_rdr(self._page, self.state),
+                utils.karta_rok_do_roku(self._page, self.state),
+                ft.Divider(height=20),
                 ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 utils.pasek_zakresu_czasu(self._page, self.state, "struktura"),
                 karta_struktury,
