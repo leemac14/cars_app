@@ -610,6 +610,223 @@ def wykres_przebiegu(page: ft.Page, wpisy, wysokosc=190):
     )
 
 
+# ---------------------- KOSZT SKUMULOWANY ----------------------
+# Jedyny wykres w aplikacji, którego nie da się oszukać uśrednianiem: słupek
+# miesięczny chowa przegląd za cztery tysiące między tankowaniami, a krzywa
+# narastająca zostawia go na sobie na zawsze.
+
+# Sufit punktów na krzywej. Pięć lat codziennych wpisów to prawie dwa tysiące
+# punktów RAZY cztery serie — na telefonie znać to od razu przy przewijaniu,
+# a krzywa narastająca jest na tyle gładka, że po przerzedzeniu wygląda
+# identycznie. Dni z wyróżnionym wydatkiem zostają zawsze.
+MAKS_PUNKTOW_KRZYWEJ = 180
+
+# Kolory serii są TE SAME, co kafelki „Podsumowania kosztów” — paliwo
+# niebieskie, serwis pomarańczowy, inne zielone. Inny zestaw na wykresie
+# kazałby uczyć się legendy drugi raz.
+KOLORY_SERII_KOSZTU = {
+    "paliwo": ft.Colors.BLUE_700,
+    # paleta: tożsamość — kolor kategorii kosztu, nie stanu
+    "serwis": ft.Colors.ORANGE_700,
+    # paleta: tożsamość — kolor kategorii kosztu, nie stanu
+    "inne": ft.Colors.GREEN_700,
+}
+
+
+def _kwota_osi(wartosc):
+    """Podpis osi pionowej: tysiące skracamy, bo pełna kwota z separatorem nie
+    mieści się w szerokości podpisu na telefonie."""
+    if abs(wartosc) >= 10000:
+        return f"{formatuj_liczba(wartosc / 1000, 0)} tys."
+    return formatuj_liczba(wartosc, 0)
+
+
+def _kropka_legendy(kolor, tekst, obwodka=False):
+    znacznik = ft.Container(
+        width=9, height=9, border_radius=RADIUS["pill"],
+        bgcolor=None if obwodka else kolor,
+        border=ft.Border.all(2, kolor) if obwodka else None,
+    )
+    return ft.Row([znacznik, podpis(tekst)], spacing=5, tight=True)
+
+
+def wykres_kosztu_skumulowanego(page: ft.Page, dane, wysokosc=210, od_daty=None):
+    """Krzywa sumy narastającej: gruba „Razem” na pierwszym planie, pod nią trzy
+    cienkie serie kategorii, a na niej znaczniki większych wydatków.
+
+    Oś X to DNI od startu, a nie numer wpisu — dwa tankowania w jednym tygodniu
+    i pół roku ciszy mają na tej krzywej wyglądać INACZEJ, bo właśnie po to się
+    na nią patrzy.
+
+    `od_daty` przycina WIDOK, nie rachunek: wartości zostają narastające od
+    zakupu, więc przy krótkim zakresie krzywa wchodzi w kadr wysoko, a nie
+    zaczyna się od zera. Inaczej „ostatnie 3 miesiące” pokazywałyby trzeci
+    wykres wydatków miesięcznych, a nie sumę narastającą."""
+    punkty = list(dane.get("punkty") or [])
+    dni_wyroznione = {w["dzien"] for w in (dane.get("wyroznione") or [])}
+
+    if od_daty:
+        w_kadrze = [p for p in punkty if p["data"] >= od_daty]
+        # Ostatni punkt sprzed granicy zostaje, żeby krzywa wchodziła z lewej
+        # krawędzi zamiast zaczynać się w powietrzu nad nią.
+        przed = [p for p in punkty if p["data"] < od_daty]
+        if przed:
+            w_kadrze.insert(0, przed[-1])
+        punkty = w_kadrze
+
+    if len(punkty) < 2:
+        return None
+
+    if len(punkty) > MAKS_PUNKTOW_KRZYWEJ:
+        krok = -(-len(punkty) // MAKS_PUNKTOW_KRZYWEJ)
+        ostatni = len(punkty) - 1
+        punkty = [p for i, p in enumerate(punkty)
+                  if i % krok == 0 or i == ostatni or p["dzien"] in dni_wyroznione]
+
+    min_x, maks_x = punkty[0]["dzien"], punkty[-1]["dzien"]
+    if maks_x <= min_x:
+        maks_x = min_x + 1
+    wartosci = [p["razem"] for p in punkty]
+    min_y, maks_y = min(wartosci), max(wartosci)
+    zapas = max((maks_y - min_y) * 0.10, 1.0)
+
+    wyroznione = {w["dzien"]: w for w in (dane.get("wyroznione") or [])
+                  if min_x <= w["dzien"] <= maks_x}
+
+    def punkt_razem(p):
+        wyroznik = wyroznione.get(p["dzien"])
+        if not wyroznik:
+            return fc.LineChartDataPoint(p["dzien"], p["razem"])
+        return fc.LineChartDataPoint(
+            p["dzien"], p["razem"],
+            point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=4.5, stroke_width=0),
+            tooltip=(f"{wyroznik['data'].strftime('%d.%m.%Y')}\n{wyroznik['opis']}\n"
+                     f"+{formatuj_liczba(wyroznik['kwota'])} {symbol_waluty()}\n"
+                     f"razem {formatuj_liczba(p['razem'])} {symbol_waluty()}"),
+        )
+
+    serie = [
+        fc.LineChartData(
+            points=[fc.LineChartDataPoint(p["dzien"], p[kategoria]) for p in punkty],
+            stroke_width=1.5, color=kolor, curved=False, rounded_stroke_cap=True,
+        )
+        for kategoria, kolor in KOLORY_SERII_KOSZTU.items()
+    ]
+    serie.append(fc.LineChartData(
+        points=[punkt_razem(p) for p in punkty],
+        stroke_width=3, color=ft.Colors.PRIMARY, curved=False, rounded_stroke_cap=True,
+        below_line_bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
+    ))
+
+    # Trzy podpisy na osi czasu — więcej nachodzi na siebie na szerokości
+    # telefonu, a przy krzywej narastającej i tak liczy się kształt, nie odczyt
+    # konkretnego dnia.
+    indeksy = sorted({0, len(punkty) // 2, len(punkty) - 1})
+    etykiety_x = [
+        fc.ChartAxisLabel(
+            value=punkty[i]["dzien"],
+            label=ft.Text(punkty[i]["data"].strftime("%m.%y"), size=9,
+                          color=ft.Colors.ON_SURFACE_VARIANT),
+        )
+        for i in indeksy
+    ]
+
+    wykres = ft.Container(
+        height=wysokosc,
+        padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
+        content=fc.LineChart(
+            data_series=serie,
+            horizontal_grid_lines=fc.ChartGridLines(
+                interval=max(1, int((maks_y - min_y) / 3) or 1),
+                color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE), width=1,
+            ),
+            left_axis=fc.ChartAxis(
+                labels=[
+                    fc.ChartAxisLabel(
+                        value=w,
+                        label=ft.Text(_kwota_osi(w), size=9, color=ft.Colors.ON_SURFACE_VARIANT),
+                    )
+                    for w in (min_y, (min_y + maks_y) / 2, maks_y)
+                ],
+                label_size=46, title_size=0,
+            ),
+            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_size=22, title_size=0),
+            right_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            top_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            min_x=min_x, max_x=maks_x,
+            min_y=max(0, min_y - zapas), max_y=maks_y + zapas,
+            interactive=True,
+            expand=True,
+        ),
+    )
+
+    legenda = [_kropka_legendy(ft.Colors.PRIMARY, "Razem")]
+    legenda += [_kropka_legendy(kolor, db.KATEGORIE_BUDZETU.get(kat, kat))
+                for kat, kolor in KOLORY_SERII_KOSZTU.items()]
+    if wyroznione:
+        legenda.append(_kropka_legendy(KOLOR_STATUS["accent"], "większy wydatek", obwodka=True))
+
+    return ft.Column([
+        wykres,
+        ft.Row(legenda, spacing=SPACING["md"], wrap=True, run_spacing=4),
+    ], spacing=SPACING["sm"])
+
+
+def karta_kosztu_skumulowanego(page: ft.Page, dane, od_daty=None, wysokosc=210):
+    """Cała karta: nagłówek z trzema liczbami, krzywa, legenda i przypisy.
+
+    Liczby w nagłówku są ZAWSZE od zakupu, niezależnie od wybranego zakresu
+    czasu — „ile mnie to kosztowało” nie jest pytaniem o ostatni kwartał."""
+    wykres = wykres_kosztu_skumulowanego(page, dane, wysokosc=wysokosc, od_daty=od_daty)
+    # Sama cena zakupu to POZIOMA kreska od dnia zakupu do dzisiaj — narastać
+    # nie ma z czego, dopóki nie ma ani jednego wydatku.
+    if wykres is None or not dane.get("wydatki"):
+        return ft.Container(
+            padding=SPACING["lg"],
+            **powierzchnia(page, "karta", cien="md"),
+            content=podpis(
+                "Za mało danych na krzywą narastającą — potrzeba wpisów kosztowych. "
+                "Datę, cenę i przebieg przy zakupie ustawia się w danych pojazdu."
+            ),
+        )
+
+    od_kiedy = ("od zakupu" if dane.get("czy_od_zakupu") else "od pierwszego wpisu")
+    liczby = [ft.Column([etykieta(f"Razem {od_kiedy}"),
+                         wartosc(f"{formatuj_liczba(dane['suma'])} {symbol_waluty()}")],
+                        spacing=2, expand=True)]
+    if dane.get("koszt_dzien"):
+        liczby.append(ft.Column([etykieta("Na dzień"),
+                                 wartosc(f"{formatuj_liczba(dane['koszt_dzien'])} {symbol_waluty()}")],
+                                spacing=2, expand=True))
+    if dane.get("koszt_km"):
+        liczby.append(ft.Column([etykieta("Na kilometr"),
+                                 wartosc(f"{formatuj_liczba(dane['koszt_km'], 2)} {symbol_waluty()}")],
+                                spacing=2, expand=True))
+
+    przypisy = []
+    if dane.get("z_cena_zakupu"):
+        przypisy.append(podpis(
+            f"W tym cena zakupu {formatuj_liczba(dane['cena_zakupu'])} {symbol_waluty()} "
+            f"— krzywa startuje od niej, a nie od zera."))
+    sprzedaz = dane.get("sprzedaz")
+    if sprzedaz:
+        tekst = f"Rachunek zamknięty {sprzedaz['data'].strftime('%d.%m.%Y')} — dniem sprzedaży"
+        if sprzedaz.get("po_odliczeniu") is not None:
+            tekst += (f". Po odliczeniu ceny sprzedaży "
+                      f"({formatuj_liczba(sprzedaz['cena'])} {symbol_waluty()}) zostaje "
+                      f"{formatuj_liczba(sprzedaz['po_odliczeniu'])} {symbol_waluty()}")
+        przypisy.append(podpis(tekst + "."))
+
+    return ft.Container(
+        padding=SPACING["lg"],
+        **powierzchnia(page, "karta", cien="md"),
+        content=ft.Column(
+            [ft.Row(liczby, spacing=SPACING["md"]), wykres] + przypisy,
+            spacing=SPACING["md"],
+        ),
+    )
+
+
 def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11):
     """Mały „chip” trendu: strzałka + procent zmiany. `wzrost_zly=True` znaczy,
     że rosnąca wartość jest zła (koszty, spalanie) i dostaje kolor czerwony.
@@ -809,10 +1026,14 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="o
 
 
 __all__ = [
+    "KOLORY_SERII_KOSZTU",
+    "MAKS_PUNKTOW_KRZYWEJ",
     "ROLA_STATUSU_INTERWALU",
     "ZAKRESY_CZASU",
     "_OPISY_ZAKRESU",
     "_SKALA_KONDYCJI",
+    "_kropka_legendy",
+    "_kwota_osi",
     "_przesun_miesiac",
     "granica_zakresu",
     "klucze_miesiecy_zakresu",
@@ -825,6 +1046,7 @@ __all__ = [
     "gauge_kondycji",
     "heatmapa_aktywnosci",
     "karta_analizy",
+    "karta_kosztu_skumulowanego",
     "kolor_kondycji_plynny",
     "liczniki_interwalu",
     "odznaka_zrodla_przebiegu",
@@ -832,6 +1054,7 @@ __all__ = [
     "pasek_postepu",
     "sparkline",
     "wskaznik_baku",
+    "wykres_kosztu_skumulowanego",
     "wykres_przebiegu",
     "znacznik_trendu",
 ]

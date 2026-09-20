@@ -664,9 +664,57 @@ class MiksinZakladkiStatystyki:
                     )
                 )
 
+            # ----- Koszt skumulowany -----
+            # Krzywa narastająca stoi PIERWSZA w Wykresach, bo odpowiada na
+            # pytanie najogólniejsze: ile to auto kosztowało do dzisiaj. Reszta
+            # wykresów rozbiera tę liczbę na części, więc ma sens dopiero po niej.
+            dane_skum = db.koszt_skumulowany(
+                self.state.auto_id, z_cena_zakupu=db.czy_skumulowany_z_cena_zakupu())
+
+            def przelacz_cene_zakupu(e):
+                db.zapisz_skumulowany_z_cena_zakupu(not db.czy_skumulowany_z_cena_zakupu())
+                utils.odswiez_ekran(self._page)
+
+            naglowek_skum = [
+                ft.Text("Koszt skumulowany", weight="bold", size=18,
+                        color=ft.Colors.PRIMARY, expand=True),
+            ]
+            # Chip pokazujemy tylko wtedy, gdy JEST co doliczyć: bez daty albo
+            # bez ceny zakupu przełącznik nie robiłby nic, a pytałby o zdanie.
+            if dane_skum.get("cena_zakupu") and dane_skum.get("czy_od_zakupu"):
+                z_zakupem = bool(dane_skum.get("z_cena_zakupu"))
+                naglowek_skum.append(ft.Container(
+                    height=26, padding=ft.Padding(10, 0, 10, 0),
+                    border_radius=utils.RADIUS["pill"], ink=True,
+                    bgcolor=ft.Colors.PRIMARY if z_zakupem else ft.Colors.TRANSPARENT,
+                    border=None if z_zakupem else ft.Border.all(1, ft.Colors.OUTLINE),
+                    animate=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
+                    on_click=przelacz_cene_zakupu,
+                    tooltip=("Krzywa startuje od ceny zakupu — dotknij, aby zobaczyć samą eksploatację"
+                             if z_zakupem else
+                             "Krzywa pokazuje samą eksploatację — dotknij, aby doliczyć cenę zakupu"),
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.SHOPPING_CART, size=13,
+                                color=ft.Colors.ON_PRIMARY if z_zakupem else ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text("Z ceną zakupu", size=utils.FS["caption"],
+                                weight="bold" if z_zakupem else "normal",
+                                color=ft.Colors.ON_PRIMARY if z_zakupem else ft.Colors.ON_SURFACE_VARIANT,
+                                no_wrap=True),
+                    ], spacing=5, tight=True),
+                ))
+
+            karta_skumulowanego = utils.karta_kosztu_skumulowanego(
+                self._page, dane_skum,
+                od_daty=utils.granica_zakresu(utils.zakres_wykresu(self.state, "skumulowany")),
+            )
+
             # Pasek zakresu stoi NAD kartą, którą opisuje — między nagłówkiem
             # a wykresem. Każdy ma własny klucz, więc zakresy nie chodzą parami.
             self.elementy.extend([
+                ft.Row(naglowek_skum, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                utils.pasek_zakresu_czasu(self._page, self.state, "skumulowany"),
+                karta_skumulowanego,
+                ft.Divider(height=20),
                 ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 utils.pasek_zakresu_czasu(self._page, self.state, "struktura"),
                 karta_struktury,

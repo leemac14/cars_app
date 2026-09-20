@@ -5,15 +5,16 @@ from date import parsuj_date
 from datetime import date as date_cls, datetime, timedelta
 from typing import Any
 
-from .stale import ENERGIA_PALIWO, ENERGIA_PRAD
+from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
-from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport
+from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, parsuj_int_bezpiecznie
 from .ustawienia import pobierz_walute
 from .synchronizacja import zarejestruj_nagrobek
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu
-from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, klucz_stacji, koszty_w_okresie, pobierz_trend_cen_paliwa
+from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_trend_cen_paliwa
 from .statystyki import pobierz_serie_spalania
+from .pojazd import pobierz_dane_pojazdu
 
 
 # ==================== ANALIZA, PROGNOZY I BUDŻETY ====================
@@ -839,6 +840,201 @@ def lata_z_danymi(auto_id) -> list[int]:
     return sorted(lata, reverse=True)
 
 
+# -------------------- KOSZT SKUMULOWANY --------------------
+# Słupki miesięczne uśredniają wrażenie: przegląd za cztery tysiące ląduje
+# w jednym słupku obok tankowań i po kwartale nie widać go wcale. Suma
+# narastająca niczego nie uśrednia — każdy wydatek zostaje na krzywej na
+# zawsze — więc jako jedyna pokazuje PRAWDZIWĄ skalę tego, co auto kosztuje.
+#
+# Oś ma od czego zacząć, bo karta pojazdu zna datę i cenę zakupu. Bez daty
+# zakupu krzywa startuje w pierwszym wpisie — i wołający dowiaduje się o tym
+# z `czy_od_zakupu`, żeby nie podpisać wykresu „od zakupu” wbrew prawdzie.
+
+# Ile razy wpis musi przebić medianę wpisu, żeby dostać własny znacznik.
+# Przy dwukrotności znacznik dostawało co drugie tankowanie do pełna; przy
+# trzykrotności zostają awarie, przeglądy, opony i ubezpieczenie — czyli to,
+# po co się w ogóle na tę krzywą patrzy.
+PROG_WYROZNIENIA_WYDATKU = 3.0
+MAKS_WYROZNIONYCH_WYDATKOW = 6
+
+# Ile punktów dostaje iskra na kafelku kokpitu. Więcej i tak nie zmieści się
+# w trzydziestu pikselach wysokości, a krzywa narastająca jest gładka, więc
+# przy rzadszym próbkowaniu nic z jej kształtu nie ginie.
+PUNKTOW_ISKRY_SKUMULOWANEJ = 24
+
+
+def _wiersze_kosztow_z_opisem(conn, auto_id):
+    """To samo, co `_wiersze_kosztow`, tylko z nazwą wpisu: krzywa skumulowana
+    musi umieć powiedzieć, CO było tym skokiem w górę — sama kwota bez nazwy
+    zostawia użytkownika z pytaniem, po które tu przyszedł.
+
+    Reguła wizyty zbiorczej bez zmian: wizyta wchodzi w CAŁOŚCI, a należące do
+    niej pozycje historii są pomijane, żeby ten sam koszt nie policzył się
+    dwa razy."""
+    c = conn.cursor()
+    wiersze = []
+    c.execute("SELECT data, kwota, stacja FROM tankowania WHERE auto_id=?", (auto_id,))
+    wiersze += [(d, k, "paliwo", str(s or "").strip() or "Tankowanie")
+                for d, k, s in c.fetchall()]
+    c.execute(
+        "SELECT h.data, h.cena, z.nazwa FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+        "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+    )
+    wiersze += [(d, k, "serwis", str(n or "").strip() or "Wpis serwisowy")
+                for d, k, n in c.fetchall()]
+    c.execute("SELECT data, koszt_calkowity, wykonawca FROM wizyty WHERE auto_id=?", (auto_id,))
+    wiersze += [(d, k, "serwis", f"Wizyta — {str(w).strip()}" if str(w or "").strip() else "Wizyta w serwisie")
+                for d, k, w in c.fetchall()]
+    c.execute("SELECT data, kwota, nazwa, kategoria FROM inne_koszty WHERE auto_id=?", (auto_id,))
+    wiersze += [(d, k, "inne", str(n or "").strip() or etykieta_kategorii_innych(kat))
+                for d, k, n, kat in c.fetchall()]
+    return wiersze
+
+
+def koszt_skumulowany(auto_id, z_cena_zakupu=True, dzis=None) -> dict[str, Any]:
+    """Suma narastająca wydatków na pojazd — dzień po dniu, od zakupu.
+
+    `z_cena_zakupu` decyduje, czy krzywa startuje od kwoty zakupu (pełny
+    rachunek za posiadanie), czy od zera (sama eksploatacja). Bez daty albo bez
+    ceny zakupu nie ma czego postawić na starcie, więc start jest zerowy
+    niezależnie od flagi.
+
+    Auto sprzedane ma rachunek ZAMKNIĘTY na dniu sprzedaży — dokładnie tak jak
+    w `pobierz_metryki_pojazdu`, żeby koszt dzienny sprzedanego auta nie malał
+    sam z siebie z każdym kolejnym dniem po sprzedaży. Cena sprzedaży wraca
+    osobno, bo to jedyna pozycja w tym rachunku, która go OBNIŻA."""
+    pusty = {
+        "punkty": [], "wyroznione": [], "iskra": [],
+        "start": None, "czy_od_zakupu": False,
+        "cena_zakupu": None, "z_cena_zakupu": False, "wartosc_startowa": 0.0,
+        "wydatki": 0.0, "suma": 0.0, "dni": 0, "km": None,
+        "koszt_dzien": None, "koszt_km": None, "sprzedaz": None,
+    }
+    if not auto_id:
+        return pusty
+
+    dane = pobierz_dane_pojazdu(auto_id)
+    if not dane:
+        return pusty
+
+    dzien_dzis = dzis or datetime.now().date()
+
+    sprzedany = str(dane.get("status") or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_SPRZEDANY
+    data_sprzedazy = parsuj_date(dane.get("data_sprzedazy")) if sprzedany else None
+    if data_sprzedazy == datetime.min.date() or (data_sprzedazy and data_sprzedazy > dzien_dzis):
+        data_sprzedazy = None
+    dzien_odniesienia = data_sprzedazy or dzien_dzis
+
+    data_zakupu = parsuj_date(dane.get("data_zakupu"))
+    if data_zakupu == datetime.min.date() or data_zakupu > dzien_odniesienia:
+        data_zakupu = None
+
+    with polacz_baze() as conn:
+        surowe = _wiersze_kosztow_z_opisem(conn, auto_id)
+
+    # Wpisy sprzed zakupu to koszty poprzedniego właściciela albo literówka
+    # w dacie — do rachunku „ile mnie kosztowało to auto” nie należą. Tak samo
+    # liczy okno wydatków w `pobierz_metryki_pojazdu`, więc obie liczby zgadzają
+    # się ze sobą.
+    wpisy = []
+    for data_str, kwota, kategoria, opis in surowe:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date() or d > dzien_odniesienia:
+            continue
+        if data_zakupu and d < data_zakupu:
+            continue
+        wartosc = float(kwota or 0.0)
+        if wartosc <= 0:
+            continue
+        wpisy.append((d, wartosc, kategoria, opis))
+    wpisy.sort(key=lambda w: w[0])
+
+    cena_zakupu = _liczba_lub_none(dane.get("cena_zakupu"))
+    wlicz_zakup = bool(z_cena_zakupu and data_zakupu and cena_zakupu)
+    wartosc_startowa = float(cena_zakupu) if wlicz_zakup else 0.0
+    start = data_zakupu or (wpisy[0][0] if wpisy else dzien_odniesienia)
+
+    # Jeden punkt na DZIEŃ z wpisem. Dwa wydatki tego samego dnia dają jeden
+    # skok — dwa punkty o tym samym X zrobiłyby z krzywej pionową kreskę
+    # i nic poza tym.
+    biezace = {k: 0.0 for k in KATEGORIE_BUDZETU if k != "razem"}
+    punkty = [dict({"data": start, "dzien": 0, "razem": wartosc_startowa}, **biezace)]
+    skumulowana_dnia = {}
+    for d, wartosc, kategoria, _opis in wpisy:
+        biezace[kategoria] = biezace.get(kategoria, 0.0) + wartosc
+        razem = wartosc_startowa + sum(biezace.values())
+        if punkty[-1]["data"] == d:
+            punkty[-1].update(dict(biezace, razem=razem))
+        else:
+            punkty.append(dict(biezace, data=d, dzien=(d - start).days, razem=razem))
+        skumulowana_dnia[d] = razem
+
+    # Ogon do dnia odniesienia: pół roku bez wydatku to na tej krzywej POZIOMY
+    # odcinek, a nie jej brak. Bez tego punktu wykres kończyłby się na ostatnim
+    # tankowaniu i cisza po nim byłaby niewidoczna.
+    if punkty[-1]["data"] < dzien_odniesienia:
+        punkty.append(dict(punkty[-1], data=dzien_odniesienia,
+                           dzien=(dzien_odniesienia - start).days))
+
+    kwoty = sorted(w[1] for w in wpisy)
+    mediana = kwoty[len(kwoty) // 2] if kwoty else 0.0
+    prog = mediana * PROG_WYROZNIENIA_WYDATKU
+    kandydaci = sorted((w for w in wpisy if prog > 0 and w[1] >= prog),
+                       key=lambda w: w[1], reverse=True)
+    wyroznione = [
+        {"data": d, "dzien": (d - start).days, "kwota": wartosc,
+         "kategoria": kategoria, "opis": opis,
+         "skumulowana": skumulowana_dnia.get(d, wartosc_startowa)}
+        for d, wartosc, kategoria, opis
+        in sorted(kandydaci[:MAKS_WYROZNIONYCH_WYDATKOW], key=lambda w: w[0])
+    ]
+
+    wydatki = sum(biezace.values())
+    suma = wartosc_startowa + wydatki
+    dni = max(0, (dzien_odniesienia - start).days)
+
+    przebieg = pobierz_aktualny_przebieg(auto_id) or 0
+    przebieg_zakupu = parsuj_int_bezpiecznie(dane.get("przebieg_zakupu"), 0)
+    km = (przebieg - przebieg_zakupu) if (przebieg_zakupu > 0 and przebieg > przebieg_zakupu) else None
+
+    cena_sprzedazy = _liczba_lub_none(dane.get("cena_sprzedazy"))
+    sprzedaz = None
+    if data_sprzedazy:
+        sprzedaz = {
+            "data": data_sprzedazy,
+            "dzien": (data_sprzedazy - start).days,
+            "cena": cena_sprzedazy,
+            # Odejmować jest od czego tylko wtedy, gdy w krzywej siedzi cena
+            # zakupu. Przy krzywej samej eksploatacji „minus cena sprzedaży”
+            # dałoby liczbę ujemną bez żadnego znaczenia.
+            "po_odliczeniu": ((suma - cena_sprzedazy)
+                              if (wlicz_zakup and cena_sprzedazy is not None) else None),
+        }
+
+    krok_iskry = max(1, -(-len(punkty) // PUNKTOW_ISKRY_SKUMULOWANEJ))
+    iskra = [p["razem"] for p in punkty[::krok_iskry]]
+    if iskra and iskra[-1] != punkty[-1]["razem"]:
+        iskra.append(punkty[-1]["razem"])
+
+    return {
+        "punkty": punkty,
+        "wyroznione": wyroznione,
+        "iskra": iskra,
+        "start": start,
+        "czy_od_zakupu": data_zakupu is not None,
+        "cena_zakupu": cena_zakupu,
+        "z_cena_zakupu": wlicz_zakup,
+        "wartosc_startowa": wartosc_startowa,
+        "wydatki": wydatki,
+        "suma": suma,
+        "dni": dni,
+        "km": km,
+        "koszt_dzien": (suma / dni) if dni >= 1 else None,
+        "koszt_km": (suma / km) if km else None,
+        "sprzedaz": sprzedaz,
+    }
+
+
 # -------------------- SILNIK OBSERWACJI --------------------
 # Jedno miejsce, w którym liczby zamieniają się w zdania. Każda reguła zwraca
 # obserwację z WAGĄ; kokpit bierze najważniejszą, zakładka Analiza wszystkie.
@@ -1024,10 +1220,13 @@ def obserwacje_analityczne(auto_id, limit=None):
 
 
 __all__ = [
+    "MAKS_WYROZNIONYCH_WYDATKOW",
     "MAX_LAT_SEZONU",
     "MIN_ODCINKOW_SEZONU",
     "OKRESY_BUDZETU",
     "PROG_ISTOTNOSCI_TRENDU",
+    "PROG_WYROZNIENIA_WYDATKU",
+    "PUNKTOW_ISKRY_SKUMULOWANEJ",
     "PROG_POKAZANIA_SEZONU",
     "PROG_UWAGI_BUDZETU",
     "TOLERANCJA_SEZONU_DNI",
@@ -1039,7 +1238,9 @@ __all__ = [
     "_przesun_o_lata",
     "_sezonowosc_zmiany",
     "_srednia_okna",
+    "_wiersze_kosztow_z_opisem",
     "analizuj_trend_spalania",
+    "koszt_skumulowany",
     "koszt_trendu_rocznie",
     "lata_z_danymi",
     "obserwacje_analityczne",

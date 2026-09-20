@@ -70,6 +70,11 @@ class MiksinKokpitu:
         # spójny język: liczba mówi „ile”, iskra mówi „w którą stronę”.
         seria_przebiegu = db.pobierz_serie_dziennego_przebiegu(self.state.auto_id, 12) if "przebieg_dzienny" in wlaczone else []
         seria_koszt_km = db.pobierz_serie_kosztu_km(self.state.auto_id, 6) if "koszt_km" in wlaczone else []
+        # Krzywa narastająca to przejście po WSZYSTKICH wpisach kosztowych auta,
+        # więc liczymy ją wyłącznie, gdy kafelek naprawdę stoi na kokpicie.
+        dane_skumulowane = db.koszt_skumulowany(
+            self.state.auto_id, z_cena_zakupu=db.czy_skumulowany_z_cena_zakupu()
+        ) if "skumulowany" in wlaczone else {}
 
         def idz_do_statystyk(podzakladka=0):
             def handler(e):
@@ -316,6 +321,50 @@ class MiksinKokpitu:
                     ], spacing=6),
                     ft.Row(slupki, alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.END),
                 ], spacing=10),
+            )
+
+        def widget_skumulowany():
+            """Suma narastająca jednym rzutem oka.
+
+            Bez chipa trendu — inaczej niż przy pozostałych kafelkach z iskrą.
+            Krzywa narastająca rośnie ZAWSZE, więc „rośnie o 12%" nie niosłoby
+            tu żadnej informacji; stopka mówi zamiast tego, od kiedy liczy się
+            rachunek i ile wychodzi na dzień."""
+            iskra = utils.sparkline(dane_skumulowane.get("iskra") or [],
+                                    ft.Colors.PRIMARY, wysokosc=30)
+            if iskra is None:
+                return kafel_wartosci(
+                    ft.Icons.STACKED_LINE_CHART, ft.Colors.PRIMARY, "Koszt skumulowany",
+                    "Za mało danych", idz_do_statystyk(1),
+                )
+
+            stopka = []
+            if dane_skumulowane.get("start"):
+                stopka.append(("od zakupu " if dane_skumulowane.get("czy_od_zakupu") else "od ")
+                              + dane_skumulowane["start"].strftime("%m.%Y"))
+            if dane_skumulowane.get("koszt_dzien"):
+                stopka.append(f"{utils.formatuj_liczba(dane_skumulowane['koszt_dzien'])} "
+                              f"{utils.symbol_waluty()}/dzień")
+
+            return ft.Container(
+                width=SZER_KAFLA + 60, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
+                ink=True, on_click=idz_do_statystyk(1),
+                tooltip="Suma wszystkiego, co to auto kosztowało — dotknij, aby zobaczyć krzywą",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.STACKED_LINE_CHART, size=15, color=ft.Colors.PRIMARY),
+                        utils.etykieta("Koszt skumulowany", expand=True),
+                    ], spacing=6),
+                    tekst_wartosci(liczba_kafelka(
+                        dane_skumulowane.get("suma") or None,
+                        lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+                    )),
+                    iskra,
+                    ft.Text(" · ".join(stopka), size=utils.FS["caption"],
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
             )
 
         def widget_koszt_km():
@@ -799,6 +848,7 @@ class MiksinKokpitu:
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
             "wykres": widget_wykres,
+            "skumulowany": widget_skumulowany,
             "koszt_km": widget_koszt_km,
             "spalanie": widget_spalanie,
             "przebieg_dzienny": widget_przebieg_dzienny,

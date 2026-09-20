@@ -74,6 +74,23 @@ def zapisz_animacje_interfejsu(wlaczone):
     zapisz_ustawienie("animacje_interfejsu", "1" if wlaczone else "0")
 
 
+def czy_skumulowany_z_cena_zakupu():
+    """Czy krzywa kosztu skumulowanego startuje od ceny zakupu, czy od zera.
+
+    JEDNO ustawienie na całą aplikację, nie per pojazd: to decyzja o tym, na co
+    się patrzy — „ile mnie kosztowało to auto” kontra „ile kosztuje jeżdżenie
+    nim” — a nie cecha konkretnego samochodu. Domyślnie włączone, bo bez ceny
+    zakupu krzywa nie pokazuje pełnej skali wydatku, a po to się ją rysuje.
+
+    Pojazd bez daty albo bez ceny zakupu nie ma czego postawić na starcie —
+    wtedy krzywa i tak rusza od zera, niezależnie od tej flagi."""
+    return (pobierz_ustawienie("skumulowany_z_cena_zakupu", "1") or "1") == "1"
+
+
+def zapisz_skumulowany_z_cena_zakupu(wlaczone):
+    zapisz_ustawienie("skumulowany_z_cena_zakupu", "1" if wlaczone else "0")
+
+
 def pobierz_walute():
     w = pobierz_ustawienie("waluta", "PLN")
     return w if w in WALUTY else "PLN"
@@ -194,6 +211,7 @@ KOKPIT_WIDGETY = {
     "koszt_miesiac": "Koszt w tym miesiącu",
     "termin": "Najbliższy termin",
     "wykres": "Wykres wydatków (6 mies.)",
+    "skumulowany": "Koszt skumulowany",
     "koszt_km": "Koszt eksploatacji / km",
     "spalanie": "Średnie spalanie",
     "przebieg_dzienny": "Średni przebieg dzienny",
@@ -429,6 +447,7 @@ __all__ = [
     "INTERWAL_AUTO_SYNC_MINUTY",
     "MIN_INTERWAL_AUTO_SYNC_MINUTY",
     "czy_animacje_interfejsu",
+    "czy_skumulowany_z_cena_zakupu",
     "czy_auto_synchronizacja",
     "interwal_auto_synchronizacji",
     "pobierz_czysta_czern",
@@ -450,6 +469,7 @@ __all__ = [
     "scal_widgety_kokpitu",
     "usun_ustawienie",
     "zapisz_animacje_interfejsu",
+    "zapisz_skumulowany_z_cena_zakupu",
     "zapisz_auto_synchronizacje",
     "zapisz_czysta_czern",
     "zapisz_interwal_auto_synchronizacji",

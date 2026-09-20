@@ -113,6 +113,7 @@ IKONY_KOKPITU = {
     "koszt_miesiac": ft.Icons.ACCOUNT_BALANCE_WALLET,
     "termin": ft.Icons.EVENT,
     "wykres": ft.Icons.BAR_CHART,
+    "skumulowany": ft.Icons.STACKED_LINE_CHART,
     "koszt_km": ft.Icons.ADD_ROAD,
     "spalanie": ft.Icons.LOCAL_GAS_STATION,
     "przebieg_dzienny": ft.Icons.TIMELAPSE,
