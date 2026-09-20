@@ -55,6 +55,9 @@ class MiksinKokpitu:
             return ft.Container()
 
         dzisiaj = datetime.now()
+        # Rola przy tym pojeździe — czytana RAZ na przebudowę, bo pyta o nią
+        # sześć kafelków akcji naraz.
+        tylko_podglad = db.czy_tylko_podglad(self.state.auto_id)
 
         # --- Dane wspólne, liczone tylko gdy faktycznie potrzebne przez wybrane widżety ---
         potrzebne_mc = {"koszt_miesiac", "wykres"} & set(wlaczone)
@@ -919,6 +922,72 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        # ================= KAFELKI AKCJI =================
+        # Kokpit odpowiadał dotąd wyłącznie na pytanie „co się dzieje”. Dwie
+        # najczęstsze czynności w aplikacji — tankowanie i stan licznika —
+        # siedziały pod FAB-em w rogu, czyli o dwa dotknięcia dalej niż ekran,
+        # na którym i tak się jest.
+        def kafel_akcji(ikona, tytul, on_click, podpowiedz=None):
+            """Kafelek-przycisk: zamiast liczby ma czynność. Rola „podgląd” nie
+            dostaje go wcale (None) — przycisk, który zawsze odmawia, jest gorszy
+            od jego braku (ta sama zasada, co przy chowaniu akcji w menu wpisu)."""
+            if tylko_podglad:
+                return None
+            return ft.Container(
+                width=SZER_KAFLA, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
+                ink=True, on_click=on_click,
+                tooltip=podpowiedz or tytul,
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, size=15, color=ft.Colors.PRIMARY),
+                        utils.etykieta("Szybka akcja", expand=True),
+                    ], spacing=6),
+                    ft.Row([
+                        ft.Icon(ikona, size=17, color=ft.Colors.PRIMARY),
+                        ft.Text(tytul, size=utils.FS["title"], weight="bold", no_wrap=True,
+                                overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                    ], spacing=6),
+                ], spacing=4),
+            )
+
+        def widget_akcja_tankowanie():
+            return kafel_akcji(ft.Icons.LOCAL_GAS_STATION, "Tankowanie",
+                               lambda e: utils.przejdz(self._page, "/tankowanie/nowe"),
+                               "Nowy wpis tankowania")
+
+        def widget_akcja_licznik():
+            """Jedyna akcja, której nie ma pod FAB-em — i jedyna, która nie
+            wymaga zmiany ekranu: okno z jednym polem zapisuje odczyt i wraca
+            na kokpit z policzonymi na nowo kafelkami."""
+            def otworz(e):
+                utils.dialog_odczytu_przebiegu(
+                    self._page, self.state.auto_id,
+                    po_zapisie=lambda: utils.odswiez_ekran(self._page),
+                )
+            return kafel_akcji(ft.Icons.SPEED, "Stan licznika", otworz,
+                               "Zapisz dzisiejszy stan licznika bez schodzenia z kokpitu")
+
+        def widget_akcja_inny_koszt():
+            return kafel_akcji(ft.Icons.RECEIPT_LONG, "Inny koszt",
+                               lambda e: utils.przejdz(self._page, "/inne/nowy"),
+                               "Nowy wpis w Inne koszty")
+
+        def widget_akcja_wizyta():
+            return kafel_akcji(ft.Icons.HOME_REPAIR_SERVICE, "Wizyta",
+                               lambda e: utils.przejdz(self._page, "/wizyty/nowa"),
+                               "Nowa wizyta w warsztacie")
+
+        def widget_akcja_podzespol():
+            return kafel_akcji(ft.Icons.HANDYMAN, "Podzespół",
+                               lambda e: utils.przejdz(self._page, "/zadanie/nowy"),
+                               "Nowy podzespół do pilnowania")
+
+        def widget_akcja_do_zrobienia():
+            return kafel_akcji(ft.Icons.CHECKLIST_RTL, "Do zrobienia",
+                               lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"),
+                               "Nowa pozycja na liście Do zrobienia")
+
         self._kokpit_budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
@@ -940,7 +1009,20 @@ class MiksinKokpitu:
             "oplaty_drogowe": widget_oplaty_drogowe,
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
+            "akcja_tankowanie": widget_akcja_tankowanie,
+            "akcja_licznik": widget_akcja_licznik,
+            "akcja_inny_koszt": widget_akcja_inny_koszt,
+            "akcja_wizyta": widget_akcja_wizyta,
+            "akcja_podzespol": widget_akcja_podzespol,
+            "akcja_do_zrobienia": widget_akcja_do_zrobienia,
         }
+
+        # Ustawienia → „Ułóż kafelki kokpitu” tylko przełączają ekran; tryb
+        # układania włącza się tutaj i od razu gasi flagę, żeby następne wejście
+        # na kokpit było już zwykłe.
+        if getattr(self.state, "kokpit_otworz_ukladanie", False):
+            self.state.kokpit_otworz_ukladanie = False
+            self.kokpit_edycja = True
 
         self.kokpit_kontener = ft.Container(content=self._zawartosc_kokpitu())
         return self.kokpit_kontener
@@ -951,7 +1033,9 @@ class MiksinKokpitu:
         każdym razem z bazy, więc po przeciągnięciu kafelka wystarczy odświeżyć
         sam kontener — bez przebudowy całego ekranu i utraty pozycji scrolla."""
         wlaczone = [w for w in db.pobierz_widgety_kokpitu(self.state.auto_id) if w in self._kokpit_budowniczy]
-        if not wlaczone:
+        # Pusty kokpit w trybie układania musi mimo wszystko pokazać pasek
+        # i komórkę „Dodaj kafelek” — inaczej kto zdjął wszystko, nie ma jak wrócić.
+        if not wlaczone and not self.kokpit_edycja:
             return ft.Container()
         # Czytane przy KAŻDEJ przebudowie, a nie raz przy tworzeniu budowniczych:
         # przycisk „Pokaż puste” w zachęcie zmienia ustawienie i od razu odświeża
@@ -959,7 +1043,10 @@ class MiksinKokpitu:
         # ponownego wejścia na ekran.
         self._chowaj_puste = db.czy_chowac_puste_kafelki()
         if self.kokpit_edycja:
-            return self._kokpit_ukladanie(wlaczone)
+            # Pasek nad siatką zamiast osobnego panelu z klockami: kafelki
+            # zostają na swoich miejscach, więc układa się je tam, gdzie się je
+            # widzi, i od razu widać, co z czym sąsiaduje.
+            return ft.Column([self._kokpit_pasek_edycji(), self._kokpit_siatka(wlaczone)], spacing=10)
         return self._kokpit_siatka(wlaczone)
 
     def _odswiez_kokpit(self):
@@ -1027,12 +1114,20 @@ class MiksinKokpitu:
             # inaczej kafelek schowany wyglądałby jak wyłączony.
             if kafel is None:
                 self._kokpit_puste.append(wid)
-                continue
+                # W układaniu kafelek schowany musi być widoczny: inaczej nie da
+                # się go przestawić ani zdjąć, a w liście wyglądałby na wyłączony.
+                if not self.kokpit_edycja:
+                    continue
+                kafel = self._kafel_schowany(wid)
             # Deklarowana szerokość zostaje tylko miarą potrzeb — o tym, ile
             # kafelek naprawdę zajmie, decyduje komórka siatki.
             potrzebna = getattr(kafel, "width", None) or SZER_KAFLA
             kafel.width = None
-            kafel.col = KOL_KAFLA_2X1 if potrzebna > PROG_KAFLA_2X1 else KOL_KAFLA_1X1
+            kol = KOL_KAFLA_2X1 if potrzebna > PROG_KAFLA_2X1 else KOL_KAFLA_1X1
+            if self.kokpit_edycja:
+                kafelki.append(self._komorka_edycji(wid, kafel, kol))
+                continue
+            kafel.col = kol
             # Wszystkie widżety zwracają ft.Container, więc uchwyt long-press
             # dopinamy z zewnątrz zamiast powtarzać go w każdym budowniczym.
             try:
@@ -1041,22 +1136,38 @@ class MiksinKokpitu:
                 pass
             kafelki.append(kafel)
 
-        if not kafelki:
+        if not kafelki and not self.kokpit_edycja:
             return self._kokpit_zacheta()
 
-        # Wejście w układanie jako ostatnia komórka siatki, a nie okrągły guzik
-        # doklejony za karuzelą: siatka nie ma „końca”, za którym dałoby się coś
-        # doczepić, a kafelek w rytmie pozostałych czyta się jak część kokpitu.
-        kafelki.append(ft.Container(
-            col=KOL_KAFLA_1X1, padding=15,
-            **utils.powierzchnia(self._page, "kafel"),
-            ink=True, on_click=lambda e: self._ustaw_tryb_ukladania(True),
-            tooltip="Ułóż kafelki (możesz też przytrzymać kafelek)",
-            content=ft.Row([
-                ft.Icon(ft.Icons.DRAG_INDICATOR, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
-                utils.etykieta("Ułóż kafelki", expand=True),
-            ], spacing=6),
-        ))
+        # Ostatnia komórka siatki, a nie okrągły guzik doklejony za karuzelą:
+        # siatka nie ma „końca”, za którym dałoby się coś doczepić, a kafelek
+        # w rytmie pozostałych czyta się jak część kokpitu. W układaniu ta sama
+        # komórka służy do dokładania kafelków zdjętych krzyżykiem.
+        if self.kokpit_edycja:
+            kafelki.append(ft.Container(
+                col=KOL_KAFLA_1X1, padding=15,
+                border_radius=utils.RADIUS["lg"],
+                border=ft.Border.all(1, ft.Colors.with_opacity(0.4, ft.Colors.PRIMARY)),
+                ink=True, on_click=self._menu_dodawania_kafelka,
+                tooltip="Dodaj kafelek na kokpit",
+                content=ft.Row([
+                    ft.Icon(ft.Icons.ADD, size=16, color=ft.Colors.PRIMARY),
+                    ft.Text("Dodaj kafelek", size=utils.FS["label"], weight="bold",
+                            color=ft.Colors.PRIMARY, no_wrap=True, expand=True,
+                            overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            ))
+        else:
+            kafelki.append(ft.Container(
+                col=KOL_KAFLA_1X1, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
+                ink=True, on_click=lambda e: self._ustaw_tryb_ukladania(True),
+                tooltip="Ułóż kafelki (możesz też przytrzymać kafelek)",
+                content=ft.Row([
+                    ft.Icon(ft.Icons.DRAG_INDICATOR, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
+                    utils.etykieta("Ułóż kafelki", expand=True),
+                ], spacing=6),
+            ))
 
         return ft.ResponsiveRow(kafelki, spacing=10, run_spacing=10)
 
@@ -1086,113 +1197,156 @@ class MiksinKokpitu:
             ],
         )
 
-    def _kokpit_ukladanie(self, wlaczone):
-        """Tryb układania: kafelki zamieniają się w przeciągalne „klocki”
-        (ft.ReorderableListView w poziomie). Skróconą formę wybrano celowo —
-        pełne kafelki mają różne szerokości i wysokości, więc podczas
-        przeciągania skakałyby, a klocki dają stabilny, czytelny cel."""
-        etykiety = db.KOKPIT_WIDGETY
-        # Kafelki, które w siatce nic nie pokazały (patrz kafel_pusty).
-        puste = set(getattr(self, "_kokpit_puste", ()) or ())
-
-        def numer_klocka(i, wid):
-            """Numer pozycji, a przy kafelku, który się właśnie schował — dopisek.
-            Bez niego „schowany” i „wyłączony” wyglądają na tym pasku tak samo."""
-            return f"{i + 1}." + ("  • teraz pusty" if wid in puste else "")
-
-        klocki, numery = [], []
-        for i, wid in enumerate(wlaczone):
-            podpis = str(etykiety.get(wid, wid))
-            # Etykiety w KOKPIT_WIDGETY to już sam tekst — ikonę dobieramy z tego
-            # samego rejestru, z którego korzystają kafelki kokpitu i Ustawienia.
-            ikona_klocka = utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid)
-
-            numer = ft.Text(numer_klocka(i, wid), size=utils.FS["caption"],
-                            color=ft.Colors.ON_SURFACE_VARIANT)
-            numery.append(numer)
-
-            klocek = ft.Container(
-                width=150, padding=ft.Padding(12, 10, 12, 10),
-                # Przygaszony klocek = kafelek włączony, tylko dziś bez treści.
-                opacity=0.55 if wid in puste else 1,
-                border_radius=utils.RADIUS["md"],
-                bgcolor=utils.tlo_karty(self._page, poziom=2),
-                border=ft.Border.all(1, ft.Colors.with_opacity(0.25, ft.Colors.PRIMARY)),
-                content=ft.Row([
-                    ft.Icon(ikona_klocka, size=18, color=ft.Colors.PRIMARY),
-                    ft.Column([
-                        numer,
-                        ft.Text(podpis, size=utils.FS["label"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                    ], spacing=0, expand=True, tight=True),
-                    ft.Icon(ft.Icons.DRAG_INDICATOR, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
-                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            )
-            # Cały klocek jest uchwytem — na telefonie celowanie w samą ikonkę
-            # uchwytu byłoby męczące.
-            klocki.append(ft.Container(
-                padding=ft.Padding.only(right=10),
-                content=ft.ReorderableDragHandle(content=klocek, mouse_cursor=ft.MouseCursor.GRAB),
-            ))
-
-        kolejnosc = list(wlaczone)
-
-        def przestaw(e):
-            """ReorderableListView NIE przestawia swoich `controls` sam — robimy
-            to my, tak samo jak listę ID i numerki na klockach. Przestawiamy
-            w miejscu (zamiast przebudowywać panel), bo ta lista właśnie
-            obsłużyła zdarzenie i podmiana jej pod sobą potrafi zerwać animację
-            upuszczenia."""
-            stary, nowy = e.old_index, e.new_index
-            if stary is None or nowy is None or stary == nowy:
-                return
-            if not (0 <= stary < len(kolejnosc)) or not (0 <= nowy < len(kolejnosc)):
-                return
-
-            kolejnosc.insert(nowy, kolejnosc.pop(stary))
-            lista.controls.insert(nowy, lista.controls.pop(stary))
-            numery.insert(nowy, numery.pop(stary))
-            for i, n in enumerate(numery):
-                n.value = numer_klocka(i, kolejnosc[i])
-
-            # Przeciągnięcie kafelka układa kokpit TEGO auta — i tym samym
-            # odpina je od wspólnego układu.
-            db.zapisz_widgety_kokpitu(kolejnosc, self.state.auto_id)
-            try:
-                lista.update()
-            except Exception:
-                pass
-
-        lista = ft.ReorderableListView(
-            controls=klocki,
-            horizontal=True,
-            show_default_drag_handles=False,
-            on_reorder=przestaw,
-            padding=0,
-        )
-
-        naglowek = ft.Row([
-            ft.Icon(ft.Icons.DRAG_INDICATOR, size=16, color=ft.Colors.PRIMARY),
-            ft.Text("Przeciągnij, aby ułożyć kafelki", size=utils.FS["label"], weight="bold", color=ft.Colors.PRIMARY, expand=True),
-            ft.TextButton(
-                "Gotowe", icon=ft.Icons.CHECK,
-                on_click=lambda e: self._ustaw_tryb_ukladania(False),
-            ),
-        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
+    # ----- Układanie kafelków WPROST w siatce -----
+    def _kokpit_pasek_edycji(self):
+        """Pasek nad siatką w trybie układania. Zastąpił panel z poziomym paskiem
+        klocków: klocki były abstrakcyjne (nie było widać, jak siatka wygląda),
+        przeciągało się je w bok przez dwadzieścia pozycji, a widoczność kafelków
+        ustawiało się zupełnie gdzie indziej — w Ustawieniach."""
         return ft.Container(
-            padding=ft.Padding(12, 10, 12, 12),
+            padding=ft.Padding(12, 10, 12, 10),
             border_radius=utils.RADIUS["lg"],
             bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY),
             border=ft.Border.all(1, ft.Colors.with_opacity(0.25, ft.Colors.PRIMARY)),
             content=ft.Column([
-                naglowek,
-                ft.Container(height=64, content=lista),
+                ft.Row([
+                    ft.Icon(ft.Icons.DASHBOARD_CUSTOMIZE, size=16, color=ft.Colors.PRIMARY),
+                    ft.Text("Układasz kafelki", size=utils.FS["label"], weight="bold",
+                            color=ft.Colors.PRIMARY, expand=True),
+                    ft.TextButton("Gotowe", icon=ft.Icons.CHECK,
+                                  on_click=lambda e: self._ustaw_tryb_ukladania(False)),
+                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ft.Text(
-                    "Które kafelki są widoczne, wybierzesz w Ustawieniach → Kokpit ekranu głównego.",
+                    "Przeciągnij kafelek na miejsce, w którym ma stanąć. Krzyżyk zdejmuje go "
+                    "z kokpitu, a „Dodaj kafelek” na końcu siatki przywraca zdjęte.",
                     size=utils.FS["caption"], italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
-            ], spacing=8),
+            ], spacing=6),
         )
+
+    def _kafel_schowany(self, wid):
+        """Zastępnik kafelka, który akurat nic nie pokazuje (patrz kafel_pusty).
+        Widoczny WYŁĄCZNIE w układaniu — po to, żeby dało się go przesunąć albo
+        zdjąć, zamiast szukać, czemu go nie ma."""
+        return ft.Container(
+            width=SZER_KAFLA, padding=15, opacity=0.55,
+            **utils.powierzchnia(self._page, "kafel"),
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid), size=15,
+                            color=ft.Colors.ON_SURFACE_VARIANT),
+                    utils.etykieta(str(db.KOKPIT_WIDGETY.get(wid, wid)), expand=True),
+                ], spacing=6),
+                ft.Text("teraz pusty", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+            ], spacing=4),
+        )
+
+    def _komorka_edycji(self, wid, kafel, kol):
+        """Kafelek w trybie układania: ten sam kafelek, tylko bez własnego
+        kliknięcia, z krzyżykiem w rogu i owinięty w parę Draggable + DragTarget.
+        Przeciąganie odbywa się w siatce, więc cel jest tam, gdzie się patrzy."""
+        kafel.on_click = None
+        kafel.on_long_press = None
+        kafel.ink = False
+        kafel.tooltip = None
+
+        nazwa = str(db.KOKPIT_WIDGETY.get(wid, wid))
+        krzyzyk = ft.Container(
+            top=2, right=2, padding=3, border_radius=utils.RADIUS["sm"],
+            bgcolor=utils.tlo_karty(self._page, poziom=3),
+            ink=True, on_click=lambda e, w=wid: self._usun_kafelek(w),
+            tooltip=f"Zdejmij z kokpitu: {nazwa}",
+            content=ft.Icon(ft.Icons.CLOSE, size=15, color=utils.KOLOR_STATUS["critical"]),
+        )
+
+        # To, co „leci za palcem”: pełny kafelek byłby w locie ścianą tekstu,
+        # a pigułka z ikoną i nazwą mówi dokładnie tyle, ile trzeba.
+        podglad = ft.Container(
+            padding=ft.Padding(10, 8, 10, 8), border_radius=utils.RADIUS["md"],
+            bgcolor=utils.tlo_karty(self._page, poziom=2),
+            border=ft.Border.all(1, ft.Colors.with_opacity(0.4, ft.Colors.PRIMARY)),
+            content=ft.Row([
+                ft.Icon(utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid), size=16, color=ft.Colors.PRIMARY),
+                ft.Text(nazwa, size=utils.FS["label"], weight="bold", no_wrap=True),
+            ], spacing=6, tight=True),
+        )
+
+        return ft.DragTarget(
+            group="kokpit", col=kol, data=wid,
+            on_accept=lambda e, cel=wid: self._przenies_kafelek(self._zrodlo_przeciagania(e), cel),
+            content=ft.Draggable(
+                group="kokpit", data=wid,
+                content=ft.Stack([kafel, krzyzyk]),
+                content_feedback=podglad,
+                content_when_dragging=ft.Container(
+                    height=72, border_radius=utils.RADIUS["lg"],
+                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
+                    border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY)),
+                ),
+            ),
+        )
+
+    def _zrodlo_przeciagania(self, e):
+        """Który kafelek jest przeciągany. Flet rozwiązuje `src` z identyfikatora
+        kontrolki przez stronę, więc poza działającą stroną potrafi go nie być —
+        stąd getattr zamiast `e.src.data` wprost."""
+        return getattr(getattr(e, "src", None), "data", None)
+
+    def _uklad_kokpitu(self):
+        return [w for w in db.pobierz_widgety_kokpitu(self.state.auto_id)
+                if w in self._kokpit_budowniczy]
+
+    def _zapisz_uklad(self, kolejnosc):
+        """Każda zmiana układu należy do TEGO pojazdu — i tym samym odpina go od
+        układu wspólnego (patrz db.zapisz_widgety_kokpitu)."""
+        db.zapisz_widgety_kokpitu(kolejnosc, self.state.auto_id)
+        self._odswiez_kokpit()
+
+    def _przenies_kafelek(self, zrodlo, cel):
+        """Upuszczenie kafelka na inny: źródło wskakuje na miejsce celu, reszta
+        przesuwa się o jedno. Zamiana miejscami byłaby prostsza w kodzie, ale przy
+        układaniu siatki człowiek myśli „chcę go tutaj”, a nie „zamień te dwa”."""
+        kolejnosc = self._uklad_kokpitu()
+        if not zrodlo or not cel or zrodlo == cel:
+            return
+        if zrodlo not in kolejnosc or cel not in kolejnosc:
+            return
+        # Indeks celu bierzemy PRZED wyjęciem źródła z listy. Liczony po
+        # wyjęciu cofa cel o jedno przy ruchu w prawo i kafelek ląduje przed nim
+        # zamiast na jego miejscu — czyli nie tam, gdzie palec go postawił.
+        i_cel = kolejnosc.index(cel)
+        kolejnosc.remove(zrodlo)
+        kolejnosc.insert(i_cel, zrodlo)
+        self._zapisz_uklad(kolejnosc)
+
+    def _usun_kafelek(self, wid):
+        kolejnosc = [w for w in db.pobierz_widgety_kokpitu(self.state.auto_id) if w != wid]
+        self._zapisz_uklad(kolejnosc)
+        utils.pokaz_komunikat(
+            self._page, f"Zdjęto z kokpitu: {db.KOKPIT_WIDGETY.get(wid, wid)}")
+
+    def _dodaj_kafelek(self, wid):
+        kolejnosc = list(db.pobierz_widgety_kokpitu(self.state.auto_id))
+        if wid not in kolejnosc:
+            kolejnosc.append(wid)
+        self._zapisz_uklad(kolejnosc)
+
+    def _menu_dodawania_kafelka(self, e=None):
+        """Lista kafelków, których na kokpicie nie ma. Zastąpiła dwadzieścia
+        checkboxów w Ustawieniach: widoczność i kolejność to jedna decyzja
+        i jedno miejsce."""
+        wlaczone = set(db.pobierz_widgety_kokpitu(self.state.auto_id))
+        dostepne = [w for w in db.KOKPIT_WIDGETY
+                    if w not in wlaczone and w in self._kokpit_budowniczy]
+        if not dostepne:
+            utils.pokaz_komunikat(self._page, "Wszystkie kafelki są już na kokpicie.")
+            return
+        pozycje = [{
+            "ikona": utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid),
+            "tekst": str(db.KOKPIT_WIDGETY[wid]),
+            "akcja": (lambda w=wid: self._dodaj_kafelek(w)),
+        } for wid in dostepne]
+        utils.pokaz_menu_kontekstowe(self._page, "Dodaj kafelek", pozycje)
 
     # ================= KOKPIT — ZAKŁADKA STARTOWA =================
     def buduj_kokpit_ekran(self):

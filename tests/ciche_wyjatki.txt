@@ -25,7 +25,7 @@ utils/nawigacja.py                  5
 utils/powiadomienia.py              5
 utils/system.py                     1
 utils/zaznaczanie.py                1
-views/ekran_glowny/kokpit.py        3
+views/ekran_glowny/kokpit.py        2
 views/ekran_glowny/naglowek_auta.py 1
 views/eksport_view.py               1
 views/formularze/auto.py            5

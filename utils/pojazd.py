@@ -7,11 +7,13 @@ from datetime import datetime
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import parsuj_float, symbol_waluty
+from .format import parsuj_float, parsuj_int, symbol_waluty
 from .zgodnosc import ustaw_blad
 from .wyglad import powierzchnia, tlo_toru
-from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
-from .formularze import pole_daty, styl_pola
+from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
+from .sync_ui import wypchnij_w_tle
+from .formularze import pole_daty, sprawdz_podejrzany_przebieg, styl_pola
+from .notatki import pole_notatki, zapisz_notatke_z_formularza
 from .wykresy import kolor_kondycji_plynny
 
 
@@ -425,10 +427,88 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
     return ft.Column(elementy, spacing=SPACING["xs"])
 
 
+def dialog_odczytu_przebiegu(page: ft.Page, auto_id, odczyt=None, po_zapisie=None):
+    """Okno „stan licznika”: data, przebieg i notatka. `odczyt` None znaczy nowy
+    wpis, słownik z pobierz_pelna_historie_przebiegu — edycję WŁASNEGO odczytu
+    (pozostałe wpisy mają swoje formularze i to tam się je poprawia).
+
+    Mieszka w utils, bo wołają je dwa miejsca: ekran „Historia licznika” i kafelek
+    akcji na kokpicie. Druga kopia tego formularza rozjechałaby się z pierwszą
+    przy pierwszej poprawce walidacji.
+
+    `po_zapisie` dostaje kontrolę po udanym zapisie: ekran licznika przeładowuje
+    się trasą, kokpit tylko przebudowuje to, co widać."""
+    edycja = odczyt is not None
+    domyslna_data = odczyt["data"] if edycja else datetime.now().strftime("%d.%m.%Y")
+    domyslny_przebieg = (str(odczyt["przebieg"]) if edycja
+                         else str(db.pobierz_aktualny_przebieg(auto_id) or ""))
+    notatka_bazowa = str((odczyt.get("notatka") if edycja else "") or "")
+
+    e_data = pole_daty(page, "Data odczytu", domyslna_data)
+    e_notatka = pole_notatki(notatka_bazowa, page)
+    e_przebieg = ft.TextField(
+        label="Przebieg (km)", value=domyslny_przebieg,
+        keyboard_type=ft.KeyboardType.NUMBER, autofocus=not edycja,
+        **styl_pola()
+    )
+
+    def zapisz(e):
+        ustaw_blad(e_przebieg)
+        nowy = parsuj_int(e_przebieg.value, None)
+        if nowy is None or nowy <= 0:
+            ustaw_blad(e_przebieg, "Podaj poprawny przebieg")
+            page.update()
+            return
+
+        wyklucz = odczyt["id"] if edycja else None
+        if sprawdz_podejrzany_przebieg(page, e_przebieg, auto_id, nowy,
+                                       wyklucz_id=wyklucz, tabela="odczyty_przebiegu",
+                                       nowa_data_str=e_data.value):
+            return
+
+        zamknij_dialog(page, dlg)
+        if edycja:
+            db.aktualizuj_odczyt_przebiegu(odczyt["id"], nowy, e_data.value)
+            zapisz_notatke_z_formularza("odczyty_przebiegu", odczyt["id"],
+                                        e_notatka.value, notatka_bazowa)
+            pokaz_komunikat(page, "Zapisano zmiany!")
+        else:
+            nadpisano = db.dodaj_odczyt_przebiegu(auto_id, nowy, e_data.value,
+                                                  e_notatka.value, zrodlo="reczny")
+            pokaz_komunikat(page, "Zaktualizowano odczyt z tego dnia!" if nadpisano
+                            else "Dodano odczyt przebiegu!")
+        wypchnij_w_tle(page, auto_id, "odczyt przebiegu")
+        if po_zapisie:
+            po_zapisie()
+
+    dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY),
+                      ft.Text("Edycja odczytu" if edycja else "Nowy odczyt", weight="bold", expand=True)], spacing=8),
+        content=ft.Column([
+            e_data,
+            e_przebieg,
+            e_notatka,
+            ft.Text(
+                "Jeśli dla wybranej daty istnieje już odczyt, zostanie zaktualizowany. "
+                "Przebiegi z tankowań, wizyt i serwisu pojawiają się w historii same.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT, visible=not edycja
+            )
+        ], tight=True, spacing=10),
+        actions=[
+            ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
+            ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+    )
+    otworz_dialog(page, dlg)
+
+
 __all__ = [
     "IKONY_STATUSU_TERMINU",
     "IKONY_TERMINOW",
     "KOLORY_STATUSU_TERMINU",
+    "dialog_odczytu_przebiegu",
     "ikona_nadwozia",
     "odznaka_pojazdu",
     "opis_dni_terminu",

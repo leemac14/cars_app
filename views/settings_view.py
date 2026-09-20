@@ -256,19 +256,24 @@ class UstawieniaView(ft.View):
             "Twoja atrybucja przy współdzieleniu", ft.Icons.PERSON, domyslnie_otwarte=True, page=page
         )
 
-        # Checkbox nie przyjmuje ikony, więc doklejamy ją obok — dzięki temu lista
-        # w Ustawieniach używa dokładnie tych samych oznaczeń, co kafelki kokpitu.
-        self.checkboxy_kokpitu = [
-            ft.Checkbox(label=etykieta, value=(klucz in widgety_wlaczone), data=klucz)
-            for klucz, etykieta in db.KOKPIT_WIDGETY.items()
-        ]
-        wiersze_kokpitu = [
-            ft.Row([
-                ft.Icon(utils.ikona_z_mapy(utils.IKONY_KOKPITU, chk.data), size=18, color=ft.Colors.PRIMARY),
-                chk,
-            ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-            for chk in self.checkboxy_kokpitu
-        ]
+        # Dwadzieścia checkboxów w Ustawieniach ustawiało WIDOCZNOŚĆ, a kolejność
+        # układało się dwa ekrany dalej, na kokpicie — czyli jedna decyzja
+        # rozdzielona na dwa miejsca. Teraz jedno i drugie robi się tam, gdzie
+        # kafelki widać; tutaj zostaje droga na skróty.
+        def ulozenie_kafelkow(e):
+            self.state.zakladka = 0
+            self.state.kokpit_otworz_ukladanie = True
+            utils.przejdz(self._page, "/")
+
+        btn_ulozenie = ft.FilledTonalButton(
+            "Ułóż kafelki kokpitu",
+            icon=ft.Icons.DASHBOARD_CUSTOMIZE,
+            on_click=ulozenie_kafelkow,
+        )
+        licznik_kafelkow = ft.Text(
+            f"Na kokpicie: {len(widgety_wlaczone)} z {len(db.KOKPIT_WIDGETY)} kafelków.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+        )
 
         k_kosz = utils.karta_formularza(
             [
@@ -315,10 +320,10 @@ class UstawieniaView(ft.View):
         k_kokpit = utils.karta_formularza(
             naglowek_kokpitu + [
                 ft.Text(
-                    "Wybierz, które szybkie statystyki mają się pokazywać na górze ekranu głównego "
-                    "(zakładka Kokpit). Kolejność ustawisz przeciąganiem — przytrzymaj kafelek na "
-                    "kokpicie albo dotknij ikony uchwytu na końcu karuzeli. Świeżo włączone pozycje "
-                    "dopisują się na końcu i nie ruszają Twojego układu.",
+                    "Kafelki układa się wprost na kokpicie: przytrzymaj dowolny kafelek (albo użyj "
+                    "przycisku niżej), a potem przeciągnij go tam, gdzie ma stanąć. Krzyżyk zdejmuje "
+                    "kafelek z kokpitu, „Dodaj kafelek” na końcu siatki przywraca zdjęte — razem "
+                    "z kafelkami akcji, które od razu dodają tankowanie albo zapisują stan licznika.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
                 ft.Text(
@@ -326,7 +331,7 @@ class UstawieniaView(ft.View):
                     "aucie, korzysta ono ze wspólnego układu i podąża za jego zmianami.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
-            ] + wiersze_kokpitu + [self.btn_kokpit_wspolny],
+            ] + [licznik_kafelkow, btn_ulozenie, self.btn_kokpit_wspolny],
             "Kokpit ekranu głównego", ft.Icons.DASHBOARD_CUSTOMIZE, domyslnie_otwarte=True, page=page
         )
 
@@ -669,8 +674,7 @@ class UstawieniaView(ft.View):
     def _migawka_formularza(self):
         return (self.e_waluta.value, self.e_jednostka.value, self.e_jednostka_ev.value, self.e_prog_km.value, self.e_prog_dni.value,
                 self.e_dni_kosza.value, self.e_moje_imie.value, self.wybrany_kolor,
-                tuple(self.dropdowny_terminow[k].value for k, _, _ in db.TERMINY_DOKUMENTOW),
-                [chk.data for chk in self.checkboxy_kokpitu if chk.value])
+                tuple(self.dropdowny_terminow[k].value for k, _, _ in db.TERMINY_DOKUMENTOW))
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -690,15 +694,8 @@ class UstawieniaView(ft.View):
         db.zapisz_ustawienie("kolor_motywu", self.wybrany_kolor)
         utils.zastosuj_motywy(self._page, self.wybrany_kolor)
         self._page.update()
-        # --------------------------------------------
-        # Checkboxy niosą tylko ZESTAW włączonych widżetów; kolejność należy do
-        # kokpitu (użytkownik układa ją przeciąganiem), więc scalamy oba źródła
-        # zamiast nadpisywać układ kolejnością checkboxów.
-        zaznaczone = [chk.data for chk in self.checkboxy_kokpitu if chk.value]
-        # Zapis idzie na AKTYWNY pojazd — a przy braku pojazdów na układ wspólny.
-        db.zapisz_widgety_kokpitu(
-            db.scal_widgety_kokpitu(zaznaczone, self.kokpit_auto_id), self.kokpit_auto_id
-        )
+        # Układ kokpitu NIE przechodzi przez ten formularz: kafelki zapisują się
+        # w chwili przestawienia, na kokpicie.
 
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, "Zapisano ustawienia!")

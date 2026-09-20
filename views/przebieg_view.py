@@ -345,69 +345,9 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
     # ================= FORMULARZ ODCZYTU =================
 
     def _dialog_odczytu(self, odczyt=None):
-        """odczyt: None (nowy) albo słownik wpisu z pobierz_pelna_historie_przebiegu.
-        Otwierany wyłącznie dla WŁASNYCH odczytów — pozostałe wpisy mają swoje
-        formularze i to tam się je poprawia."""
-        edycja = odczyt is not None
-        domyslna_data = odczyt["data"] if edycja else datetime.now().strftime("%d.%m.%Y")
-        domyslny_przebieg = (str(odczyt["przebieg"]) if edycja
-                             else str(db.pobierz_aktualny_przebieg(self.state.auto_id) or ""))
-        notatka_bazowa = str((odczyt.get("notatka") if edycja else "") or "")
-
-        e_data = utils.pole_daty(self._page, "Data odczytu", domyslna_data)
-        e_notatka = utils.pole_notatki(notatka_bazowa, self._page)
-        e_przebieg = ft.TextField(
-            label="Przebieg (km)", value=domyslny_przebieg,
-            keyboard_type=ft.KeyboardType.NUMBER, autofocus=not edycja,
-            **utils.styl_pola()
+        """Formularz odczytu licznika mieszka w utils — ten sam otwiera kafelek
+        akcji na kokpicie (patrz utils.dialog_odczytu_przebiegu)."""
+        utils.dialog_odczytu_przebiegu(
+            self._page, self.state.auto_id, odczyt,
+            po_zapisie=lambda: utils.przejdz(self._page, "/przebieg"),
         )
-
-        def zapisz(e):
-            utils.ustaw_blad(e_przebieg)
-            nowy = utils.parsuj_int(e_przebieg.value, None)
-            if nowy is None or nowy <= 0:
-                utils.ustaw_blad(e_przebieg, "Podaj poprawny przebieg")
-                self._page.update()
-                return
-
-            wyklucz = odczyt["id"] if edycja else None
-            if utils.sprawdz_podejrzany_przebieg(self._page, e_przebieg, self.state.auto_id, nowy,
-                                                 wyklucz_id=wyklucz, tabela="odczyty_przebiegu",
-                                                 nowa_data_str=e_data.value):
-                return
-
-            utils.zamknij_dialog(self._page, dlg)
-            if edycja:
-                db.aktualizuj_odczyt_przebiegu(odczyt["id"], nowy, e_data.value)
-                utils.zapisz_notatke_z_formularza("odczyty_przebiegu", odczyt["id"],
-                                                  e_notatka.value, notatka_bazowa)
-                utils.pokaz_komunikat(self._page, "Zapisano zmiany!")
-            else:
-                nadpisano = db.dodaj_odczyt_przebiegu(self.state.auto_id, nowy, e_data.value,
-                                                      e_notatka.value, zrodlo="reczny")
-                utils.pokaz_komunikat(self._page, "Zaktualizowano odczyt z tego dnia!" if nadpisano
-                                      else "Dodano odczyt przebiegu!")
-            utils.wypchnij_w_tle(self._page, self.state.auto_id, "odczyt przebiegu")
-            utils.przejdz(self._page, "/przebieg")
-
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY),
-                          ft.Text("Edycja odczytu" if edycja else "Nowy odczyt", weight="bold", expand=True)], spacing=8),
-            content=ft.Column([
-                e_data,
-                e_przebieg,
-                e_notatka,
-                ft.Text(
-                    "Jeśli dla wybranej daty istnieje już odczyt, zostanie zaktualizowany. "
-                    "Przebiegi z tankowań, wizyt i serwisu pojawiają się w historii same.",
-                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT, visible=not edycja
-                )
-            ], tight=True, spacing=10),
-            actions=[
-                ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
-                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
-            ],
-            actions_alignment=ft.MainAxisAlignment.END
-        )
-        utils.otworz_dialog(self._page, dlg)

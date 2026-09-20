@@ -96,15 +96,17 @@ def test_dwa_rozmiary_kafelka_1x1_i_2x1(baza):
     assert rozmiary["kondycja"].col == mod_kokpit.KOL_KAFLA_1X1
 
 
-def test_tryb_ukladania_wchodzi_i_wraca_do_siatki(baza):
-    """Przejście w układanie i z powrotem — to ten sam kontener, więc zamiana
-    siatki na klocki (i odwrotnie) musi działać w obie strony."""
+def test_tryb_ukladania_zostaje_w_siatce(baza):
+    """Układa się WPROST w siatce: kafelki zostają na swoich miejscach i tylko
+    dostają uchwyt przeciągania. Wcześniej siatka znikała, a w jej miejsce
+    wchodził poziomy pasek klocków — abstrakcyjny i przewijany w bok."""
     widok, _ = kokpit_z_kompletem_kafelkow()
 
     widok._ustaw_tryb_ukladania(True)
-    assert _wszystkie(widok.kokpit_kontener, ft.ReorderableListView)
-    assert not _wszystkie(widok.kokpit_kontener, ft.ResponsiveRow)
+    assert _wszystkie(widok.kokpit_kontener, ft.ResponsiveRow)
+    assert _wszystkie(widok.kokpit_kontener, ft.DragTarget)
+    assert not _wszystkie(widok.kokpit_kontener, ft.ReorderableListView)
 
     widok._ustaw_tryb_ukladania(False)
-    assert not _wszystkie(widok.kokpit_kontener, ft.ReorderableListView)
     assert _wszystkie(widok.kokpit_kontener, ft.ResponsiveRow)
+    assert not _wszystkie(widok.kokpit_kontener, ft.DragTarget)

@@ -244,9 +244,20 @@ KOKPIT_WIDGETY = {
     "oplaty_drogowe": "Opłaty drogowe i mandaty",
     "do_zrobienia": "Do zrobienia",
     "magazyn": "Magazyn — niski stan",
+    # Kafelki AKCJI: zamiast liczby mają czynność. Te same wpisy, co pod FAB-em
+    # w rogu ekranu, plus stan licznika, którego FAB nie ma. Kokpit odpowiadał
+    # dotąd wyłącznie na pytanie „co się dzieje”, nigdy „zrób”.
+    "akcja_tankowanie": "Akcja: dodaj tankowanie",
+    "akcja_licznik": "Akcja: zapisz stan licznika",
+    "akcja_inny_koszt": "Akcja: dodaj inny koszt",
+    "akcja_wizyta": "Akcja: wizyta w warsztacie",
+    "akcja_podzespol": "Akcja: dodaj podzespół",
+    "akcja_do_zrobienia": "Akcja: dodaj zadanie",
 }
 
-KOKPIT_WIDGETY_DOMYSLNE = ["koszt_miesiac", "termin", "wykres"]
+# Kafelki akcji wchodzą tylko do układu DOMYŚLNEGO — pojazd z własnym układem
+# (albo ze wspólnym, który ktoś już ułożył) nie zmienia się sam po aktualizacji.
+KOKPIT_WIDGETY_DOMYSLNE = ["akcja_tankowanie", "akcja_licznik", "koszt_miesiac", "termin", "wykres"]
 
 
 # Kokpit ustawia się osobno dla każdego pojazdu — auto służbowe i prywatne
@@ -304,17 +315,6 @@ def zapisz_widgety_kokpitu(lista_id, auto_id=None):
             widziane.add(w)
             poprawne.append(w)
     zapisz_ustawienie(_klucz_kokpitu(auto_id), ",".join(poprawne))
-
-
-def scal_widgety_kokpitu(zaznaczone, auto_id=None):
-    """Łączy nowy ZESTAW włączonych widżetów (np. z checkboxów w Ustawieniach)
-    z już zapisaną KOLEJNOŚCIĄ: to, co użytkownik ułożył, zostaje na swoim
-    miejscu, a świeżo włączone pozycje dopisują się na końcu (w kolejności
-    KOKPIT_WIDGETY). Dzięki temu zaznaczenie checkboxa nie kasuje układu."""
-    zaznaczone = set(zaznaczone)
-    wynik = [w for w in pobierz_widgety_kokpitu(auto_id) if w in zaznaczone]
-    wynik += [w for w in KOKPIT_WIDGETY if w in zaznaczone and w not in wynik]
-    return wynik
 
 
 # Które powiadomienia użytkownik już widział i w jakim stanie (patrz
@@ -518,7 +518,6 @@ __all__ = [
     "pobierz_widgety_kokpitu",
     "pobierz_wlasny_prog_dni_dokumentu",
     "przywroc_kokpit_wspolny",
-    "scal_widgety_kokpitu",
     "usun_ustawienie",
     "zapisz_animacje_interfejsu",
     "zapisz_chowanie_pustych_kafelkow",

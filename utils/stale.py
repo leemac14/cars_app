@@ -130,6 +130,12 @@ IKONY_KOKPITU = {
     "oplaty_drogowe": ft.Icons.TOLL,
     "do_zrobienia": ft.Icons.CHECKLIST_RTL,
     "magazyn": ft.Icons.INVENTORY_2,
+    "akcja_tankowanie": ft.Icons.LOCAL_GAS_STATION,
+    "akcja_licznik": ft.Icons.SPEED,
+    "akcja_inny_koszt": ft.Icons.RECEIPT_LONG,
+    "akcja_wizyta": ft.Icons.HOME_REPAIR_SERVICE,
+    "akcja_podzespol": ft.Icons.HANDYMAN,
+    "akcja_do_zrobienia": ft.Icons.CHECKLIST_RTL,
 }
 
 

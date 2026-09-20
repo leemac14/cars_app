@@ -34,6 +34,9 @@ class AppState:
         # ekranu — bez tego znacznika animacja wejścia grałaby kilkanaście razy
         # na sesję i z powitania zrobiłaby się zwłoka przy odczycie.
         self.kokpit_animacja_dla = None
+        # Ustawienia → „Ułóż kafelki kokpitu” tylko przełącza ekran; tryb
+        # układania włącza sam kokpit, gdy zobaczy tę flagę (i od razu ją gasi).
+        self.kokpit_otworz_ukladanie = False
         # Ekrany, na których animacja wejścia już zagrała: klucz ekranu -> pojazd.
         # Paski terminów i budżetów wypełniają się RAZ na uruchomienie aplikacji
         # (patrz utils.pierwsze_pokazanie) — przy dziesiątym wejściu na kartę
