@@ -177,6 +177,30 @@ class UstawieniaView(ft.View):
             ),
         ], spacing=4)
 
+        # --- CHOWANIE PUSTYCH KAFELKÓW ---
+        # Zapis od razu, jak przy animacjach: skutek widać na kokpicie, więc
+        # trzymanie tego w „niezapisanych zmianach” formularza tylko odsuwałoby
+        # sprawdzenie.
+        def przelacz_puste_kafelki(e):
+            db.zapisz_chowanie_pustych_kafelkow(bool(self.e_puste_kafelki.value))
+
+        self.e_puste_kafelki = ft.Switch(
+            label="Chowaj puste kafelki",
+            value=db.czy_chowac_puste_kafelki(),
+            on_change=przelacz_puste_kafelki,
+        )
+
+        puste_kafelki_sekcja = ft.Column([
+            self.e_puste_kafelki,
+            ft.Text(
+                "Kafelki kokpitu, które nie mają nic do powiedzenia, znikają zamiast pokazywać "
+                "myślnik: budżet bez ustawionego limitu, zasięg EV w aucie spalinowym, checklista, "
+                "której nie ma, pusty magazyn, opony, których nie ma w garażu. Wracają same, gdy "
+                "pojawi się treść. Kafelki czekające na dane („za mało danych”) zostają widoczne.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+        ], spacing=4)
+
         czern_sekcja = ft.Column([
             self.e_czysta_czern,
             ft.Text(
@@ -194,7 +218,7 @@ class UstawieniaView(ft.View):
 
         k1 = utils.karta_formularza(
             [self.e_waluta, self.e_jednostka, paleta_sekcja, ft.Divider(height=1), czern_sekcja,
-             ft.Divider(height=1), animacje_sekcja],
+             ft.Divider(height=1), animacje_sekcja, ft.Divider(height=1), puste_kafelki_sekcja],
             "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza(

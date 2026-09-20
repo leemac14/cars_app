@@ -74,6 +74,22 @@ def zapisz_animacje_interfejsu(wlaczone):
     zapisz_ustawienie("animacje_interfejsu", "1" if wlaczone else "0")
 
 
+def czy_chowac_puste_kafelki():
+    """Czy kafelek kokpitu, który nie ma nic do powiedzenia, ma zniknąć z siatki,
+    zamiast pokazywać myślnik: budżet bez ustawionego limitu, zasięg EV w aucie
+    spalinowym, checklista, której nie ma, pusty magazyn.
+
+    JEDNO ustawienie na całą aplikację, nie per pojazd: to sposób czytania
+    kokpitu, a nie własność auta — a `USTAWIENIA_PER_POJAZD` ma zostać krótka
+    (migawka kosza zapisuje ją po NAZWIE funkcji). Domyślnie włączone: kafelek,
+    który regularnie milczy, uczy oko, żeby przestało czytać całą siatkę."""
+    return (pobierz_ustawienie("chowaj_puste_kafelki", "1") or "1") == "1"
+
+
+def zapisz_chowanie_pustych_kafelkow(wlaczone):
+    zapisz_ustawienie("chowaj_puste_kafelki", "1" if wlaczone else "0")
+
+
 def czy_skumulowany_z_cena_zakupu():
     """Czy krzywa kosztu skumulowanego startuje od ceny zakupu, czy od zera.
 
@@ -481,6 +497,7 @@ __all__ = [
     "INTERWAL_AUTO_SYNC_MINUTY",
     "MIN_INTERWAL_AUTO_SYNC_MINUTY",
     "czy_animacje_interfejsu",
+    "czy_chowac_puste_kafelki",
     "czy_skumulowany_z_cena_zakupu",
     "czy_auto_synchronizacja",
     "interwal_auto_synchronizacji",
@@ -504,6 +521,7 @@ __all__ = [
     "scal_widgety_kokpitu",
     "usun_ustawienie",
     "zapisz_animacje_interfejsu",
+    "zapisz_chowanie_pustych_kafelkow",
     "zapisz_skumulowany_z_cena_zakupu",
     "zapisz_auto_synchronizacje",
     "zapisz_czysta_czern",

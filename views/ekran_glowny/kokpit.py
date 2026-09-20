@@ -139,6 +139,19 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        def kafel_pusty(ikona, kolor_ikony, etykieta, wartosc, on_click):
+            """Kafelek, który nie ma o czym mówić: przy włączonym chowaniu znika
+            z siatki (None), przy wyłączonym wygląda dokładnie jak dotąd.
+
+            Chowanie obejmuje WYŁĄCZNIE pustkę typu „nie dotyczy / nieustawione”:
+            budżet bez limitu, opony, których nie ma w garażu. Kafelek, który
+            tylko czeka na dane („Za mało danych”), zostaje — jego pustka sama
+            się skończy, a do tego czasu jest zaproszeniem do wpisania czegoś,
+            a nie szumem."""
+            if self._chowaj_puste:
+                return None
+            return kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click)
+
         def stopka_iskry(podpis, chip=None):
             """Dolny wiersz kafelka z iskrą: chip trendu po lewej, krótki podpis
             po prawej. Jeden układ na wszystkie takie kafelki — wcześniej każdy
@@ -465,6 +478,9 @@ class MiksinKokpitu:
             rzeczywistego zużycia — i to on mówi, czy dojedziesz."""
             zasieg = db.pobierz_zasieg_ev(self.state.auto_id)
             if not zasieg or not zasieg["szacowany"]:
+                # W aucie spalinowym ten kafelek nie będzie miał danych NIGDY.
+                if self._chowaj_puste:
+                    return None
                 wartosc, stopka = "Brak danych", "Uzupełnij baterię i naładuj do pełna"
             else:
                 wartosc = liczba_kafelka(zasieg["szacowany"],
@@ -609,7 +625,7 @@ class MiksinKokpitu:
             wiedzieć — wszystkie paski naraz byłyby w kokpicie ścianą tekstu."""
             stany = db.stan_budzetow(self.state.auto_id)
             if not stany:
-                return kafel_wartosci(
+                return kafel_pusty(
                     ft.Icons.SAVINGS, ft.Colors.BLUE_GREY_700, "Budżet",
                     "Nie ustawiono", lambda e: utils.przejdz(self._page, "/budzet"),
                 )
@@ -634,7 +650,7 @@ class MiksinKokpitu:
         def widget_zasieg_bak():
             dane = db.pobierz_zasieg_na_baku(self.state.auto_id)
             if not dane:
-                return kafel_wartosci(
+                return kafel_pusty(
                     ft.Icons.LOCAL_GAS_STATION, ft.Colors.BLUE_GREY_700, "Zasięg na baku",
                     "Podaj pojemność", lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
                 )
@@ -689,7 +705,7 @@ class MiksinKokpitu:
 
             stan = db.pobierz_stan_opon(self.state.auto_id)
             if not stan:
-                return kafel_wartosci(
+                return kafel_pusty(
                     ft.Icons.TIRE_REPAIR, ft.Colors.BLUE_GREY_700, "Opony",
                     "Brak zestawów", idz_do_opon,
                 )
@@ -756,7 +772,7 @@ class MiksinKokpitu:
             wybiera właśnie taką (patrz db.podsumowanie_checklist)."""
             stan = db.podsumowanie_checklist(self.state.auto_id)
             if not stan:
-                return kafel_wartosci(
+                return kafel_pusty(
                     ft.Icons.FACT_CHECK, ft.Colors.BLUE_GREY_700, "Checklista",
                     "Brak listy", lambda e: utils.przejdz(self._page, "/do-zrobienia"),
                 )
@@ -801,6 +817,10 @@ class MiksinKokpitu:
             stan = db.suma_kategorii_innych(
                 self.state.auto_id, db.KATEGORIA_INNE_DROGOWE, poczatek_roku, dzisiaj.date()
             )
+            # Zero wpisów to nie „0 zł opłat”, tylko auto, które takich kosztów
+            # nie prowadzi — kwota zero nie jest tu informacją.
+            if self._chowaj_puste and not stan["liczba"]:
+                return None
             wartosc = liczba_kafelka(
                 stan["suma"],
                 lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
@@ -872,7 +892,7 @@ class MiksinKokpitu:
 
             stan = db.pobierz_stan_magazynu(self.state.auto_id)
             if not stan["razem"]:
-                return kafel_wartosci(
+                return kafel_pusty(
                     ft.Icons.INVENTORY_2, ft.Colors.BLUE_GREY_700, "Magazyn",
                     "Pusty", idz_do_czesci,
                 )
@@ -933,6 +953,11 @@ class MiksinKokpitu:
         wlaczone = [w for w in db.pobierz_widgety_kokpitu(self.state.auto_id) if w in self._kokpit_budowniczy]
         if not wlaczone:
             return ft.Container()
+        # Czytane przy KAŻDEJ przebudowie, a nie raz przy tworzeniu budowniczych:
+        # przycisk „Pokaż puste” w zachęcie zmienia ustawienie i od razu odświeża
+        # kokpit, a flaga zamrożona w domknięciu zostawiłaby go pustym aż do
+        # ponownego wejścia na ekran.
+        self._chowaj_puste = db.czy_chowac_puste_kafelki()
         if self.kokpit_edycja:
             return self._kokpit_ukladanie(wlaczone)
         return self._kokpit_siatka(wlaczone)
@@ -994,8 +1019,15 @@ class MiksinKokpitu:
         i z iskrą, i bez niej („Wydatki tego miesiąca”), zmienia rozmiar razem
         ze swoją zawartością."""
         kafelki = []
+        self._kokpit_puste = []
         for wid in wlaczone:
             kafel = self._kokpit_budowniczy[wid]()
+            # None znaczy „nie mam nic do powiedzenia” (patrz kafel_pusty).
+            # Zapamiętujemy które, bo tryb układania pokazuje je przygaszone —
+            # inaczej kafelek schowany wyglądałby jak wyłączony.
+            if kafel is None:
+                self._kokpit_puste.append(wid)
+                continue
             # Deklarowana szerokość zostaje tylko miarą potrzeb — o tym, ile
             # kafelek naprawdę zajmie, decyduje komórka siatki.
             potrzebna = getattr(kafel, "width", None) or SZER_KAFLA
@@ -1010,7 +1042,7 @@ class MiksinKokpitu:
             kafelki.append(kafel)
 
         if not kafelki:
-            return ft.Container()
+            return self._kokpit_zacheta()
 
         # Wejście w układanie jako ostatnia komórka siatki, a nie okrągły guzik
         # doklejony za karuzelą: siatka nie ma „końca”, za którym dałoby się coś
@@ -1028,12 +1060,45 @@ class MiksinKokpitu:
 
         return ft.ResponsiveRow(kafelki, spacing=10, run_spacing=10)
 
+    def _kokpit_zacheta(self):
+        """Wszystkie włączone kafelki akurat milczą — nowe auto, w którym nic
+        jeszcze nie zostało wpisane. Sama pusta siatka wyglądałaby na awarię,
+        więc kokpit mówi wprost, co się stało, i daje dwie drogi wyjścia:
+        ułożyć kafelki albo z powrotem pokazać te puste."""
+        def pokaz_puste(e):
+            db.zapisz_chowanie_pustych_kafelkow(False)
+            self._odswiez_kokpit()
+
+        return utils.karta_analizy(
+            self._page, "Kokpit ożyje po pierwszych wpisach", ft.Icons.DASHBOARD_CUSTOMIZE,
+            [
+                ft.Text(
+                    "Kafelki, które nie mają jeszcze nic do powiedzenia, chowają się same. "
+                    "Dodaj tankowanie albo stan licznika — wrócą razem z danymi.",
+                    size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+                ft.Row([
+                    ft.TextButton("Ułóż kafelki", icon=ft.Icons.DRAG_INDICATOR,
+                                  on_click=lambda e: self._ustaw_tryb_ukladania(True)),
+                    ft.TextButton("Pokaż puste", icon=ft.Icons.VISIBILITY,
+                                  on_click=pokaz_puste),
+                ], spacing=utils.SPACING["sm"], wrap=True),
+            ],
+        )
+
     def _kokpit_ukladanie(self, wlaczone):
         """Tryb układania: kafelki zamieniają się w przeciągalne „klocki”
         (ft.ReorderableListView w poziomie). Skróconą formę wybrano celowo —
         pełne kafelki mają różne szerokości i wysokości, więc podczas
         przeciągania skakałyby, a klocki dają stabilny, czytelny cel."""
         etykiety = db.KOKPIT_WIDGETY
+        # Kafelki, które w siatce nic nie pokazały (patrz kafel_pusty).
+        puste = set(getattr(self, "_kokpit_puste", ()) or ())
+
+        def numer_klocka(i, wid):
+            """Numer pozycji, a przy kafelku, który się właśnie schował — dopisek.
+            Bez niego „schowany” i „wyłączony” wyglądają na tym pasku tak samo."""
+            return f"{i + 1}." + ("  • teraz pusty" if wid in puste else "")
 
         klocki, numery = [], []
         for i, wid in enumerate(wlaczone):
@@ -1042,11 +1107,14 @@ class MiksinKokpitu:
             # samego rejestru, z którego korzystają kafelki kokpitu i Ustawienia.
             ikona_klocka = utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid)
 
-            numer = ft.Text(f"{i + 1}.", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT)
+            numer = ft.Text(numer_klocka(i, wid), size=utils.FS["caption"],
+                            color=ft.Colors.ON_SURFACE_VARIANT)
             numery.append(numer)
 
             klocek = ft.Container(
                 width=150, padding=ft.Padding(12, 10, 12, 10),
+                # Przygaszony klocek = kafelek włączony, tylko dziś bez treści.
+                opacity=0.55 if wid in puste else 1,
                 border_radius=utils.RADIUS["md"],
                 bgcolor=utils.tlo_karty(self._page, poziom=2),
                 border=ft.Border.all(1, ft.Colors.with_opacity(0.25, ft.Colors.PRIMARY)),
@@ -1084,7 +1152,7 @@ class MiksinKokpitu:
             lista.controls.insert(nowy, lista.controls.pop(stary))
             numery.insert(nowy, numery.pop(stary))
             for i, n in enumerate(numery):
-                n.value = f"{i + 1}."
+                n.value = numer_klocka(i, kolejnosc[i])
 
             # Przeciągnięcie kafelka układa kokpit TEGO auta — i tym samym
             # odpina je od wspólnego układu.

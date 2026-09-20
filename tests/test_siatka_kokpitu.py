@@ -42,6 +42,9 @@ def kokpit_z_kompletem_kafelkow(scenariusz="pojazd_z_danymi"):
     więc trzy domyślne nie powiedziałyby o siatce niczego."""
     stan, _ = pomoce.przygotuj_scenariusz(scenariusz)
     stan.zakladka = 0
+    # Ten plik pilnuje SIATKI, więc chce kompletu kafelków — chowanie pustych
+    # ma własny zestaw testów (test_puste_kafelki.py).
+    db.zapisz_chowanie_pustych_kafelkow(False)
     db.zapisz_widgety_kokpitu(list(db.KOKPIT_WIDGETY), stan.auto_id)
     widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()["MainView"], pomoce.zbuduj_strone(), stan)
     wlaczone = [w for w in db.pobierz_widgety_kokpitu(stan.auto_id) if w in widok._kokpit_budowniczy]
