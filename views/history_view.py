@@ -56,10 +56,11 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 ]
 
                 sort_ui = utils.przycisk_sortowania(self._page, self.state, "historia", opcje_sort)
-                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "historia_rok", wpisy, 1)
-                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "historia_mc", wpisy, 1)
+                chipy_filtrow, wpisy_po_filtrach = utils.pasek_filtrow(
+                    self._page, self.state, wpisy,
+                    [("rok", "historia_rok", 1), ("miesiac", "historia_mc", 1)])
 
-                elementy.append(ft.Row(controls=[sort_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+                elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
                 # --- POPRAWNA INICJALIZACJA WYSZUKIWARKI ---
                 self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
@@ -89,8 +90,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 # -------------------------------------------
 
                 # Filtrowanie i sortowanie listy wpisów
-                wpisy = utils.filtruj_po_roku(wpisy, self.state, "historia_rok", 1)
-                wpisy = utils.filtruj_po_miesiacu(wpisy, self.state, "historia_mc", 1)
+                wpisy = wpisy_po_filtrach
                 utils.posortuj_liste(wpisy, self.state, "historia", opcje_sort)
 
                 def otworz_menu_historii(h_id, w_id, zalacznik=None, notatka=None):
@@ -379,28 +379,24 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         zuzycie_wizyt = db.pobierz_zuzycie_rekordow("wizyty", [w[0] for w in wizyty_lista])
 
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "wizyty", opcje_sort)
-        filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "wizyty_rok", wizyty_lista, 1)
-        filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "wizyty_mc", wizyty_lista, 1)
-        filtr_wyk_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "wizyty_wyk", wizyty_lista, 3, "Warsztat")
-        filtr_tag_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "wizyty_tag", wizyty_lista, 6, "Tagi")
-
+        spis_filtrow = [
+            ("rok", "wizyty_rok", 1),
+            ("miesiac", "wizyty_mc", 1),
+            ("kategoria", "wizyty_wyk", 3, "Warsztat"),
+            ("kategoria", "wizyty_tag", 6, "Tagi"),
+        ]
         # Kolumna 8 zapytania to w.dodane_przez — filtr autorstwa pokazujemy
         # tylko przy pojeździe współdzielonym, tak jak na osi czasu i listach
         # tankowań oraz innych kosztów.
-        filtry_ui = [sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_wyk_ui, filtr_tag_ui]
         if wspolny_id:
-            filtry_ui.append(
-                utils.przycisk_filtrowania_autora(self._page, self.state, "wizyty_autor", wizyty_lista, 8)
-            )
+            spis_filtrow.append(("autor", "wizyty_autor", 8))
 
-        elementy.append(ft.Row(controls=filtry_ui, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+        chipy_filtrow, wizyty_po_filtrach = utils.pasek_filtrow(
+            self._page, self.state, wizyty_lista, spis_filtrow)
 
-        wizyty_lista = utils.filtruj_po_roku(wizyty_lista, self.state, "wizyty_rok", 1)
-        wizyty_lista = utils.filtruj_po_miesiacu(wizyty_lista, self.state, "wizyty_mc", 1)
-        wizyty_lista = utils.filtruj_po_kategorii(wizyty_lista, self.state, "wizyty_wyk", 3)
-        wizyty_lista = utils.filtruj_po_kategorii(wizyty_lista, self.state, "wizyty_tag", 6)
-        if wspolny_id:
-            wizyty_lista = utils.filtruj_po_autorze(wizyty_lista, self.state, "wizyty_autor", 8)
+        elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+
+        wizyty_lista = wizyty_po_filtrach
         utils.posortuj_liste(wizyty_lista, self.state, "wizyty", opcje_sort)
 
         # --- 1. DODAJ TEN BLOK KODU (WYSZUKIWARKA) ---

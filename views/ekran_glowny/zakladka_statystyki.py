@@ -1041,12 +1041,13 @@ class MiksinZakladkiStatystyki:
                     ("Koszt", "koszt", lambda x: x[6]),
                 ]
                 sort_ui = utils.przycisk_sortowania(self._page, self.state, "stat_miesiace", opcje_sort)
-                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "stat_miesiace_rok", wiersze_mc_wszystkie, 9)
-                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "stat_miesiace_mc", wiersze_mc_wszystkie, 9)
+                chipy_filtrow, statystyki_po_filtrach = utils.pasek_filtrow(
+                    self._page, self.state, wiersze_mc_wszystkie,
+                    [("rok", "stat_miesiace_rok", 9), ("miesiac", "stat_miesiace_mc", 9)])
 
                 self.elementy.append(
                     ft.Row(
-                        controls=[sort_ui, filtr_rok_ui, filtr_mc_ui],
+                        controls=[sort_ui] + chipy_filtrow,
                         scroll=ft.ScrollMode.ADAPTIVE,
                         spacing=8
                     )
@@ -1074,8 +1075,7 @@ class MiksinZakladkiStatystyki:
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_stat, "lista:statystyki")
                 self.wszystkie_karty_stat = []
 
-                wiersze_mc_f = utils.filtruj_po_roku(wiersze_mc_wszystkie, self.state, "stat_miesiace_rok", 9)
-                wiersze_mc_f = utils.filtruj_po_miesiacu(wiersze_mc_f, self.state, "stat_miesiace_mc", 9)
+                wiersze_mc_f = statystyki_po_filtrach
                 utils.posortuj_liste(wiersze_mc_f, self.state, "stat_miesiace", opcje_sort)
 
                 if not wiersze_mc_f:

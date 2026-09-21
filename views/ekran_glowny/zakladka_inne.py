@@ -45,15 +45,17 @@ class MiksinZakladkiInne:
             ]
 
             sort_ui = utils.przycisk_sortowania(self._page, self.state, "inne", opcje_sort)
-            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "inne_rok", baza_lista, "data")
-            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "inne_mc", baza_lista, "data")
-            filtr_kat_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "inne_kat", baza_lista, "kategoria", "Kategoria")
-
-            filtry_ui = [sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_kat_ui]
+            spis_filtrow = [
+                ("rok", "inne_rok", "data"),
+                ("miesiac", "inne_mc", "data"),
+                ("kategoria", "inne_kat", "kategoria", "Kategoria"),
+            ]
             if wspolny_id:
-                filtry_ui.append(
-                    utils.przycisk_filtrowania_autora(self._page, self.state, "inne_autor", baza_lista, "dodane_przez")
-                )
+                spis_filtrow.append(("autor", "inne_autor", "dodane_przez"))
+
+            chipy_filtrow, inne_po_filtrach = utils.pasek_filtrow(
+                self._page, self.state, baza_lista, spis_filtrow)
+            filtry_ui = [sort_ui] + chipy_filtrow
 
             self.elementy.append(
                 ft.Row(
@@ -88,11 +90,7 @@ class MiksinZakladkiInne:
                 self._page, self.lista_kart_inne, wysokosc_pozycji=190
             )
 
-            po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "inne_rok", "data")
-            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "inne_mc", "data")
-            po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "inne_kat", "kategoria")
-            if wspolny_id:
-                po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "inne_autor", "dodane_przez")
+            po_filtrach = inne_po_filtrach
             utils.posortuj_liste(po_filtrach, self.state, "inne", opcje_sort)
 
             # Menu kosztu składa się tak samo jak menu tankowania i wpisu

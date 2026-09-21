@@ -70,18 +70,20 @@ class TimelineView(ft.View):
                 ]
 
                 sort_ui = utils.przycisk_sortowania(self._page, self.state, "timeline", opcje_sort)
-                filtr_typ_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "timeline_typ", zdarzenia, 1, "Typ")
-                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "timeline_rok", zdarzenia, 2)
-                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "timeline_mc", zdarzenia, 2)
-
+                spis_filtrow = [
+                    ("kategoria", "timeline_typ", 1, "Typ"),
+                    ("rok", "timeline_rok", 2),
+                    ("miesiac", "timeline_mc", 2),
+                ]
                 # Filtr autorstwa ma sens dopiero, gdy pojazd jest współdzielony —
                 # przy jednym użytkowniku każdy wpis jest „jego” i przycisk byłby
                 # tylko szumem w i tak zapełnionym pasku filtrów.
-                filtry_ui = [sort_ui, filtr_typ_ui, filtr_rok_ui, filtr_mc_ui]
                 if wspolny_id:
-                    filtry_ui.append(
-                        utils.przycisk_filtrowania_autora(self._page, self.state, "timeline_autor", zdarzenia, 8)
-                    )
+                    spis_filtrow.append(("autor", "timeline_autor", 8))
+
+                chipy_filtrow, zdarzenia_po_filtrach = utils.pasek_filtrow(
+                    self._page, self.state, zdarzenia, spis_filtrow)
+                filtry_ui = [sort_ui] + chipy_filtrow
 
                 # Pasek PRZEWIJANY poziomo, tak jak na wszystkich pozostałych
                 # ekranach z filtrami. W pasku zawijanym (`wrap=True`) chipy
@@ -120,11 +122,7 @@ class TimelineView(ft.View):
                 )
                 self.uzyj_wirtualizacji = True
 
-                po_filtrach = utils.filtruj_po_kategorii(zdarzenia, self.state, "timeline_typ", 1)
-                po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "timeline_rok", 2)
-                po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "timeline_mc", 2)
-                if wspolny_id:
-                    po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "timeline_autor", 8)
+                po_filtrach = zdarzenia_po_filtrach
                 utils.posortuj_liste(po_filtrach, self.state, "timeline", opcje_sort)
 
                 if not po_filtrach:

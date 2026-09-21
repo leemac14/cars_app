@@ -45,6 +45,9 @@ class MiksinZakladkiTankowania:
             domyslny_rodzaj = db.domyslny_rodzaj_energii(self.state.auto_id)
             for t in baza_lista:
                 t['rodzaj'] = str(t.get('rodzaj_energii') or domyslny_rodzaj)
+                # Opis rodzaju siedzi przy wpisie, a nie w osobnej liście dla
+                # chipa — po tym samym polu filtruje potem pasek filtrów.
+                t['rodzaj_opis'] = db.ETYKIETY_RODZAJU.get(t['rodzaj'], t['rodzaj'])
 
             # Zużycie liczymy OSOBNO w obrębie każdego źródła — przy hybrydzie
             # plug-in odcinek „od pełnego baku do pełnego baku” nie ma nic
@@ -82,25 +85,25 @@ class MiksinZakladkiTankowania:
             ]
 
             sort_ui = utils.przycisk_sortowania(self._page, self.state, "tankowania", opcje_sort)
-            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "tankowania_rok", baza_lista, "data")
-            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "tankowania_mc", baza_lista, "data")
-            filtr_tag_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "tankowania_tag", baza_lista, "tagi", "Tagi")
-
+            spis_filtrow = []
+            # Przy hybrydzie plug-in lista miesza tankowania z ładowaniami —
+            # bez filtra nie da się obejrzeć samej jednej strony. Stoi jako
+            # pierwszy, bo to nim odsiewa się najczęściej.
+            if len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1:
+                spis_filtrow.append(("kategoria", "tankowania_rodzaj", "rodzaj_opis", "Źródło"))
+            spis_filtrow += [
+                ("rok", "tankowania_rok", "data"),
+                ("miesiac", "tankowania_mc", "data"),
+                ("kategoria", "tankowania_tag", "tagi", "Tagi"),
+            ]
             # „Kto to dodał” ma sens dopiero przy pojeździe współdzielonym —
             # przy jednym użytkowniku każdy wpis jest jego i filtr byłby szumem.
-            filtry_ui = [sort_ui, filtr_rok_ui, filtr_mc_ui, filtr_tag_ui]
-            # Przy hybrydzie plug-in lista miesza tankowania z ładowaniami —
-            # bez filtra nie da się obejrzeć samej jednej strony.
-            if len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1:
-                filtry_ui.insert(1, utils.przycisk_filtrowania_kategoria(
-                    self._page, self.state, "tankowania_rodzaj",
-                    [{"rodzaj_opis": db.ETYKIETY_RODZAJU[t['rodzaj']]} for t in baza_lista],
-                    "rodzaj_opis", "Źródło"
-                ))
             if wspolny_id:
-                filtry_ui.append(
-                    utils.przycisk_filtrowania_autora(self._page, self.state, "tankowania_autor", baza_lista, "dodane_przez")
-                )
+                spis_filtrow.append(("autor", "tankowania_autor", "dodane_przez"))
+
+            chipy_filtrow, tankowania_po_filtrach = utils.pasek_filtrow(
+                self._page, self.state, baza_lista, spis_filtrow)
+            filtry_ui = [sort_ui] + chipy_filtrow
 
             self.elementy.append(
                 ft.Row(
@@ -139,15 +142,7 @@ class MiksinZakladkiTankowania:
                 self._page, self.lista_kart_tankowania, wysokosc_pozycji=200
             )
 
-            po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "tankowania_rok", "data")
-            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "tankowania_mc", "data")
-            po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "tankowania_tag", "tagi")
-            if len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1:
-                for t in po_filtrach:
-                    t["rodzaj_opis"] = db.ETYKIETY_RODZAJU[t["rodzaj"]]
-                po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "tankowania_rodzaj", "rodzaj_opis")
-            if wspolny_id:
-                po_filtrach = utils.filtruj_po_autorze(po_filtrach, self.state, "tankowania_autor", "dodane_przez")
+            po_filtrach = tankowania_po_filtrach
             utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
 
             def otworz_menu_t(tid, zalacznik=None, notatka=None):

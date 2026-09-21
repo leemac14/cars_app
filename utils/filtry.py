@@ -9,11 +9,100 @@ from state import MIESIACE_NAZWY
 from .dialogi import odswiez_ekran
 
 
-def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta, ikona_aktywna, ikona_nieaktywna):
-    """Generyczna metoda budująca przycisk filtra z menu rozwijanym."""
-    aktualny_filtr = state.filtry.setdefault(klucz_stanu, "Wszystko")
+WSZYSTKO = "Wszystko"
+
+# Filtr autorstwa przy pojazdach współdzielonych: „kto to dodał”. Wpisy sprzed
+# wprowadzenia kolumny dodane_przez (i te bez autora, jak odczyty licznika)
+# lądują pod wspólną etykietą — inaczej filtr udawałby, że ich nie ma.
+FILTR_AUTOR_MOJE = "Tylko moje"
+
+FILTR_AUTOR_BEZ = "Bez autora"
+
+# Ikona włączona, ikona wyłączona, domyślna etykieta — jedno miejsce dla
+# pojedynczego przycisku i dla całego `pasek_filtrow`.
+WYGLAD_FILTRA = {
+    "rok": (ft.Icons.FILTER_ALT_ROUNDED, ft.Icons.FILTER_ALT_OUTLINED, "Rok"),
+    "miesiac": (ft.Icons.DATE_RANGE_ROUNDED, ft.Icons.DATE_RANGE_OUTLINED, "Miesiąc"),
+    "kategoria": (ft.Icons.LABEL_ROUNDED, ft.Icons.LABEL_OUTLINE, "Tagi"),
+    "autor": (ft.Icons.PERSON, ft.Icons.PERSON_OUTLINE, "Autor"),
+}
+
+
+def _autor_rekordu(rekord, pole):
+    try:
+        return " ".join(str(rekord[pole] or "").split())
+    except Exception:
+        return ""
+
+
+def _data_rekordu(rekord, pole):
+    """Data wpisu albo None, gdy pola nie ma lub nie da się jej sparsować."""
+    try:
+        d = parsuj_date(rekord[pole])
+    except Exception:
+        return None
+    return d if d != datetime.min.date() else None
+
+
+def _wartosci_rekordu(rodzaj, rekord, pole, moje=""):
+    """Opcje, pod które podpada ten rekord.
+
+    Jedno źródło dla trzech rzeczy naraz: listy opcji w menu, licznika przy
+    opcji i samego filtrowania. Gdyby licznik liczył po swojemu, obiecywałby
+    inną liczbę wpisów, niż filtr potem pokazuje."""
+    if rodzaj == "rok":
+        d = _data_rekordu(rekord, pole)
+        return {str(d.year)} if d else set()
+    if rodzaj == "miesiac":
+        d = _data_rekordu(rekord, pole)
+        return {MIESIACE_NAZWY[d.month - 1]} if d else set()
+    if rodzaj == "kategoria":
+        try:
+            wartosc = str(rekord[pole] or "").strip()
+        except Exception:
+            return set()
+        if not wartosc or wartosc == "None":
+            return set()
+        return {t.strip() for t in wartosc.split(",") if t.strip()}
+
+    autor = _autor_rekordu(rekord, pole)
+    if not autor:
+        return {FILTR_AUTOR_BEZ}
+    return {autor, FILTR_AUTOR_MOJE} if autor == moje else {autor}
+
+
+def _opcje_filtra(rodzaj, dane, pole, moje=""):
+    """Zawartość menu: „Wszystko” i to, co naprawdę siedzi w danych."""
+    wartosci = set()
+    for w in dane:
+        wartosci |= _wartosci_rekordu(rodzaj, w, pole, moje)
+
+    if rodzaj == "rok":
+        return [WSZYSTKO] + sorted(wartosci, reverse=True)
+    if rodzaj == "miesiac":
+        return [WSZYSTKO] + sorted(wartosci, key=MIESIACE_NAZWY.index)
+    if rodzaj == "kategoria":
+        return [WSZYSTKO] + sorted(wartosci)
+
+    # „Tylko moje” stoi zawsze — przy dwóch domownikach działa jak przełącznik,
+    # a własne imię nie dubluje się w liście osób.
+    opcje = [WSZYSTKO, FILTR_AUTOR_MOJE]
+    opcje += sorted(wartosci - {FILTR_AUTOR_MOJE, FILTR_AUTOR_BEZ, moje})
+    if FILTR_AUTOR_BEZ in wartosci:
+        opcje.append(FILTR_AUTOR_BEZ)
+    return opcje
+
+
+def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta,
+                         ikona_aktywna, ikona_nieaktywna, liczniki=None):
+    """Generyczna metoda budująca przycisk filtra z menu rozwijanym.
+
+    `liczniki` (opcja → ile wpisów zostanie po jej wybraniu) dopisuje liczbę
+    przy każdej opcji i przy włączonym filtrze na samym chipie. Bez nich chip
+    wygląda jak dawniej."""
+    aktualny_filtr = state.filtry.setdefault(klucz_stanu, WSZYSTKO)
     if aktualny_filtr not in opcje:
-        aktualny_filtr = "Wszystko"
+        aktualny_filtr = WSZYSTKO
         state.filtry[klucz_stanu] = aktualny_filtr
 
     def zmien_filtr(wartosc):
@@ -25,23 +114,38 @@ def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta, iko
     elementy_menu = []
     for o in opcje:
         zaznaczone = (o == aktualny_filtr)
+        liczba = liczniki.get(o, 0) if liczniki is not None else None
+        # Opcja bez pokrycia zostaje w menu, traci tylko klikalność. Ukrywanie
+        # przestawiałoby listę przy każdej zmianie sąsiedniego filtra, a „(0)”
+        # to właśnie ta odpowiedź, po którą się do menu zagląda.
+        puste = (liczba == 0 and not zaznaczone)
+        kolor_opcji = ft.Colors.with_opacity(0.38, ft.Colors.ON_SURFACE) if puste else None
+        wiersz = [
+            ft.Icon(ft.Icons.CHECK, size=16, color=ft.Colors.PRIMARY, visible=zaznaczone),
+            ft.Text(o, weight="bold" if zaznaczone else "normal", color=kolor_opcji)
+        ]
+        if liczba is not None:
+            wiersz.append(ft.Text(f"({liczba})", size=12,
+                                  color=kolor_opcji or ft.Colors.ON_SURFACE_VARIANT))
         elementy_menu.append(
             ft.PopupMenuItem(
-                content=ft.Row([
-                    ft.Icon(ft.Icons.CHECK, size=16, color=ft.Colors.PRIMARY, visible=zaznaczone),
-                    ft.Text(o, weight="bold" if zaznaczone else "normal")
-                ]),
-                on_click=lambda e, val=o: zmien_filtr(val)
+                content=ft.Row(wiersz),
+                disabled=puste,
+                on_click=None if puste else (lambda e, val=o: zmien_filtr(val))
             )
         )
 
-    jest_aktywny = (aktualny_filtr != "Wszystko")
+    jest_aktywny = (aktualny_filtr != WSZYSTKO)
     kolor_glowny = ft.Colors.PRIMARY if jest_aktywny else ft.Colors.ON_SURFACE_VARIANT
     kolor_tla = ft.Colors.with_opacity(0.15, ft.Colors.PRIMARY) if jest_aktywny else ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE)
 
     pokazywany_tekst = aktualny_filtr if jest_aktywny else etykieta
     if len(pokazywany_tekst) > 9:
         pokazywany_tekst = pokazywany_tekst[:7] + ".."
+    # Licznik dopisujemy PO skróceniu wartości: liczba jest tym, po co się na
+    # chip patrzy, więc to nie ona ma ginąć w wielokropku.
+    if jest_aktywny and liczniki is not None:
+        pokazywany_tekst = f"{pokazywany_tekst} ({liczniki.get(aktualny_filtr, 0)})"
 
     # tight=True jest tu KONIECZNE. Bez niego wiersz ma mainAxisSize.max i bierze
     # całą szerokość, jaką dostanie. W pasku przewijanym poziomo szerokość była
@@ -62,188 +166,159 @@ def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta, iko
 
     return ft.Container(
         height=36,  # <-- SZTYWNA WYSOKOŚĆ
-        bgcolor=kolor_tla, 
-        border_radius=18, 
+        bgcolor=kolor_tla,
+        border_radius=18,
         padding=ft.Padding(12, 0, 12, 0),
         alignment=ft.Alignment.CENTER,
         content=popup
     )
 
 
-def przycisk_filtrowania_rok(page: ft.Page, state, klucz_stanu, lista_danych, index_daty):
-    lata = set()
-    for w in lista_danych:
-        try:
-            data_str = w[index_daty]
-            d = parsuj_date(data_str)
-            if d != datetime.min.date():
-                lata.add(str(d.year))
-        except Exception:
-            pass
-    
-    opcje = ["Wszystko"] + sorted(list(lata), reverse=True)
+def _chip_filtra(page: ft.Page, state, rodzaj, klucz_stanu, lista_danych, pole,
+                 etykieta=None, liczniki=None, moje=""):
+    ikona_aktywna, ikona_nieaktywna, domyslna_etykieta = WYGLAD_FILTRA[rodzaj]
     return _zbuduj_popup_filtra(
-        page, state, klucz_stanu, opcje, "Rok",
-        ft.Icons.FILTER_ALT_ROUNDED, ft.Icons.FILTER_ALT_OUTLINED
+        page, state, klucz_stanu, _opcje_filtra(rodzaj, lista_danych, pole, moje),
+        etykieta or domyslna_etykieta, ikona_aktywna, ikona_nieaktywna, liczniki
     )
 
 
-def przycisk_filtrowania_kategoria(page: ft.Page, state, klucz_stanu, lista_danych, index_pola, etykieta="Tagi"):
-    wartosci = set()
-    for w in lista_danych:
-        try:
-            wartosc = str(w[index_pola] or "").strip()
-            if wartosc and wartosc != "None":
-                for tag in wartosc.split(","):
-                    if tag.strip(): wartosci.add(tag.strip())
-        except Exception:
-            pass
-    
-    opcje = ["Wszystko"] + sorted(list(wartosci))
-    return _zbuduj_popup_filtra(
-        page, state, klucz_stanu, opcje, etykieta,
-        ft.Icons.LABEL_ROUNDED, ft.Icons.LABEL_OUTLINE
-    )
+def przycisk_filtrowania_rok(page: ft.Page, state, klucz_stanu, lista_danych, index_daty,
+                             liczniki=None):
+    return _chip_filtra(page, state, "rok", klucz_stanu, lista_danych, index_daty,
+                        liczniki=liczniki)
 
 
-# Filtr autorstwa przy pojazdach współdzielonych: „kto to dodał”. Wpisy sprzed
-# wprowadzenia kolumny dodane_przez (i te bez autora, jak odczyty licznika)
-# lądują pod wspólną etykietą — inaczej filtr udawałby, że ich nie ma.
-FILTR_AUTOR_MOJE = "Tylko moje"
-
-FILTR_AUTOR_BEZ = "Bez autora"
+def przycisk_filtrowania_kategoria(page: ft.Page, state, klucz_stanu, lista_danych, index_pola,
+                                   etykieta="Tagi", liczniki=None):
+    return _chip_filtra(page, state, "kategoria", klucz_stanu, lista_danych, index_pola,
+                        etykieta=etykieta, liczniki=liczniki)
 
 
-def _autor_rekordu(rekord, pole):
-    try:
-        return " ".join(str(rekord[pole] or "").split())
-    except Exception:
-        return ""
-
-
-def przycisk_filtrowania_autora(page: ft.Page, state, klucz_stanu, lista_danych, pole):
+def przycisk_filtrowania_autora(page: ft.Page, state, klucz_stanu, lista_danych, pole,
+                                liczniki=None):
     """Filtr „Autor” obok Typ/Rok/Miesiąc. Opcje: Wszystko · Tylko moje ·
     każda osoba, która cokolwiek dodała. Przy dwóch domownikach działa jak
     przełącznik „tylko moje”, przy trzech od razu widać też konkretną osobę."""
-    moje = db.pobierz_moje_imie()
-    autorzy, sa_bez_autora = set(), False
-    for w in lista_danych:
-        autor = _autor_rekordu(w, pole)
-        if autor:
-            autorzy.add(autor)
-        else:
-            sa_bez_autora = True
-
-    opcje = ["Wszystko", FILTR_AUTOR_MOJE]
-    opcje += sorted(a for a in autorzy if a != moje)
-    if sa_bez_autora:
-        opcje.append(FILTR_AUTOR_BEZ)
-
-    return _zbuduj_popup_filtra(
-        page, state, klucz_stanu, opcje, "Autor",
-        ft.Icons.PERSON, ft.Icons.PERSON_OUTLINE
-    )
+    return _chip_filtra(page, state, "autor", klucz_stanu, lista_danych, pole,
+                        liczniki=liczniki, moje=db.pobierz_moje_imie())
 
 
-def filtruj_po_autorze(lista_danych, state, klucz_stanu, pole):
-    filtr = state.filtry.get(klucz_stanu, "Wszystko")
-    if filtr == "Wszystko":
-        return lista_danych
-
-    moje = db.pobierz_moje_imie()
-    wynik = []
-    for w in lista_danych:
-        autor = _autor_rekordu(w, pole)
-        if filtr == FILTR_AUTOR_MOJE:
-            pasuje = bool(autor) and autor == moje
-        elif filtr == FILTR_AUTOR_BEZ:
-            pasuje = not autor
-        else:
-            pasuje = autor == filtr
-        if pasuje:
-            wynik.append(w)
-    return wynik
-
-
-def przycisk_filtrowania_miesiac(page: ft.Page, state, klucz_stanu, lista_danych, index_daty):
-    miesiace_nr = set()
-    for w in lista_danych:
-        try:
-            data_str = w[index_daty]
-            d = parsuj_date(data_str)
-            if d != datetime.min.date():
-                miesiace_nr.add(d.month)
-        except Exception:
-            pass
-    
-    opcje = ["Wszystko"] + [MIESIACE_NAZWY[m - 1] for m in sorted(list(miesiace_nr))]
-    return _zbuduj_popup_filtra(
-        page, state, klucz_stanu, opcje, "Miesiąc",
-        ft.Icons.DATE_RANGE_ROUNDED, ft.Icons.DATE_RANGE_OUTLINED
-    )
+def przycisk_filtrowania_miesiac(page: ft.Page, state, klucz_stanu, lista_danych, index_daty,
+                                 liczniki=None):
+    return _chip_filtra(page, state, "miesiac", klucz_stanu, lista_danych, index_daty,
+                        liczniki=liczniki)
 
 
 def filtruj_po_roku(lista_danych, state, klucz_stanu, index_daty):
-    filtr = state.filtry.get(klucz_stanu, "Wszystko")
-    if filtr == "Wszystko":
+    filtr = state.filtry.get(klucz_stanu, WSZYSTKO)
+    if filtr == WSZYSTKO:
         return lista_danych
-    
-    wynik = []
-    for w in lista_danych:
-        try:
-            data_str = w[index_daty]
-            d = parsuj_date(data_str)
-            if d != datetime.min.date() and str(d.year) == filtr:
-                wynik.append(w)
-        except Exception:
-            pass
-    return wynik
-
-
-def filtruj_po_kategorii(lista_danych, state, klucz_stanu, index_pola):
-    filtr = state.filtry.get(klucz_stanu, "Wszystko")
-    if filtr == "Wszystko":
-        return lista_danych
-    
-    wynik = []
-    for w in lista_danych:
-        try:
-            wartosc = str(w[index_pola] or "").strip()
-            tagi_w_rekordzie = [t.strip() for t in wartosc.split(",")]
-            if filtr in tagi_w_rekordzie:
-                wynik.append(w)
-        except Exception:
-            pass
-    return wynik
+    return [w for w in lista_danych if filtr in _wartosci_rekordu("rok", w, index_daty)]
 
 
 def filtruj_po_miesiacu(lista_danych, state, klucz_stanu, index_daty):
-    filtr = state.filtry.get(klucz_stanu, "Wszystko")
-    if filtr == "Wszystko":
+    filtr = state.filtry.get(klucz_stanu, WSZYSTKO)
+    if filtr == WSZYSTKO:
         return lista_danych
-    
-    idx_miesiaca = MIESIACE_NAZWY.index(filtr) + 1
-    wynik = []
-    for w in lista_danych:
-        try:
-            data_str = w[index_daty]
-            d = parsuj_date(data_str)
-            if d != datetime.min.date() and d.month == idx_miesiaca:
-                wynik.append(w)
-        except Exception:
-            pass
-    return wynik
+    return [w for w in lista_danych if filtr in _wartosci_rekordu("miesiac", w, index_daty)]
+
+
+def filtruj_po_kategorii(lista_danych, state, klucz_stanu, index_pola):
+    filtr = state.filtry.get(klucz_stanu, WSZYSTKO)
+    if filtr == WSZYSTKO:
+        return lista_danych
+    return [w for w in lista_danych if filtr in _wartosci_rekordu("kategoria", w, index_pola)]
+
+
+def filtruj_po_autorze(lista_danych, state, klucz_stanu, pole):
+    filtr = state.filtry.get(klucz_stanu, WSZYSTKO)
+    if filtr == WSZYSTKO:
+        return lista_danych
+    moje = db.pobierz_moje_imie()
+    return [w for w in lista_danych if filtr in _wartosci_rekordu("autor", w, pole, moje)]
+
+
+FILTROWANIE = {
+    "rok": filtruj_po_roku,
+    "miesiac": filtruj_po_miesiacu,
+    "kategoria": filtruj_po_kategorii,
+    "autor": filtruj_po_autorze,
+}
+
+
+def pasek_filtrow(page: ft.Page, state, dane, specyfikacje):
+    """Chipy jednego paska filtrów plus dane przepuszczone przez nie wszystkie.
+
+    `specyfikacje` to krotki `(rodzaj, klucz_stanu, pole)` albo
+    `(rodzaj, klucz_stanu, pole, etykieta)`, w kolejności wyświetlania;
+    rodzaj: „rok”, „miesiac”, „kategoria”, „autor”. Zwraca listę chipów (do
+    wsadzenia w `ft.Row(scroll=ADAPTIVE)`, razem z przyciskiem sortowania) i
+    listę po filtrach — dzięki temu opis filtra stoi w jednym miejscu, a nie
+    raz przy budowie chipa i drugi raz przy filtrowaniu.
+
+    Liczniki są KRZYŻOWE: przy opcji stoi liczba wpisów, które zostaną po jej
+    wybraniu, przy pozostałych filtrach ustawionych tak jak teraz. Dlatego
+    liczy CAŁY pasek naraz — pojedynczy chip liczyłby na surowej liście i
+    obiecywał wpisy, których po sąsiednim filtrze już nie ma.
+
+    Opcje biorą się z listy NIEfiltrowanej, żeby menu nie skakało przy każdej
+    zmianie sąsiada; te bez pokrycia dostają „(0)” i przestają być klikalne."""
+    spec = [(s[0], s[1], s[2], s[3] if len(s) > 3 else None) for s in specyfikacje]
+    moje = db.pobierz_moje_imie() if any(r == "autor" for r, _, _, _ in spec) else ""
+
+    opcje = {klucz: _opcje_filtra(rodzaj, dane, pole, moje)
+             for rodzaj, klucz, pole, _ in spec}
+    # Zapamiętany filtr, którego nie ma już w danych (skasowany tag, rok bez
+    # wpisów), zerujemy PRZED liczeniem — inaczej licznik odsiewałby po
+    # wartości, którą chip za chwilę i tak zresetuje.
+    for _, klucz, _, _ in spec:
+        if state.filtry.setdefault(klucz, WSZYSTKO) not in opcje[klucz]:
+            state.filtry[klucz] = WSZYSTKO
+
+    wartosci = {klucz: [_wartosci_rekordu(rodzaj, w, pole, moje) for w in dane]
+                for rodzaj, klucz, pole, _ in spec}
+
+    kontrolki = []
+    for rodzaj, klucz, pole, etykieta in spec:
+        pozostale = [(k, state.filtry[k]) for _, k, _, _ in spec
+                     if k != klucz and state.filtry[k] != WSZYSTKO]
+        liczniki = {o: 0 for o in opcje[klucz]}
+        for i in range(len(dane)):
+            if all(wybrany in wartosci[k][i] for k, wybrany in pozostale):
+                liczniki[WSZYSTKO] += 1
+                for wartosc in wartosci[klucz][i]:
+                    if wartosc in liczniki:
+                        liczniki[wartosc] += 1
+        ikona_aktywna, ikona_nieaktywna, domyslna_etykieta = WYGLAD_FILTRA[rodzaj]
+        kontrolki.append(_zbuduj_popup_filtra(
+            page, state, klucz, opcje[klucz], etykieta or domyslna_etykieta,
+            ikona_aktywna, ikona_nieaktywna, liczniki
+        ))
+
+    wynik = dane
+    for rodzaj, klucz, pole, _ in spec:
+        wynik = FILTROWANIE[rodzaj](wynik, state, klucz, pole)
+    return kontrolki, wynik
 
 
 __all__ = [
+    "FILTROWANIE",
     "FILTR_AUTOR_BEZ",
     "FILTR_AUTOR_MOJE",
+    "WSZYSTKO",
+    "WYGLAD_FILTRA",
     "_autor_rekordu",
+    "_chip_filtra",
+    "_data_rekordu",
+    "_opcje_filtra",
+    "_wartosci_rekordu",
     "_zbuduj_popup_filtra",
     "filtruj_po_autorze",
     "filtruj_po_kategorii",
     "filtruj_po_miesiacu",
     "filtruj_po_roku",
+    "pasek_filtrow",
     "przycisk_filtrowania_autora",
     "przycisk_filtrowania_kategoria",
     "przycisk_filtrowania_miesiac",

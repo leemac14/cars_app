@@ -18,7 +18,6 @@ db/zalaczniki.py                    5
 log.py                              5
 sync/konflikty.py                   1
 utils/dialogi.py                    1
-utils/filtry.py                     6
 utils/formularze.py                 1
 utils/komponenty.py                 11
 utils/nawigacja.py                  5

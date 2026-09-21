@@ -36,7 +36,9 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                 on_click=lambda e: utils.przejdz(self._page, "/karoseria/nowe")
             ))
         else:
-            filtr_strefa_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "karoseria_strefa", zdjecia, 2, "Strefa auta")
+            chipy_filtrow, zdjecia_po_filtrach = utils.pasek_filtrow(
+                self._page, self.state, zdjecia,
+                [("kategoria", "karoseria_strefa", 2, "Strefa auta")])
             
             def filtruj_galerie(e):
                 zapytanie = e.control.value.lower().strip()
@@ -48,10 +50,10 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
 
             pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)...", prefix_icon=ft.Icons.SEARCH, on_change=utils.z_opoznieniem(self._page, filtruj_galerie), **utils.styl_pola())
             
-            elementy.append(ft.Row([utils.etykieta("Filtruj:", size=13), filtr_strefa_ui]))
+            elementy.append(ft.Row([utils.etykieta("Filtruj:", size=13)] + chipy_filtrow))
             elementy.append(pole_szukaj)
             
-            zdjecia = utils.filtruj_po_kategorii(zdjecia, self.state, "karoseria_strefa", 2)
+            zdjecia = zdjecia_po_filtrach
             
             self.lista_kart = ft.GridView(
                 height=utils.wysokosc_listy(self._page), max_extent=185, spacing=10, run_spacing=10,

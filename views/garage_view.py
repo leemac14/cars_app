@@ -209,9 +209,10 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             ("Bieżnik", "bieznik", lambda x: float(x[4] or 0)),
         ]
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "zestawy_opon", sort_opcje)
-        filtr_sezon_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "opony_sezon", zestawy, 1, "Sezon")
+        chipy_filtrow, zestawy_po_filtrach = utils.pasek_filtrow(
+            self._page, self.state, zestawy, [("kategoria", "opony_sezon", 1, "Sezon")])
         
-        elementy.append(ft.Row(controls=[sort_ui, filtr_sezon_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+        elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
         def filtruj_opony(e):
             zapytanie = e.control.value.lower().strip()
@@ -235,7 +236,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         self.wszystkie_karty_opony = []
         self.uzyj_wirtualizacji = True
 
-        zestawy = utils.filtruj_po_kategorii(zestawy, self.state, "opony_sezon", 1)
+        zestawy = zestawy_po_filtrach
         utils.posortuj_liste(zestawy, self.state, "zestawy_opon", sort_opcje)
 
         for z in zestawy:
@@ -476,9 +477,10 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             ("Wartość", "wartosc", lambda x: float(x[3] or 0) * float(x[10] or 0)),
         ]
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "magazyn_czesci", sort_opcje)
-        filtr_kat_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "magazyn_kategoria", czesci, 2, "Kategoria")
+        chipy_filtrow, czesci_po_filtrach = utils.pasek_filtrow(
+            self._page, self.state, czesci, [("kategoria", "magazyn_kategoria", 2, "Kategoria")])
 
-        elementy.append(ft.Row(controls=[sort_ui, filtr_kat_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+        elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
         def filtruj_czesci(e):
             zapytanie = e.control.value.lower().strip()
@@ -502,7 +504,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         self.wszystkie_karty_czesci = []
         self.uzyj_wirtualizacji = True
 
-        czesci = utils.filtruj_po_kategorii(czesci, self.state, "magazyn_kategoria", 2)
+        czesci = czesci_po_filtrach
         utils.posortuj_liste(czesci, self.state, "magazyn_czesci", sort_opcje)
 
         for cz in czesci:

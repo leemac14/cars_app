@@ -145,10 +145,12 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 ]
 
                 sort_ui = utils.przycisk_sortowania(self._page, self.state, "do_zrobienia", opcje_sort)
-                filtr_status_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_status", dane, 9, "Status")
-                filtr_priorytet_ui = utils.przycisk_filtrowania_kategoria(self._page, self.state, "do_zrobienia_priorytet", dane, 3, "Priorytet")
+                chipy_filtrow, dane_po_filtrach = utils.pasek_filtrow(
+                    self._page, self.state, dane,
+                    [("kategoria", "do_zrobienia_status", 9, "Status"),
+                     ("kategoria", "do_zrobienia_priorytet", 3, "Priorytet")])
 
-                elementy.append(ft.Row(controls=[sort_ui, filtr_status_ui, filtr_priorytet_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+                elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
                 def filtruj_pozycje(e):
                     zapytanie = e.control.value.lower().strip()
@@ -178,8 +180,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                     self._page, self.lista_kart, wysokosc_pozycji=185
                 )
 
-                po_filtrach = utils.filtruj_po_kategorii(dane, self.state, "do_zrobienia_status", 9)
-                po_filtrach = utils.filtruj_po_kategorii(po_filtrach, self.state, "do_zrobienia_priorytet", 3)
+                po_filtrach = dane_po_filtrach
                 utils.posortuj_liste(po_filtrach, self.state, "do_zrobienia", opcje_sort)
 
                 if not po_filtrach:

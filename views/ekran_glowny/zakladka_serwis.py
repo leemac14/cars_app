@@ -79,12 +79,13 @@ class MiksinZakladkiSerwis:
             ]
 
             sort_ui = utils.przycisk_sortowania(self._page, self.state, "zadania", opcje_sort)
-            filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "serwis_rok", baza_lista, "data")
-            filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "serwis_mc", baza_lista, "data")
+            chipy_filtrow, serwis_po_filtrach = utils.pasek_filtrow(
+                self._page, self.state, baza_lista,
+                [("rok", "serwis_rok", "data"), ("miesiac", "serwis_mc", "data")])
 
             self.elementy.append(
                 ft.Row(
-                    controls=[sort_ui, filtr_rok_ui, filtr_mc_ui],
+                    controls=[sort_ui] + chipy_filtrow,
                     scroll=ft.ScrollMode.ADAPTIVE,
                     spacing=8
                 )
@@ -114,8 +115,7 @@ class MiksinZakladkiSerwis:
             self.uzyj_wirtualizacji = True
             self.wszystkie_karty_serwis = []
 
-            po_filtrach = utils.filtruj_po_roku(baza_lista, self.state, "serwis_rok", "data")
-            po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "serwis_mc", "data")
+            po_filtrach = serwis_po_filtrach
             utils.posortuj_liste(po_filtrach, self.state, "zadania", opcje_sort)
 
             self.tekst_licznik_zadan.value = f"Śledzone podzespoły ({len(po_filtrach)})"

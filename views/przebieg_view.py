@@ -87,12 +87,13 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 ]
 
                 sort_ui = utils.przycisk_sortowania(self._page, self.state, "odczyty_przebiegu", opcje_sort)
-                filtr_zrodlo_ui = utils.przycisk_filtrowania_kategoria(
-                    self._page, self.state, "przebieg_zrodlo", wpisy, "etykieta_zrodla", "Źródło")
-                filtr_rok_ui = utils.przycisk_filtrowania_rok(self._page, self.state, "odczyty_rok", wpisy, "data")
-                filtr_mc_ui = utils.przycisk_filtrowania_miesiac(self._page, self.state, "odczyty_mc", wpisy, "data")
+                chipy_filtrow, odczyty_po_filtrach = utils.pasek_filtrow(
+                    self._page, self.state, wpisy,
+                    [("kategoria", "przebieg_zrodlo", "etykieta_zrodla", "Źródło"),
+                     ("rok", "odczyty_rok", "data"),
+                     ("miesiac", "odczyty_mc", "data")])
 
-                elementy.append(ft.Row(controls=[sort_ui, filtr_zrodlo_ui, filtr_rok_ui, filtr_mc_ui], scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+                elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
                 def filtruj_odczyty(e):
                     zapytanie = e.control.value.lower().strip()
@@ -122,9 +123,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                     self._page, self.lista_kart, wysokosc_pozycji=130, pokaz_kwoty=False
                 )
 
-                po_filtrach = utils.filtruj_po_kategorii(wpisy, self.state, "przebieg_zrodlo", "etykieta_zrodla")
-                po_filtrach = utils.filtruj_po_roku(po_filtrach, self.state, "odczyty_rok", "data")
-                po_filtrach = utils.filtruj_po_miesiacu(po_filtrach, self.state, "odczyty_mc", "data")
+                po_filtrach = odczyty_po_filtrach
                 utils.posortuj_liste(po_filtrach, self.state, "odczyty_przebiegu", opcje_sort)
 
                 if not po_filtrach:
