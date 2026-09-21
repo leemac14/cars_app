@@ -90,6 +90,19 @@ def zapisz_chowanie_pustych_kafelkow(wlaczone):
     zapisz_ustawienie("chowaj_puste_kafelki", "1" if wlaczone else "0")
 
 
+def czy_zapamietywac_wyszukiwania():
+    """Czy wyszukiwarka ma prowadzić listę ostatnio szukanych fraz. Domyślnie tak.
+
+    Samą listę trzyma `db/wyszukiwanie.py` — tutaj jest tylko przełącznik, bo
+    to zwykłe ustawienie interfejsu, a moduł ustawień stoi przed wyszukiwaniem
+    w kolejności importów."""
+    return (pobierz_ustawienie("historia_wyszukiwan", "1") or "1") == "1"
+
+
+def zapisz_zapamietywanie_wyszukiwan(wlaczone):
+    zapisz_ustawienie("historia_wyszukiwan", "1" if wlaczone else "0")
+
+
 def czy_skumulowany_z_cena_zakupu():
     """Czy krzywa kosztu skumulowanego startuje od ceny zakupu, czy od zera.
 
@@ -499,6 +512,7 @@ __all__ = [
     "czy_animacje_interfejsu",
     "czy_chowac_puste_kafelki",
     "czy_skumulowany_z_cena_zakupu",
+    "czy_zapamietywac_wyszukiwania",
     "czy_auto_synchronizacja",
     "interwal_auto_synchronizacji",
     "pobierz_czysta_czern",
@@ -522,6 +536,7 @@ __all__ = [
     "zapisz_animacje_interfejsu",
     "zapisz_chowanie_pustych_kafelkow",
     "zapisz_skumulowany_z_cena_zakupu",
+    "zapisz_zapamietywanie_wyszukiwan",
     "zapisz_auto_synchronizacje",
     "zapisz_czysta_czern",
     "zapisz_interwal_auto_synchronizacji",

@@ -8,7 +8,8 @@ from date import parsuj_date
 
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
-from .ustawienia import pobierz_walute
+from .ustawienia import (czy_zapamietywac_wyszukiwania, pobierz_ustawienie,
+                         pobierz_walute, usun_ustawienie, zapisz_ustawienie)
 
 
 # Zapytanie kwotowe rozpoznajemy WPROST w polu wyszukiwarki — bez dodatkowych
@@ -1031,7 +1032,78 @@ def globalne_wyszukiwanie(auto_id, zapytanie):
     return wyniki
 
 
+# ============================================================================
+#  Historia wyszukiwań
+# ============================================================================
+# Szuflada pamięta ostatnio otwierane ekrany, bo rzeczy używanych raz na miesiąc
+# nie pamięta się między sesjami. Wyszukiwarka ma ten sam problem: fraza, która
+# kiedyś zadziałała („stacja:orlen”, „marzec 2026”), za dwa tygodnie jest do
+# wymyślenia od nowa. Lista siedzi w JEDNYM wierszu `ustawienia` — nie ma tu
+# licznika ani przypinania, więc osobna tabela dokładałaby migrację, wpis
+# w konfiguracji synchronizacji i w koszu, a nie dawałaby nic ponadto.
+#
+# Rozdzielaczem są znaki końca linii: fraza bywa z przecinkiem („stacja:orlen,
+# bp”), a nowej linii w jednolinijkowym polu nie da się wpisać.
+
+KLUCZ_HISTORII_WYSZUKIWAN = "ostatnie_wyszukiwania"
+
+MAKS_OSTATNICH_WYSZUKIWAN = 6
+
+# Jednoznakowe frazy zapamiętuje się same przy pierwszym dotknięciu klawiatury.
+MIN_DLUGOSC_ZAPAMIETANEJ = 2
+
+
+def _historia_surowa():
+    """Zapisane frazy niezależnie od przełącznika — do kasowania i dopisywania."""
+    zapisane = pobierz_ustawienie(KLUCZ_HISTORII_WYSZUKIWAN, "") or ""
+    return [f.strip() for f in zapisane.split("\n") if f.strip()]
+
+
+def _zapisz_historie(frazy):
+    zapisz_ustawienie(KLUCZ_HISTORII_WYSZUKIWAN,
+                      "\n".join(frazy[:MAKS_OSTATNICH_WYSZUKIWAN]))
+
+
+def pobierz_ostatnie_wyszukiwania(limit=MAKS_OSTATNICH_WYSZUKIWAN) -> list[str]:
+    """Ostatnio szukane frazy, najświeższa pierwsza. Pusto, gdy wyłączone."""
+    if not czy_zapamietywac_wyszukiwania():
+        return []
+    return _historia_surowa()[:max(0, int(limit))]
+
+
+def zanotuj_wyszukiwanie(zapytanie) -> list[str]:
+    """Dopisuje frazę na początek historii i zwraca listę PO zmianie.
+
+    Fraza, której początkiem jest fraza już zapisana („marzec” wobec „marzec
+    2026”), WYPIERA tamtą zamiast stawać obok — wyszukiwarka szuka przy każdej
+    literze, więc inaczej historia zapełniłaby się kolejnymi stadiami jednego
+    zapytania. Ta sama zasada załatwia duplikaty."""
+    fraza = " ".join(str(zapytanie or "").split())
+    if len(fraza) < MIN_DLUGOSC_ZAPAMIETANEJ or not czy_zapamietywac_wyszukiwania():
+        return pobierz_ostatnie_wyszukiwania()
+
+    klucz = fraza.casefold()
+    frazy = [fraza] + [f for f in _historia_surowa() if not klucz.startswith(f.casefold())]
+    _zapisz_historie(frazy)
+    return frazy[:MAKS_OSTATNICH_WYSZUKIWAN]
+
+
+def usun_ostatnie_wyszukiwanie(fraza) -> list[str]:
+    """Kasuje jedną frazę (długie przytrzymanie chipa). Zwraca listę po zmianie."""
+    klucz = " ".join(str(fraza or "").split()).casefold()
+    frazy = [f for f in _historia_surowa() if f.casefold() != klucz]
+    _zapisz_historie(frazy)
+    return frazy
+
+
+def wyczysc_ostatnie_wyszukiwania():
+    usun_ustawienie(KLUCZ_HISTORII_WYSZUKIWAN)
+
+
 __all__ = [
+    "KLUCZ_HISTORII_WYSZUKIWAN",
+    "MAKS_OSTATNICH_WYSZUKIWAN",
+    "MIN_DLUGOSC_ZAPAMIETANEJ",
     "POLA_WYSZUKIWANIA",
     "PRZYKLADY_SKLADNI",
     "TOLERANCJA_KWOTY",
@@ -1056,6 +1128,7 @@ __all__ = [
     "_WZORZEC_ZAKRESU",
     "_bezpieczna_data",
     "_dzis",
+    "_historia_surowa",
     "_koniec_miesiaca",
     "_kwota_jawna",
     "_na_liczbe",
@@ -1075,11 +1148,16 @@ __all__ = [
     "_zakres_roku",
     "_zakres_wzgledny",
     "_zakres_z_dwoch_punktow",
+    "_zapisz_historie",
     "globalne_wyszukiwanie",
     "parsuj_zapytanie",
     "parsuj_zapytanie_datowe",
     "parsuj_zapytanie_kwotowe",
+    "pobierz_ostatnie_wyszukiwania",
     "skrot_notatki",
+    "usun_ostatnie_wyszukiwanie",
+    "wyczysc_ostatnie_wyszukiwania",
     "wyszukiwanie_po_kwocie",
     "wyszukiwanie_zaawansowane",
+    "zanotuj_wyszukiwanie",
 ]

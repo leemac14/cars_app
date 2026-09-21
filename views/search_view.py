@@ -88,6 +88,11 @@ class SzukajView(ft.View):
             ], spacing=8, tight=True),
         )
 
+        # Ostatnie frazy — ta sama potrzeba, co „Ostatnio” w szufladzie: czego
+        # szuka się raz na miesiąc, tego się między sesjami nie pamięta.
+        self.sekcja_ostatnich = ft.Column(spacing=8, visible=False)
+        self._odswiez_ostatnie()
+
         # Pasek pokazywany dopiero wtedy, gdy zapytanie ZOSTAŁO rozpoznane jako
         # filtr — inaczej nie wiadomo, czemu „450” nie znalazło daty z 450, ani
         # czemu „marzec” pominął wpis ze słowem „marzec” w notatce.
@@ -110,7 +115,7 @@ class SzukajView(ft.View):
         utils.pamietaj_pozycje(self._page, self.state, self.lista_wynikow, "lista:wyszukiwarka")
 
         elementy = [
-            self.pole_wyszukiwarki, self.podpowiedz_skladni, self.pasek_trybu,
+            self.pole_wyszukiwarki, self.sekcja_ostatnich, self.podpowiedz_skladni, self.pasek_trybu,
             self.sekcja_ekranow, self.kontener_pomocniczy, self.lista_wynikow,
             self.sekcja_ekranow_pod,
         ]
@@ -119,6 +124,61 @@ class SzukajView(ft.View):
             route="/szukaj", padding=15, spacing=15, appbar=appbar,
             controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _odswiez_ostatnie(self):
+        """Chipy z ostatnimi frazami, widoczne WYŁĄCZNIE przy pustym polu.
+
+        W trakcie pisania miejsce pod polem należy się wynikom, a historia
+        i tak przestaje być wtedy potrzebna — fraza jest już w polu."""
+        pisze = bool((self.pole_wyszukiwarki.value or "").strip())
+        frazy = [] if pisze else db.pobierz_ostatnie_wyszukiwania()
+
+        self.sekcja_ostatnich.controls.clear()
+        self.sekcja_ostatnich.visible = bool(frazy)
+        if not frazy:
+            return
+
+        self.sekcja_ostatnich.controls.append(ft.Row([
+            ft.Icon(ft.Icons.HISTORY, size=16, color=ft.Colors.PRIMARY),
+            ft.Text("Ostatnio", size=utils.FS["label"], weight="bold",
+                    color=ft.Colors.PRIMARY, expand=True),
+            ft.TextButton(content=ft.Text("Wyczyść", size=utils.FS["caption"]),
+                          on_click=self._wyczysc_ostatnie),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        self.sekcja_ostatnich.controls.append(
+            utils.pasek_zawijany([self._chip_ostatniego(f) for f in frazy], spacing=6))
+
+    def _chip_ostatniego(self, fraza):
+        """Kliknięcie powtarza wyszukiwanie, długie przytrzymanie kasuje frazę.
+        Na chipie stoi skrót — do pola i tak wchodzi CAŁA fraza."""
+        def powtorz(e):
+            self.pole_wyszukiwarki.value = fraza
+            self._wyszukaj(None)
+
+        def zapomnij(e):
+            db.usun_ostatnie_wyszukiwanie(fraza)
+            self._odswiez_ostatnie()
+            self.update()
+
+        return ft.Container(
+            padding=ft.Padding(10, 6, 10, 6), border_radius=utils.RADIUS["sm"], ink=True,
+            bgcolor=ft.Colors.with_opacity(0.07, ft.Colors.ON_SURFACE),
+            on_click=powtorz, on_long_press=zapomnij,
+            content=ft.Row([
+                ft.Icon(ft.Icons.HISTORY, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(db.skrot_notatki(fraza, 32), size=utils.FS["caption"], weight="bold"),
+            ], spacing=6, tight=True),
+        )
+
+    def _wyczysc_ostatnie(self, e):
+        db.wyczysc_ostatnie_wyszukiwania()
+        self._odswiez_ostatnie()
+        self.update()
+
+    def _zanotuj_otwarcie(self):
+        """Otwarcie wyniku albo ekranu to najmocniejszy dowód, że fraza była
+        trafna — dopiero wtedy wchodzi do historii."""
+        db.zanotuj_wyszukiwanie((self.pole_wyszukiwarki.value or "").strip())
 
     def _chip_skladni(self, wzor, opis):
         """Klikalny wzór polecenia. Wstawia CAŁY wzór i od razu szuka — po
@@ -143,8 +203,7 @@ class SzukajView(ft.View):
         return ft.Container(
             padding=ft.Padding(12, 10, 12, 10), border_radius=utils.RADIUS["md"], ink=True,
             bgcolor=ft.Colors.with_opacity(0.07, kolor),
-            on_click=lambda e, ek=ekran: utils.otworz_ekran(
-                self._page, self.state, ek, self._akcje_ekranow()),
+            on_click=lambda e, ek=ekran: self._otworz_ekran(ek),
             content=ft.Row([
                 ft.Container(
                     width=32, height=32, border_radius=utils.RADIUS["sm"],
@@ -161,6 +220,10 @@ class SzukajView(ft.View):
                 ft.Icon(ft.Icons.ARROW_FORWARD_IOS, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
             ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
+
+    def _otworz_ekran(self, ekran):
+        self._zanotuj_otwarcie()
+        utils.otworz_ekran(self._page, self.state, ekran, self._akcje_ekranow())
 
     def _akcje_ekranow(self):
         """Wyszukiwarka nie ma dostępu do kopii bazy ani przełącznika motywu (te
@@ -198,6 +261,7 @@ class SzukajView(ft.View):
         ikona, kolor = IKONY_WYSZUKIWANIA.get(w["typ"], (ft.Icons.EVENT_NOTE, ft.Colors.ON_SURFACE_VARIANT))
 
         def po_kliknieciu(e, wynik=w):
+            self._zanotuj_otwarcie()
             if wynik["trasa"] == "__wydatki_cykliczne__":
                 utils.pokaz_panel_wydatkow_cyklicznych(self._page, self.state)
             elif wynik["trasa"] == "__checklisty__":
@@ -235,6 +299,7 @@ class SzukajView(ft.View):
     def _wyszukaj(self, e):
         zapytanie = (self.pole_wyszukiwarki.value or "").strip()
         self.lista_wynikow.controls.clear()
+        self._odswiez_ostatnie()
 
         filtr = db.parsuj_zapytanie(zapytanie)
         # Jednoznakowe zapytanie z filtrem („5”, „>9”) ma sens, więc próg 2 znaków
@@ -273,6 +338,11 @@ class SzukajView(ft.View):
         # nazwą ekranu — pokazywanie przy nim listy ekranów byłoby szumem. Sekcje
         # trzeba wtedy jawnie schować: bez tego szybka zamiana „olej” na „450”
         # zostawiała ekrany z poprzedniej frazy.
+        # Filtr z wynikami bywa celem sam w sobie: „marzec 2026” przegląda się
+        # w całości, nie otwierając żadnego wpisu — i to też warto pamiętać.
+        if filtr and wyniki:
+            db.zanotuj_wyszukiwanie(zapytanie)
+
         ile_ekranow = self._pokaz_ekrany("" if filtr else zapytanie, sa_wpisy=bool(wyniki))
 
         if not wyniki:

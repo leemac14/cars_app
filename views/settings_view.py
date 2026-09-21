@@ -201,6 +201,33 @@ class UstawieniaView(ft.View):
             ),
         ], spacing=4)
 
+        # --- HISTORIA WYSZUKIWAŃ ---
+        def przelacz_historie_wyszukiwan(e):
+            wlaczone = bool(self.e_historia_wyszukiwan.value)
+            db.zapisz_zapamietywanie_wyszukiwan(wlaczone)
+            if not wlaczone:
+                # Wyłączenie ma znaczyć „nie chcę tej listy”, a nie „schowaj ją
+                # do czasu, aż przełącznik wróci”.
+                db.wyczysc_ostatnie_wyszukiwania()
+
+        self.e_historia_wyszukiwan = ft.Switch(
+            label="Zapamiętuj ostatnie wyszukiwania",
+            value=db.czy_zapamietywac_wyszukiwania(),
+            on_change=przelacz_historie_wyszukiwan,
+        )
+
+        historia_wyszukiwan_sekcja = ft.Column([
+            self.e_historia_wyszukiwan,
+            ft.Text(
+                "Pod polem wyszukiwarki stoją chipy z ostatnimi frazami — jak sekcja „Ostatnio” "
+                "w szufladzie. Fraza trafia tam, gdy otworzysz z niej wynik albo ekran, oraz gdy "
+                "zapytanie było rozpoznanym filtrem z wynikami („marzec 2026”). Pojedynczy chip "
+                "kasuje długie przytrzymanie, całą listę przycisk „Wyczyść”. Wyłączenie przełącznika "
+                "kasuje zapamiętane frazy.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+        ], spacing=4)
+
         czern_sekcja = ft.Column([
             self.e_czysta_czern,
             ft.Text(
@@ -218,7 +245,8 @@ class UstawieniaView(ft.View):
 
         k1 = utils.karta_formularza(
             [self.e_waluta, self.e_jednostka, paleta_sekcja, ft.Divider(height=1), czern_sekcja,
-             ft.Divider(height=1), animacje_sekcja, ft.Divider(height=1), puste_kafelki_sekcja],
+             ft.Divider(height=1), animacje_sekcja, ft.Divider(height=1), puste_kafelki_sekcja,
+             ft.Divider(height=1), historia_wyszukiwan_sekcja],
             "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True, page=page
         )
         k2 = utils.karta_formularza(
