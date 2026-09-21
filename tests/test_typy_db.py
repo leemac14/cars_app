@@ -40,6 +40,7 @@ WYWOLANIA = {
     "brakujace_podzespoly": lambda k: (k["id"]["auto_id"], "LPG"),
     "domyslne_zadania": lambda k: ("LPG",),
     "generuj_eksport_csv": lambda k: (db.pobierz_dane_eksportu(k["id"]["auto_id"], list(db.KATEGORIE_EKSPORTU)),),
+    "globalne_wyszukiwanie": lambda k: (k["id"]["auto_id"], "olej"),
     "napraw_sciezki_zalacznikow": lambda k: (),
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
     "pakiety_dla_pojazdu": lambda k: (k["id"]["auto_id"],),

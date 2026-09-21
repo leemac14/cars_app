@@ -257,3 +257,50 @@ def test_chip_skladni_wstawia_wzor_do_pola(ekran):
 
     assert widok.pole_wyszukiwarki.value == db.PRZYKLADY_SKLADNI[0][0]
     assert widok.pasek_trybu.visible
+
+
+# ----------------------------------------------- zwykły tekst kontra operator
+
+
+def test_operator_tylko_zawezaja_to_co_znajduje_sam_tekst(pojazd):
+    """„orlen” ma znajdować to samo, co „stacja:orlen” — operator jest
+    pomocnikiem, a nie warunkiem, żeby cokolwiek dostać."""
+    tekstem = db.globalne_wyszukiwanie(pojazd, "orlen")
+    polem = db.globalne_wyszukiwanie(pojazd, "stacja:orlen")
+
+    assert [w["typ"] for w in polem] == ["Tankowanie"]
+    assert {w["trasa"] for w in polem} <= {w["trasa"] for w in tekstem}
+
+
+@pytest.mark.parametrize("fraza", ["Pełny bak", "pelny bak", "PELNY BAK", "bak pełny"])
+def test_ogonki_wielkosc_liter_i_kolejnosc_slow_nie_maja_znaczenia(pojazd, fraza):
+    """Notatka brzmi „Pełny bak przed trasą”. Szukanie po jednym ciągu znaków
+    wykładało się na każdej z tych trzech rzeczy naraz."""
+    assert [w["typ"] for w in db.globalne_wyszukiwanie(pojazd, fraza)] == ["Tankowanie"]
+
+
+def test_kazde_slowo_musi_trafic(pojazd):
+    assert db.globalne_wyszukiwanie(pojazd, "orlen trasą")
+    assert db.globalne_wyszukiwanie(pojazd, "orlen zderzak") == []
+
+
+def test_slowa_moga_pochodzic_z_roznych_pol(pojazd):
+    """„warsztat janka” — jedno słowo z nazwy, drugie z drugiej części nazwy;
+    wpis dostaje się do wyniku, bo zawiera OBA, a nie ten konkretny ciąg."""
+    typy = {w["typ"] for w in db.globalne_wyszukiwanie(pojazd, "janka warsztat")}
+    assert {"Warsztat", "Wizyta zbiorcza"} <= typy
+
+
+@pytest.mark.parametrize("fraza", ["wizyta", "brak", "km", "szacunek"])
+def test_napisy_z_interfejsu_nie_zalewaja_wynikow(pojazd, fraza):
+    """Podpis wyniku i nazwa rodzaju są składane przez aplikację, nie wpisane
+    przez użytkownika — gdyby wchodziły do szukania, „wizyta” wyrzucałoby
+    wszystkie wizyty, a „brak” wszystko, co ma pustą rubrykę."""
+    assert db.globalne_wyszukiwanie(pojazd, fraza) == []
+
+
+def test_dlugi_ciag_cyfr_to_tekst_a_nie_kwota(pojazd):
+    """Numeru telefonu nikt nie wpisuje jako ceny — jako kwota nie znajdował nic."""
+    assert db.parsuj_zapytanie("123456789") is None, "żaden filtr — zwykły tekst"
+    assert [w["typ"] for w in db.globalne_wyszukiwanie(pojazd, "123456789")] == ["Warsztat"]
+    assert db.parsuj_zapytanie("1234567")["kwota"] is not None, "krótsze zostaje kwotą"
