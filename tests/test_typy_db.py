@@ -44,6 +44,7 @@ WYWOLANIA = {
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
     "pakiety_dla_pojazdu": lambda k: (k["id"]["auto_id"],),
     "parsuj_zapytanie_kwotowe": lambda k: ("powyżej 100 zł",),
+    "parsuj_zapytanie_datowe": lambda k: ("marzec 2026",),
     "pobierz_budzety": lambda k: (k["id"]["auto_id"],),
     "pobierz_checklisty": lambda k: (k["id"]["auto_id"],),
     "pobierz_czesci_do_zuzycia": lambda k: (k["id"]["auto_id"],),

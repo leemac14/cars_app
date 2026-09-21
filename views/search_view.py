@@ -23,9 +23,11 @@ class SzukajView(ft.View):
     PODPOWIEDZ_STARTOWA = (
         "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
         "inne koszty, warsztaty, wydatki cykliczne, zapisane trasy, checklisty, "
-        "notatki wpisów i listę Do zrobienia "
-        "bieżącego pojazdu. Sama liczba szuka po kwocie. Szukanie obejmuje też EKRANY "
-        "aplikacji — wpisz „rok”, „budżet” albo „przebieg”, żeby wejść prosto tam, gdzie trzeba."
+        "notatki wpisów i listę Do zrobienia bieżącego pojazdu. Zamiast tekstu można "
+        "wpisać okres („marzec 2026”, „ostatni tydzień”), pole („stacja:orlen”, "
+        "„tag:ubezpieczenie”, „kategoria:opłaty”) albo kwotę („>1000”) — i łączyć to ze sobą. "
+        "Szukanie obejmuje też EKRANY aplikacji — wpisz „rok”, „budżet” albo „przebieg”, "
+        "żeby wejść prosto tam, gdzie trzeba."
     )
 
     def __init__(self, page: ft.Page, state):
@@ -65,24 +67,31 @@ class SzukajView(ft.View):
             alignment=ft.Alignment.CENTER,
         )
 
-        # Składnia kwotowa jest odkrywalna tylko wtedy, gdy się o niej powie —
-        # sam „>1000” nikomu nie przyjdzie do głowy w polu opisanym „Szukaj”.
-        self.podpowiedz_kwot = ft.Container(
+        # Składnia poleceń jest odkrywalna tylko wtedy, gdy się o niej powie —
+        # sam „>1000” ani „stacja:” nikomu nie przyjdzie do głowy w polu opisanym
+        # „Szukaj”. Chipy są klikalne, więc wzór nie wymaga przepisywania.
+        self.podpowiedz_skladni = ft.Container(
             padding=ft.Padding(12, 10, 12, 10),
             border_radius=utils.RADIUS["sm"],
             bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY),
-            content=ft.Row([
-                ft.Icon(ft.Icons.PAYMENTS, size=16, color=ft.Colors.PRIMARY),
-                ft.Text(
-                    "Szukanie po kwocie: 450 (±2%) · >1000 · <50 · 200-500",
-                    size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
-                ),
-            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.BOLT, size=16, color=ft.Colors.PRIMARY),
+                    ft.Text(
+                        "Kliknij wzór i dopisz resztę — filtry sumują się ze sobą",
+                        size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
+                    ),
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                utils.pasek_zawijany(
+                    [self._chip_skladni(wzor, opis) for wzor, opis in db.PRZYKLADY_SKLADNI],
+                    spacing=6),
+            ], spacing=8, tight=True),
         )
 
         # Pasek pokazywany dopiero wtedy, gdy zapytanie ZOSTAŁO rozpoznane jako
-        # kwota — inaczej nie wiadomo, czemu „450” nie znalazło daty z 450.
-        self.pasek_trybu_kwoty = ft.Container(visible=False)
+        # filtr — inaczej nie wiadomo, czemu „450” nie znalazło daty z 450, ani
+        # czemu „marzec” pominął wpis ze słowem „marzec” w notatce.
+        self.pasek_trybu = ft.Container(visible=False)
 
         # Wyszukiwarka przestała być tylko przeglądarką WPISÓW. Najczęstszym
         # pytaniem w rozrosłej aplikacji nie jest „ile zapłaciłem na Orlenie”,
@@ -101,7 +110,7 @@ class SzukajView(ft.View):
         utils.pamietaj_pozycje(self._page, self.state, self.lista_wynikow, "lista:wyszukiwarka")
 
         elementy = [
-            self.pole_wyszukiwarki, self.podpowiedz_kwot, self.pasek_trybu_kwoty,
+            self.pole_wyszukiwarki, self.podpowiedz_skladni, self.pasek_trybu,
             self.sekcja_ekranow, self.kontener_pomocniczy, self.lista_wynikow,
             self.sekcja_ekranow_pod,
         ]
@@ -109,6 +118,24 @@ class SzukajView(ft.View):
         super().__init__(
             route="/szukaj", padding=15, spacing=15, appbar=appbar,
             controls=elementy, scroll=ft.ScrollMode.AUTO
+        )
+
+    def _chip_skladni(self, wzor, opis):
+        """Klikalny wzór polecenia. Wstawia CAŁY wzór i od razu szuka — po
+        „stacja:” nie ma jeszcze czego znaleźć, ale pasek trybu pokazuje, że
+        polecenie zostało rozpoznane, i widać, co dopisać."""
+        def wstaw(e):
+            self.pole_wyszukiwarki.value = wzor
+            self._wyszukaj(None)
+
+        return ft.Container(
+            padding=ft.Padding(10, 6, 10, 6), border_radius=utils.RADIUS["sm"], ink=True,
+            bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
+            on_click=wstaw,
+            content=ft.Row([
+                ft.Text(wzor, size=utils.FS["caption"], weight="bold", color=ft.Colors.PRIMARY),
+                ft.Text(opis, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+            ], spacing=6, tight=True),
         )
 
     def _wiersz_ekranu(self, ekran):
@@ -209,44 +236,49 @@ class SzukajView(ft.View):
         zapytanie = (self.pole_wyszukiwarki.value or "").strip()
         self.lista_wynikow.controls.clear()
 
-        zakres = db.parsuj_zapytanie_kwotowe(zapytanie)
-        # Jednoznakowe zapytanie kwotowe („5”) ma sens, więc próg 2 znaków
+        filtr = db.parsuj_zapytanie(zapytanie)
+        # Jednoznakowe zapytanie z filtrem („5”, „>9”) ma sens, więc próg 2 znaków
         # obowiązuje tylko zwykły tekst.
-        if not zakres and len(zapytanie) < 2:
+        if not filtr and len(zapytanie) < 2:
             self.tekst_pomocniczy.value = self.PODPOWIEDZ_STARTOWA
             self.kontener_pomocniczy.visible = True
-            self.pasek_trybu_kwoty.visible = False
+            self.pasek_trybu.visible = False
+            self.podpowiedz_skladni.visible = True
             self._pokaz_ekrany("", sa_wpisy=False)
             self.update()
             return
 
-        if zakres:
-            self.pasek_trybu_kwoty.content = ft.Row([
+        if filtr:
+            # Waluta dokleja się tylko przy kwocie — i tylko na końcu, bo opis
+            # filtrów trzyma kwotę jako ostatnią właśnie po to.
+            opis = f"{filtr['opis']} {utils.symbol_waluty()}" if filtr["kwota"] else filtr["opis"]
+            self.pasek_trybu.content = ft.Row([
                 ft.Icon(ft.Icons.FILTER_ALT, size=16, color=ft.Colors.PRIMARY),
-                ft.Text(f"Szukam po kwocie: {zakres[2]} {utils.symbol_waluty()}",
+                ft.Text(f"Szukam: {opis}",
                         size=12, weight="bold", color=ft.Colors.PRIMARY, expand=True),
             ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-            self.pasek_trybu_kwoty.padding = ft.Padding(12, 10, 12, 10)
-            self.pasek_trybu_kwoty.border_radius = utils.RADIUS["sm"]
-            self.pasek_trybu_kwoty.bgcolor = ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY)
-            self.pasek_trybu_kwoty.visible = True
-            self.podpowiedz_kwot.visible = False
+            self.pasek_trybu.padding = ft.Padding(12, 10, 12, 10)
+            self.pasek_trybu.border_radius = utils.RADIUS["sm"]
+            self.pasek_trybu.bgcolor = ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY)
+            self.pasek_trybu.visible = True
+            self.podpowiedz_skladni.visible = False
         else:
-            self.pasek_trybu_kwoty.visible = False
-            self.podpowiedz_kwot.visible = True
+            self.pasek_trybu.visible = False
+            self.podpowiedz_skladni.visible = True
 
         # Najpierw wpisy: od tego, czy fraza w nie trafiła, zależy, gdzie staną ekrany.
         wyniki = db.globalne_wyszukiwanie(self.state.auto_id, zapytanie)
 
-        # Zapytanie kwotowe („>1000”) nie jest nazwą ekranu — pokazywanie przy nim
-        # listy ekranów byłoby szumem. Sekcje trzeba wtedy jawnie schować: bez tego
-        # szybka zamiana „olej” na „450” zostawiała ekrany z poprzedniej frazy.
-        ile_ekranow = self._pokaz_ekrany("" if zakres else zapytanie, sa_wpisy=bool(wyniki))
+        # Zapytanie z filtrem („>1000”, „marzec 2026”, „stacja:orlen”) nie jest
+        # nazwą ekranu — pokazywanie przy nim listy ekranów byłoby szumem. Sekcje
+        # trzeba wtedy jawnie schować: bez tego szybka zamiana „olej” na „450”
+        # zostawiała ekrany z poprzedniej frazy.
+        ile_ekranow = self._pokaz_ekrany("" if filtr else zapytanie, sa_wpisy=bool(wyniki))
 
         if not wyniki:
             self.tekst_pomocniczy.value = (
                 f"Brak wpisów pasujących do zapytania „{zapytanie}”."
-                if zakres else (
+                if filtr else (
                     f"Brak wpisów dla „{zapytanie}” — pasuje za to ekran powyżej."
                     if ile_ekranow else f"Brak wyników dla „{zapytanie}”."
                 )
