@@ -12,10 +12,11 @@ class FormularzWizytyView(ft.View):
         self.state = state
         self.w_id = w_id
 
-        d_val, p_val, wyk_val, kosz_val, not_val, podpiete = datetime.now().strftime("%d.%m.%Y"), str(db.pobierz_aktualny_przebieg(self.state.auto_id) or ""), "", "", "", set()
+        d_val, p_val, wyk_val, not_val, podpiete = datetime.now().strftime("%d.%m.%Y"), str(db.pobierz_aktualny_przebieg(self.state.auto_id) or ""), "", "", set()
         self.zalacznik_val = None
         tagi_val = ""
         kat_val = "Letnie"
+        koszt_zrodla, robocizna_zrodla = None, None
 
         # Duplikat wizyty: ten sam wzorzec, co przy tankowaniu, wpisie i koszcie —
         # źródło zużywamy jednorazowo, żeby powrót do formularza nie skopiował
@@ -27,10 +28,11 @@ class FormularzWizytyView(ft.View):
         if zrodlo_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi FROM wizyty WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, koszt_robocizny FROM wizyty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
-                    d_val, p_val, wyk_val, kosz_val, not_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), w[3], str(w[4] or "")
+                    d_val, p_val, wyk_val, not_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), str(w[4] or "")
+                    koszt_zrodla, robocizna_zrodla = float(w[3] or 0.0), w[7]
                     self.zalacznik_val = w[5]
                     tagi_val = str(w[6] or "")
                 c.execute("SELECT zadanie_id, kategoria FROM historia WHERE wizyta_id=?", (zrodlo_id,))
@@ -48,20 +50,21 @@ class FormularzWizytyView(ft.View):
             p_val = str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
             self.zalacznik_val = None
 
-        # Części z magazynu doliczają się do kosztu wizyty, więc w polu kosztu
+        # Części z magazynu doliczają się do kosztu wizyty, więc w polach kosztu
         # stoi sam rachunek warsztatu: od zapisanego kosztu odejmujemy to, co
         # doliczył magazyn — przy edycji tej wizyty i przy duplikacie innej.
         self.zuzycie = utils.ZuzycieMagazynu(page, self.state.auto_id, "wizyty", w_id)
+        doliczone = 0.0
         if zrodlo_id:
             doliczone = (self.zuzycie.koszt_doliczony if w_id
                          else db.koszt_doliczony(db.pobierz_zuzycie_czesci("wizyty", duplikuj_id)))
-            kosz_val = utils.koszt_bez_czesci_do_pola(kosz_val, doliczone)
 
         self.e_d = utils.pole_daty(page, "Data odebrania z warsztatu", d_val)
         self.e_p = ft.TextField(label="Przebieg podczas wizyty (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, wyk_val)
-        self.e_k = ft.TextField(label=f"Całkowity koszt naprawy ({utils.symbol_waluty()})", value=kosz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
-        self.podpis_kosztu = self.zuzycie.podepnij_pole_kosztu(self.e_k)
+        # Rachunek warsztatu osobno za robociznę i za części — albo jedną kwotą,
+        # gdy rachunek podziału nie ma. Duplikat przenosi też podział.
+        self.koszt = utils.KosztNaprawy(page, self.zuzycie, koszt_zrodla, robocizna_zrodla, doliczone)
         self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
@@ -102,7 +105,7 @@ class FormularzWizytyView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", "/wizyty", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza(
-            [self.e_d, self.e_p, self.k_wykonawca, self.e_k, self.podpis_kosztu, self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
+            [self.e_d, self.e_p, self.k_wykonawca, *self.koszt.kontrolki(), self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
             "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True, page=page
         )
         k1b = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
@@ -478,7 +481,7 @@ class FormularzWizytyView(ft.View):
 
     def _migawka_formularza(self):
         return (
-            self.e_d.value, self.e_p.value, self.get_wykonawca(), self.e_k.value, self.e_n.value,
+            self.e_d.value, self.e_p.value, self.get_wykonawca(), self.koszt.migawka(), self.e_n.value,
             self.get_tagi(), self.e_kat_wizyty.value,
             tuple(chk.value for chk in self.chk_czesci),
             self.zuzycie.migawka(),
@@ -489,11 +492,11 @@ class FormularzWizytyView(ft.View):
 
     def zapisz(self, e):
         utils.ustaw_blad(self.e_p)
-        utils.ustaw_blad(self.e_k)
-        prz, kos = utils.parsuj_int(self.e_p.value, 0), utils.parsuj_float(self.e_k.value, 0.0)
+        prz = utils.parsuj_int(self.e_p.value, 0)
+        kos, robocizna, bledy_kosztu = self.koszt.sprawdz()
         bledy = []
         if not (self.e_p.value or "").strip(): bledy.append((self.e_p, "Wymagane"))
-        if kos < 0: bledy.append((self.e_k, "Koszt nie może być ujemny"))
+        bledy += bledy_kosztu
         
         wybrane = [chk.data for chk in self.chk_czesci if chk.value]
         self.blad_czesci.value = "Zaznacz co najmniej jedną część!" if not wybrane else ""
@@ -535,7 +538,7 @@ class FormularzWizytyView(ft.View):
                 cur.execute("SELECT dodane_przez FROM wizyty WHERE id=?", (self.w_id,))
                 w_osoba = cur.fetchone()
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
-                cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, koszt_razem, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
+                cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
 
                 # Zapamiętujemy zdalne_id usuwanych wpisów historii — DELETE+INSERT
                 # niżej to z punktu widzenia sync'a "usunięcie starych + utworzenie
@@ -552,7 +555,7 @@ class FormularzWizytyView(ft.View):
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
             else:
                 osoba_wizyty = db.pobierz_moje_imie()
-                cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, koszt_razem, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
+                cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
                 wizyta_id = cur.lastrowid
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None

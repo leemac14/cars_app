@@ -26,6 +26,7 @@ from .filtry import *
 from .sync_ui import *
 from .formularze import *
 from .magazyn import *
+from .koszt_naprawy import *
 from .notatki import *
 from .zalaczniki import *
 from .wykresy import *
@@ -53,6 +54,7 @@ from . import (
     sync_ui,
     formularze,
     magazyn,
+    koszt_naprawy,
     notatki,
     zalaczniki,
     wykresy,

@@ -56,8 +56,15 @@ KONFIGURACJA_SYNC = [
     {"tabela": "tagi", "kolumny": ["nazwa", "kolor"], "fk": {}},
     {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "rodzaj_energii", "typ_ladowania", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon", "prog_km", "prog_dni"], "fk": {}},
-    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
-    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"}},
+    # `dopisane` — kolumny dołożone do synchronizacji, kiedy w chmurze były już
+    # rekordy. Dopóki są puste, rekord liczy się tak, jakby kolumny nie było:
+    # inaczej nowy klucz zmieniałby hash KAŻDEGO wiersza, telefon po
+    # aktualizacji wysyłałby całą tabelę od nowa, a drugi telefon zgłaszałby
+    # przy każdym wierszu konflikt z wersją, którą właśnie wysłał pierwszy.
+    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "koszt_robocizny", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {},
+     "dopisane": ["koszt_robocizny"]},
+    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "koszt_robocizny", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
+     "dopisane": ["koszt_robocizny"]},
     # Koszt zużycia jedzie razem z ilością: to on mówi drugiej osobie, ile
     # z kosztu wizyty przyszło z magazynu — bez niego jej edycja tej wizyty
     # doliczyłaby części drugi raz.

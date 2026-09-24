@@ -81,14 +81,15 @@ class ZuzycieMagazynu:
     `rekord_id` — edytowany rekord. Nowy wpis i duplikat przychodzą bez niego:
     zużycia się nie kopiuje, bo stan magazynu mógł się od tamtej pory zmienić.
 
-    Formularz odpowiada za trzy rzeczy: wstawia `karta()`, podpina swoje pole
-    kosztu przez `podepnij_pole_kosztu()` i przy zapisie woła `sprawdz()`.
-    W polu kosztu stoi SAMA usługa — `koszt_doliczony` to kwota, którą trzeba
-    odjąć od zapisanego kosztu rekordu, zanim trafi do tego pola."""
+    Formularz odpowiada za trzy rzeczy: wstawia `karta()`, pokazuje koszt
+    przez utils.KosztNaprawy (ten słucha zmian przez `przy_zmianie()`) i przy
+    zapisie woła `sprawdz()`. W polach kosztu stoi SAMA usługa —
+    `koszt_doliczony` to kwota, którą trzeba odjąć od zapisanego kosztu
+    rekordu, zanim trafi do formularza."""
 
     def __init__(self, page: ft.Page, auto_id, zrodlo, rekord_id=None):
         self._page = page
-        self._pole_kosztu = None
+        self._obserwatorzy = []
         self._waluta = symbol_waluty()
         self.poprzednie = db.pobierz_zuzycie_czesci(zrodlo, rekord_id) if rekord_id else {}
         self.koszt_doliczony = db.koszt_doliczony(self.poprzednie)
@@ -136,7 +137,6 @@ class ZuzycieMagazynu:
             on_change=lambda e: self._przelacz_magazyn(),
         )
         self.podsumowanie = ft.Text("", size=FS["body"], visible=False)
-        self.podpis_kosztu = ft.Text("", size=FS["label"], color=KOLOR_DRUGIEGO_PLANU, visible=False)
         self._odswiez_opisy()
 
     # ------------------------------------------------------------ dla formularza
@@ -152,14 +152,12 @@ class ZuzycieMagazynu:
             domyslnie_otwarte=bool(self.poprzednie),
         )
 
-    def podepnij_pole_kosztu(self, pole: ft.TextField):
-        """Pod polem kosztu pojawia się linijka: ile doliczą części z magazynu
-        i ile wyjdzie razem. Zwraca ją do wstawienia zaraz pod polem — karta
-        magazynu leży na dole formularza, a o kwocie myśli się przy kwocie."""
-        self._pole_kosztu = pole
-        pole.on_change = lambda e: self._odswiez_podpis_kosztu(odswiez_strone=True)
-        self._odswiez_podpis_kosztu()
-        return self.podpis_kosztu
+    def przy_zmianie(self, funkcja):
+        """`funkcja()` po każdej zmianie zaznaczenia albo ilości, przed
+        odświeżeniem strony. Tak pod polami kosztu staje linijka „+ części
+        z magazynu … = razem …” — karta magazynu leży na dole formularza,
+        a o kwocie myśli się przy kwocie."""
+        self._obserwatorzy.append(funkcja)
 
     def migawka(self):
         """Stan karty do wykrywania niezapisanych zmian."""
@@ -201,7 +199,8 @@ class ZuzycieMagazynu:
 
     def przelicz(self):
         self._odswiez_opisy()
-        self._odswiez_podpis_kosztu()
+        for funkcja in self._obserwatorzy:
+            funkcja()
         self._odswiez_strone()
 
     # ------------------------------------------------------------ środek
@@ -250,18 +249,6 @@ class ZuzycieMagazynu:
         self.podsumowanie.value = " · ".join(czesci)
         self.podsumowanie.visible = bool(czesci)
 
-    def _odswiez_podpis_kosztu(self, odswiez_strone=False):
-        koszt = self.koszt()
-        if self._pole_kosztu is not None and koszt > 0:
-            wlasny = max(0.0, parsuj_float(self._pole_kosztu.value, 0.0) or 0.0)
-            self.podpis_kosztu.value = (f"+ części z magazynu {formatuj_liczba(koszt)} {self._waluta}"
-                                        f" = razem {formatuj_liczba(wlasny + koszt)} {self._waluta}")
-            self.podpis_kosztu.visible = True
-        else:
-            self.podpis_kosztu.value = ""
-            self.podpis_kosztu.visible = False
-        if odswiez_strone:
-            self._odswiez_strone()
 
 
 __all__ = [

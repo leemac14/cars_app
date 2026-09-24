@@ -265,6 +265,8 @@ IKONY_OBSERWACJI = {
     "stacja": ft.Icons.STORE,
     "cisza": ft.Icons.NOTIFICATIONS_PAUSED,
     "koszt_km": ft.Icons.AUTO_GRAPH,
+    "warsztat": ft.Icons.HANDYMAN,
+    "czesci": ft.Icons.INVENTORY_2,
 }
 
 

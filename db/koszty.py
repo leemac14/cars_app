@@ -2,9 +2,11 @@
 
 from date import parsuj_date
 from datetime import datetime
+from typing import Any
 
 from .stale import KATEGORIA_INNE_DOMYSLNA, KATEGORIE_INNYCH_KOSZTOW
 from .polaczenie import polacz_baze
+from .pomocnicze import _na_liczbe, bez_emoji
 
 KATEGORIE_BUDZETU = {
     "paliwo": "Paliwo i energia",
@@ -394,9 +396,192 @@ def pobierz_podzial_kosztow(auto_id, rok, miesiac):
     return wynik
 
 
+# ---------------------------------------------------------------------------
+# Robocizna i części
+# ---------------------------------------------------------------------------
+# Jedna kwota przy naprawie nie mówi, czy drogi jest warsztat, czy części —
+# a to decyduje, czy szukać innego mechanika, czy kupować części samemu.
+# W bazie leżą dwie liczby: koszt całkowity i robocizna (NULL = bez podziału).
+# Części z magazynu zna `koszt` przy zużyciu, a części na rachunku to reszta,
+# więc rozbicie sumuje się zawsze — patrz migracja 42.
+
+def rozbicie_kosztu(koszt, robocizna=None, z_magazynu=0.0) -> dict[str, Any]:
+    """Koszt wizyty albo pojedynczego wpisu rozbity na robociznę, części na
+    rachunku i części z magazynu.
+
+    Części na rachunku to RESZTA po robociźnie i magazynie. Dzięki temu suma
+    zgadza się także wtedy, gdy koszt zmieniła starsza wersja aplikacji albo
+    zwrot pozycji wizyty na listę Do zrobienia (różnica schodzi najpierw
+    z części), a koszt usuniętej pozycji magazynu, który został w kwocie,
+    liczy się jako część — bo nią był.
+
+    Robocizna None to „bez podziału” — chyba że poza magazynem nie ma czego
+    dzielić: przy rachunku zero robocizny też nie było."""
+    razem = max(0.0, round(_na_liczbe(koszt) or 0.0, 2))
+    magazyn = min(razem, max(0.0, round(_na_liczbe(z_magazynu) or 0.0, 2)))
+    rachunek = round(razem - magazyn, 2)
+    rob = _na_liczbe(robocizna)
+    wynik = {"razem": razem, "z_magazynu": magazyn, "rachunek": rachunek,
+             "robocizna": None, "czesci": None, "podzielony": False}
+    if rob is None and rachunek > 0:
+        return wynik
+    rob = round(min(max(0.0, rob or 0.0), rachunek), 2)
+    wynik.update(robocizna=rob, czesci=round(rachunek - rob, 2), podzielony=True)
+    return wynik
+
+
+def _w_okresie(data_str, od_data=None, do_data=None):
+    d = parsuj_date(data_str)
+    return d != datetime.min.date() and not (od_data and d < od_data) and not (do_data and d > do_data)
+
+
+def _rekordy_napraw(conn, auto_id):
+    """Naprawy pojazdu — wizyty i pojedyncze wpisy serwisowe — z rozbiciem
+    kosztu, warsztatem i podzespołami. Wpis należący do wizyty nie jest osobną
+    naprawą: jego koszt niesie wizyta (ta sama zasada co w `_wiersze_kosztow`).
+    Zwraca (rekordy, {zadanie_id: nazwa})."""
+    c = conn.cursor()
+    c.execute("SELECT id, nazwa FROM zadania WHERE auto_id=?", (auto_id,))
+    nazwy = {z_id: str(nazwa or "").strip() for z_id, nazwa in c.fetchall()}
+
+    rekordy = []
+    c.execute(
+        "SELECT w.id, w.data, w.koszt_calkowity, w.koszt_robocizny, w.wykonawca, "
+        "(SELECT SUM(x.koszt) FROM wizyta_czesci_magazynu x WHERE x.wizyta_id = w.id), "
+        "(SELECT GROUP_CONCAT(h.zadanie_id) FROM historia h WHERE h.wizyta_id = w.id) "
+        "FROM wizyty w WHERE w.auto_id=?", (auto_id,)
+    )
+    for w_id, data, koszt, robocizna, wykonawca, magazyn, zadania in c.fetchall():
+        rekordy.append({
+            "zrodlo": "wizyty", "id": w_id, "data": data, "wykonawca": wykonawca,
+            "zadania": {int(z) for z in str(zadania or "").split(",") if z.strip()},
+            **rozbicie_kosztu(koszt, robocizna, magazyn),
+        })
+    c.execute(
+        "SELECT h.id, h.data, h.cena, h.koszt_robocizny, h.wykonawca, "
+        "(SELECT SUM(x.koszt) FROM historia_czesci_magazynu x WHERE x.historia_id = h.id), h.zadanie_id "
+        "FROM historia h JOIN zadania z ON h.zadanie_id = z.id "
+        "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+    )
+    for h_id, data, cena, robocizna, wykonawca, magazyn, zadanie_id in c.fetchall():
+        rekordy.append({
+            "zrodlo": "historia", "id": h_id, "data": data, "wykonawca": wykonawca,
+            "zadania": {zadanie_id},
+            **rozbicie_kosztu(cena, robocizna, magazyn),
+        })
+    return rekordy, nazwy
+
+
+def pobierz_rozbicie_napraw(auto_id, od_data=None, do_data=None) -> dict[str, Any]:
+    """Robocizna, części na rachunku i części z magazynu w naprawach z okresu,
+    plus zestawienie warsztatów.
+
+    Sumy biorą WYŁĄCZNIE naprawy z podziałem — naprawa bez podziału wrzucona
+    w całości do którejś z kategorii przekłamałaby proporcję, o którą tu
+    chodzi. Liczy się ją osobno (`bez_podzialu`, `kwota_bez_podzialu`), żeby
+    było widać, ile porównanie pomija.
+
+    Warsztaty: tylko naprawy z czymś na rachunku. Średnia robocizna jest na
+    naprawę, a udział — w samym rachunku warsztatu, bez części z magazynu
+    (za nie warsztat nie wystawiał rachunku). Kolejność: najdroższa robocizna
+    na górze."""
+    wynik = {"robocizna": 0.0, "czesci": 0.0, "z_magazynu": 0.0, "razem": 0.0, "napraw": 0,
+             "bez_podzialu": 0, "kwota_bez_podzialu": 0.0, "warsztaty": []}
+    if not auto_id:
+        return wynik
+    with polacz_baze() as conn:
+        rekordy, _ = _rekordy_napraw(conn, auto_id)
+
+    warsztaty = {}
+    for r in rekordy:
+        if r["razem"] <= 0 or not _w_okresie(r["data"], od_data, do_data):
+            continue
+        if not r["podzielony"]:
+            wynik["bez_podzialu"] += 1
+            wynik["kwota_bez_podzialu"] += r["razem"]
+            continue
+        wynik["napraw"] += 1
+        for klucz in ("robocizna", "czesci", "z_magazynu"):
+            wynik[klucz] += r[klucz]
+        if r["rachunek"] <= 0:
+            continue
+        nazwa = " ".join(str(r["wykonawca"] or "").split()) or "Warsztat"
+        grupa = warsztaty.setdefault(klucz_stacji(bez_emoji(nazwa)) or nazwa.lower(),
+                                     {"warianty": {}, "napraw": 0, "robocizna": 0.0, "czesci": 0.0})
+        grupa["warianty"][nazwa] = grupa["warianty"].get(nazwa, 0) + 1
+        grupa["napraw"] += 1
+        grupa["robocizna"] += r["robocizna"]
+        grupa["czesci"] += r["czesci"]
+
+    for klucz in ("robocizna", "czesci", "z_magazynu", "kwota_bez_podzialu"):
+        wynik[klucz] = round(wynik[klucz], 2)
+    wynik["razem"] = round(wynik["robocizna"] + wynik["czesci"] + wynik["z_magazynu"], 2)
+
+    for grupa in warsztaty.values():
+        rachunek = grupa["robocizna"] + grupa["czesci"]
+        wynik["warsztaty"].append({
+            "nazwa": max(grupa["warianty"].items(), key=lambda kv: (kv[1], kv[0]))[0],
+            "napraw": grupa["napraw"],
+            "robocizna": round(grupa["robocizna"], 2),
+            "czesci": round(grupa["czesci"], 2),
+            "srednia_robocizna": round(grupa["robocizna"] / grupa["napraw"], 2),
+            "udzial_robocizny": round(grupa["robocizna"] / rachunek * 100, 1) if rachunek > 0 else 0.0,
+        })
+    wynik["warsztaty"].sort(key=lambda w: (-w["srednia_robocizna"], w["nazwa"]))
+    return wynik
+
+
+def porownaj_czesci_wlasne(auto_id, od_data=None, do_data=None) -> list[dict[str, Any]]:
+    """Części tego samego podzespołu kupione przez warsztat i wzięte z własnego
+    magazynu: [{"zadanie_id", "nazwa", "z_warsztatu", "ile_z_warsztatu",
+    "wlasne", "ile_wlasnych", "roznica"}], największa różnica na górze.
+
+    Porównywalna jest tylko naprawa JEDNEGO podzespołu — koszt części wizyty
+    z kilkoma pozycjami nie da się przypisać żadnej z nich. Z warsztatu:
+    robocizna i części na rachunku, nic z magazynu. Własne: części wyłącznie
+    z magazynu, nic na rachunku. Naprawa mieszana nie mówi ani jednego, ani
+    drugiego, więc nie wchodzi wcale. Kwoty to średnie na naprawę; podzespół
+    trafia na listę dopiero z obiema stronami."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        rekordy, nazwy = _rekordy_napraw(conn, auto_id)
+
+    grupy = {}
+    for r in rekordy:
+        if len(r["zadania"]) != 1 or not r["podzielony"] or not _w_okresie(r["data"], od_data, do_data):
+            continue
+        if r["robocizna"] > 0 and r["czesci"] > 0 and r["z_magazynu"] == 0:
+            strona, kwota = "z_warsztatu", r["czesci"]
+        elif r["z_magazynu"] > 0 and r["czesci"] == 0:
+            strona, kwota = "wlasne", r["z_magazynu"]
+        else:
+            continue
+        zadanie_id = next(iter(r["zadania"]))
+        grupa = grupy.setdefault(zadanie_id, {"z_warsztatu": [], "wlasne": []})
+        grupa[strona].append(kwota)
+
+    wynik = []
+    for zadanie_id, grupa in grupy.items():
+        if not grupa["z_warsztatu"] or not grupa["wlasne"]:
+            continue
+        z_warsztatu = round(sum(grupa["z_warsztatu"]) / len(grupa["z_warsztatu"]), 2)
+        wlasne = round(sum(grupa["wlasne"]) / len(grupa["wlasne"]), 2)
+        wynik.append({
+            "zadanie_id": zadanie_id, "nazwa": nazwy.get(zadanie_id) or "Podzespół",
+            "z_warsztatu": z_warsztatu, "ile_z_warsztatu": len(grupa["z_warsztatu"]),
+            "wlasne": wlasne, "ile_wlasnych": len(grupa["wlasne"]),
+            "roznica": round(z_warsztatu - wlasne, 2),
+        })
+    wynik.sort(key=lambda p: (-abs(p["roznica"]), p["nazwa"]))
+    return wynik
+
+
 __all__ = [
     "DNI_W_MIESIACU",
     "KATEGORIE_BUDZETU",
+    "_rekordy_napraw",
+    "_w_okresie",
     "_wiersze_kosztow",
     "etykieta_kategorii_innych",
     "klucz_stacji",
@@ -406,6 +591,9 @@ __all__ = [
     "pobierz_koszty_miesieczne",
     "pobierz_koszty_miesieczne_wg_kategorii",
     "pobierz_podzial_kosztow",
+    "pobierz_rozbicie_napraw",
+    "porownaj_czesci_wlasne",
+    "rozbicie_kosztu",
     "siatka_miesiecy",
     "pobierz_stacje_paliw",
     "pobierz_trend_cen_paliwa",

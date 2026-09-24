@@ -80,6 +80,14 @@ def wybierz(zuzycie, magazyn_id, ilosc):
     raise AssertionError(f"pozycji {magazyn_id} nie ma w karcie magazynu")
 
 
+def wpisz_koszt(widok, kwota):
+    """Koszt usługi jedną kwotą — tak jak przed podziałem na robociznę
+    i części (ten sprawdza tests/test_robocizna_czesci.py). Tu chodzi
+    wyłącznie o to, co dolicza magazyn."""
+    widok.koszt.przelacz(False)
+    widok.koszt.e_kwota.value = kwota
+
+
 def odznacz(zuzycie, magazyn_id):
     for pozycja in zuzycie._pozycje:
         if pozycja["id"] == magazyn_id:
@@ -147,7 +155,7 @@ def nowy_wpis(dane, koszt="50", czesci=(("olej", "4"),)):
     stan = pomoce.stan_aplikacji(dane["auto_id"], "Magazynowy")
     widok = formularz_wpisu(stan, dane)
     widok.e_p.value = "120000"
-    widok.e_c.value = koszt
+    wpisz_koszt(widok, koszt)
     for klucz, ilosc in czesci:
         wybierz(widok.zuzycie, dane[klucz], ilosc)
     widok.zapisz(None)
@@ -273,9 +281,9 @@ def test_edycja_nie_dolicza_czesci_drugi_raz_i_trzyma_dawna_cene(baza, bez_nawig
         conn.execute("UPDATE magazyn_czesci SET cena_jednostkowa=40 WHERE id=?", (dane["olej"],))
 
     widok = formularz_wpisu(stan, dane, h_id)
-    assert widok.e_c.value == "50", "w polu kosztu stoi sama usługa, bez części z magazynu"
+    assert widok.koszt.e_kwota.value == "50", "w polu kosztu stoi sama usługa, bez części z magazynu"
     assert widok.zuzycie.c_uzyj.value is True
-    assert "120,00" in widok.podpis_kosztu.value and "170,00" in widok.podpis_kosztu.value
+    assert "120,00" in widok.koszt.podsumowanie.value and "170,00" in widok.koszt.podsumowanie.value
     widok.zapisz(None)
 
     assert jeden("SELECT cena FROM historia WHERE id=?", (h_id,)) == 170.0
@@ -332,7 +340,7 @@ def test_duplikat_wpisu_nie_przenosi_kosztu_czesci(baza, bez_nawigacji):
 
     widok = formularz_wpisu(stan, dane)
 
-    assert widok.e_c.value == "50", "duplikat nie niesie części, więc nie może nieść ich kosztu"
+    assert widok.koszt.e_kwota.value == "50", "duplikat nie niesie części, więc nie może nieść ich kosztu"
     assert widok.zuzycie.c_uzyj.value is False
 
 
@@ -347,7 +355,7 @@ def test_stare_zuzycie_bez_kosztu_dolicza_sie_dopiero_przy_edycji(baza, bez_nawi
     stan = pomoce.stan_aplikacji(dane["auto_id"], "Magazynowy")
 
     widok = formularz_wpisu(stan, dane, h_id)
-    assert widok.e_c.value == ""
+    assert widok.koszt.migawka() == ("podział", 0.0, 0.0), "poza magazynem nie ma czego dzielić"
     widok.zapisz(None)
 
     assert jeden("SELECT cena FROM historia WHERE id=?", (h_id,)) == 30.0
@@ -379,7 +387,7 @@ def test_wizyta_dolicza_czesci_a_duplikat_i_usuniecie_ich_nie_gubia(baza, bez_na
 
     widok = formularz_wizyty(stan)
     widok.e_p.value = "120100"
-    widok.e_k.value = "300"
+    wpisz_koszt(widok, "300")
     next(chk for chk in widok.chk_czesci if chk.data == dane["zadanie"]).value = True
     wybierz(widok.zuzycie, dane["olej"], "2")
     widok.zapisz(None)
@@ -391,13 +399,13 @@ def test_wizyta_dolicza_czesci_a_duplikat_i_usuniecie_ich_nie_gubia(baza, bez_na
 
     # Zapis bez zmian nie dolicza drugi raz.
     widok = formularz_wizyty(stan, w_id)
-    assert widok.e_k.value == "300"
+    assert widok.koszt.e_kwota.value == "300"
     widok.zapisz(None)
     assert jeden("SELECT koszt_calkowity FROM wizyty WHERE id=?", (w_id,)) == 360.0
     assert stan_magazynu(dane["olej"]) == 3.0
 
     stan.duplikuj_zrodlo_wizyta = w_id
-    assert formularz_wizyty(stan).e_k.value == "300"
+    assert formularz_wizyty(stan).koszt.e_kwota.value == "300"
 
     wynik = db.usun_wizyty_z_cofnieciem([w_id])
     assert stan_magazynu(dane["olej"]) == 5.0
@@ -470,7 +478,7 @@ def test_karty_wpisow_i_wizyt_mowia_ile_przyszlo_z_magazynu(baza, bez_nawigacji)
 
     widok = formularz_wizyty(stan)
     widok.e_p.value = "120100"
-    widok.e_k.value = "300"
+    wpisz_koszt(widok, "300")
     next(chk for chk in widok.chk_czesci if chk.data == dane["zadanie"]).value = True
     wybierz(widok.zuzycie, dane["filtr"], "1")
     widok.zapisz(None)

@@ -40,11 +40,17 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             elementy = []
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
+                c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data, h.koszt_robocizny FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
                 wpisy = c.fetchall()
             # Części z magazynu przy pojedynczych wpisach — ich koszt siedzi już
             # w cenie wpisu, a dopisek mówi, ile z niej przyszło z półki.
             zuzycie_wpisow = db.pobierz_zuzycie_rekordow("historia", [w[0] for w in wpisy if w[4] is None])
+            # Robocizna i części tylko przy pojedynczym wpisie: pozycja wizyty
+            # nie ma własnego kosztu — rozbicie niesie cała wizyta. Ostatnia
+            # kolumna krotki to wartość filtra „Podział” (pusta przy wizycie).
+            rozbicia = {w[0]: db.rozbicie_kosztu(w[3], w[14], (zuzycie_wpisow.get(w[0]) or {}).get("koszt"))
+                        for w in wpisy if w[4] is None}
+            wpisy = [tuple(w) + (utils.etykieta_podzialu(rozbicia.get(w[0])),) for w in wpisy]
 
             if not wpisy:
                 elementy.append(ft.Text("Brak wpisów w historii. Kliknij + aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
@@ -56,9 +62,13 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 ]
 
                 sort_ui = utils.przycisk_sortowania(self._page, self.state, "historia", opcje_sort)
+                spis_filtrow = [("rok", "historia_rok", 1), ("miesiac", "historia_mc", 1)]
+                # „Podział” dopiero wtedy, gdy jest co dzielić — podzespół
+                # wymieniany wyłącznie na wizytach nie ma tu własnych kwot.
+                if any(w[15] for w in wpisy):
+                    spis_filtrow.append(("kategoria", "historia_podzial", 15, "Podział"))
                 chipy_filtrow, wpisy_po_filtrach = utils.pasek_filtrow(
-                    self._page, self.state, wpisy,
-                    [("rok", "historia_rok", 1), ("miesiac", "historia_mc", 1)])
+                    self._page, self.state, wpisy, spis_filtrow)
 
                 elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
@@ -145,7 +155,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
 
                 for w in wpisy:
                     (h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez,
-                     zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data) = w
+                     zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data,
+                     _robocizna, _podzial) = w
                     jest_zbiorcza = w_id is not None
                     # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
                     # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
@@ -167,6 +178,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(sub_tekst, size=13, color=ft.Colors.ON_SURFACE_VARIANT)
                     ]
+                    dopisek_rozbicia = utils.dopisek_rozbicia(rozbicia.get(h_id))
+                    if dopisek_rozbicia:
+                        tresc_h.append(dopisek_rozbicia)
                     if opis_magazynu:
                         tresc_h.append(ft.Text(opis_magazynu, size=13, color=ft.Colors.TEAL_700))
                     tresc_h.append(utils.podglad_notatki(
@@ -205,7 +219,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     kontener.on_click = _on_click
                     kontener.on_long_press = _on_long_press
 
-                    tekst_szukaj = f"{data} {sub_tekst} {k_str} {opis_magazynu} {notatka or ''}".lower()
+                    tekst_szukaj = (f"{data} {sub_tekst} {k_str} {utils.opis_rozbicia_kosztu(rozbicia.get(h_id))} "
+                                    f"{opis_magazynu} {notatka or ''}").lower()
                     self.wszystkie_karty.append({
                         "karta": karta, "szukaj": tekst_szukaj, "data": data,
                         # Wpis z wizyty zbiorczej niesie koszt CAŁEJ wizyty — do
@@ -364,7 +379,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             c.execute("""
                 SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.tagi,
                        GROUP_CONCAT(z.nazwa, ', ') as czesci, w.dodane_przez,
-                       w.zmodyfikowane_przez, w.data_modyfikacji, w.notatki
+                       w.zmodyfikowane_przez, w.data_modyfikacji, w.notatki, w.koszt_robocizny
                 FROM wizyty w
                 LEFT JOIN historia h ON h.wizyta_id = w.id
                 LEFT JOIN zadania z ON h.zadanie_id = z.id
@@ -377,6 +392,11 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         # JOIN-ie co historia/zadania (patrz db.pobierz_zuzycie_rekordow). Razem
         # z nazwami idzie koszt, który jest już wliczony w koszt wizyty.
         zuzycie_wizyt = db.pobierz_zuzycie_rekordow("wizyty", [w[0] for w in wizyty_lista])
+        # Robocizna i części każdej wizyty; ostatnia kolumna krotki to wartość
+        # filtra „Podział” — po nim najłatwiej znaleźć stare wizyty do rozbicia.
+        rozbicia = {w[0]: db.rozbicie_kosztu(w[4], w[12], (zuzycie_wizyt.get(w[0]) or {}).get("koszt"))
+                    for w in wizyty_lista}
+        wizyty_lista = [tuple(w) + (utils.etykieta_podzialu(rozbicia[w[0]]),) for w in wizyty_lista]
 
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "wizyty", opcje_sort)
         spis_filtrow = [
@@ -385,6 +405,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             ("kategoria", "wizyty_wyk", 3, "Warsztat"),
             ("tag", "wizyty_tag", 6),
         ]
+        if any(w[13] for w in wizyty_lista):
+            spis_filtrow.append(("kategoria", "wizyty_podzial", 13, "Podział"))
         # Kolumna 8 zapytania to w.dodane_przez — filtr autorstwa pokazujemy
         # tylko przy pojeździe współdzielonym, tak jak na osi czasu i listach
         # tankowań oraz innych kosztów.
@@ -484,7 +506,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
             for w in wizyty_lista:
                 (w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez,
-                 zmodyfikowane_przez, data_modyfikacji, notatka_wizyty) = w
+                 zmodyfikowane_przez, data_modyfikacji, notatka_wizyty, _robocizna, _podzial) = w
                 czesci = czesci or "Brak podpiętych części"
                 opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wizyt.get(w_id))
 
@@ -502,6 +524,9 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     ], spacing=4),
                     ft.Text(f"Części: {czesci}", size=13, color=ft.Colors.PRIMARY),
                 ]
+                dopisek_rozbicia = utils.dopisek_rozbicia(rozbicia[w_id])
+                if dopisek_rozbicia:
+                    tresc_karty.append(dopisek_rozbicia)
                 if opis_magazynu:
                     tresc_karty.append(ft.Text(opis_magazynu, size=13, color=ft.Colors.TEAL_700))
                 if tagi:
@@ -542,7 +567,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 kontener.on_long_press = _on_long_press
 
                 magazyn_szukaj = opis_magazynu
-                tekst_szukaj = f"{data} {wyk} {czesci} {kosz} {tagi} {magazyn_szukaj} {notatka_wizyty or ''}".lower()
+                tekst_szukaj = (f"{data} {wyk} {czesci} {kosz} {tagi} {utils.opis_rozbicia_kosztu(rozbicia[w_id])} "
+                                f"{magazyn_szukaj} {notatka_wizyty or ''}").lower()
                 self.wszystkie_karty.append({
                     "karta": karta, "szukaj": tekst_szukaj,
                     "data": data, "kwota": float(kosz or 0),

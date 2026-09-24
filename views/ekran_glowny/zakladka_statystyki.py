@@ -334,6 +334,18 @@ class MiksinZakladkiStatystyki:
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                 )
 
+            # ----- Robocizna czy części -----
+            # Sam koszt serwisu nie mówi, czy drogi jest warsztat, czy części —
+            # a od tego zależy, czy szukać innego mechanika, czy kupować części
+            # samemu. Zakres jak przy pozostałych kartach: własny klucz.
+            granica_robocizny = utils.granica_zakresu(utils.zakres_wykresu(self.state, "robocizna"))
+            rozbicie_napraw = db.pobierz_rozbicie_napraw(self.state.auto_id, granica_robocizny)
+            karta_robocizny = utils.karta_robocizny_i_czesci(
+                self._page, rozbicie_napraw,
+                db.porownaj_czesci_wlasne(self.state.auto_id, granica_robocizny),
+                self._scena_zakladki,
+            )
+
             dzisiaj = datetime.now()
             zakres_wydatkow = utils.zakres_wykresu(self.state, "wydatki")
             # Słupek to miesiąc tylko do roku wstecz. Przy „Wszystko” i dłuższej
@@ -743,6 +755,13 @@ class MiksinZakladkiStatystyki:
                 ]),
                 utils.pasek_zakresu_czasu(self._page, self.state, "kategorie"),
                 karta_kategorii_innych,
+                ft.Divider(height=20),
+                ft.Row([
+                    ft.Text("Robocizna czy części", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
+                    utils.etykieta(f"Razem: {utils.formatuj_liczba(rozbicie_napraw['razem'])}  {utils.symbol_waluty()}", size=13),
+                ]),
+                utils.pasek_zakresu_czasu(self._page, self.state, "robocizna"),
+                karta_robocizny,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Wydatki w czasie", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),

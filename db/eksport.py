@@ -15,6 +15,7 @@ except ImportError:
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km, pobierz_walute
+from .koszty import rozbicie_kosztu
 
 
 # ==================== EKSPORT DANYCH (CSV / PDF) ====================
@@ -66,6 +67,16 @@ def _data_w_zakresie(data_str, od_data, do_data):
     return True
 
 
+def _kolumny_rozbicia(koszt, robocizna, z_magazynu):
+    """„Robocizna” i „Części” do tabeli eksportu. Części razem z magazynem, żeby
+    obie kolumny sumowały się do „Koszt”. Naprawa bez podziału ma obie puste —
+    zero udawałoby wiedzę, której nie ma."""
+    r = rozbicie_kosztu(koszt, robocizna, z_magazynu)
+    if not r["podzielony"]:
+        return ["", ""]
+    return [formatuj_liczba_eksport(r["robocizna"]), formatuj_liczba_eksport(r["czesci"] + r["z_magazynu"])]
+
+
 def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     """
     Zbiera dane pojazdu do eksportu wg wybranych kategorii (klucze z KATEGORIE_EKSPORTU),
@@ -102,35 +113,44 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
 
         if "historia" in kategorie:
             c.execute(
-                "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.wykonawca, h.kategoria, h.notatka "
+                "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.koszt_robocizny, "
+                "(SELECT SUM(x.koszt) FROM historia_czesci_magazynu x WHERE x.historia_id = h.id), "
+                "h.wykonawca, h.kategoria, h.notatka "
                 "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
                 "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
             )
             wiersze = []
-            for data, nazwa, prz, cena, wyk, kat, notatka in c.fetchall():
+            for data, nazwa, prz, cena, robocizna, magazyn, wyk, kat, notatka in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([data, nazwa, int(prz or 0), formatuj_liczba_eksport(cena), wyk or "", kat or "", notatka or ""])
+                    wiersze.append([data, nazwa, int(prz or 0), formatuj_liczba_eksport(cena),
+                                    *_kolumny_rozbicia(cena, robocizna, magazyn),
+                                    wyk or "", kat or "", notatka or ""])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
-            wynik["historia"] = (["Data", "Podzespół", "Przebieg (km)", "Koszt", "Wykonawca", "Kategoria", "Notatka"], wiersze)
+            wynik["historia"] = (["Data", "Podzespół", "Przebieg (km)", "Koszt", "Robocizna", "Części",
+                                  "Wykonawca", "Kategoria", "Notatka"], wiersze)
 
         if "wizyty" in kategorie:
             c.execute(
-                "SELECT w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.notatki, w.tagi, "
+                "SELECT w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.koszt_robocizny, "
+                "(SELECT SUM(x.koszt) FROM wizyta_czesci_magazynu x WHERE x.wizyta_id = w.id), "
+                "w.notatki, w.tagi, "
                 "GROUP_CONCAT(z.nazwa, ', ') FROM wizyty w "
                 "LEFT JOIN historia h ON h.wizyta_id = w.id "
                 "LEFT JOIN zadania z ON h.zadanie_id = z.id "
                 "WHERE w.auto_id=? GROUP BY w.id", (auto_id,)
             )
             wiersze = []
-            for data, prz, wyk, kosz, notatki, tagi, czesci in c.fetchall():
+            for data, prz, wyk, kosz, robocizna, magazyn, notatki, tagi, czesci in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
                     wiersze.append([
                         data, int(prz or 0), wyk or "", formatuj_liczba_eksport(kosz),
+                        *_kolumny_rozbicia(kosz, robocizna, magazyn),
                         czesci or "", tagi or "", notatki or ""
                     ])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["wizyty"] = (
-                ["Data", "Przebieg (km)", "Warsztat", "Koszt", "Podzespoły", "Tagi", "Notatki"], wiersze
+                ["Data", "Przebieg (km)", "Warsztat", "Koszt", "Robocizna", "Części", "Podzespoły", "Tagi",
+                 "Notatki"], wiersze
             )
 
         if "inne_koszty" in kategorie:
@@ -376,6 +396,7 @@ __all__ = [
     "_MAPA_TRANSLITERACJI_PL",
     "_RaportPDF",
     "_data_w_zakresie",
+    "_kolumny_rozbicia",
     "generuj_csv",
     "generuj_eksport_csv",
     "oblicz_podsumowanie_okresu",

@@ -489,10 +489,13 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         # między kolumny i przycina zawartość, więc kolumna wolnego tekstu byłaby
         # nieczytelna („Tankowanie po...”), a przy okazji zwęziłaby wszystkie
         # pozostałe. W CSV, gdzie szerokość nie ogranicza niczego, notatki są.
-        if "Notatka" in naglowki:
-            i_not = naglowki.index("Notatka")
-            naglowki = [h for j, h in enumerate(naglowki) if j != i_not]
-            wiersze = [[k for j, k in enumerate(w) if j != i_not] for w in wiersze]
+        # Wizyty nazywają tę kolumnę „Notatki” — dopóki miały siedem kolumn,
+        # przeciskała się niezauważona; przy robociźnie i częściach już nie.
+        for kolumna_notatek in ("Notatka", "Notatki"):
+            if kolumna_notatek in naglowki:
+                i_not = naglowki.index(kolumna_notatek)
+                naglowki = [h for j, h in enumerate(naglowki) if j != i_not]
+                wiersze = [[k for j, k in enumerate(w) if j != i_not] for w in wiersze]
 
         tytul = KATEGORIE_EKSPORTU.get(klucz, klucz)
         pdf.set_font(pdf.czcionka, "B", 13)

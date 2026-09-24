@@ -602,6 +602,22 @@ def init_db():
             ALTER TABLE magazyn_czesci ADD COLUMN cena_jednostkowa REAL;
             ALTER TABLE wizyta_czesci_magazynu ADD COLUMN koszt REAL;
             ALTER TABLE historia_czesci_magazynu ADD COLUMN koszt REAL;
+            """,
+            # Wersja 42: robocizna osobno od części — przy wizycie i przy
+            # pojedynczym wpisie serwisowym. Jedna kwota nie mówi, czy drogi
+            # jest warsztat, czy części, a od tego zależy, czy szukać innego
+            # mechanika, czy kupować części samemu.
+            #
+            # NULL znaczy „bez podziału” — i tak zostają wszystkie dotychczasowe
+            # wpisy. Części nie mają własnej kolumny: to reszta kosztu po
+            # odjęciu robocizny i części z magazynu (te zna `koszt` przy
+            # zużyciu). Trzecia zapisana kwota potrafiłaby rozjechać się z
+            # dwiema pozostałymi — po edycji na telefonie ze starszą wersją, po
+            # zwrocie pozycji wizyty na listę Do zrobienia, po usunięciu pozycji
+            # magazynu — a reszta z definicji zawsze się sumuje.
+            """
+            ALTER TABLE wizyty ADD COLUMN koszt_robocizny REAL;
+            ALTER TABLE historia ADD COLUMN koszt_robocizny REAL;
             """
         ]
 

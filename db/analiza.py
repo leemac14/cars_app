@@ -12,7 +12,7 @@ from .ustawienia import pobierz_okno_kroczace, pobierz_walute
 from .synchronizacja import zarejestruj_nagrobek
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu
-from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_trend_cen_paliwa
+from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_rozbicie_napraw, pobierz_trend_cen_paliwa, porownaj_czesci_wlasne
 from .statystyki import koszt_na_1000km, pobierz_serie_spalania
 from .pojazd import pobierz_dane_pojazdu
 
@@ -1472,6 +1472,57 @@ def obserwacje_analityczne(auto_id, limit=None):
                 f"({_kwota_txt(srednia_1000)}).",
                 45,
             ))
+
+    # 9. Robocizna czy części — pytanie, na które sama kwota naprawy nie
+    #    odpowiada: płacisz za ręce warsztatu czy za części. Tylko naprawy
+    #    z podziałem i tylko rok wstecz, bo stawki warsztatów idą w górę.
+    rozbicie = pobierz_rozbicie_napraw(auto_id, _przesun_o_lata(dzis, 1), dzis)
+    if rozbicie["napraw"] >= 2 and rozbicie["razem"] > 0:
+        udzial = rozbicie["robocizna"] / rozbicie["razem"] * 100
+        tekst = (f"W ostatnich 12 miesiącach robocizna to {formatuj_liczba_eksport(udzial, 0)}% kosztu napraw "
+                 f"({_kwota_txt(rozbicie['robocizna'])} z {_kwota_txt(rozbicie['razem'])}), "
+                 f"a części {formatuj_liczba_eksport(100 - udzial, 0)}%")
+        if rozbicie["z_magazynu"] > 0:
+            tekst += f" — w tym {_kwota_txt(rozbicie['z_magazynu'])} z własnego magazynu"
+        tekst += "."
+        # Warsztaty porównujemy dopiero przy dwóch naprawach w każdym — jedna
+        # wymiana rozrządu obok jednej wymiany żarówki nie mówi o stawce nic.
+        warsztaty = [w for w in rozbicie["warsztaty"] if w["napraw"] >= 2]
+        if len(warsztaty) >= 2:
+            drogi, tani = warsztaty[0], warsztaty[-1]
+            if tani["srednia_robocizna"] > 0 and drogi["srednia_robocizna"] >= 1.25 * tani["srednia_robocizna"]:
+                tekst += (f" Najdrożej liczy „{drogi['nazwa']}”: średnio {_kwota_txt(drogi['srednia_robocizna'])} "
+                          f"robocizny na naprawę, a „{tani['nazwa']}” {_kwota_txt(tani['srednia_robocizna'])}.")
+        if rozbicie["bez_podzialu"]:
+            tekst += f" Naprawy bez podziału pominięte: {rozbicie['bez_podzialu']}."
+        obserwacje.append(_obserwacja(
+            "robocizna_czesci", "neutralny", "warsztat", "Robocizna czy części", tekst, 30, "/wizyty",
+        ))
+
+    # 10. Własne części kontra kupione przez warsztat — ten sam podzespół raz
+    #     tak, raz tak. Trzy lata wstecz: przy starszych naprawach różnica
+    #     mówiłaby więcej o inflacji niż o tym, gdzie kupować.
+    for p in porownaj_czesci_wlasne(auto_id, _przesun_o_lata(dzis, 3), dzis):
+        roznica = p["roznica"]
+        if abs(roznica) < 20 or abs(roznica) < 0.1 * max(p["z_warsztatu"], p["wlasne"]):
+            continue
+        if roznica > 0:
+            obserwacje.append(_obserwacja(
+                "czesci_wlasne", "dobry", "czesci", "Własne części wychodzą taniej",
+                f"„{p['nazwa']}”: części z własnego magazynu kosztowały średnio {_kwota_txt(p['wlasne'])}, "
+                f"a kupione przez warsztat {_kwota_txt(p['z_warsztatu'])} — o {_kwota_txt(roznica)} mniej "
+                f"na każdej naprawie.",
+                40, f"/historia/{p['zadanie_id']}",
+            ))
+        else:
+            obserwacje.append(_obserwacja(
+                "czesci_wlasne", "neutralny", "czesci", "Warsztat kupuje części taniej",
+                f"„{p['nazwa']}”: części kupione przez warsztat kosztowały średnio {_kwota_txt(p['z_warsztatu'])}, "
+                f"a z własnego magazynu {_kwota_txt(p['wlasne'])} — kupowanie samemu wyszło o "
+                f"{_kwota_txt(-roznica)} drożej na naprawie.",
+                40, f"/historia/{p['zadanie_id']}",
+            ))
+        break
 
     obserwacje.sort(key=lambda o: -o["waga"])
     return obserwacje[:limit] if limit else obserwacje

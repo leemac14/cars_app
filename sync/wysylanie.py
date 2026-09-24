@@ -13,6 +13,19 @@ from .konflikty import _zarejestruj_konflikt, _zarejestruj_odrzucenie
 from .pomocnicze import _hash_zawartosci, _paczki, _zapytanie_tabeli
 
 
+def _zgodny_z_zapamietanym(dane, zapamietany, dopisane=()):
+    """Czy treść rekordu to wciąż to, co zapamiętał `zdalny_hash`.
+
+    Kolumna z `dopisane` (patrz KONFIGURACJA_SYNC), dopóki jest pusta, nie
+    zmienia rekordu: hash sprzed jej dopisania liczył się bez tego klucza.
+    Bez tej tolerancji każdy wiersz tabeli wyglądałby po aktualizacji na
+    zmieniony, a porównanie z wersją w chmurze — na konflikt."""
+    if _hash_zawartosci(dane) == zapamietany:
+        return True
+    bez_pustych = {k: v for k, v in (dane or {}).items() if not (k in dopisane and v is None)}
+    return len(bez_pustych) != len(dane or {}) and _hash_zawartosci(bez_pustych) == zapamietany
+
+
 def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig, rola=None):
     """Wysyła nowe i zmienione wiersze jednej tabeli.
 
@@ -21,6 +34,7 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig, rola=None):
     tabela = konfig["tabela"]
     kolumny = konfig["kolumny"]
     fk = konfig["fk"]
+    dopisane = frozenset(konfig.get("dopisane") or ())
     rola = rola or db.ROLA_WLASCICIEL
     wyslano = 0
     do_cofniecia = []
@@ -80,7 +94,7 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig, rola=None):
     for wiersz in istniejace:
         dane = zbuduj_dane(wiersz)
         nowy_hash = _hash_zawartosci(dane)
-        if nowy_hash == wiersz["zdalny_hash"]:
+        if _zgodny_z_zapamietanym(dane, wiersz["zdalny_hash"], dopisane):
             continue  # nic się nie zmieniło
         if not _wolno_wypchnac_zmiane(auto_id, rola, tabela, wiersz):
             # Zmiana w cudzym wpisie. Nie wysyłamy jej i kasujemy zapamiętany
@@ -107,8 +121,7 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig, rola=None):
     for wiersz, dane, nowy_hash in zmienione:
         dane_zdalne = zdalne_teraz.get(wiersz["zdalne_id"])
         if dane_zdalne is not None:
-            hash_zdalny_teraz = _hash_zawartosci(dane_zdalne)
-            if hash_zdalny_teraz != wiersz["zdalny_hash"]:
+            if not _zgodny_z_zapamietanym(dane_zdalne, wiersz["zdalny_hash"], dopisane):
                 # Zdalna wersja zmieniła się niezależnie od naszej ostatniej
                 # synchronizacji — ktoś edytował ten sam rekord na innym
                 # urządzeniu offline. Zaraz go nadpiszemy, więc zapamiętujemy
@@ -125,4 +138,5 @@ def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig, rola=None):
 
 __all__ = [
     "_wypchnij_tabele",
+    "_zgodny_z_zapamietanym",
 ]

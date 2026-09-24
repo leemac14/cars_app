@@ -158,8 +158,9 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (auto, "Olej silnikowy i filtr", 15000, 0, "zad-1"))
         zid["zadanie"] = c.lastrowid
 
-        c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, zalacznik, zdalne_id) VALUES (?,?,?,?,?,?,?)",
-                  (auto, "2026-01-10", 100000, "Warsztat u Janka", 480.0,
+        c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, zalacznik, zdalne_id) "
+                  "VALUES (?,?,?,?,?,?,?,?)",
+                  (auto, "2026-01-10", 100000, "Warsztat u Janka", 480.0, 200.0,
                    plik(f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "wiz-1"))
         zid["wizyta"] = c.lastrowid
 
@@ -510,10 +511,14 @@ def dosyp_dane(auto_id, dni_wstecz=200):
                       (auto_id, nazwa_zadania, interwal, 1 if "opon" in nazwa_zadania.lower() else 0))
             zadania.append(c.lastrowid)
 
+        # Co druga wizyta z robocizną: lista, filtr „Podział” i karta Analizy
+        # mają wtedy obie strony — naprawy z podziałem i bez.
         for i in range(4):
-            c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity) VALUES (?,?,?,?,?)",
+            c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny) "
+                      "VALUES (?,?,?,?,?,?)",
                       (auto_id, data(dni_wstecz - i * 40), 100000 + i * 2000,
-                       ["Warsztat u Janka", "Serwis ASO"][i % 2], 300.0 + i * 90))
+                       ["Warsztat u Janka", "Serwis ASO"][i % 2], 300.0 + i * 90,
+                       120.0 + i * 20 if i % 2 == 0 else None))
             wizyta = c.lastrowid
             c.execute(
                 "INSERT INTO historia (zadanie_id, wizyta_id, data, przebieg, kategoria, cena, wykonawca) "
