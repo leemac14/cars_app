@@ -33,6 +33,7 @@ class SzukajView(ft.View):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
+        self._mapa_tagow = None
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Szukaj we wszystkim", "/", ikona=ft.Icons.SEARCH)
 
@@ -291,6 +292,10 @@ class SzukajView(ft.View):
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Text(w["tytul"], size=15, weight="bold"),
                         ft.Text(w["opis"], size=12, color=ft.Colors.ON_SURFACE_VARIANT) if w["opis"] else ft.Container(),
+                        # Tagi w tych samych kolorach co na listach wpisów — wynik
+                        # rozpoznaje się po nich, zanim przeczyta się tytuł.
+                        utils.wizualizacja_tagow(w.get("tagi"), self.state.auto_id, self._mapa_tagow)
+                        if w.get("tagi") else ft.Container(),
                     ], spacing=3, expand=True),
                 ], spacing=12, vertical_alignment=ft.CrossAxisAlignment.START)
             )
@@ -333,6 +338,8 @@ class SzukajView(ft.View):
 
         # Najpierw wpisy: od tego, czy fraza w nie trafiła, zależy, gdzie staną ekrany.
         wyniki = db.globalne_wyszukiwanie(self.state.auto_id, zapytanie)
+        # Kolory tagów raz na wyszukiwanie, a nie przy każdej karcie wyniku.
+        self._mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id) if wyniki else {}
 
         # Zapytanie z filtrem („>1000”, „marzec 2026”, „stacja:orlen”) nie jest
         # nazwą ekranu — pokazywanie przy nim listy ekranów byłoby szumem. Sekcje

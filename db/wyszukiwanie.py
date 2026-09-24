@@ -516,13 +516,13 @@ def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
 
-        c.execute("SELECT id, data, kwota, litry, stacja FROM tankowania WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, data, kwota, litry, stacja, tagi FROM tankowania WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             opis = f"{formatuj_liczba_eksport(r['litry'], 1)} L"
             if r["stacja"]:
                 opis += f" • {r['stacja']}"
             dodaj("Tankowanie", r["stacja"] or "Tankowanie", r["kwota"], opis,
-                  r["data"], f"/tankowanie/edytuj/{r['id']}")
+                  r["data"], f"/tankowanie/edytuj/{r['id']}", tagi=r["tagi"] or "")
 
         c.execute(
             "SELECT h.id, h.data, h.cena, h.wykonawca, z.nazwa FROM historia h "
@@ -534,7 +534,7 @@ def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
                   r["data"], f"/wpis/edytuj/{r['id']}")
 
         c.execute(
-            "SELECT w.id, w.data, w.koszt_calkowity, w.wykonawca, "
+            "SELECT w.id, w.data, w.koszt_calkowity, w.wykonawca, w.tagi, "
             "GROUP_CONCAT(z.nazwa, ', ') AS czesci FROM wizyty w "
             "LEFT JOIN historia h ON h.wizyta_id=w.id LEFT JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE w.auto_id=? GROUP BY w.id",
@@ -545,12 +545,14 @@ def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
             if r["wykonawca"]:
                 opis += f" • {r['wykonawca']}"
             dodaj("Wizyta zbiorcza", "Wizyta w warsztacie", r["koszt_calkowity"], opis,
-                  r["data"], f"/wizyty/edytuj/{r['id']}")
+                  r["data"], f"/wizyty/edytuj/{r['id']}", tagi=r["tagi"] or "")
 
+        # Tagi nie idą już do opisu zamiast pustej kategorii — karta wyniku
+        # pokazuje je osobno, w kolorach, i w opisie stałyby drugi raz.
         c.execute("SELECT id, data, nazwa, kwota, kategoria, tagi FROM inne_koszty WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             dodaj("Inny koszt", str(r["nazwa"] or "Koszt"), r["kwota"],
-                  str(r["kategoria"] or r["tagi"] or ""), r["data"], f"/inne/edytuj/{r['id']}")
+                  str(r["kategoria"] or ""), r["data"], f"/inne/edytuj/{r['id']}", tagi=r["tagi"] or "")
 
         c.execute("SELECT id, nazwa, cena, ilosc, jednostka FROM magazyn_czesci WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
@@ -668,7 +670,7 @@ def _wszystkie_wpisy(auto_id):
         c.execute("SELECT id, data, nazwa, kwota, kategoria, tagi, notatka FROM inne_koszty "
                   "WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
-            opis = str(r["kategoria"] or r["tagi"] or "Inny koszt")
+            opis = str(r["kategoria"] or "Inny koszt")
             if r["notatka"]:
                 opis += f" • {skrot_notatki(r['notatka'])}"
             wpisy.append(_wpis("Inny koszt", r["nazwa"] or "Koszt", opis, r["data"],
@@ -796,7 +798,7 @@ def wyszukiwanie_zaawansowane(auto_id, filtr):
     """Wyniki dla zapytania z filtrami z `parsuj_zapytanie`.
 
     Zwraca ten sam kształt, co `globalne_wyszukiwanie` — {typ, tytul, opis,
-    data, trasa} — z dopisaną kwotą w opisie tam, gdzie wpis jakąś ma."""
+    data, trasa, tagi} — z dopisaną kwotą w opisie tam, gdzie wpis jakąś ma."""
     if not auto_id or not filtr:
         return []
 
@@ -811,7 +813,8 @@ def wyszukiwanie_zaawansowane(auto_id, filtr):
             kwota = f"{formatuj_liczba_eksport(wpis['_kwota'], 2)} {waluta}"
             opis = f"{opis} • {kwota}" if opis else kwota
         wyniki.append({"typ": wpis["typ"], "tytul": wpis["tytul"], "opis": opis,
-                       "data": wpis["data"], "trasa": wpis["trasa"]})
+                       "data": wpis["data"], "trasa": wpis["trasa"],
+                       "tagi": wpis["_pola"].get("tag", "")})
 
     wyniki.sort(key=lambda w: parsuj_date(w["data"]), reverse=True)
     return wyniki
@@ -831,8 +834,10 @@ def globalne_wyszukiwanie(auto_id, zapytanie) -> list[dict]:
     kolumny. Słowa łączą się przez I („orlen luty” to dwa warunki), wielkość
     liter i polskie ogonki nie mają znaczenia („pelny bak” = „Pełny bak”).
 
-    Zwraca listę słowników {typ, tytul, opis, data, trasa}, posortowaną malejąco
-    po dacie (nierozpoznane daty lądują na końcu)."""
+    Zwraca listę słowników {typ, tytul, opis, data, trasa, tagi}, posortowaną
+    malejąco po dacie (nierozpoznane daty lądują na końcu). `tagi` to tekst
+    z wpisu (tankowanie, wizyta, inny koszt) — karta wyniku rysuje z niego
+    chipy; przy wynikach szukania samej kwoty stoi tylko przy tych trzech."""
     if not auto_id or not zapytanie or not zapytanie.strip():
         return []
 

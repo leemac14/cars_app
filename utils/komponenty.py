@@ -7,9 +7,10 @@ import urllib.parse
 
 from .stale import (
     FS, IKONY_OBSERWACJI, KOLORY_TONU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING,
-    ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych,
+    ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych, kolory_chipa_tagu,
 )
-from .wyglad import powierzchnia, tlo_karty
+from .typografia import etykieta
+from .wyglad import pasek_zawijany, powierzchnia, tlo_karty
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
 from .formularze import styl_dropdown, styl_pola
@@ -56,13 +57,15 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
     )
 
 
-def komponent_wyboru_koloru(page: ft.Page, aktualny_kolor=None, etykieta_brak="Domyślny (jak w Ustawieniach)"):
-    """Wiersz kółek do wyboru koloru motywu interfejsu, z dodatkową pozycją
-    'Brak' (użyje wtedy globalnego koloru domyślnego). Zwraca (kontener,
-    pobierz_wynik), gdzie pobierz_wynik() zwraca nazwę koloru z db.KOLORY_MOTYWU
-    albo None."""
+def komponent_wyboru_koloru(page: ft.Page, aktualny_kolor=None, etykieta_brak="Domyślny (jak w Ustawieniach)",
+                            z_brakiem=True, rozmiar=45):
+    """Wiersz kółek do wyboru koloru z palety db.KOLORY_MOTYWU — koloru motywu
+    pojazdu albo koloru tagu. Z `z_brakiem` na początku stoi pozycja 'Brak'
+    (pojazd użyje wtedy globalnego koloru domyślnego); tag bez koloru nie ma
+    sensu, więc tam jej nie ma. Zwraca (kontener, pobierz_wynik), gdzie
+    pobierz_wynik() zwraca nazwę koloru z db.KOLORY_MOTYWU albo None."""
     stan = {"wybrany": aktualny_kolor if aktualny_kolor in db.KOLORY_MOTYWU else None}
-    wiersz = ft.Row(wrap=True, spacing=10)
+    wiersz = ft.Row(wrap=True, spacing=10, run_spacing=10)
 
     def wybierz(nazwa):
         stan["wybrany"] = nazwa
@@ -71,27 +74,30 @@ def komponent_wyboru_koloru(page: ft.Page, aktualny_kolor=None, etykieta_brak="D
     def odswiez():
         wiersz.controls.clear()
 
-        zaznaczony_brak = stan["wybrany"] is None
-        wiersz.controls.append(
-            ft.Container(
-                width=45, height=45, shape=ft.BoxShape.CIRCLE,
-                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
-                border=ft.Border.all(3, ft.Colors.ON_SURFACE if zaznaczony_brak else ft.Colors.TRANSPARENT),
-                alignment=ft.Alignment.CENTER,
-                content=ft.Icon(ft.Icons.BLOCK, size=20, color=ft.Colors.ON_SURFACE_VARIANT),
-                tooltip=etykieta_brak,
-                on_click=lambda e: wybierz(None)
+        if z_brakiem:
+            zaznaczony_brak = stan["wybrany"] is None
+            wiersz.controls.append(
+                ft.Container(
+                    width=rozmiar, height=rozmiar, shape=ft.BoxShape.CIRCLE,
+                    bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                    border=ft.Border.all(3, ft.Colors.ON_SURFACE if zaznaczony_brak else ft.Colors.TRANSPARENT),
+                    alignment=ft.Alignment.CENTER,
+                    content=ft.Icon(ft.Icons.BLOCK, size=20, color=ft.Colors.ON_SURFACE_VARIANT),
+                    tooltip=etykieta_brak,
+                    on_click=lambda e: wybierz(None)
+                )
             )
-        )
 
         for nazwa in db.KOLORY_MOTYWU:
             kolor_hex = MAPA_KOLOROW.get(nazwa, ft.Colors.INDIGO)
             zaznaczony = (stan["wybrany"] == nazwa)
+            # Ptaszek w kolorze napisu z chipa tagu — biały ginął na żółtym i limonkowym.
+            kolor_ptaszka = (kolory_chipa_tagu(nazwa) or (None, ft.Colors.WHITE))[1]
             wiersz.controls.append(
                 ft.Container(
-                    width=45, height=45, bgcolor=kolor_hex, shape=ft.BoxShape.CIRCLE,
+                    width=rozmiar, height=rozmiar, bgcolor=kolor_hex, shape=ft.BoxShape.CIRCLE,
                     border=ft.Border.all(3, ft.Colors.ON_SURFACE if zaznaczony else ft.Colors.TRANSPARENT),
-                    content=ft.Icon(ft.Icons.CHECK, color=ft.Colors.WHITE, size=24) if zaznaczony else None,
+                    content=ft.Icon(ft.Icons.CHECK, color=kolor_ptaszka, size=round(rozmiar * 0.53)) if zaznaczony else None,
                     tooltip=nazwa,
                     on_click=lambda e, n=nazwa: wybierz(n)
                 )
@@ -107,45 +113,85 @@ def komponent_wyboru_koloru(page: ft.Page, aktualny_kolor=None, etykieta_brak="D
 
 
 def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
-    wybrane = set([t.strip() for t in (aktualne_tagi_str or "").split(",") if t.strip()])
-    kontener_tagow = ft.Row(wrap=True, spacing=8)
-    
+    # Wpis trzyma tagi jako tekst, a ten bywa zapisany inną pisownią niż tag
+    # w słowniku („myjnia” przy „MYJNIA”). Sprowadzamy go do pisowni słownika:
+    # chip pokazuje się wtedy jako zaznaczony, a po zapisie wpis trafia w kolor
+    # swojego tagu.
+    slownik = {db.klucz_nazwy(n): n for _, n, _ in db.pobierz_tagi(state.auto_id)}
+    wybrane = set()
+    for t in (aktualne_tagi_str or "").split(","):
+        if t.strip():
+            wybrane.add(slownik.get(db.klucz_nazwy(t), t.strip()))
+    # Tagi wpisu, których nie ma w słowniku (np. z importu CSV). Stoją w edytorze
+    # przez całą edycję, także odznaczone — inaczej po jednym kliknięciu
+    # znikałyby bez śladu.
+    spoza_slownika = sorted(t for t in wybrane if db.klucz_nazwy(t) not in slownik)
+    kontener_tagow = ft.Row(wrap=True, spacing=8, run_spacing=8)
+
+    def pole_koloru(aktualny):
+        """Kółka palety zamiast listy samych nazw — kolor widać, zanim się go wybierze."""
+        return komponent_wyboru_koloru(page, aktualny, z_brakiem=False, rozmiar=36)
+
+    def tresc_okna(e_nazwa, k_kolor):
+        return ft.Column([e_nazwa, etykieta("Kolor tagu"), k_kolor], tight=True, spacing=10)
+
+    def chip_w_edytorze(nazwa, kolor, zaznaczony, on_long_press, tooltip):
+        """Zaznaczony tag wygląda tak, jak potem na karcie wpisu — w pełnym
+        kolorze, z ptaszkiem; niezaznaczony to sama obwódka w jego kolorze."""
+        kolory = kolory_chipa_tagu(kolor)
+        tlo, napis = kolory if kolory else (ft.Colors.with_opacity(0.16, ft.Colors.ON_SURFACE), ft.Colors.ON_SURFACE)
+        obwodka = kolory[0] if kolory else ft.Colors.OUTLINE
+        tresc = [ft.Text(nazwa, size=FS["label"], weight="bold" if zaznaczony else "normal",
+                         color=napis if zaznaczony else ft.Colors.ON_SURFACE)]
+        if zaznaczony:
+            tresc.insert(0, ft.Icon(ft.Icons.CHECK, size=14, color=napis))
+        return ft.Container(
+            # tight=True — chip siedzi w pasku zawijanym (kontener_tagow ma
+            # wrap=True), a wiersz bez tight bierze mainAxisSize.max i zajmuje
+            # CAŁĄ linijkę, spychając tagi jeden pod drugi.
+            content=ft.Row(tresc, spacing=4, tight=True),
+            padding=ft.Padding(11, 5, 11, 5),
+            border_radius=RADIUS["pill"],
+            border=ft.Border.all(1.5, obwodka),
+            bgcolor=tlo if zaznaczony else None,
+            on_click=lambda e, n=nazwa: przelacz_tag(n),
+            on_long_press=on_long_press,
+            tooltip=tooltip,
+        )
+
     def odswiez_tagi():
         kontener_tagow.controls.clear()
         wszystkie = db.pobierz_tagi(state.auto_id)
-        
+
         for t_id, nazwa, kolor in wszystkie:
             zaznaczony = nazwa in wybrane
-            kolor_hex = MAPA_KOLOROW.get(kolor, ft.Colors.BLUE)
-            
+
             # --- DODANE: Funkcja do edycji i trwałego usuwania taga z bazy ---
             def stworz_akcje_opcji(tid, tn, aktualny_kolor):
                 def akcja(e):
                     e_nazwa = ft.TextField(label="Nazwa tagu", value=tn, **styl_pola())
-                    e_kolor = ft.Dropdown(
-                        label="Kolor tagu", 
-                        options=[ft.DropdownOption(k) for k in MAPA_KOLOROW.keys()],
-                        value=aktualny_kolor,
-                        **styl_dropdown()
-                    )
-                    
+                    k_kolor, pobierz_kolor = pole_koloru(aktualny_kolor)
+
                     def zapisz_zmiany(e_btn):
                         ustaw_blad(e_nazwa)
                         nowa_nazwa = (e_nazwa.value or "").strip()
-                        
+
                         if "," in nowa_nazwa:
                             ustaw_blad(e_nazwa, "Nazwa nie może zawierać przecinków")
                             e_nazwa.update()
                             return
 
                         if nowa_nazwa:
-                            db.edytuj_tag_w_slowniku(state.auto_id, tid, tn, nowa_nazwa, e_kolor.value)
+                            # Kolor spoza palety (#RRGGBB z danych) nie ma swojego
+                            # kółka — bez nowego wyboru zostaje taki, jaki był.
+                            nowy_kolor = pobierz_kolor() or aktualny_kolor
+                            db.edytuj_tag_w_slowniku(state.auto_id, tid, tn, nowa_nazwa, nowy_kolor)
                             if tn in wybrane:
                                 wybrane.remove(tn)
                                 wybrane.add(nowa_nazwa)
                             zamknij_dialog(page, dlg)
                             odswiez_tagi()
-                            
+
                     def usun_tag(e_btn):
                         def wykonaj():
                             db.usun_tag_ze_slownika(state.auto_id, tid, tn)
@@ -156,7 +202,7 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
 
                     dlg = ft.AlertDialog(
                         title=ft.Text(f"Opcje tagu: {tn}", weight="bold"),
-                        content=ft.Column([e_nazwa, e_kolor], tight=True, spacing=10),
+                        content=tresc_okna(e_nazwa, k_kolor),
                         actions=[
                             ft.TextButton("Usuń", style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"]), on_click=usun_tag),
                             ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
@@ -166,21 +212,21 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                     otworz_dialog(page, dlg)
                 return akcja
 
-            chip = ft.Container(
-                content=ft.Text(nazwa, size=FS["label"], color=ft.Colors.WHITE if zaznaczony else kolor_hex, weight="bold"),
-                padding=ft.Padding(12, 6, 12, 6),
-                border_radius=RADIUS["pill"],
-                bgcolor=kolor_hex if zaznaczony else ft.Colors.with_opacity(0.12, kolor_hex),
-                on_click=lambda e, n=nazwa: przelacz_tag(n),
-                on_long_press=stworz_akcje_opcji(t_id, nazwa, kolor),
-                tooltip="Kliknij: Zaznacz | Przytrzymaj: Edytuj / Usuń"
-            )
-            kontener_tagow.controls.append(chip)
-            
+            kontener_tagow.controls.append(chip_w_edytorze(
+                nazwa, kolor, zaznaczony, stworz_akcje_opcji(t_id, nazwa, kolor),
+                "Kliknij: Zaznacz | Przytrzymaj: Edytuj / Usuń",
+            ))
+
+        w_slowniku = {db.klucz_nazwy(n) for _, n, _ in wszystkie}
+        for nazwa in spoza_slownika:
+            if db.klucz_nazwy(nazwa) in w_slowniku:
+                continue
+            kontener_tagow.controls.append(chip_w_edytorze(
+                nazwa, None, nazwa in wybrane, lambda e, n=nazwa: okno_nowego_tagu(n),
+                "Tag bez koloru. Kliknij: Zaznacz | Przytrzymaj: Nadaj kolor",
+            ))
+
         btn_dodaj = ft.Container(
-            # tight=True — chip siedzi w pasku zawijanym (kontener_tagow ma
-            # wrap=True), a wiersz bez tight bierze mainAxisSize.max i zajmuje
-            # CAŁĄ linijkę, spychając tagi jeden pod drugi.
             content=ft.Row([ft.Icon(ft.Icons.ADD, size=14, color=ft.Colors.ON_SURFACE_VARIANT), ft.Text("Nowy", size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT)], spacing=4, tight=True),
             padding=ft.Padding(12, 6, 12, 6),
             border_radius=RADIUS["pill"],
@@ -192,72 +238,91 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
             kontener_tagow.update()
         except Exception:
             pass
-        
+
     def przelacz_tag(nazwa):
         if nazwa in wybrane:
             wybrane.remove(nazwa)
         else:
             wybrane.add(nazwa)
         odswiez_tagi()
-        
-    def okno_nowego_tagu():
-        e_nazwa = ft.TextField(label="Nazwa tagu", **styl_pola())
-        e_kolor = ft.Dropdown(
-            label="Kolor tagu", 
-            options=[ft.DropdownOption(k) for k in MAPA_KOLOROW.keys()],
-            value="Niebieski",
-            **styl_dropdown()
-        )
+
+    def okno_nowego_tagu(nazwa_spoza_slownika=""):
+        """Nowy tag — albo, z `nazwa_spoza_slownika`, kolor dla tagu wpisu,
+        którego nie było w słowniku (dopisuje go tam)."""
+        e_nazwa = ft.TextField(label="Nazwa tagu", value=nazwa_spoza_slownika, **styl_pola())
+        # Pierwszy nieużyty kolor zamiast zawsze niebieskiego — inaczej wszystkie
+        # tagi na liście wpisów wyglądałyby tak samo.
+        k_kolor, pobierz_kolor = pole_koloru(db.pierwszy_wolny_kolor_tagu(state.auto_id))
+
         def zapisz_nowy(e):
             ustaw_blad(e_nazwa)
             n = (e_nazwa.value or "").strip()
-            
+
             if "," in n:
                 ustaw_blad(e_nazwa, "Nazwa nie może zawierać przecinków")
                 e_nazwa.update()
                 return
 
             if n:
-                db.dodaj_tag(state.auto_id, n, e_kolor.value)
-                wybrane.add(n)
+                tag_id = db.dodaj_tag(state.auto_id, n, pobierz_kolor() or db.pierwszy_wolny_kolor_tagu(state.auto_id))
+                # dodaj_tag oddaje istniejący tag, gdy nazwa różni się od niego
+                # tylko pisownią — wpis dostaje wtedy nazwę ze słownika, inaczej
+                # nie trafiłby w kolor swojego tagu.
+                nazwa_tagu = next((nazwa for tid, nazwa, _ in db.pobierz_tagi(state.auto_id) if tid == tag_id), n)
+                if nazwa_spoza_slownika:
+                    wybrane.discard(nazwa_spoza_slownika)
+                wybrane.add(nazwa_tagu)
                 zamknij_dialog(page, dlg)
                 odswiez_tagi()
-                
+
         dlg = ft.AlertDialog(
-            title=ft.Text("Utwórz nowy tag", weight="bold"),
-            content=ft.Column([e_nazwa, e_kolor], tight=True, spacing=10),
+            title=ft.Text("Kolor tagu" if nazwa_spoza_slownika else "Utwórz nowy tag", weight="bold"),
+            content=tresc_okna(e_nazwa, k_kolor),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
-                ft.ElevatedButton("Dodaj", on_click=zapisz_nowy, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                ft.ElevatedButton("Zapisz" if nazwa_spoza_slownika else "Dodaj", on_click=zapisz_nowy, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ]
         )
         otworz_dialog(page, dlg)
-        
+
     odswiez_tagi()
     return kontener_tagow, lambda: ",".join(wybrane)
 
 
+def chip_tagu(nazwa, kolor):
+    """Chip jednego tagu na karcie wpisu: tło w kolorze tagu i napis, który na
+    nim widać (kolory_chipa_tagu). Kategoria innego kosztu zostaje stonowana,
+    z ikoną — tag w pełnym kolorze już się z nią nie zlewa.
+
+    Tag bez koloru (spoza słownika, np. z importu CSV) dostaje samą obwódkę.
+    Dawniej dostawał niebieski, czyli udawał kolor, którego nikt nie wybrał."""
+    kolory = kolory_chipa_tagu(kolor)
+    if kolory is None:
+        return ft.Container(
+            content=ft.Text(nazwa, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+            padding=ft.Padding(7, 2, 7, 2),  # o 1 px mniej z każdej strony — tyle bierze obwódka
+            border_radius=RADIUS["pill"],
+            border=ft.Border.all(1, ft.Colors.OUTLINE),
+        )
+    tlo, napis = kolory
+    return ft.Container(
+        content=ft.Text(nazwa, size=FS["caption"], weight="bold", color=napis),
+        padding=ft.Padding(8, 3, 8, 3),
+        border_radius=RADIUS["pill"],
+        bgcolor=tlo,
+    )
+
+
 def wizualizacja_tagow(tagi_str, auto_id, mapa_kolorow=None):
+    """Tagi wpisu jako chipy w kolorach ze słownika. `mapa_kolorow` to wynik
+    db.mapa_kolorow_tagow — lista liczy ją raz, a nie przy każdej karcie."""
     if not tagi_str or str(tagi_str).strip() == "None":
         return ft.Container()
 
-    wszystkie_kolory = mapa_kolorow if mapa_kolorow is not None else {t[1]: t[2] for t in db.pobierz_tagi(auto_id)}
+    mapa = mapa_kolorow if mapa_kolorow is not None else db.mapa_kolorow_tagow(auto_id)
     tagi_lista = [t.strip() for t in str(tagi_str).split(",") if t.strip()]
-    
-    chipy = []
-    for t in tagi_lista:
-        kolor_nazwa = wszystkie_kolory.get(t, "Niebieski")
-        kolor_hex = MAPA_KOLOROW.get(kolor_nazwa, ft.Colors.BLUE)
-        
-        chipy.append(
-            ft.Container(
-                content=ft.Text(t, size=FS["caption"], weight="bold", color=kolor_hex),
-                padding=ft.Padding(8, 3, 8, 3),
-                border_radius=RADIUS["pill"],
-                bgcolor=ft.Colors.with_opacity(0.12, kolor_hex),
-            )
-        )
-    return ft.Row(chipy, wrap=True, spacing=4)
+    return pasek_zawijany([chip_tagu(t, db.kolor_tagu(mapa, t)) for t in tagi_lista],
+                          spacing=4, run_spacing=4)
 
 
 def odznaka_kategorii_innych(kategoria, rozmiar_ikony=14):
@@ -883,6 +948,7 @@ def fab_animowany(icon, on_click, tooltip=None):
 
 
 __all__ = [
+    "chip_tagu",
     "chipy_kwot",
     "ekran_braku_danych",
     "fab_animowany",

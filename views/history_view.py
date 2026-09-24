@@ -383,7 +383,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             ("rok", "wizyty_rok", 1),
             ("miesiac", "wizyty_mc", 1),
             ("kategoria", "wizyty_wyk", 3, "Warsztat"),
-            ("kategoria", "wizyty_tag", 6, "Tagi"),
+            ("tag", "wizyty_tag", 6),
         ]
         # Kolumna 8 zapytania to w.dodane_przez — filtr autorstwa pokazujemy
         # tylko przy pojeździe współdzielonym, tak jak na osi czasu i listach
@@ -481,7 +481,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         if not wizyty_lista:
             elementy.append(ft.Row([ft.Text("Brak wizyt dla wybranych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
         else:
-            mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
+            mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
             for w in wizyty_lista:
                 (w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez,
                  zmodyfikowane_przez, data_modyfikacji, notatka_wizyty) = w

@@ -94,7 +94,7 @@ class MiksinZakladkiTankowania:
             spis_filtrow += [
                 ("rok", "tankowania_rok", "data"),
                 ("miesiac", "tankowania_mc", "data"),
-                ("kategoria", "tankowania_tag", "tagi", "Tagi"),
+                ("tag", "tankowania_tag", "tagi"),
             ]
             # „Kto to dodał” ma sens dopiero przy pojeździe współdzielonym —
             # przy jednym użytkowniku każdy wpis jest jego i filtr byłby szumem.
@@ -177,7 +177,7 @@ class MiksinZakladkiTankowania:
             if not po_filtrach:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
-                mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
+                mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
                 dwuzrodlowy_lista = len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1
                 for w in po_filtrach:
                     # Etykiety idą za RODZAJEM WPISU, nie za typem pojazdu —

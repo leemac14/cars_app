@@ -44,6 +44,75 @@ def rgb_koloru_motywu(nazwa_koloru):
     return RGB_KOLOROW_MOTYWU.get(str(nazwa_koloru or ""), (56, 189, 248))
 
 
+# Te same barwy co MAPA_KOLOROW, zapisane jako #RRGGBB. Flet przekazuje
+# ft.Colors jako NAZWY („indigo”), a chip w pełnym kolorze tagu musi wiedzieć,
+# jak jasne jest jego tło — inaczej biały napis ginie na żółtym i limonkowym.
+HEX_KOLOROW = {
+    "Indygo": "#3F51B5",
+    "Czerwony": "#F44336",
+    "Zielony": "#4CAF50",
+    "Niebieski": "#2196F3",
+    "Szary": "#9E9E9E",
+    "Pomarańczowy": "#FF9800",
+    "Fioletowy": "#9C27B0",
+    "Różowy": "#F48FB1",
+    "Żółty": "#FFEB3B",
+    "Limonkowy": "#CDDC39",
+}
+
+# Napis na kolorowym chipie: biały albo prawie czarny (ciemny tekst z palety M3,
+# nie czysta czerń — ta na nasyconym tle wygląda jak dziura).
+NAPIS_JASNY = "#FFFFFF"
+
+NAPIS_CIEMNY = "#1C1B1F"
+
+
+def _hex_na_rgb(kolor):
+    """'#RRGGBB' -> (r, g, b) albo None, gdy to nie jest taki zapis."""
+    tekst = str(kolor or "").strip().lstrip("#")
+    if len(tekst) != 6:
+        return None
+    try:
+        return tuple(int(tekst[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return None
+
+
+def _luminancja(rgb):
+    """Luminancja względna wg WCAG 2 — z niej liczy się kontrast."""
+    def kanal(c):
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = rgb
+    return 0.2126 * kanal(r) + 0.7152 * kanal(g) + 0.0722 * kanal(b)
+
+
+def kontrast(kolor_a, kolor_b):
+    """Współczynnik kontrastu WCAG dwóch kolorów #RRGGBB (1–21)."""
+    jasniejszy, ciemniejszy = sorted(
+        (_luminancja(_hex_na_rgb(kolor_a)), _luminancja(_hex_na_rgb(kolor_b))), reverse=True)
+    return (jasniejszy + 0.05) / (ciemniejszy + 0.05)
+
+
+def kolory_chipa_tagu(kolor):
+    """(tło, napis) chipa tagu w pełnym kolorze albo None, gdy koloru nie znamy.
+
+    `kolor` to nazwa z palety („Czerwony”) albo #RRGGBB. Napis — biały albo
+    prawie czarny, ten z WIĘKSZYM kontrastem: przy czerwonym, niebieskim
+    i zielonym wygrywa ciemny, przy indygo i fiolecie biały. Reguła zamiast
+    listy, żeby kolor spoza palety (#RRGGBB) też był czytelny.
+
+    None to sygnał dla chipa, że tag nie ma koloru — i ma tak wyglądać, zamiast
+    udawać niebieski, którego nikt nie wybrał."""
+    tlo = HEX_KOLOROW.get(str(kolor or "").strip())
+    if tlo is None and _hex_na_rgb(kolor) is not None:
+        tlo = "#" + str(kolor).strip().lstrip("#").upper()
+    if tlo is None:
+        return None
+    napis = max((NAPIS_JASNY, NAPIS_CIEMNY), key=lambda n: kontrast(tlo, n))
+    return tlo, napis
+
+
 def bezpieczna_nazwa_pliku(tekst, domyslna="pojazd"):
     """Nazwa pliku bez znaków, których nie zniesie żaden system plików. Ta sama
     zasada, co przy eksporcie danych — trzymamy ją tutaj, żeby korzystały z niej
@@ -302,6 +371,7 @@ IKONY_NADWOZIA = {
 
 __all__ = [
     "FS",
+    "HEX_KOLOROW",
     "IKONY_AKTYWNOSCI",
     "IKONY_EKSPORTU",
     "IKONY_KATEGORII_INNYCH",
@@ -318,6 +388,8 @@ __all__ = [
     "KOLORY_ZRODEL_PRZEBIEGU",
     "KOLOR_STATUS",
     "MAPA_KOLOROW",
+    "NAPIS_CIEMNY",
+    "NAPIS_JASNY",
     "RADIUS",
     "RGB_KOLOROW_MOTYWU",
     "SPACING",
@@ -326,5 +398,7 @@ __all__ = [
     "ikona_kategorii_innych",
     "ikona_z_mapy",
     "kolor_kategorii_innych",
+    "kolory_chipa_tagu",
+    "kontrast",
     "rgb_koloru_motywu",
 ]

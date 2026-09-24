@@ -49,6 +49,9 @@ class MiksinZakladkiInne:
                 ("rok", "inne_rok", "data"),
                 ("miesiac", "inne_mc", "data"),
                 ("kategoria", "inne_kat", "kategoria", "Kategoria"),
+                # Tagi stoją za kategorią: kategoria mówi, CO to za wydatek,
+                # tagi to własny podział użytkownika w poprzek kategorii.
+                ("tag", "inne_tag", "tagi"),
             ]
             if wspolny_id:
                 spis_filtrow.append(("autor", "inne_autor", "dodane_przez"))
@@ -135,7 +138,7 @@ class MiksinZakladkiInne:
             if not po_filtrach:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
-                mapa_tagow = {t[1]: t[2] for t in db.pobierz_tagi(self.state.auto_id)}
+                mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
                 for w in po_filtrach:
                     cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
                     iid = w.get('id')

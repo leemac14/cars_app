@@ -7,6 +7,7 @@ from datetime import datetime
 from state import MIESIACE_NAZWY
 
 from .dialogi import odswiez_ekran
+from .stale import kolory_chipa_tagu
 
 
 WSZYSTKO = "Wszystko"
@@ -24,6 +25,9 @@ WYGLAD_FILTRA = {
     "rok": (ft.Icons.FILTER_ALT_ROUNDED, ft.Icons.FILTER_ALT_OUTLINED, "Rok"),
     "miesiac": (ft.Icons.DATE_RANGE_ROUNDED, ft.Icons.DATE_RANGE_OUTLINED, "Miesiąc"),
     "kategoria": (ft.Icons.LABEL_ROUNDED, ft.Icons.LABEL_OUTLINE, "Tagi"),
+    # Tag to „kategoria” z kolorem ze słownika tagów: te same opcje i to samo
+    # filtrowanie, tylko menu i włączony chip w kolorach tagów.
+    "tag": (ft.Icons.LABEL_ROUNDED, ft.Icons.LABEL_OUTLINE, "Tagi"),
     "autor": (ft.Icons.PERSON, ft.Icons.PERSON_OUTLINE, "Autor"),
 }
 
@@ -56,7 +60,7 @@ def _wartosci_rekordu(rodzaj, rekord, pole, moje=""):
     if rodzaj == "miesiac":
         d = _data_rekordu(rekord, pole)
         return {MIESIACE_NAZWY[d.month - 1]} if d else set()
-    if rodzaj == "kategoria":
+    if rodzaj in ("kategoria", "tag"):
         try:
             wartosc = str(rekord[pole] or "").strip()
         except Exception:
@@ -81,7 +85,7 @@ def _opcje_filtra(rodzaj, dane, pole, moje=""):
         return [WSZYSTKO] + sorted(wartosci, reverse=True)
     if rodzaj == "miesiac":
         return [WSZYSTKO] + sorted(wartosci, key=MIESIACE_NAZWY.index)
-    if rodzaj == "kategoria":
+    if rodzaj in ("kategoria", "tag"):
         return [WSZYSTKO] + sorted(wartosci)
 
     # „Tylko moje” stoi zawsze — przy dwóch domownikach działa jak przełącznik,
@@ -93,13 +97,28 @@ def _opcje_filtra(rodzaj, dane, pole, moje=""):
     return opcje
 
 
+def _kropka_tagu(kolor, wyszarzona=False):
+    """Kółko w kolorze tagu przed opcją w menu filtra. Tag bez koloru (spoza
+    słownika) ma samo kółko obwódki — jak jego chip na karcie wpisu."""
+    kolory = kolory_chipa_tagu(kolor)
+    return ft.Container(
+        width=10, height=10, shape=ft.BoxShape.CIRCLE,
+        bgcolor=kolory[0] if kolory else None,
+        border=None if kolory else ft.Border.all(1, ft.Colors.OUTLINE),
+        opacity=0.38 if wyszarzona else 1.0,
+    )
+
+
 def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta,
-                         ikona_aktywna, ikona_nieaktywna, liczniki=None):
+                         ikona_aktywna, ikona_nieaktywna, liczniki=None, kolory_opcji=None):
     """Generyczna metoda budująca przycisk filtra z menu rozwijanym.
 
     `liczniki` (opcja → ile wpisów zostanie po jej wybraniu) dopisuje liczbę
     przy każdej opcji i przy włączonym filtrze na samym chipie. Bez nich chip
-    wygląda jak dawniej."""
+    wygląda jak dawniej.
+
+    `kolory_opcji` (opcja → kolor tagu albo None) stawia kółko w kolorze przy
+    każdej opcji, a włączony filtr maluje chip kolorem wybranego tagu."""
     aktualny_filtr = state.filtry.setdefault(klucz_stanu, WSZYSTKO)
     if aktualny_filtr not in opcje:
         aktualny_filtr = WSZYSTKO
@@ -124,6 +143,8 @@ def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta,
             ft.Icon(ft.Icons.CHECK, size=16, color=ft.Colors.PRIMARY, visible=zaznaczone),
             ft.Text(o, weight="bold" if zaznaczone else "normal", color=kolor_opcji)
         ]
+        if kolory_opcji is not None and o in kolory_opcji:
+            wiersz.insert(1, _kropka_tagu(kolory_opcji[o], wyszarzona=puste))
         if liczba is not None:
             wiersz.append(ft.Text(f"({liczba})", size=12,
                                   color=kolor_opcji or ft.Colors.ON_SURFACE_VARIANT))
@@ -138,6 +159,11 @@ def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta,
     jest_aktywny = (aktualny_filtr != WSZYSTKO)
     kolor_glowny = ft.Colors.PRIMARY if jest_aktywny else ft.Colors.ON_SURFACE_VARIANT
     kolor_tla = ft.Colors.with_opacity(0.15, ft.Colors.PRIMARY) if jest_aktywny else ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE)
+    # Włączony filtr tagu nosi kolor tego tagu — tak jak jego chipy na kartach,
+    # więc od razu widać, które wpisy zostały na liście.
+    kolory_tagu = kolory_chipa_tagu(kolory_opcji.get(aktualny_filtr)) if (jest_aktywny and kolory_opcji) else None
+    if kolory_tagu:
+        kolor_tla, kolor_glowny = kolory_tagu
 
     pokazywany_tekst = aktualny_filtr if jest_aktywny else etykieta
     if len(pokazywany_tekst) > 9:
@@ -231,6 +257,11 @@ def filtruj_po_kategorii(lista_danych, state, klucz_stanu, index_pola):
     return [w for w in lista_danych if filtr in _wartosci_rekordu("kategoria", w, index_pola)]
 
 
+def filtruj_po_tagu(lista_danych, state, klucz_stanu, index_pola):
+    """Tagi filtrują się dokładnie jak kategoria — różnią się tylko wyglądem chipa."""
+    return filtruj_po_kategorii(lista_danych, state, klucz_stanu, index_pola)
+
+
 def filtruj_po_autorze(lista_danych, state, klucz_stanu, pole):
     filtr = state.filtry.get(klucz_stanu, WSZYSTKO)
     if filtr == WSZYSTKO:
@@ -243,6 +274,7 @@ FILTROWANIE = {
     "rok": filtruj_po_roku,
     "miesiac": filtruj_po_miesiacu,
     "kategoria": filtruj_po_kategorii,
+    "tag": filtruj_po_tagu,
     "autor": filtruj_po_autorze,
 }
 
@@ -252,7 +284,8 @@ def pasek_filtrow(page: ft.Page, state, dane, specyfikacje):
 
     `specyfikacje` to krotki `(rodzaj, klucz_stanu, pole)` albo
     `(rodzaj, klucz_stanu, pole, etykieta)`, w kolejności wyświetlania;
-    rodzaj: „rok”, „miesiac”, „kategoria”, „autor”. Zwraca listę chipów (do
+    rodzaj: „rok”, „miesiac”, „kategoria”, „tag” (kategoria w kolorach
+    tagów), „autor”. Zwraca listę chipów (do
     wsadzenia w `ft.Row(scroll=ADAPTIVE)`, razem z przyciskiem sortowania) i
     listę po filtrach — dzięki temu opis filtra stoi w jednym miejscu, a nie
     raz przy budowie chipa i drugi raz przy filtrowaniu.
@@ -266,6 +299,8 @@ def pasek_filtrow(page: ft.Page, state, dane, specyfikacje):
     zmianie sąsiada; te bez pokrycia dostają „(0)” i przestają być klikalne."""
     spec = [(s[0], s[1], s[2], s[3] if len(s) > 3 else None) for s in specyfikacje]
     moje = db.pobierz_moje_imie() if any(r == "autor" for r, _, _, _ in spec) else ""
+    mapa_tagow = (db.mapa_kolorow_tagow(getattr(state, "auto_id", None))
+                  if any(r == "tag" for r, _, _, _ in spec) else {})
 
     opcje = {klucz: _opcje_filtra(rodzaj, dane, pole, moje)
              for rodzaj, klucz, pole, _ in spec}
@@ -291,9 +326,11 @@ def pasek_filtrow(page: ft.Page, state, dane, specyfikacje):
                     if wartosc in liczniki:
                         liczniki[wartosc] += 1
         ikona_aktywna, ikona_nieaktywna, domyslna_etykieta = WYGLAD_FILTRA[rodzaj]
+        kolory_opcji = ({o: db.kolor_tagu(mapa_tagow, o) for o in opcje[klucz] if o != WSZYSTKO}
+                        if rodzaj == "tag" else None)
         kontrolki.append(_zbuduj_popup_filtra(
             page, state, klucz, opcje[klucz], etykieta or domyslna_etykieta,
-            ikona_aktywna, ikona_nieaktywna, liczniki
+            ikona_aktywna, ikona_nieaktywna, liczniki, kolory_opcji
         ))
 
     wynik = dane
@@ -318,6 +355,7 @@ __all__ = [
     "filtruj_po_kategorii",
     "filtruj_po_miesiacu",
     "filtruj_po_roku",
+    "filtruj_po_tagu",
     "pasek_filtrow",
     "przycisk_filtrowania_autora",
     "przycisk_filtrowania_kategoria",
