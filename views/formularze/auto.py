@@ -32,6 +32,10 @@ class FormularzAutoView(ft.View):
         pierwsza_rej_val = ""
         self.zg_val = None
         self.kolor_auta_val = None
+        # Przebiegi i zasięg w km, jak w bazie; pola pokazują je w jednostce
+        # z Ustawień, a nieruszone wracają do bazy bez przeliczania.
+        self.pz_km = self.gwp_km = None
+        self.zasieg_z_bazy = ""
         
         if auto_id:
             with db.polacz_baze() as c:
@@ -49,11 +53,13 @@ class FormularzAutoView(ft.View):
                     pal_val, skrz_val, not_val = str(w["typ_paliwa"] or "Benzyna"), str(w["skrzynia_biegow"] or "Manualna"), str(w["notatki"] or "")
                     nadw_val = str(w["nadwozie"] or "")
                     bat_val = str(w["pojemnosc_baterii"] or "")
-                    zas_val = str(w["zasieg_ev"] or "")
+                    self.zasieg_z_bazy = str(w["zasieg_ev"] or "")
+                    zas_val = self._zasieg_do_pola(self.zasieg_z_bazy)
                     bak_val = str(w["pojemnosc_baku"] or "")
                     dz_val = str(w["data_zakupu"] or "")
                     cz_val = utils.formatuj_liczba(w["cena_zakupu"], 0) if w["cena_zakupu"] else ""
-                    pz_val = str(w["przebieg_zakupu"] or "")
+                    self.pz_km = w["przebieg_zakupu"] or None
+                    pz_val = db.wartosc_pola_dystansu(self.pz_km)
                     ws_val = utils.formatuj_liczba(w["wartosc_szacowana"], 0) if w["wartosc_szacowana"] else ""
                     ub_val = str(w["ubezpieczyciel"] or "")
                     pol_val = str(w["nr_polisy"] or "")
@@ -72,7 +78,9 @@ class FormularzAutoView(ft.View):
                     akum_val, zm_val, zd_val = str(w["akumulator"] or ""), str(w["zarowki_mijania"] or ""), str(w["zarowki_drogowe"] or "")
                     ac_val, asy_val = str(w["ac_data"] or ""), str(w["assistance_data"] or "")
                     gas_val, apt_val = str(w["gasnica_data"] or ""), str(w["apteczka_data"] or "")
-                    gw_val, gwp_val = str(w["gwarancja_data"] or ""), str(w["gwarancja_przebieg"] or "")
+                    gw_val = str(w["gwarancja_data"] or "")
+                    self.gwp_km = w["gwarancja_przebieg"] or None
+                    gwp_val = db.wartosc_pola_dystansu(self.gwp_km)
                     self.zg_val = str(w["zdjecie_glowne"]) if w["zdjecie_glowne"] else None
                     self.kolor_auta_val = str(w["kolor_motywu"]) if w["kolor_motywu"] else None
                     
@@ -109,9 +117,10 @@ class FormularzAutoView(ft.View):
         self.e_pt = utils.pole_daty(page, "Przegląd techniczny", pt_val)
 
         akt_przebieg = db.pobierz_aktualny_przebieg(auto_id) if auto_id else 0
+        self.akt_przebieg_km = akt_przebieg or None
         self.e_przebieg = ft.TextField(
-            label="Aktualny przebieg (km)", 
-            value=str(akt_przebieg) if akt_przebieg else "", 
+            label=f"Aktualny przebieg ({utils.jednostka_dystansu()})", 
+            value=db.wartosc_pola_dystansu(self.akt_przebieg_km), 
             keyboard_type=ft.KeyboardType.NUMBER, 
             **utils.styl_pola(page=page)
         )
@@ -155,7 +164,7 @@ class FormularzAutoView(ft.View):
             keyboard_type=ft.KeyboardType.NUMBER, visible=czy_naped_z_pradem(pal_val), **utils.styl_pola(page=page)
         )
         self.e_zasieg = ft.TextField(
-            label="Deklarowany zasięg EV (km)", value=zas_val, hint_text="np. 380 (WLTP)",
+            label=f"Deklarowany zasięg EV ({utils.jednostka_dystansu()})", value=zas_val, hint_text="np. 380 (WLTP)",
             keyboard_type=ft.KeyboardType.NUMBER, visible=czy_naped_z_pradem(pal_val), **utils.styl_pola(page=page)
         )
         self.info_bateria = ft.Text(
@@ -218,7 +227,7 @@ class FormularzAutoView(ft.View):
             label=f"Cena zakupu ({utils.symbol_waluty()})", value=cz_val, hint_text="np. 42000",
             keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_przebieg_zakupu = ft.TextField(
-            label="Przebieg przy zakupie (km)", value=pz_val, hint_text="np. 98000",
+            label=f"Przebieg przy zakupie ({utils.jednostka_dystansu()})", value=pz_val, hint_text="np. 98000",
             keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_wartosc = ft.TextField(
             label=f"Szacowana wartość dziś ({utils.symbol_waluty()})", value=ws_val,
@@ -264,7 +273,7 @@ class FormularzAutoView(ft.View):
 
         self.e_pierwsza_rej = utils.pole_daty(page, "Pierwsza rejestracja", pierwsza_rej_val)
         self.e_gw = utils.pole_daty(page, "Gwarancja producenta (do)", gw_val)
-        self.e_gwp = ft.TextField(label="Gwarancja — limit przebiegu (km)", value=gwp_val, hint_text="np. 150000", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_gwp = ft.TextField(label=f"Gwarancja — limit przebiegu ({utils.jednostka_dystansu()})", value=gwp_val, hint_text="np. 150000", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
 
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pojazdu" if auto_id else "Nowy pojazd", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
@@ -520,6 +529,27 @@ class FormularzAutoView(ft.View):
                 utils.KOLOR_STATUS["error"]
             )
 
+    @staticmethod
+    def _zasieg_do_pola(tekst_z_bazy):
+        """Zasięg to pole TEKSTOWE w km („380”, „380 (WLTP)”). W milach pokazujemy
+        samą przeliczoną liczbę; w km — tekst dokładnie tak, jak go wpisano."""
+        if utils.jednostka_dystansu() == "km":
+            return tekst_z_bazy
+        liczba = db._liczba_lub_none(tekst_z_bazy)
+        return db.wartosc_pola_dystansu(liczba) if liczba else tekst_z_bazy
+
+    def _zasieg_do_zapisu(self):
+        """Nieruszone pole wraca w pierwotnym brzmieniu; liczba wpisana w milach — w km."""
+        tekst = (self.e_zasieg.value or "").strip()
+        if not tekst:
+            return None
+        if tekst == self._zasieg_do_pola(self.zasieg_z_bazy).strip():
+            return self.zasieg_z_bazy or tekst
+        if utils.jednostka_dystansu() == "km":
+            return tekst
+        liczba = db._liczba_lub_none(tekst)
+        return str(db.dystans_na_km(liczba, calkowity=True)) if liczba else tekst
+
     def _migawka_formularza(self):
         return (
             self.e_marka.value, self.e_model.value, self.e_generacja.value,
@@ -592,7 +622,8 @@ class FormularzAutoView(ft.View):
         bledy = []
         
         utils.ustaw_blad(self.e_przebieg)
-        prz = utils.parsuj_int(self.e_przebieg.value, 0)
+        prz = db.dystans_na_km(utils.parsuj_int(self.e_przebieg.value, 0), calkowity=True,
+                               km_przy_otwarciu=self.akt_przebieg_km)
         if prz < 0:
             bledy.append((self.e_przebieg, "Błędny przebieg"))
         
@@ -615,9 +646,10 @@ class FormularzAutoView(ft.View):
         utils.ustaw_blad(self.e_gwp)
         gwarancja_km = None
         if (self.e_gwp.value or "").strip():
-            gwarancja_km = utils.parsuj_int(self.e_gwp.value, None)
+            gwarancja_km = db.dystans_na_km(utils.parsuj_int(self.e_gwp.value, None), calkowity=True,
+                                            km_przy_otwarciu=self.gwp_km)
             if gwarancja_km is None or gwarancja_km <= 0:
-                bledy.append((self.e_gwp, "Podaj poprawny limit km"))
+                bledy.append((self.e_gwp, f"Podaj poprawny limit {db.slowo_dystansu()}"))
 
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
@@ -658,7 +690,7 @@ class FormularzAutoView(ft.View):
             "nadwozie": (self.e_nadwozie.value or None),
             "pojemnosc_baku": (self.e_bak.value or None),
             "pojemnosc_baterii": (self.e_bateria.value or None),
-            "zasieg_ev": (self.e_zasieg.value or None),
+            "zasieg_ev": self._zasieg_do_zapisu(),
             "typ_zlacza_ev": (self.e_zlacze.value or None),
             "notatki": self.e_not.value,
             "wycieraczki_przod": self.e_wp.value, "wycieraczki_tyl": self.e_wt.value,
@@ -673,7 +705,8 @@ class FormularzAutoView(ft.View):
             "moment_dokrecania": (self.e_moment.value or None),
             "data_zakupu": (self.e_data_zakupu.value or None),
             "cena_zakupu": utils.parsuj_float(self.e_cena_zakupu.value, None),
-            "przebieg_zakupu": utils.parsuj_int(self.e_przebieg_zakupu.value, None),
+            "przebieg_zakupu": db.dystans_na_km(utils.parsuj_int(self.e_przebieg_zakupu.value, None),
+                                                calkowity=True, km_przy_otwarciu=self.pz_km),
             "wartosc_szacowana": utils.parsuj_float(self.e_wartosc.value, None),
             "ubezpieczyciel": (self.e_ubezpieczyciel.value or None),
             "nr_polisy": (self.e_polisa.value or None),

@@ -2,6 +2,7 @@
 
 import csv
 import io
+import re
 from date import parsuj_date
 from datetime import datetime
 
@@ -9,6 +10,7 @@ from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, KATEGORIA_INNE_DOMYSLNA
 from .polaczenie import polacz_baze
 from .pomocnicze import _parsuj_liczbe_csv, formatuj_liczba_eksport
 from .ustawienia import pobierz_moje_imie
+from .jednostki import dystans_na_km, tekst_dystansu
 from .energia import ETYKIETY_RODZAJU, domyslny_rodzaj_energii
 from .nazwy import klucz_nazwy, normalizuj_nazwe
 
@@ -31,8 +33,9 @@ POLA_IMPORTU_TANKOWAN = {
 
 _ALIASY_IMPORTU = {
     "data": ["data", "date", "data tankowania", "dzien", "dzień", "datum"],
-    "przebieg": ["przebieg", "licznik", "odometer", "odo", "mileage", "km", "stan licznika", "przebieg (km)"],
-    "dystans": ["dystans", "distance", "trip", "przejechano", "dystans (km)"],
+    "przebieg": ["przebieg", "licznik", "odometer", "odo", "mileage", "km", "stan licznika", "przebieg (km)",
+                 "przebieg (mi)"],
+    "dystans": ["dystans", "distance", "trip", "przejechano", "dystans (km)", "dystans (mi)"],
     "litry": ["litry", "liters", "litres", "ilosc", "ilość", "volume", "quantity", "kwh", "energia", "paliwo"],
     "kwota": ["kwota", "koszt", "cena", "cost", "total", "total cost", "price", "wartosc", "wartość"],
     "stacja": ["stacja", "station", "punkt ladowania", "punkt ładowania", "miejsce", "fuel station", "sprzedawca"],
@@ -117,6 +120,28 @@ def wczytaj_plik_csv(sciezka) -> tuple[list[str], list[list[str]]]:
     return naglowki, wiersze
 
 
+# Słowa w nagłówku kolumny licznika/dystansu, które mówią wprost o jednostce.
+# „mileage” celowo nie — po angielsku to po prostu „przebieg”, także w km.
+_SLOWA_MIL = {"mi", "mil", "mile", "miles"}
+_SLOWA_KM = {"km", "kilometry", "kilometers", "kilometres"}
+
+
+def rozpoznaj_jednostke_pliku(naglowki, mapowanie) -> str | None:
+    """„mi” albo „km”, jeśli nagłówek kolumny licznika albo dystansu mówi to
+    wprost („Przebieg (mi)”, „Odometer (km)”, „Distance miles”); None, gdy
+    milczy — wtedy o jednostce pliku decyduje człowiek (domyślnie ta z Ustawień)."""
+    for pole in ("przebieg", "dystans"):
+        idx = (mapowanie or {}).get(pole)
+        if idx is None or idx >= len(naglowki):
+            continue
+        slowa = set(re.findall(r"[^\W\d_]+", _normalizuj_naglowek(naglowki[idx])))
+        if slowa & _SLOWA_MIL:
+            return "mi"
+        if slowa & _SLOWA_KM:
+            return "km"
+    return None
+
+
 def dopasuj_kolumny_tankowan(naglowki):
     """Automatyczne zgadywanie, która kolumna pliku odpowiada któremu polu.
     Zwraca {pole: indeks_kolumny lub None} — użytkownik może to potem poprawić.
@@ -124,9 +149,10 @@ def dopasuj_kolumny_tankowan(naglowki):
     return _dopasuj_kolumny(naglowki, POLA_IMPORTU_TANKOWAN, _ALIASY_IMPORTU)
 
 
-def przygotuj_import_tankowan(auto_id, naglowki, wiersze, mapowanie):
+def przygotuj_import_tankowan(auto_id, naglowki, wiersze, mapowanie, jednostka_pliku="km"):
     """Waliduje wiersze wg mapowania kolumn i wykrywa duplikaty względem tego,
     co JUŻ jest w bazie (ta sama data + przebieg + kwota, jak w dedupie sync).
+    Licznik i dystans z pliku w `jednostka_pliku` trafiają do bazy w km.
     Nic nie zapisuje. Zwraca {"gotowe": [...], "duplikaty": n, "bledy": [(nr, powod)]}."""
     gotowe, bledy = [], []
     duplikaty = 0
@@ -159,8 +185,8 @@ def przygotuj_import_tankowan(auto_id, naglowki, wiersze, mapowanie):
 
         przebieg = _parsuj_liczbe_csv(wartosc(wiersz, "przebieg"))
         dystans = _parsuj_liczbe_csv(wartosc(wiersz, "dystans"))
-        przebieg_i = int(przebieg) if przebieg and przebieg > 0 else 0
-        dystans_f = float(dystans) if dystans and dystans > 0 else 0.0
+        przebieg_i = dystans_na_km(przebieg, jednostka_pliku, calkowity=True) if przebieg and przebieg > 0 else 0
+        dystans_f = dystans_na_km(dystans, jednostka_pliku) if dystans and dystans > 0 else 0.0
         if przebieg_i <= 0 and dystans_f <= 0:
             bledy.append((nr, "brak przebiegu i dystansu — nie da się umiejscowić wpisu"))
             continue
@@ -236,7 +262,8 @@ _ALIASY_IMPORTU_INNYCH = {
 
 _ALIASY_IMPORTU_ODCZYTOW = {
     "data": ["data", "date", "dzien", "dzień", "datum", "data odczytu"],
-    "przebieg": ["przebieg", "licznik", "odometer", "odo", "mileage", "km", "stan licznika", "przebieg (km)"],
+    "przebieg": ["przebieg", "licznik", "odometer", "odo", "mileage", "km", "stan licznika", "przebieg (km)",
+                 "przebieg (mi)"],
 }
 
 
@@ -279,7 +306,7 @@ def dopasuj_kolumny_odczytow(naglowki):
     return _dopasuj_kolumny(naglowki, POLA_IMPORTU_ODCZYTOW, _ALIASY_IMPORTU_ODCZYTOW)
 
 
-def przygotuj_import_innych_kosztow(auto_id, naglowki, wiersze, mapowanie):
+def przygotuj_import_innych_kosztow(auto_id, naglowki, wiersze, mapowanie, jednostka_pliku="km"):
     """Waliduje wiersze i odsiewa duplikaty względem tego, co już jest w bazie
     (ta sama data + nazwa + kwota). Nic nie zapisuje."""
     gotowe, bledy = [], []
@@ -343,10 +370,11 @@ def zaimportuj_inne_koszty(auto_id, gotowe):
     return len(gotowe)
 
 
-def przygotuj_import_odczytow(auto_id, naglowki, wiersze, mapowanie):
+def przygotuj_import_odczytow(auto_id, naglowki, wiersze, mapowanie, jednostka_pliku="km"):
     """Odczyty licznika: duplikatem jest ta sama data + ten sam przebieg.
     Dodatkowo odsiewamy wiersze z przebiegiem <= 0, bo taki odczyt nic nie wnosi,
-    a psuje wyliczenia średniego dziennego przebiegu."""
+    a psuje wyliczenia średniego dziennego przebiegu. Licznik z pliku
+    w `jednostka_pliku` trafia do bazy w km."""
     gotowe, bledy = [], []
     duplikaty = 0
 
@@ -366,13 +394,14 @@ def przygotuj_import_odczytow(auto_id, naglowki, wiersze, mapowanie):
             bledy.append((nr, "brak lub zerowy stan licznika"))
             continue
 
-        klucz = (data_txt, int(przebieg))
+        przebieg_km = dystans_na_km(przebieg, jednostka_pliku, calkowity=True)
+        klucz = (data_txt, przebieg_km)
         if klucz in istniejace:
             duplikaty += 1
             continue
         istniejace.add(klucz)
 
-        gotowe.append({"data": data_txt, "przebieg": int(przebieg)})
+        gotowe.append({"data": data_txt, "przebieg": przebieg_km})
 
     gotowe.sort(key=lambda g: (parsuj_date(g["data"]), g["przebieg"]))
     return {"gotowe": gotowe, "duplikaty": duplikaty, "bledy": bledy}
@@ -400,8 +429,9 @@ TYPY_IMPORTU = {
         "dopasuj": dopasuj_kolumny_tankowan,
         "przygotuj": przygotuj_import_tankowan,
         "zapisz": zaimportuj_tankowania,
+        "z_dystansem": True,
         "podglad": lambda g, jednostka: (
-            f"{g['data']} • {g['przebieg']} km • {formatuj_liczba_eksport(g['litry'])} "
+            f"{g['data']} • {tekst_dystansu(g['przebieg'])} • {formatuj_liczba_eksport(g['litry'])} "
             f"{'kWh' if g.get('rodzaj_energii') == ENERGIA_PRAD else jednostka} • {formatuj_liczba_eksport(g['kwota'])}"
             + (f" • {g['stacja']}" if g.get("stacja") else "")
             + (f" • {ETYKIETY_RODZAJU.get(g.get('rodzaj_energii'), '')}" if g.get("rodzaj_energii") else "")
@@ -426,7 +456,8 @@ TYPY_IMPORTU = {
         "dopasuj": dopasuj_kolumny_odczytow,
         "przygotuj": przygotuj_import_odczytow,
         "zapisz": zaimportuj_odczyty,
-        "podglad": lambda g, jednostka: f"{g['data']} • {g['przebieg']} km",
+        "z_dystansem": True,
+        "podglad": lambda g, jednostka: f"{g['data']} • {tekst_dystansu(g['przebieg'])}",
     },
 }
 
@@ -451,6 +482,7 @@ __all__ = [
     "przygotuj_import_innych_kosztow",
     "przygotuj_import_odczytow",
     "przygotuj_import_tankowan",
+    "rozpoznaj_jednostke_pliku",
     "wczytaj_plik_csv",
     "zaimportuj_inne_koszty",
     "zaimportuj_odczyty",

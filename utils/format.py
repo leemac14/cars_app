@@ -63,6 +63,26 @@ def symbol_waluty():
     return db.pobierz_walute()
 
 
+def jednostka_dystansu():
+    """„km” albo „mi” — do etykiet pól i podpisów („Licznik (mi)”, „mi/dzień”).
+    Liczby przelicza db.dystans_z_km / db.dystans_na_km (patrz db/jednostki.py)."""
+    return db.jednostka_dystansu()
+
+
+def formatuj_dystans(km, decimale=0, jednostka=None):
+    """Dystans z bazy (ZAWSZE w km) jako tekst w jednostce z Ustawień:
+    „12 345 km” albo „7 671 mi”. Ten sam skład, co teksty warstwy danych."""
+    return db.tekst_dystansu(km, decimale, jednostka)
+
+
+def formatuj_na_dystans(wartosc_na_km, przyrostek, decimale=2, jednostka=None):
+    """Wielkość NA dystans — „0,73 zł/km”, „731 zł / 1000 km” — w jednostce
+    z Ustawień. `przyrostek` to to, co stoi przed jednostką („zł/”, „zł / 1000 ”).
+    Koszt mili jest większy niż koszt kilometra — przelicza db.na_jednostke_dystansu."""
+    j = db.jednostka_dystansu(jednostka)
+    return f"{formatuj_liczba(db.na_jednostke_dystansu(wartosc_na_km, j), decimale)} {przyrostek}{j}"
+
+
 MIESIACE_DOPELNIACZ = [
     "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
     "lipca", "sierpnia", "września", "października", "listopada", "grudnia"
@@ -102,7 +122,7 @@ def _opis_prognozy_dni(dni):
 
 
 def formatuj_prognoze_km(zostalo_km, sredni_dzienny_przebieg):
-    tekst_km = f"{formatuj_liczba(zostalo_km, 0)} km"
+    tekst_km = formatuj_dystans(zostalo_km)
 
     dni, data = oblicz_prognoze_terminu(zostalo_km, sredni_dzienny_przebieg)
     if dni is None:
@@ -146,9 +166,11 @@ def _zdanie_pierwszego_licznika(licznik):
     właśnie ona jest terminem wynikowym całego podzespołu."""
     zostalo = licznik["zostalo"]
     if licznik["rodzaj"] == "km":
+        j = db.jednostka_dystansu()
         if zostalo < 0:
-            return f"Przekroczono o {formatuj_liczba(-zostalo, 0)} km"
-        tekst = _zostalo(zostalo, f"{formatuj_liczba(zostalo, 0)} km")
+            return f"Przekroczono o {formatuj_dystans(-zostalo, 0, j)}"
+        # Czasownik zgadza się z liczbą NA EKRANIE (w milach inna niż w km).
+        tekst = _zostalo(round(db.dystans_z_km(zostalo, j)), formatuj_dystans(zostalo, 0, j))
         if licznik.get("dni") is not None and licznik.get("data"):
             tekst += f" ({_opis_prognozy_dni(licznik['dni'])} - {formatuj_date_pl(licznik['data'])})"
         return tekst
@@ -164,9 +186,11 @@ def _zdanie_drugiego_licznika(licznik):
     całym znacznikiem kolejności — mówi, że to nie on wyznacza termin."""
     zostalo = licznik["zostalo"]
     if licznik["rodzaj"] == "km":
+        j = db.jednostka_dystansu()
+        limit = f"Limit {db.slowo_dystansu('dopelniacz', j)}"
         if zostalo < 0:
-            return f"Limit km też przekroczony (o {formatuj_liczba(-zostalo, 0)} km)"
-        tekst = f"Limit km dopiero za {formatuj_liczba(zostalo, 0)} km"
+            return f"{limit} też przekroczony (o {formatuj_dystans(-zostalo, 0, j)})"
+        tekst = f"{limit} dopiero za {formatuj_dystans(zostalo, 0, j)}"
         if licznik.get("data"):
             tekst += f" (ok. {formatuj_date_pl(licznik['data'])})"
         return tekst
@@ -201,13 +225,14 @@ def linie_opisu_odczytu(swiezosc):
     licznika. Liczby liczy db.swiezosc_licznika; tu tylko słowa."""
     if not swiezosc:
         return []
+    j = db.jednostka_dystansu()
     if swiezosc.get("dni") is None:
         return ["Brak jakiegokolwiek stanu licznika",
-                "Bez przebiegu nie ma prognoz interwałów, zasięgu ani kosztu na km"]
-    druga = (f"Prognozy liczą z {formatuj_liczba(swiezosc['przebieg'], 0)} km "
+                f"Bez przebiegu nie ma prognoz interwałów, zasięgu ani kosztu na {j}"]
+    druga = (f"Prognozy liczą z {formatuj_dystans(swiezosc['przebieg'], 0, j)} "
              f"({swiezosc['data'].strftime('%d.%m.%Y')})")
     if swiezosc.get("przybylo_km"):
-        druga += f" — mogło przybyć ok. {formatuj_liczba(swiezosc['przybylo_km'], 0)} km"
+        druga += f" — mogło przybyć ok. {formatuj_dystans(swiezosc['przybylo_km'], 0, j)}"
     return [f"Brak nowego przebiegu od {formatuj_dni_dopelniacz(swiezosc['dni'])}", druga]
 
 
@@ -216,12 +241,13 @@ def opis_licznika_na_karte(licznik):
     krótka, bo stoi obok drugiej; datę niesie podpis."""
     zostalo = licznik["zostalo"]
     if licznik["rodzaj"] == "km":
-        wartosc = f"{formatuj_liczba(abs(zostalo), 0)} km"
+        j = db.jednostka_dystansu()
+        wartosc = formatuj_dystans(abs(zostalo), 0, j)
         if zostalo < 0:
             return wartosc, "ponad limit"
         if licznik.get("data"):
             return wartosc, f"ok. {licznik['data'].strftime('%d.%m.%Y')}"
-        return wartosc, f"z {formatuj_liczba(licznik['interwal'], 0)} km"
+        return wartosc, f"z {formatuj_dystans(licznik['interwal'], 0, j)}"
     if zostalo < 0:
         return formatuj_okres(zostalo), "po terminie"
     return formatuj_okres(zostalo), f"do {licznik['data'].strftime('%d.%m.%Y')}"
@@ -273,7 +299,7 @@ def opis_przerwanego_ciagu(ciag, rodzaj=None, przebieg=None):
     odcinek = ""
     km = max(przebieg or 0, ciag.get("najdalej") or 0) - ciag["pelny_przebieg"]
     if km > 0:
-        odcinek += f" za {formatuj_liczba(km, 0)} km"
+        odcinek += f" za {formatuj_dystans(km)}"
     dzien = parsuj_date(ciag.get("pelny_data"))
     if dzien != datetime.min.date():
         odcinek += f" od {formatuj_date_pl(dzien)}"
@@ -297,9 +323,12 @@ __all__ = [
     "formatuj_date_pl",
     "formatuj_dni",
     "formatuj_dni_dopelniacz",
+    "formatuj_dystans",
+    "formatuj_na_dystans",
     "formatuj_okres",
     "formatuj_prognoze_km",
     "formatuj_spalanie",
+    "jednostka_dystansu",
     "kolor_i_tekst_terminu",
     "linie_opisu_interwalu",
     "linie_opisu_odczytu",

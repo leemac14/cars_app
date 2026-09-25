@@ -16,6 +16,7 @@ from .stale import ENERGIA_PRAD
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km, pobierz_walute
+from .jednostki import dystans_z_km, jednostka_dystansu, slowo_dystansu
 from .energia import domyslny_rodzaj_energii
 from .koszty import rozbicie_kosztu
 
@@ -105,6 +106,13 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     if not auto_id or not kategorie:
         return wynik
 
+    # Plik idzie za jednostką z Ustawień (nagłówek mówi, jaką), baza zostaje w km.
+    j = jednostka_dystansu()
+
+    def licznik(km):
+        """Stan licznika do komórki: liczba całkowita w jednostce z Ustawień."""
+        return int(round(dystans_z_km(km or 0, j)))
+
     with polacz_baze() as conn:
         c = conn.cursor()
 
@@ -117,13 +125,13 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             for data, prz, dys, lit, kwo, pelna, stacja, tagi, notatka in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
                     wiersze.append([
-                        data, int(prz or 0), formatuj_liczba_eksport(dys), formatuj_liczba_eksport(lit),
+                        data, licznik(prz), formatuj_liczba_eksport(dystans_z_km(dys, j)), formatuj_liczba_eksport(lit),
                         formatuj_liczba_eksport(kwo), "Tak" if pelna else "Nie", stacja or "", tagi or "",
                         notatka or ""
                     ])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["tankowania"] = (
-                ["Data", "Przebieg (km)", "Dystans (km)", "Litry", "Kwota", "Do pełna", "Stacja", "Tagi", "Notatka"], wiersze
+                ["Data", f"Przebieg ({j})", f"Dystans ({j})", "Litry", "Kwota", "Do pełna", "Stacja", "Tagi", "Notatka"], wiersze
             )
 
         if "historia" in kategorie:
@@ -137,11 +145,11 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             wiersze = []
             for data, nazwa, prz, cena, robocizna, magazyn, wyk, kat, notatka in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([data, nazwa, int(prz or 0), formatuj_liczba_eksport(cena),
+                    wiersze.append([data, nazwa, licznik(prz), formatuj_liczba_eksport(cena),
                                     *_kolumny_rozbicia(cena, robocizna, magazyn),
                                     wyk or "", kat or "", notatka or ""])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
-            wynik["historia"] = (["Data", "Podzespół", "Przebieg (km)", "Koszt", "Robocizna", "Części",
+            wynik["historia"] = (["Data", "Podzespół", f"Przebieg ({j})", "Koszt", "Robocizna", "Części",
                                   "Wykonawca", "Kategoria", "Notatka"], wiersze)
 
         if "wizyty" in kategorie:
@@ -158,13 +166,13 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             for data, prz, wyk, kosz, robocizna, magazyn, notatki, tagi, czesci in c.fetchall():
                 if _data_w_zakresie(data, od_data, do_data):
                     wiersze.append([
-                        data, int(prz or 0), wyk or "", formatuj_liczba_eksport(kosz),
+                        data, licznik(prz), wyk or "", formatuj_liczba_eksport(kosz),
                         *_kolumny_rozbicia(kosz, robocizna, magazyn),
                         czesci or "", tagi or "", notatki or ""
                     ])
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
             wynik["wizyty"] = (
-                ["Data", "Przebieg (km)", "Warsztat", "Koszt", "Robocizna", "Części", "Podzespoły", "Tagi",
+                ["Data", f"Przebieg ({j})", "Warsztat", "Koszt", "Robocizna", "Części", "Podzespoły", "Tagi",
                  "Notatki"], wiersze
             )
 
@@ -231,17 +239,17 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             for nazwa, ik, im, data_o, prz_o, p_km, p_dni, opony in c.fetchall():
                 wiersze.append([
                     nazwa or "",
-                    f"{int(ik)} km" if ik else "",
+                    f"{licznik(ik)} {j}" if ik else "",
                     f"{formatuj_liczba_eksport(im, 0)} mies." if im else "",
                     data_o or "",
-                    int(prz_o or 0) if prz_o else "",
-                    f"{int(p_km)} km" if p_km else f"{dom_km} km (domyślny)",
+                    licznik(prz_o) if prz_o else "",
+                    f"{licznik(p_km)} {j}" if p_km else f"{licznik(dom_km)} {j} (domyślny)",
                     f"{int(p_dni)} dni" if p_dni else f"{dom_dni} dni (domyślny)",
                     "Tak" if opony else "Nie",
                 ])
             wynik["zadania"] = (
-                ["Podzespół", "Interwał km", "Interwał czasowy", "Ostatnia wymiana",
-                 "Przebieg ost. wymiany", "Próg (km)", "Próg (dni)", "Dotyczy opon"],
+                ["Podzespół", f"Interwał {slowo_dystansu('dopelniacz', j)}", "Interwał czasowy", "Ostatnia wymiana",
+                 "Przebieg ost. wymiany", f"Próg ({j})", "Próg (dni)", "Dotyczy opon"],
                 wiersze
             )
 
@@ -267,11 +275,11 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
         if "odczyty_przebiegu" in kategorie:
             c.execute("SELECT data, przebieg, notatka FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
             wiersze = [
-                [data, int(prz or 0), notatka or ""] for data, prz, notatka in c.fetchall()
+                [data, licznik(prz), notatka or ""] for data, prz, notatka in c.fetchall()
                 if _data_w_zakresie(data, od_data, do_data)
             ]
             wiersze.sort(key=lambda w: parsuj_date(w[0]))
-            wynik["odczyty_przebiegu"] = (["Data", "Przebieg (km)", "Notatka"], wiersze)
+            wynik["odczyty_przebiegu"] = (["Data", f"Przebieg ({j})", "Notatka"], wiersze)
 
         if "tagi" in kategorie:
             c.execute("SELECT nazwa, kolor FROM tagi WHERE auto_id=? ORDER BY nazwa", (auto_id,))

@@ -49,9 +49,39 @@ PROG_ILOSC_MAGAZYNU_DOMYSLNY = 1.0
 
 WALUTY = ["PLN", "EUR", "USD", "GBP", "CZK"]
 
-JEDNOSTKI_SPALANIA = ["l/100km", "km/l", "mpg"]
+# Klucze zapisywane w Ustawieniach. „mpg” to galon USA (3,785 l) — tak było
+# od początku, więc zapisane ustawienia się nie zmieniają; „mpg UK” liczy galon
+# imperialny (4,546 l), który pokazują auta z Wielkiej Brytanii.
+JEDNOSTKI_SPALANIA = ["l/100km", "km/l", "mpg", "mpg UK"]
 
-JEDNOSTKI_ZUZYCIA_EV = ["kWh/100km", "km/kWh"]
+JEDNOSTKI_ZUZYCIA_EV = ["kWh/100km", "km/kWh", "kWh/100mi", "mi/kWh"]
+
+# Podpis w liście wyboru, gdy sam klucz nie wystarcza. Przy liczbie oba galony
+# piszą samo „mpg” — kto wybrał brytyjski, wie, jakie mpg czyta.
+OPISY_JEDNOSTEK_ZUZYCIA = {"mpg": "mpg (USA)", "mpg UK": "mpg (UK)"}
+
+# Dystans: baza trzyma zawsze kilometry, mile są tylko na ekranie i w plikach
+# (patrz db/jednostki.py).
+JEDNOSTKI_DYSTANSU = ["km", "mi"]
+
+# Mila międzynarodowa — dokładnie tyle kilometrów.
+KM_W_MILI = 1.609344
+
+# Jednostka w ZDANIU, nie przy liczbie: „limit km” czyta się „limit kilometrów”,
+# a „limit mi” — jak „mój limit”. Przy liczbie i po „/” zostaje skrót.
+NAZWY_JEDNOSTEK_DYSTANSU = {
+    "km": {"skrot": "km", "dopelniacz": "km", "mianownik": "Kilometry", "biernik": "kilometr",
+           "dopelniacz_lp": "kilometra", "dopelniacz_pelny": "kilometrów"},
+    "mi": {"skrot": "mi", "dopelniacz": "mil", "mianownik": "Mile", "biernik": "milę",
+           "dopelniacz_lp": "mili", "dopelniacz_pelny": "mil"},
+}
+
+# Podpowiedź w Ustawieniach: po przełączeniu dystansu jednostka zużycia
+# przechodzi na naturalną parę (można ją jeszcze zmienić przed zapisem).
+PARY_JEDNOSTEK_ZUZYCIA = {
+    "mi": {"l/100km": "mpg", "km/l": "mpg", "kWh/100km": "kWh/100mi", "km/kWh": "mi/kWh"},
+    "km": {"mpg": "l/100km", "mpg UK": "l/100km", "kWh/100mi": "kWh/100km", "mi/kWh": "km/kWh"},
+}
 
 
 # Sylwetki nadwozia do odznaki pojazdu w selektorze. Ikony dobiera warstwa UI
@@ -136,6 +166,10 @@ DNI_KOSZA_DOMYSLNIE = 30
 
 
 PROGI_KM_OPCJE = [500, 1000, 1500, 2000, 3000, 5000]
+
+# Te same progi dla kogoś, kto liczy w milach — okrągłe mile, nie przeliczone
+# kilometry („932 mi” nikt by nie wybrał). Zapis i tak idzie w km.
+PROGI_MIL_OPCJE = [300, 500, 1000, 1500, 2000, 3000]
 
 PROGI_DNI_OPCJE = [7, 14, 30, 60, 90]
 
@@ -398,4 +432,10 @@ __all__ = [
     "ZRODLA_ODCZYTU",
     "ZRODLA_PRZEBIEGU",
     "ZRODLO_ODCZYTU_DOMYSLNE",
+    "JEDNOSTKI_DYSTANSU",
+    "KM_W_MILI",
+    "NAZWY_JEDNOSTEK_DYSTANSU",
+    "OPISY_JEDNOSTEK_ZUZYCIA",
+    "PARY_JEDNOSTEK_ZUZYCIA",
+    "PROGI_MIL_OPCJE",
 ]

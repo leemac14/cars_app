@@ -52,7 +52,10 @@ class MiksinZakladkiStatystyki:
         koszt_km = (razem / dystans) if dystans > 0 else 0.0
 
         sredni_dzienny = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
-        sredni_dz_str = f"{utils.formatuj_liczba(sredni_dzienny, 1)} km/dzień" if sredni_dzienny else "Brak danych"
+        # Liczby wyżej są w km (tak liczy baza); na ekran idą w jednostce z Ustawień.
+        j = utils.jednostka_dystansu()
+        sredni_dz_str = (f"{utils.formatuj_dystans(sredni_dzienny, 1, j)}/dzień"
+                         if sredni_dzienny else "Brak danych")
 
         def kafel(ikona, tytul, wartosc, kolor=ft.Colors.PRIMARY, expand=None):
             return ft.Card(
@@ -120,7 +123,9 @@ class MiksinZakladkiStatystyki:
                 ], spacing=10),
                 ft.Row([
                     kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
-                    kafel(ft.Icons.ADD_ROAD, "Koszt 1 km", f"{utils.formatuj_liczba(koszt_km)}  {utils.symbol_waluty()}/km", ft.Colors.PURPLE_700, expand=1),
+                    kafel(ft.Icons.ADD_ROAD, f"Koszt 1 {j}",
+                          utils.formatuj_na_dystans(koszt_km, f" {utils.symbol_waluty()}/", 2, j),
+                          ft.Colors.PURPLE_700, expand=1),
                 ], spacing=10),
             ])
 
@@ -152,8 +157,8 @@ class MiksinZakladkiStatystyki:
                           ft.Colors.AMBER_800, expand=1),  # paleta: tożsamość — akcent kafla
                     # Koszt na km liczony osobno pokazuje wprost, ile daje
                     # ładowanie zamiast tankowania.
-                    kafel(ft.Icons.ADD_ROAD, f"Koszt 1 km ({stat['etykieta'].lower()})",
-                          f"{utils.formatuj_liczba(stat['koszt_km'])} {utils.symbol_waluty()}/km"
+                    kafel(ft.Icons.ADD_ROAD, f"Koszt 1 {j} ({stat['etykieta'].lower()})",
+                          utils.formatuj_na_dystans(stat['koszt_km'], f"{utils.symbol_waluty()}/", 2, j)
                           if stat["koszt_km"] > 0 else "—",
                           ft.Colors.PURPLE_700, expand=1),
                 ], spacing=10))
@@ -197,7 +202,7 @@ class MiksinZakladkiStatystyki:
                             "Przy hybrydzie plug-in oba zużycia liczą się po CAŁYM przebiegu "
                             "(tak samo podaje je WLTP) — z samego licznika nie da się wydzielić, "
                             "ile kilometrów przejechałeś na prądzie, a ile na paliwie. "
-                            "Koszty na km można za to dodać: razem dają pełny koszt energii.",
+                            f"Koszty na {j} można za to dodać: razem dają pełny koszt energii.",
                             size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
                         ),
                     ], spacing=8),
@@ -205,7 +210,7 @@ class MiksinZakladkiStatystyki:
 
             zasieg = db.pobierz_zasieg_ev(self.state.auto_id)
             if zasieg and zasieg["szacowany"]:
-                podpis = f"{utils.formatuj_liczba(zasieg['szacowany'], 0)} km"
+                podpis = utils.formatuj_dystans(zasieg['szacowany'], 0, j)
                 if zasieg["procent_deklarowanego"]:
                     podpis += f" ({utils.formatuj_liczba(zasieg['procent_deklarowanego'], 0)}% katalogowego)"
                 self.elementy.append(ft.Row([
@@ -216,7 +221,7 @@ class MiksinZakladkiStatystyki:
             self.elementy.extend([
                 ft.Row(utils.tytul_sekcji(ft.Icons.INSIGHTS, "Przebieg"), spacing=8),
                 ft.Row([
-                    kafel(ft.Icons.ROUTE, "Zanotowany dystans", f"{utils.formatuj_liczba(dystans, 0)} km", ft.Colors.INDIGO_700, expand=1),
+                    kafel(ft.Icons.ROUTE, "Zanotowany dystans", utils.formatuj_dystans(dystans, 0, j), ft.Colors.INDIGO_700, expand=1),
                     kafel(ft.Icons.TIMELAPSE, "Średnio dziennie", sredni_dz_str, ft.Colors.BLUE_GREY_700, expand=1),
                 ], spacing=10),
             ])
@@ -741,7 +746,7 @@ class MiksinZakladkiStatystyki:
                 utils.pasek_zakresu_czasu(self._page, self.state, "skumulowany"),
                 karta_skumulowanego,
                 ft.Divider(height=20),
-                ft.Text("Koszt na 1000 km", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                ft.Text(f"Koszt na 1000 {utils.jednostka_dystansu()}", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 utils.pasek_okna_kroczacego(self._page, self.state),
                 karta_1000km,
                 ft.Divider(height=20),

@@ -18,6 +18,9 @@ class FormularzTankowanieView(ft.View):
         self.dwuzrodlowy = len(self.rodzaje) > 1
         self.rodzaj_energii = self.rodzaje[0]
         self.elektryczny = db.czy_pojazd_elektryczny(state.auto_id)
+        # Pola licznika i dystansu są w jednostce z Ustawień (km albo mi);
+        # `ostatni_prz` i cały zapis — w km, jak baza.
+        self.j = utils.jednostka_dystansu()
 
         duplikuj_id = getattr(state, "duplikuj_zrodlo_tankowanie", None) if not t_id else None
         state.duplikuj_zrodlo_tankowanie = None  # zużywamy jednorazowo
@@ -32,6 +35,9 @@ class FormularzTankowanieView(ft.View):
         notatka_val = ""
 
         self.ostatni_prz = 0
+        # km z bazy pokazane w polach — nieruszone pole wraca do bazy bez zmian
+        # (patrz db.dystans_na_km), a nie przeliczone tam i z powrotem.
+        self.prz_przy_otwarciu = self.dys_przy_otwarciu = None
         with db.polacz_baze() as conn:
             c = conn.cursor()
             if zrodlo_id:
@@ -41,8 +47,9 @@ class FormularzTankowanieView(ft.View):
                     self.rodzaj_energii = db.normalizuj_rodzaj_energii(w[9], self.state.auto_id)
                     ladowanie_val = str(w[10] or "") if w[10] else ""
                     d_val = str(w[0] or "")
-                    p_val = str(w[1] or "") if w[1] else ""
-                    dys_val = str(w[2] or "") if w[2] else ""
+                    self.prz_przy_otwarciu, self.dys_przy_otwarciu = w[1] or None, w[2] or None
+                    p_val = db.wartosc_pola_dystansu(w[1], self.j) if w[1] else ""
+                    dys_val = db.wartosc_pola_dystansu(w[2], self.j, decimale=2) if w[2] else ""
                     l_val = str(w[3] or "")
                     k_val = str(w[4] or "")
                     pelna_val = bool(w[5])
@@ -68,6 +75,8 @@ class FormularzTankowanieView(ft.View):
                 if duplikuj_id:
                     d_val = datetime.now().strftime("%d.%m.%Y")
                     self.zalacznik_val = None
+        # Poprzedni licznik tak, jak stoi w polu — całe km albo całe mile.
+        self.ostatni_prz_pola = round(db.dystans_z_km(self.ostatni_prz, self.j))
 
         def on_przebieg_changed(e):
             if self._blokada_sync:
@@ -79,8 +88,8 @@ class FormularzTankowanieView(ft.View):
                     self.e_dys.value = ""
                 else:
                     prz = int(txt)
-                    if self.ostatni_prz > 0 and prz >= self.ostatni_prz:
-                        dys = float(prz - self.ostatni_prz)
+                    if self.ostatni_prz_pola > 0 and prz >= self.ostatni_prz_pola:
+                        dys = float(prz - self.ostatni_prz_pola)
                         self.e_dys.value = str(int(dys)) if dys.is_integer() else str(round(dys, 1))
                     else:
                         self.e_dys.value = ""
@@ -101,8 +110,8 @@ class FormularzTankowanieView(ft.View):
                     self.e_p.value = ""
                 else:
                     dys = float(txt)
-                    if self.ostatni_prz > 0:
-                        self.e_p.value = str(int(self.ostatni_prz + dys))
+                    if self.ostatni_prz_pola > 0:
+                        self.e_p.value = str(int(self.ostatni_prz_pola + dys))
                     else:
                         self.e_p.value = str(int(dys))
                 self.e_p.update()
@@ -118,10 +127,10 @@ class FormularzTankowanieView(ft.View):
             page, state, stacja_val,
             elektryczny=(self.rodzaj_energii == db.ENERGIA_PRAD)
         )
-        hint_prz = f"Ost.: {self.ostatni_prz} km" if self.ostatni_prz > 0 else "np. 150000"
+        hint_prz = f"Ost.: {self.ostatni_prz_pola} {self.j}" if self.ostatni_prz > 0 else "np. 150000"
         
-        self.e_p = ft.TextField(label="Licznik (km)", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
-        self.e_dys = ft.TextField(label="Dystans (km)", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola(page=page))
+        self.e_p = ft.TextField(label=f"Licznik ({self.j})", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
+        self.e_dys = ft.TextField(label=f"Dystans ({self.j})", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola(page=page))
         
         self.etykiety = db.etykiety_energii(self.rodzaj_energii)
 
@@ -241,9 +250,11 @@ class FormularzTankowanieView(ft.View):
 
     def _przebieg_z_pol(self):
         """Licznik tak, jak policzy go zapis: wpisany wprost albo z dystansu od
-        poprzedniego wpisu. None, dopóki oba pola są puste."""
-        prz = utils.parsuj_int(self.e_p.value, 0)
-        dys = utils.parsuj_float(self.e_dys.value, 0.0)
+        poprzedniego wpisu. None, dopóki oba pola są puste. W km — jak baza."""
+        prz = db.dystans_na_km(utils.parsuj_int(self.e_p.value, 0), self.j, calkowity=True,
+                               km_przy_otwarciu=self.prz_przy_otwarciu)
+        dys = db.dystans_na_km(utils.parsuj_float(self.e_dys.value, 0.0), self.j,
+                               km_przy_otwarciu=self.dys_przy_otwarciu)
         if prz <= 0 and dys > 0:
             prz = int(self.ostatni_prz + dys)
         return prz if prz > 0 else None
@@ -281,6 +292,9 @@ class FormularzTankowanieView(ft.View):
         if bledy: 
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
+        # Od tego miejsca wszystko w km: pola były w jednostce z Ustawień.
+        prz = db.dystans_na_km(prz, self.j, calkowity=True, km_przy_otwarciu=self.prz_przy_otwarciu)
+        dys = db.dystans_na_km(dys, self.j, km_przy_otwarciu=self.dys_przy_otwarciu)
         if prz == 0 and dys > 0: 
             prz = int(self.ostatni_prz + dys)
         elif dys == 0.0 and prz > 0 and self.ostatni_prz > 0 and prz > self.ostatni_prz: 

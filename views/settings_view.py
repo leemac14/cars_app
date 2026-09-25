@@ -29,24 +29,28 @@ class UstawieniaView(ft.View):
 
         self.e_jednostka = ft.Dropdown(
             label="Jednostka spalania",
-            options=[ft.DropdownOption(key=j, text=j) for j in db.JEDNOSTKI_SPALANIA],
+            options=[ft.DropdownOption(key=j, text=db.OPISY_JEDNOSTEK_ZUZYCIA.get(j, j)) for j in db.JEDNOSTKI_SPALANIA],
             value=jednostka_val,
             **utils.styl_dropdown()
         )
 
         self.e_jednostka_ev = ft.Dropdown(
             label="Jednostka zużycia (pojazdy elektryczne)",
-            options=[ft.DropdownOption(key=j, text=j) for j in db.JEDNOSTKI_ZUZYCIA_EV],
+            options=[ft.DropdownOption(key=j, text=db.OPISY_JEDNOSTEK_ZUZYCIA.get(j, j)) for j in db.JEDNOSTKI_ZUZYCIA_EV],
             value=db.pobierz_jednostke_zuzycia_ev(),
             **utils.styl_dropdown()
         )
 
-        self.e_prog_km = ft.Dropdown(
-            label="Powiadamiaj o wymianie na tyle km przed",
-            options=[ft.DropdownOption(key=str(k), text=f"{k} km") for k in db.PROGI_KM_OPCJE],
-            value=str(prog_km_val) if prog_km_val in db.PROGI_KM_OPCJE else str(db.PROGI_KM_OPCJE[2]),
-            **utils.styl_dropdown()
-        )
+        # Dystans: km albo mile, obok jednostki spalania. Dane zostają w km —
+        # przełącznik zmienia tylko to, co widać na ekranie i co się wpisuje.
+        # Zmiana podpowiada naturalną parę zużycia (l/100km ↔ mpg, kWh/100km ↔
+        # kWh/100mi), a powrót do poprzedniej jednostki przywraca jej parę.
+        self.jednostka_dystansu = db.pobierz_jednostke_dystansu()
+        self._pary_przy_jednostce = {}
+        self.przelacznik_dystansu = ft.Container(width=124, content=self._segmenty_dystansu())
+
+        self.e_prog_km = ft.Dropdown(label="", **utils.styl_dropdown())
+        self._ustaw_opcje_progu(prog_km_val)
 
         # Każdy termin ma własny dropdown z „Jak domyślny” na pierwszym miejscu.
         # Pusty klucz = brak własnego progu, czyli obowiązuje ten z pola wyżej —
@@ -255,8 +259,19 @@ class UstawieniaView(ft.View):
             czy_zmieniono=self._czy_zmieniono, ikona=ft.Icons.SETTINGS
         )
 
+        wiersz_jednostek = ft.Row(
+            [ft.Container(self.e_jednostka, expand=True), self.przelacznik_dystansu],
+            spacing=utils.SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        podpis_jednostek = ft.Text(
+            "km albo mile — liczniki, dystanse, progi i raporty. Dane zostają w km, więc "
+            "przełączać można bez obaw; jednostka zużycia podpowie się sama.",
+            size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+        )
+
         k1 = utils.karta_formularza(
-            [self.e_waluta, self.e_jednostka, paleta_sekcja, ft.Divider(height=1), czern_sekcja,
+            [self.e_waluta, wiersz_jednostek, self.e_jednostka_ev, podpis_jednostek,
+             paleta_sekcja, ft.Divider(height=1), czern_sekcja,
              ft.Divider(height=1), animacje_sekcja, ft.Divider(height=1), puste_kafelki_sekcja,
              ft.Divider(height=1), historia_wyszukiwan_sekcja],
             "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True, page=page
@@ -720,8 +735,46 @@ class UstawieniaView(ft.View):
             tekst_potwierdzenia="Wróć do wspólnego",
         )
 
+    def _segmenty_dystansu(self):
+        return utils.segmented_control(
+            self._page, [(j, i) for i, j in enumerate(db.JEDNOSTKI_DYSTANSU)],
+            db.JEDNOSTKI_DYSTANSU.index(self.jednostka_dystansu), self._przelacz_dystans,
+        )
+
+    def _ustaw_opcje_progu(self, prog_km):
+        """Lista progów w bieżącej jednostce; zapis dalej w km. Próg spoza listy
+        zostaje jako dodatkowa opcja — nic nie zmienia się bez ruchu człowieka."""
+        j = self.jednostka_dystansu
+        prog_km = prog_km or db.najblizszy_prog_km(db.PROG_KM_POWIADOMIEN, j)
+        self.e_prog_km.label = f"Powiadamiaj o wymianie na tyle {db.slowo_dystansu('dopelniacz', j)} przed"
+        self.e_prog_km.options = [ft.DropdownOption(key=str(km), text=tekst)
+                                  for km, tekst in db.opcje_progow_km(j, obecny_km=prog_km)]
+        self.e_prog_km.value = str(int(prog_km))
+
+    def _przelacz_dystans(self, idx):
+        nowa = db.JEDNOSTKI_DYSTANSU[idx]
+        stara = self.jednostka_dystansu
+        if nowa == stara:
+            return
+        self._pary_przy_jednostce[stara] = (self.e_jednostka.value, self.e_jednostka_ev.value)
+        if nowa in self._pary_przy_jednostce:
+            self.e_jednostka.value, self.e_jednostka_ev.value = self._pary_przy_jednostce[nowa]
+        else:
+            pary = db.PARY_JEDNOSTEK_ZUZYCIA[nowa]
+            self.e_jednostka.value = pary.get(self.e_jednostka.value, self.e_jednostka.value)
+            self.e_jednostka_ev.value = pary.get(self.e_jednostka_ev.value, self.e_jednostka_ev.value)
+        self.jednostka_dystansu = nowa
+        # Próg przechodzi na najbliższy okrągły w nowej jednostce: 1500 km → 1000 mi.
+        self._ustaw_opcje_progu(db.najblizszy_prog_km(utils.parsuj_int(self.e_prog_km.value, None), nowa))
+        self.przelacznik_dystansu.content = self._segmenty_dystansu()
+        try:
+            self._page.update()
+        except Exception:
+            log.polkniety("odświeżenie Ustawień po zmianie jednostki dystansu")
+
     def _migawka_formularza(self):
-        return (self.e_waluta.value, self.e_jednostka.value, self.e_jednostka_ev.value, self.e_prog_km.value, self.e_prog_dni.value,
+        return (self.e_waluta.value, self.e_jednostka.value, self.e_jednostka_ev.value, self.jednostka_dystansu,
+                self.e_prog_km.value, self.e_prog_dni.value,
                 self.e_dni_kosza.value, self.e_moje_imie.value, self.wybrany_kolor,
                 self.e_przypomnienie_licznika.value,
                 tuple(self.dropdowny_terminow[k].value for k, _, _ in db.TERMINY_DOKUMENTOW))
@@ -733,6 +786,7 @@ class UstawieniaView(ft.View):
         db.zapisz_ustawienie("waluta", self.e_waluta.value)
         db.zapisz_ustawienie("jednostka_spalania", self.e_jednostka.value)
         db.zapisz_ustawienie("jednostka_zuzycia_ev", self.e_jednostka_ev.value)
+        db.zapisz_jednostke_dystansu(self.jednostka_dystansu)
         db.zapisz_ustawienie("prog_km_powiadomien", self.e_prog_km.value)
         db.zapisz_ustawienie("prog_dni_powiadomien", self.e_prog_dni.value)
         for klucz, _kolumna, _etykieta in db.TERMINY_DOKUMENTOW:

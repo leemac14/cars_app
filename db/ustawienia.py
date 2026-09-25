@@ -1,6 +1,6 @@
 """Ustawienia globalne i per-pojazd: motyw, waluta, jednostki, progi."""
 
-from .stale import DNI_PRZYPOMNIENIA_O_ODCZYCIE, DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE, JEDNOSTKI_SPALANIA, JEDNOSTKI_ZUZYCIA_EV, KLUCZE_TERMINOW, KOLEJNOSC_TRYBOW_MOTYWU, KOLORY_MOTYWU, PROG_DNI_POWIADOMIEN, PROG_KM_POWIADOMIEN, WALUTY
+from .stale import DNI_PRZYPOMNIENIA_O_ODCZYCIE, DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE, JEDNOSTKI_DYSTANSU, JEDNOSTKI_SPALANIA, JEDNOSTKI_ZUZYCIA_EV, KLUCZE_TERMINOW, KOLEJNOSC_TRYBOW_MOTYWU, KOLORY_MOTYWU, PROG_DNI_POWIADOMIEN, PROG_KM_POWIADOMIEN, WALUTY
 from .polaczenie import polacz_baze
 
 
@@ -133,6 +133,17 @@ def pobierz_jednostke_spalania():
 def pobierz_jednostke_zuzycia_ev():
     w = pobierz_ustawienie("jednostka_zuzycia_ev", "kWh/100km")
     return w if w in JEDNOSTKI_ZUZYCIA_EV else "kWh/100km"
+
+
+def pobierz_jednostke_dystansu():
+    """„km” albo „mi”. Globalna dla urządzenia i NIE jedzie do chmury — dane są
+    zawsze w km, więc współdzielone auto każdy widzi we własnej jednostce."""
+    w = pobierz_ustawienie("jednostka_dystansu", "km")
+    return w if w in JEDNOSTKI_DYSTANSU else "km"
+
+
+def zapisz_jednostke_dystansu(jednostka):
+    zapisz_ustawienie("jednostka_dystansu", jednostka if jednostka in JEDNOSTKI_DYSTANSU else "km")
 
 
 def pobierz_kolor_motywu():
@@ -585,4 +596,6 @@ __all__ = [
     "zapisz_okno_kroczace",
     "zapisz_zakres_wykresu",
     "zapisz_widgety_kokpitu",
+    "pobierz_jednostke_dystansu",
+    "zapisz_jednostke_dystansu",
 ]

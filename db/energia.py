@@ -1,6 +1,6 @@
 """Paliwo i prąd: typy, etykiety, przeliczanie zużycia, pojazdy dwuźródłowe."""
 
-from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, RODZAJE_ENERGII, TYPY_PALIWA_DWUZRODLOWE, TYPY_PALIWA_ELEKTRYCZNE
+from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, KM_W_MILI, RODZAJE_ENERGII, TYPY_PALIWA_DWUZRODLOWE, TYPY_PALIWA_ELEKTRYCZNE
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .ustawienia import pobierz_jednostke_spalania, pobierz_jednostke_zuzycia_ev
@@ -11,8 +11,10 @@ def przelicz_zuzycie(wartosc_na_100km, elektryczny=False) -> tuple[float, str]:
     ZAWSZE jest zużycie na 100 km — dokładnie to, co liczy reszta aplikacji.
     Jedno miejsce na to przeliczenie, bo korzysta z niego i interfejs
     (utils.formatuj_spalanie), i teksty obserwacji budowane tutaj, w db.
-    Uwaga na kierunek: przy km/l i mpg WIĘKSZA liczba znaczy MNIEJSZE zużycie,
-    więc żaden tekst nie może wnioskować o trendzie z samej tej wartości."""
+    Uwaga na kierunek: przy km/l, mpg i mi/kWh WIĘKSZA liczba znaczy MNIEJSZE
+    zużycie, więc żaden tekst nie może wnioskować o trendzie z samej tej wartości.
+    Jednostka zużycia jest niezależna od jednostki dystansu (db.jednostki) —
+    Ustawienia tylko podpowiadają naturalną parę przy przełączaniu km/mi."""
     jednostka = pobierz_jednostke_zuzycia_ev() if elektryczny else pobierz_jednostke_spalania()
     try:
         val = float(wartosc_na_100km)
@@ -22,9 +24,23 @@ def przelicz_zuzycie(wartosc_na_100km, elektryczny=False) -> tuple[float, str]:
         return None, jednostka
     if jednostka in ("km/l", "km/kWh"):
         return 100.0 / val, jednostka
+    if jednostka == "mi/kWh":
+        return 100.0 / KM_W_MILI / val, jednostka
+    if jednostka == "kWh/100mi":
+        return val * KM_W_MILI, jednostka
     if jednostka == "mpg":
+        # 100 km × galon USA (3,785411784 l) / mila
         return 235.214583 / val, jednostka
+    if jednostka == "mpg UK":
+        # 100 km × galon imperialny (4,54609 l) / mila; przy liczbie samo „mpg”
+        return 282.480936 / val, "mpg"
     return val, jednostka
+
+
+def jednostka_zuzycia(elektryczny=False) -> str:
+    """Podpis jednostki zużycia z Ustawień, taki jak przy liczbie („mpg” także
+    dla galonu brytyjskiego) — do nagłówków i osi, gdzie liczby jeszcze nie ma."""
+    return przelicz_zuzycie(1.0, elektryczny)[1]
 
 
 def formatuj_zuzycie_tekst(wartosc_na_100km, elektryczny=False, decimale=1):
@@ -151,6 +167,7 @@ __all__ = [
     "etykiety_energii",
     "etykiety_paliwa",
     "formatuj_zuzycie_tekst",
+    "jednostka_zuzycia",
     "normalizuj_rodzaj_energii",
     "pobierz_typ_paliwa",
     "przelicz_zuzycie",

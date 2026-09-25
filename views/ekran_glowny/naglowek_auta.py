@@ -254,8 +254,8 @@ class MiksinNaglowkaAuta:
         # --- SZYBKA AKTUALIZACJA PRZEBIEGU (bez sztucznego tankowania/wpisu) ---
         def pokaz_szybka_aktualizacja_przebiegu(e):
             pole_przebiegu = ft.TextField(
-                label="Aktualny przebieg (km)",
-                value=str(aktualny_przebieg) if aktualny_przebieg else "",
+                label=f"Aktualny przebieg ({utils.jednostka_dystansu()})",
+                value=db.wartosc_pola_dystansu(aktualny_przebieg or None),
                 hint_text="np. 152300",
                 keyboard_type=ft.KeyboardType.NUMBER,
                 autofocus=True,
@@ -264,7 +264,9 @@ class MiksinNaglowkaAuta:
 
             def zapisz(e2):
                 utils.ustaw_blad(pole_przebiegu)
-                nowy = utils.parsuj_int(pole_przebiegu.value, None)
+                # Pole w jednostce z Ustawień, odczyt w km; nieruszone pole wraca bez przeliczania.
+                nowy = db.dystans_na_km(utils.parsuj_int(pole_przebiegu.value, None), calkowity=True,
+                                        km_przy_otwarciu=aktualny_przebieg or None)
                 if nowy is None or nowy <= 0:
                     utils.ustaw_blad(pole_przebiegu, "Podaj poprawny przebieg")
                     self._page.update()
@@ -287,7 +289,7 @@ class MiksinNaglowkaAuta:
                 title=ft.Row([ft.Icon(ft.Icons.SPEED, color=ft.Colors.PRIMARY), ft.Text("Aktualizacja przebiegu", weight="bold", size=16, expand=True)], spacing=8),
                 content=ft.Column([
                     ft.Text(
-                        "Wpisz aktualny stan licznika z deski rozdzielczej. To tylko odświeży stan km — nie tworzy tankowania ani wpisu serwisowego.",
+                        "Wpisz aktualny stan licznika z deski rozdzielczej. To tylko odświeży stan licznika — nie tworzy tankowania ani wpisu serwisowego.",
                         size=12, color=ft.Colors.ON_SURFACE_VARIANT
                     ),
                     pole_przebiegu,
@@ -438,7 +440,7 @@ class MiksinNaglowkaAuta:
         if metryki_pojazdu.get("wiek_lat"):
             dopiski.append(f"{utils.formatuj_liczba(metryki_pojazdu['wiek_lat'], 1)} lat")
         if metryki_pojazdu.get("przebieg_roczny"):
-            dopiski.append(f"{utils.formatuj_liczba(metryki_pojazdu['przebieg_roczny'], 0)} km/rok")
+            dopiski.append(f"{utils.formatuj_dystans(metryki_pojazdu['przebieg_roczny'])}/rok")
 
         # Stary licznik mówimy przy samej liczbie: to z niej liczą się interwały,
         # zasięg i opony, więc „sprzed 34 dni” musi stać tam, gdzie się ją czyta.
@@ -448,7 +450,7 @@ class MiksinNaglowkaAuta:
         kolor_licznika = utils.KOLOR_STATUS["warning"] if licznik_stary else ft.Colors.ON_SURFACE_VARIANT
         metryki_bity = [
             ft.Icon(ft.Icons.SPEED, size=13, color=kolor_licznika),
-            ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold",
+            ft.Text(utils.formatuj_dystans(aktualny_przebieg), size=13, weight="bold",
                     no_wrap=True),
             ft.Icon(ft.Icons.EDIT, size=11, color=ft.Colors.PRIMARY),
         ]
@@ -473,7 +475,7 @@ class MiksinNaglowkaAuta:
         podpowiedz_licznika = "Dotknij: aktualizuj  •  Przytrzymaj: historia licznika"
         if licznik_stary:
             podpowiedz_licznika = (f"Ostatni przebieg sprzed {utils.formatuj_dni_dopelniacz(swiezosc['dni'])}"
-                                   " — prognozy km są w tyle. " + podpowiedz_licznika)
+                                   f" — prognozy {db.slowo_dystansu()} są w tyle. " + podpowiedz_licznika)
         wiersz_przebieg = ft.Container(
             content=ft.Row(metryki_bity, spacing=5),
             on_click=pokaz_szybka_aktualizacja_przebiegu,

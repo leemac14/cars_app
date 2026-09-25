@@ -712,6 +712,7 @@ class FormularzOponyView(ft.View):
         zam_val, dz_val, pz_val, cena_val, not_val = False, "", "", "", ""
         os_val = "Wszystkie"
         self.zalacznik_val = None
+        self.pz_km = None  # przebieg przy zakupie w km, jak w bazie
 
         if zestaw_id:
             with db.polacz_baze() as conn:
@@ -732,7 +733,8 @@ class FormularzOponyView(ft.View):
                     il_val = str(w[6] or "4")
                     zam_val = bool(w[7])
                     dz_val = str(w[8] or "")
-                    pz_val = str(w[9] or "")
+                    self.pz_km = w[9] or None
+                    pz_val = db.wartosc_pola_dystansu(self.pz_km)
                     cena_val = str(w[10] or "")
                     not_val = str(w[11] or "")
                     os_val = str(w[12] or "Wszystkie")
@@ -769,7 +771,7 @@ class FormularzOponyView(ft.View):
         self.e_zam.on_change = _przelacz_os
         
         self.e_dz = utils.pole_daty(page, "Data zakupu", dz_val)
-        self.e_pz = ft.TextField(label="Przebieg przy zakupie (km)", value=pz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_pz = ft.TextField(label=f"Przebieg przy zakupie ({utils.jednostka_dystansu()})", value=pz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_cena = ft.TextField(label=f"Koszt zakupu ({utils.symbol_waluty()})", value=cena_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
 
@@ -830,7 +832,9 @@ class FormularzOponyView(ft.View):
         bieznik_nizki = glebokosc is not None and glebokosc < 1.6
 
         dot = (self.e_dot.value or "").strip()
-        przebieg_zakupu = utils.parsuj_int(self.e_pz.value, None) if (self.e_pz.value or "").strip() else None
+        przebieg_zakupu = (db.dystans_na_km(utils.parsuj_int(self.e_pz.value, None), calkowity=True,
+                                            km_przy_otwarciu=self.pz_km)
+                           if (self.e_pz.value or "").strip() else None)
         nowy_id = self.zestaw_id
         
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())

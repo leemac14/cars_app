@@ -43,6 +43,7 @@ WYWOLANIA = {
     "globalne_wyszukiwanie": lambda k: (k["id"]["auto_id"], "olej"),
     "napraw_sciezki_zalacznikow": lambda k: (),
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
+    "opcje_progow_km": lambda k: ("mi", 1500),
     "pakiety_dla_pojazdu": lambda k: (k["id"]["auto_id"],),
     "parsuj_zapytanie_kwotowe": lambda k: ("powyżej 100 zł",),
     "parsuj_zapytanie_datowe": lambda k: ("marzec 2026",),

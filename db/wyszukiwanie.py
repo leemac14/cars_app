@@ -8,6 +8,7 @@ from date import parsuj_date
 
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
+from .jednostki import jednostka_dystansu, tekst_dystansu
 from .ustawienia import (czy_zapamietywac_wyszukiwania, pobierz_ustawienie,
                          pobierz_walute, usun_ustawienie, zapisz_ustawienie)
 
@@ -634,6 +635,7 @@ def _wszystkie_wpisy(auto_id):
     o ogonki („pelny bak”). Operator (`stacja:`) jest od ZAWĘŻANIA wyniku,
     a nie warunkiem, żeby cokolwiek znaleźć."""
     wpisy = []
+    j = jednostka_dystansu()  # raz na całe szukanie, nie przy każdym wierszu
 
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
@@ -642,7 +644,7 @@ def _wszystkie_wpisy(auto_id):
         c.execute("SELECT id, data, przebieg, kwota, litry, stacja, tagi, notatka "
                   "FROM tankowania WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
-            opis = f"{int(r['przebieg'] or 0)} km" + (f" • {r['stacja']}" if r["stacja"] else "")
+            opis = tekst_dystansu(r['przebieg'] or 0, 0, j) + (f" • {r['stacja']}" if r["stacja"] else "")
             if r["notatka"]:
                 opis += f" • {skrot_notatki(r['notatka'])}"
             wpisy.append(_wpis("Tankowanie", r["stacja"] or "Tankowanie", opis, r["data"],
@@ -653,7 +655,7 @@ def _wszystkie_wpisy(auto_id):
                   "z.nazwa FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
                   "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,))
         for r in c.fetchall():
-            opis = f"{int(r['przebieg'] or 0)} km" + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            opis = tekst_dystansu(r['przebieg'] or 0, 0, j) + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
             if r["notatka"]:
                 opis += f" • {skrot_notatki(r['notatka'])}"
             wpisy.append(_wpis("Serwis", r["nazwa"], opis, r["data"], f"/wpis/edytuj/{r['id']}",
@@ -693,7 +695,7 @@ def _wszystkie_wpisy(auto_id):
                   (auto_id,))
         for r in c.fetchall():
             wpisy.append(_wpis("Odczyt licznika",
-                               f"{formatuj_liczba_eksport(r['przebieg'] or 0, 0)} km",
+                               tekst_dystansu(r['przebieg'] or 0, 0, j),
                                skrot_notatki(r["notatka"]), r["data"], "/przebieg",
                                notatka=r["notatka"], nazwa=""))
 
@@ -738,7 +740,7 @@ def _wszystkie_wpisy(auto_id):
         c.execute("SELECT id, nazwa, dystans, powrot, osoby, notatki FROM trasy_szablony "
                   "WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
-            opis = f"{formatuj_liczba_eksport(r['dystans'], 0)} km"
+            opis = tekst_dystansu(r['dystans'], 0, j)
             if r["powrot"]:
                 opis += " • tam i z powrotem"
             opis += f" • {int(r['osoby'] or 1)} os."
@@ -761,7 +763,7 @@ def _wszystkie_wpisy(auto_id):
         for r in c.fetchall():
             czesci = []
             if r["interwal_km"]:
-                czesci.append(f"co {int(r['interwal_km'])} km")
+                czesci.append(f"co {tekst_dystansu(r['interwal_km'], 0, j)}")
             if r["interwal_miesiace"]:
                 czesci.append(f"co {int(r['interwal_miesiace'])} mies.")
             wpisy.append(_wpis("Podzespół", r["nazwa"],

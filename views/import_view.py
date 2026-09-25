@@ -56,6 +56,22 @@ class ImportCSVView(ft.View):
             width=float("inf")
         )
 
+        # Licznik i dystans z pliku: km albo mile. Nagłówek z „(mi)” / „(km)”
+        # rozstrzyga sam, inaczej przyjmujemy jednostkę z Ustawień — i zawsze
+        # można przełączyć. Do bazy wpisy trafiają w km.
+        self.jednostka_pliku = utils.jednostka_dystansu()
+        self._jednostka_rozpoznana = False
+        self._jednostka_recznie = False
+        self.przelacznik_jednostki_pliku = ft.Container(width=124)
+        self.t_jednostka_pliku = ft.Text("", size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
+        self.wiersz_jednostki_pliku = ft.Column([
+            ft.Row([
+                ft.Text("Licznik i dystans w pliku", size=13, expand=True),
+                self.przelacznik_jednostki_pliku,
+            ], spacing=utils.SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            self.t_jednostka_pliku,
+        ], spacing=4)
+
         self.kolumna_mapowania = ft.Column([], spacing=10, visible=False)
         self.kolumna_podgladu = ft.Column([], spacing=6, visible=False)
 
@@ -139,9 +155,42 @@ class ImportCSVView(ft.View):
             self.btn_importuj.visible = False
         self._page.update()
 
+    def _ustal_jednostke_pliku(self, mapowanie):
+        rozpoznana = db.rozpoznaj_jednostke_pliku(self.naglowki, mapowanie)
+        self._jednostka_rozpoznana = rozpoznana is not None
+        self.jednostka_pliku = rozpoznana or utils.jednostka_dystansu()
+
+    def _odswiez_jednostke_pliku(self):
+        """Przełącznik, podpis pod nim i etykiety pól licznika/dystansu."""
+        self.przelacznik_jednostki_pliku.content = utils.segmented_control(
+            self._page, [(j, i) for i, j in enumerate(db.JEDNOSTKI_DYSTANSU)],
+            db.JEDNOSTKI_DYSTANSU.index(self.jednostka_pliku), self._zmien_jednostke_pliku,
+        )
+        if self._jednostka_recznie:
+            self.t_jednostka_pliku.value = "Wybrane ręcznie. W aplikacji wpisy i tak trafią do bazy w km."
+        elif self._jednostka_rozpoznana:
+            self.t_jednostka_pliku.value = "Rozpoznane z nagłówka kolumny."
+        else:
+            self.t_jednostka_pliku.value = ("Nagłówek nie mówi, w czym jest licznik — przyjęto jednostkę "
+                                            "z Ustawień. Przełącz, jeśli plik jest w innej.")
+        pola = self._konfiguracja()["pola"]
+        for pole in ("przebieg", "dystans"):
+            if pole in self.dropdowny and pole in pola:
+                etykieta, wymagane = pola[pole]
+                self.dropdowny[pole].label = (f"{db.etykieta_z_dystansem(etykieta, self.jednostka_pliku)}"
+                                              f"{' *' if wymagane else ''}")
+
+    def _zmien_jednostke_pliku(self, idx):
+        self.jednostka_pliku = db.JEDNOSTKI_DYSTANSU[idx]
+        self._jednostka_recznie = True
+        self._odswiez_jednostke_pliku()
+        self._odswiez_podglad()
+
     def _zbuduj_mapowanie(self):
         konfig = self._konfiguracja()
         mapowanie = konfig["dopasuj"](self.naglowki)
+        self._jednostka_recznie = False
+        self._ustal_jednostke_pliku(mapowanie)
         opcje = [ft.DropdownOption(key="", text="— nie importuj —")]
         opcje += [ft.DropdownOption(key=str(i), text=h or f"Kolumna {i + 1}") for i, h in enumerate(self.naglowki)]
 
@@ -166,6 +215,10 @@ class ImportCSVView(ft.View):
             self.dropdowny[pole] = dd
             self.kolumna_mapowania.controls.append(dd)
 
+        if konfig.get("z_dystansem"):
+            self.kolumna_mapowania.controls.insert(0, self.wiersz_jednostki_pliku)
+            self._odswiez_jednostke_pliku()
+
         self.kolumna_mapowania.visible = True
         self._page.update()
 
@@ -178,8 +231,15 @@ class ImportCSVView(ft.View):
     def _odswiez_podglad(self, e=None):
         if not self.wiersze:
             return
+        mapowanie = self._biezace_mapowanie()
+        # Inna kolumna licznika może mieć inny nagłówek — dopóki człowiek sam
+        # nie wybrał jednostki, rozpoznajemy ją od nowa.
+        if e is not None and self._konfiguracja().get("z_dystansem") and not self._jednostka_recznie:
+            self._ustal_jednostke_pliku(mapowanie)
+            self._odswiez_jednostke_pliku()
         raport = self._konfiguracja()["przygotuj"](
-            self.state.auto_id, self.naglowki, self.wiersze, self._biezace_mapowanie()
+            self.state.auto_id, self.naglowki, self.wiersze, mapowanie,
+            jednostka_pliku=self.jednostka_pliku,
         )
         self.gotowe = raport["gotowe"]
 

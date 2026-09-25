@@ -153,6 +153,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "historia", h_id)
                     utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
 
+                j = utils.jednostka_dystansu()  # raz na całą listę
                 for w in wpisy:
                     (h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez,
                      zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data,
@@ -164,7 +165,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         k_str = f"{utils.formatuj_liczba(float(w_koszt or 0))}  {utils.symbol_waluty()} (cała wizyta)"
                     else:
                         k_str = f"{utils.formatuj_liczba(float(cena or 0))}  {utils.symbol_waluty()}"
-                    sub_tekst = f"Przebieg: {utils.formatuj_liczba(int(prz or 0), 0)} km  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
+                    sub_tekst = f"Przebieg: {utils.formatuj_dystans(int(prz or 0), 0, j)}  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
                     if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
                     opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wpisow.get(h_id))
 
@@ -504,6 +505,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             elementy.append(ft.Row([ft.Text("Brak wizyt dla wybranych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
         else:
             mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
+            j = utils.jednostka_dystansu()  # raz na całą listę
             for w in wizyty_lista:
                 (w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez,
                  zmodyfikowane_przez, data_modyfikacji, notatka_wizyty, _robocizna, _podzial) = w
@@ -520,7 +522,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Row([
                         ft.Icon(ft.Icons.SPEED, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(f"{utils.formatuj_liczba(int(prz or 0), 0)} km", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        ft.Text(utils.formatuj_dystans(int(prz or 0), 0, j), size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=4),
                     ft.Text(f"Części: {czesci}", size=13, color=ft.Colors.PRIMARY),
                 ]

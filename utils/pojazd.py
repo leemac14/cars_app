@@ -440,21 +440,23 @@ def dialog_odczytu_przebiegu(page: ft.Page, auto_id, odczyt=None, po_zapisie=Non
     się trasą, kokpit tylko przebudowuje to, co widać."""
     edycja = odczyt is not None
     domyslna_data = odczyt["data"] if edycja else datetime.now().strftime("%d.%m.%Y")
-    domyslny_przebieg = (str(odczyt["przebieg"]) if edycja
-                         else str(db.pobierz_aktualny_przebieg(auto_id) or ""))
+    # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień,
+    # a nieruszone wraca do bazy bez przeliczania (db.dystans_na_km).
+    przebieg_km = (odczyt["przebieg"] if edycja else db.pobierz_aktualny_przebieg(auto_id)) or None
     notatka_bazowa = str((odczyt.get("notatka") if edycja else "") or "")
 
     e_data = pole_daty(page, "Data odczytu", domyslna_data)
     e_notatka = pole_notatki(notatka_bazowa, page)
     e_przebieg = ft.TextField(
-        label="Przebieg (km)", value=domyslny_przebieg,
+        label=f"Przebieg ({db.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(przebieg_km),
         keyboard_type=ft.KeyboardType.NUMBER, autofocus=not edycja,
         **styl_pola()
     )
 
     def zapisz(e):
         ustaw_blad(e_przebieg)
-        nowy = parsuj_int(e_przebieg.value, None)
+        nowy = db.dystans_na_km(parsuj_int(e_przebieg.value, None), calkowity=True,
+                                km_przy_otwarciu=przebieg_km)
         if nowy is None or nowy <= 0:
             ustaw_blad(e_przebieg, "Podaj poprawny przebieg")
             page.update()
@@ -515,7 +517,8 @@ def baner_nieswiezego_licznika(page: ft.Page, auto_id, swiezosc, po_zapisie=None
     if not swiezosc or not swiezosc.get("nieswiezy") or swiezosc.get("dni") is None:
         return None
     kolor = KOLOR_STATUS["warning"]
-    tresc = tresc or f"Prognozy km liczone z licznika sprzed {formatuj_dni_dopelniacz(swiezosc['dni'])}"
+    tresc = tresc or (f"Prognozy {db.slowo_dystansu()} liczone z licznika sprzed "
+                      f"{formatuj_dni_dopelniacz(swiezosc['dni'])}")
     elementy = [
         ft.Icon(ft.Icons.SPEED, size=18, color=kolor),
         ft.Text(tresc, size=FS["caption"], color=kolor, expand=True),

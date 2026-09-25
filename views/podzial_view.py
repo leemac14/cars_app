@@ -367,7 +367,7 @@ class PodzialKosztowView(ft.View):
                                 height=8, border_radius=4)),
                             opis_kategorii,
                             ft.Text(
-                                f"Zatankował(a) {d['tankowania']}x • ok. {utils.formatuj_liczba(d['dystans_km'], 0)} km na liczniku"
+                                f"Zatankował(a) {d['tankowania']}x • ok. {utils.formatuj_dystans(d['dystans_km'])} na liczniku"
                                 if d["tankowania"] else "Brak tankowań w tym miesiącu",
                                 size=12, color=ft.Colors.ON_SURFACE_VARIANT
                             ),

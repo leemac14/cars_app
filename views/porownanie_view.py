@@ -62,6 +62,7 @@ class PorownanieView(ft.View):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
+        self.j = utils.jednostka_dystansu()  # km albo mi — raz na ekran
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Porównanie pojazdów", "/", ikona=ft.Icons.BALANCE)
 
@@ -106,6 +107,13 @@ class PorownanieView(ft.View):
             for aid in self.wybrane:
                 d = db.pobierz_dane_do_porownania(aid)
                 if d:
+                    # Ekran tylko pokazuje i porównuje (a ranking i radar nie
+                    # zależą od skali), więc dystanse i koszty „na dystans”
+                    # przeliczamy raz, tu, na jednostkę z Ustawień.
+                    d["aktualny_przebieg"] = db.dystans_z_km(d.get("aktualny_przebieg"), self.j)
+                    d["sredni_dzienny"] = db.dystans_z_km(d.get("sredni_dzienny"), self.j)
+                    d["koszt_km"] = db.na_jednostke_dystansu(d.get("koszt_km"), self.j)
+                    d["koszt_1000km_okno"] = db.na_jednostke_dystansu(d.get("koszt_1000km_okno"), self.j)
                     d["auto_id"] = aid
                     d["kolor"] = PALETA_KOLOROW[len(dane_aut) % len(PALETA_KOLOROW)]
                     d["nazwa_wyswietlana"] = str(d.get("nazwa") or "Pojazd")
@@ -244,7 +252,7 @@ class PorownanieView(ft.View):
         z_kosztem = [d for d in dane_aut if d.get("koszt_km") is not None]
         if z_kosztem:
             best = min(z_kosztem, key=lambda d: d["koszt_km"])
-            pozycje.append((ft.Icons.ACCOUNT_BALANCE_WALLET, "Najtańszy w eksploatacji", best, f"{utils.formatuj_liczba(best['koszt_km'], 2)} {utils.symbol_waluty()}/km"))
+            pozycje.append((ft.Icons.ACCOUNT_BALANCE_WALLET, "Najtańszy w eksploatacji", best, f"{utils.formatuj_liczba(best['koszt_km'], 2)} {utils.symbol_waluty()}/{self.j}"))
 
         ze_spalaniem = [d for d in dane_aut if d.get("spalanie")]
         if ze_spalaniem:
@@ -252,7 +260,7 @@ class PorownanieView(ft.View):
             pozycje.append((ft.Icons.LOCAL_GAS_STATION, "Najniższe spalanie", best, utils.formatuj_spalanie(best["spalanie"])))
 
         najnizszy_prz = min(dane_aut, key=lambda d: d["aktualny_przebieg"] or 0)
-        pozycje.append((ft.Icons.ADD_ROAD, "Najniższy przebieg", najnizszy_prz, f"{utils.formatuj_liczba(najnizszy_prz['aktualny_przebieg'], 0)} km"))
+        pozycje.append((ft.Icons.ADD_ROAD, "Najniższy przebieg", najnizszy_prz, f"{utils.formatuj_liczba(najnizszy_prz['aktualny_przebieg'], 0)} {self.j}"))
 
         najspokojniejszy = min(dane_aut, key=lambda d: (d["przeterminowane"] * 10 + d["pilne"]))
         if najspokojniejszy["przeterminowane"] == 0 and najspokojniejszy["pilne"] == 0:
@@ -399,11 +407,11 @@ class PorownanieView(ft.View):
         OSIE_OPCJONALNE_RADARU) dokłada się na końcu listy, jeśli użytkownik
         ją włączył."""
         stale = [
-            ("Koszt / km", f"{utils.symbol_waluty()}/km",
+            (f"Koszt / {self.j}", f"{utils.symbol_waluty()}/{self.j}",
              lambda d: d.get("koszt_km"),
              lambda v: f"{utils.formatuj_liczba(v, 2)} {utils.symbol_waluty()}",
              True, False),
-            ("Spalanie", db.pobierz_jednostke_spalania(),
+            ("Spalanie", db.jednostka_zuzycia(),
              lambda d: d.get("spalanie"),
              lambda v: utils.formatuj_spalanie(v),
              True, False),
@@ -420,7 +428,9 @@ class PorownanieView(ft.View):
         wybor_piatej_osi = self.state.porownanie_piata_os
         if wybor_piatej_osi in OSIE_OPCJONALNE_RADARU:
             jednostka, pobierz, formatuj, mniej_lepiej, zero_ok = OSIE_OPCJONALNE_RADARU[wybor_piatej_osi]
-            stale.append((wybor_piatej_osi, jednostka, pobierz, formatuj, mniej_lepiej, zero_ok))
+            # Klucz osi zostaje ten sam (pamięta go stan), podpis — w jednostce z Ustawień.
+            stale.append((db.etykieta_z_dystansem(wybor_piatej_osi, self.j), db.etykieta_z_dystansem(jednostka, self.j),
+                          pobierz, formatuj, mniej_lepiej, zero_ok))
 
         return stale
 
@@ -441,7 +451,8 @@ class PorownanieView(ft.View):
 
         dropdown = ft.Dropdown(
             label="Piąta oś (opcjonalnie)",
-            options=[ft.dropdown.Option(BRAK_PIATEJ_OSI)] + [ft.dropdown.Option(nazwa) for nazwa in OSIE_OPCJONALNE_RADARU],
+            options=[ft.dropdown.Option(BRAK_PIATEJ_OSI)] + [ft.dropdown.Option(key=nazwa, text=db.etykieta_z_dystansem(nazwa, self.j))
+                                                             for nazwa in OSIE_OPCJONALNE_RADARU],
             value=self.state.porownanie_piata_os or BRAK_PIATEJ_OSI,
             **utils.styl_dropdown(page=self._page)
         )
@@ -609,11 +620,11 @@ class PorownanieView(ft.View):
         pasek = self._pasek_porownania(
             "Aktualny przebieg",
             [(d["nazwa_wyswietlana"], d["aktualny_przebieg"], d["kolor"]) for d in dane_aut],
-            "km", odwrocone=True, decimale=0
+            self.j, odwrocone=True, decimale=0
         )
         tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),
-            self._wiersz_tekstowy("Śr. dziennie", dane_aut, lambda d: f"{utils.formatuj_liczba(d['sredni_dzienny'], 1)} km" if d.get("sredni_dzienny") else "Brak danych"),
+            self._wiersz_tekstowy("Śr. dziennie", dane_aut, lambda d: f"{utils.formatuj_liczba(d['sredni_dzienny'], 1)} {self.j}" if d.get("sredni_dzienny") else "Brak danych"),
             self._wiersz_tekstowy("Wiek pojazdu", dane_aut, lambda d: self._wiek_tekst(d.get("rok_produkcji"))),
         ], spacing=10)
         
@@ -626,9 +637,9 @@ class PorownanieView(ft.View):
             utils.symbol_waluty(), odwrocone=True, decimale=0
         )
         pasek_km = self._pasek_porownania(
-            "Koszt eksploatacji na 1 km",
+            f"Koszt eksploatacji na 1 {self.j}",
             [(d["nazwa_wyswietlana"], d["koszt_km"], d["kolor"]) for d in dane_aut],
-            f"{utils.symbol_waluty()}/km", odwrocone=True, decimale=2
+            f"{utils.symbol_waluty()}/{self.j}", odwrocone=True, decimale=2
         )
         tabela = ft.Column([
             self._naglowek_kolumn(dane_aut),

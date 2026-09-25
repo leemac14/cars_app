@@ -313,7 +313,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
         self.wpis_id = wpis_id
 
         d_val = datetime.now().strftime("%d.%m.%Y")
-        p_val = str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
+        # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
+        self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
         strefa_val = db.STREFY_KAROSERII[0]
         typ_val = db.TYPY_ZDJECIA[0]
         opis_val = ""
@@ -326,7 +327,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
                 w = c.fetchone()
                 if w:
                     d_val, strefa_val, self.zalacznik_val = str(w[0]), str(w[1]), w[2]
-                    opis_val, p_val, typ_val = str(w[3] or ""), str(w[4] or ""), str(w[5] or "Brak")
+                    opis_val, typ_val = str(w[3] or ""), str(w[5] or "Brak")
+                    self.p_km = w[4] or None
 
         # Edycja jednego, konkretnego zdjęcia -> pojedynczy załącznik.
         # Dodawanie nowych -> masowy wybór wielu zdjęć naraz; każde stanie się
@@ -337,7 +339,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
             self.k_zalacznik, self.get_wiele_zdjec = utils.komponent_wielu_nowych_zdjec(page)
 
         self.e_d = utils.pole_daty(page, "Data zrobienia zdjęcia", d_val)
-        self.e_p = ft.TextField(label="Przebieg (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_p = ft.TextField(label=f"Przebieg ({utils.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(self.p_km), keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
 
         self.e_strefa = ft.Dropdown(label="Strefa karoserii", options=[ft.DropdownOption(s) for s in db.STREFY_KAROSERII], value=strefa_val, **utils.styl_dropdown())
         self.e_typ = ft.Dropdown(label="Typ zdjęcia", options=[ft.DropdownOption(t) for t in db.TYPY_ZDJECIA], value=typ_val, **utils.styl_dropdown())
@@ -383,7 +385,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
 
     def zapisz(self, e):
         for pole in (self.e_p, self.e_strefa, self.e_typ, self.e_opis): utils.ustaw_blad(pole)
-        prz = utils.parsuj_int(self.e_p.value, 0)
+        # Pole w jednostce z Ustawień, baza w km; nieruszone pole wraca bez przeliczania.
+        prz = db.dystans_na_km(utils.parsuj_int(self.e_p.value, 0), calkowity=True, km_przy_otwarciu=self.p_km)
 
         if self.wpis_id:
             wynik_komponentu = self.get_zalacznik()

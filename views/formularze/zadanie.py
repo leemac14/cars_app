@@ -32,10 +32,12 @@ class FormularzZadanieView(ft.View):
         self.c_dodaj_wymiane = ft.Checkbox(label="Dodaj od razu pierwszą wymianę", value=False, visible=not bool(z_id))
         
         d_val = datetime.now().strftime("%d.%m.%Y")
-        p_val = str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
+        # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
+        self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
+        p_val = db.wartosc_pola_dystansu(self.p_km)
         
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
-        self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_p = ft.TextField(label=f"Przebieg w momencie wymiany ({utils.jednostka_dystansu()})", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value="", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, "")
         
@@ -86,7 +88,8 @@ class FormularzZadanieView(ft.View):
         przygotowany = None
         
         if not self.z_id and self.c_dodaj_wymiane.value:
-            prz = utils.parsuj_int(self.e_p.value, 0)
+            # Pole w jednostce z Ustawień, baza w km; nieruszone pole wraca bez przeliczania.
+            prz = db.dystans_na_km(utils.parsuj_int(self.e_p.value, 0), calkowity=True, km_przy_otwarciu=self.p_km)
             kos = utils.parsuj_float(self.e_c.value, 0.0)
             bledy = []
             if not (self.e_p.value or "").strip() or prz < 0: bledy.append((self.e_p, "Błędny przebieg"))

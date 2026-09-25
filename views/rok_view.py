@@ -14,6 +14,7 @@ class RokWPigulceView(ft.View):
     def __init__(self, page: ft.Page, state, rok=None):
         self._page = page
         self.state = state
+        self.j = utils.jednostka_dystansu()  # km albo mi — raz na ekran
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Rok w pigułce", "/", ikona=ft.Icons.AUTO_AWESOME)
 
@@ -121,7 +122,7 @@ class RokWPigulceView(ft.View):
                 ft.Text(self.state.auto_nazwa, size=utils.FS["title"], weight="bold"),
                 ft.Divider(height=14),
                 ft.Row([
-                    self._liczba("Przejechane", f"{utils.formatuj_liczba(d['km'], 0)} km"),
+                    self._liczba("Przejechane", utils.formatuj_dystans(d['km'], 0, self.j)),
                     self._liczba("Wydane", f"{utils.formatuj_liczba(d['koszty']['razem'])} {utils.symbol_waluty()}"),
                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                 ft.Row([
@@ -160,8 +161,8 @@ class RokWPigulceView(ft.View):
 
         # Na 1000 km, nie na kilometr: przy 0,73 zł/km każda zmiana dzieje się
         # na drugim miejscu po przecinku i nie da się jej zobaczyć.
-        koszt_1000 = (f"{utils.formatuj_liczba(d['koszt_1000km'], 0)} {utils.symbol_waluty()}"
-                      if d.get("koszt_1000km") else "—")
+        koszt_1000 = (f"{utils.formatuj_liczba(db.na_jednostke_dystansu(d['koszt_1000km'], self.j), 0)} "
+                      f"{utils.symbol_waluty()}" if d.get("koszt_1000km") else "—")
         zuzycie = (utils.formatuj_spalanie(d["srednie_zuzycie"], elektryczny=elektryczny)
                    if d.get("srednie_zuzycie") else "—")
         ilosc = (f"{utils.formatuj_liczba(d['kwh'], 0)} kWh" if elektryczny and d.get("kwh")
@@ -169,7 +170,7 @@ class RokWPigulceView(ft.View):
 
         return ft.Column([
             ft.Row([
-                kafel(ft.Icons.ADD_ROAD, "Koszt / 1000 km", koszt_1000, ft.Colors.PURPLE_700),
+                kafel(ft.Icons.ADD_ROAD, f"Koszt / 1000 {self.j}", koszt_1000, ft.Colors.PURPLE_700),
                 kafel(ft.Icons.SPEED, "Średnie zużycie", zuzycie, ft.Colors.TEAL_700),
             ], spacing=10),
             ft.Row([
@@ -291,11 +292,11 @@ class RokWPigulceView(ft.View):
             pozycje.append((
                 ft.Icons.AUTO_GRAPH,
                 utils.KOLOR_STATUS["critical"] if drozej_km else utils.KOLOR_STATUS["ok"],
-                "Cena jazdy na 1000 km",
-                f"{utils.formatuj_liczba(d['koszt_1000km'], 0)} {utils.symbol_waluty()} — "
+                f"Cena jazdy na 1000 {self.j}",
+                f"{utils.formatuj_liczba(db.na_jednostke_dystansu(d['koszt_1000km'], self.j), 0)} {utils.symbol_waluty()} — "
                 f"{'drożej' if drozej_km else 'taniej'} o "
                 f"{utils.formatuj_liczba(abs(d['zmiana_1000km']), 0)}% niż w {d['rok'] - 1} "
-                f"({utils.formatuj_liczba(d['koszt_1000km_poprzedni'], 0)} {utils.symbol_waluty()})"
+                f"({utils.formatuj_liczba(db.na_jednostke_dystansu(d['koszt_1000km_poprzedni'], self.j), 0)} {utils.symbol_waluty()})"
             ))
 
         wiersze = [

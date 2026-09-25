@@ -32,7 +32,9 @@ class FormularzWpisView(ft.View):
                     czy_opony = bool(w[1])
         self.trasa_powrotu = f"/historia/{self.z_id}" if self.z_id else "/"
 
-        d_val, p_val, w_val, kat_val = datetime.now().strftime("%d.%m.%Y"), str(db.pobierz_aktualny_przebieg(self.state.auto_id) or ""), "", "Letnie"
+        d_val, w_val, kat_val = datetime.now().strftime("%d.%m.%Y"), "", "Letnie"
+        # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
+        self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
         koszt_zrodla, robocizna_zrodla = None, None
         notatka_val = ""
         self.zalacznik_val = None  # <-- NOWE
@@ -46,7 +48,8 @@ class FormularzWpisView(ft.View):
                 c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, zalacznik, notatka, koszt_robocizny FROM historia WHERE id=?", (h_id or duplikuj_id,))
                 w = c.fetchone()
                 if w:
-                    d_val, p_val, w_val = str(w[0] or ""), str(w[1] or ""), str(w[3] or "")
+                    d_val, w_val = str(w[0] or ""), str(w[3] or "")
+                    self.p_km = w[1] or None
                     koszt_zrodla, robocizna_zrodla = float(w[2] or 0.0), w[7]
                     if czy_opony and w[4]: kat_val = str(w[4])
                     self.zalacznik_val = w[5]  # <-- NOWE
@@ -66,7 +69,7 @@ class FormularzWpisView(ft.View):
                          else db.koszt_doliczony(db.pobierz_zuzycie_czesci("historia", duplikuj_id)))
 
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
-        self.e_p = ft.TextField(label="Przebieg w momencie wymiany (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_p = ft.TextField(label=f"Przebieg w momencie wymiany ({utils.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(self.p_km), keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         # Robocizna i części osobno — tak samo jak przy wizycie. Wymiana zrobiona
         # samemu to robocizna zero, a nie „bez podziału”.
         self.koszt = utils.KosztNaprawy(page, self.zuzycie, koszt_zrodla, robocizna_zrodla, doliczone,
@@ -116,7 +119,8 @@ class FormularzWpisView(ft.View):
 
     def zapisz(self, e):
         utils.ustaw_blad(self.e_p)
-        prz = utils.parsuj_int(self.e_p.value, 0)
+        # Pole w jednostce z Ustawień, baza w km; nieruszone pole wraca bez przeliczania.
+        prz = db.dystans_na_km(utils.parsuj_int(self.e_p.value, 0), calkowity=True, km_przy_otwarciu=self.p_km)
         kos, robocizna, bledy_kosztu = self.koszt.sprawdz()
         bledy = []
         if not (self.e_p.value or "").strip() or prz < 0: bledy.append((self.e_p, "Błędny przebieg"))

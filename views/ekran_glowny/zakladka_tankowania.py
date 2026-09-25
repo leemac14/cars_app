@@ -184,6 +184,7 @@ class MiksinZakladkiTankowania:
             else:
                 mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
                 dwuzrodlowy_lista = len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1
+                j = utils.jednostka_dystansu()  # raz na całą listę
                 for w in po_filtrach:
                     # Etykiety idą za RODZAJEM WPISU, nie za typem pojazdu —
                     # w jednej liście plug-ina stoją obok siebie litry i kWh.
@@ -196,7 +197,7 @@ class MiksinZakladkiTankowania:
                     litry_val = float(w.get('litry') or 0)
                     cena_str = f"{utils.formatuj_liczba(kwota_val)}  {utils.symbol_waluty()}"
                     cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/{etykiety_w['jednostka']}" if litry_val > 0 else "-"
-                    dystans_val = w.get('dystans') or 0
+                    dystans_val = utils.formatuj_dystans(w.get('dystans') or 0, 0, j)
 
                     tid = w.get('id')
                     tresc_karty = [
@@ -223,7 +224,7 @@ class MiksinZakladkiTankowania:
                             ], spacing=4)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Row([
-                            utils.pole("Dystans", f"{dystans_val} km"),
+                            utils.pole("Dystans", dystans_val),
                             utils.pole(etykiety_w["zuzycie"], sp_str),
                             utils.pole(etykiety_w["cena_jednostkowa"], cena_litr_str),
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)

@@ -18,6 +18,7 @@ class PojazdView(ft.View):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
+        self.j = utils.jednostka_dystansu()  # km albo mi — raz na ekran
 
         appbar = utils.zbuduj_pasek_z_powrotem(
             page, "Dane pojazdu", "/", ikona=ft.Icons.DIRECTIONS_CAR,
@@ -167,7 +168,7 @@ class PojazdView(ft.View):
         if m.get("intensywnosc"):
             procent = m["intensywnosc"]
             podpis_tempa = (f"{utils.formatuj_liczba(procent, 0)}% typowych "
-                            f"{utils.formatuj_liczba(db.NORMA_PRZEBIEGU_ROCZNEGO, 0)} km/rok")
+                            f"{utils.formatuj_dystans(db.NORMA_PRZEBIEGU_ROCZNEGO, 0, self.j)}/rok")
             kolor_tempa = (utils.KOLOR_STATUS["warning"] if procent > 150
                            else utils.KOLOR_STATUS["ok"] if procent < 70 else ft.Colors.PRIMARY)
         else:
@@ -179,14 +180,14 @@ class PojazdView(ft.View):
         return ft.Column([
             ft.Row([
                 kafel(ft.Icons.SPEED, "Przebieg",
-                      f"{utils.formatuj_liczba(m.get('przebieg') or 0, 0)} km",
+                      utils.formatuj_dystans(m.get('przebieg') or 0, 0, self.j),
                       "dotknij: historia licznika", ft.Colors.PRIMARY,
                       lambda e: utils.przejdz(self._page, "/przebieg")),
                 kafel(ft.Icons.CAKE, "Wiek", wiek, podpis_wieku, ft.Colors.BLUE_GREY_700),
             ], spacing=10),
             ft.Row([
                 kafel(ft.Icons.SPEED_OUTLINED, "Rocznie",
-                      f"{utils.formatuj_liczba(m['przebieg_roczny'], 0)} km"
+                      utils.formatuj_dystans(m['przebieg_roczny'], 0, self.j)
                       if m.get("przebieg_roczny") else "—",
                       podpis_tempa, kolor_tempa),
                 ft.Container(
@@ -230,9 +231,9 @@ class PojazdView(ft.View):
             wiersze.append(ft.Row([
                 ft.Icon(ft.Icons.VERIFIED_USER, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Text(
-                    f"Gwarancja do {utils.formatuj_liczba(gw_km, 0)} km — "
-                    + (f"zostało {utils.formatuj_liczba(zostalo, 0)} km" if zostalo > 0
-                       else "limit kilometrów już przekroczony"),
+                    f"Gwarancja do {utils.formatuj_dystans(gw_km, 0, self.j)} — "
+                    + (f"zostało {utils.formatuj_dystans(zostalo, 0, self.j)}" if zostalo > 0
+                       else f"limit {db.slowo_dystansu('dopelniacz_pelny', self.j)} już przekroczony"),
                     size=utils.FS["caption"],
                     color=ft.Colors.ON_SURFACE_VARIANT if zostalo > 0 else utils.KOLOR_STATUS["critical"],
                     expand=True),
@@ -267,7 +268,7 @@ class PojazdView(ft.View):
                 opis.append(f"{'miałeś' if m.get('zamkniete_na') else 'masz'} je "
                             f"{utils.formatuj_liczba(m['lata_posiadania'], 1)} roku")
             if m.get("km_u_ciebie"):
-                opis.append(f"przejechałeś {utils.formatuj_liczba(m['km_u_ciebie'], 0)} km")
+                opis.append(f"przejechałeś {utils.formatuj_dystans(m['km_u_ciebie'], 0, self.j)}")
             wiersze.append(ft.Text(" • ".join(opis), size=utils.FS["body"],
                                    color=ft.Colors.ON_SURFACE_VARIANT))
 
@@ -305,8 +306,8 @@ class PojazdView(ft.View):
             ft.Colors.PRIMARY))
         if m.get("koszt_km_pelny"):
             wiersze.append(wiersz_kwoty(
-                "Pełny koszt kilometra",
-                f"{utils.formatuj_liczba(m['koszt_km_pelny'], 2)} {waluta}/km", ft.Colors.PRIMARY))
+                f"Pełny koszt {db.slowo_dystansu('dopelniacz_lp', self.j)}",
+                utils.formatuj_na_dystans(m['koszt_km_pelny'], f"{waluta}/", 2, self.j), ft.Colors.PRIMARY))
         if m.get("koszt_miesieczny"):
             wiersze.append(wiersz_kwoty(
                 "Miesięcznie", f"{utils.formatuj_liczba(m['koszt_miesieczny'])} {waluta}",
@@ -325,7 +326,8 @@ class PojazdView(ft.View):
             wiersze.append(ft.Row([
                 ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Text(
-                    f"Z każdego kilometra {utils.formatuj_liczba(m['utrata_na_km'], 2)} {waluta} "
+                    f"{'Z każdego kilometra' if self.j == 'km' else 'Z każdej mili'} "
+                    f"{utils.formatuj_liczba(db.na_jednostke_dystansu(m['utrata_na_km'], self.j), 2)} {waluta} "
                     f"to sama utrata wartości — koszt, którego nie widać przy tankowaniu.",
                     size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
             ], spacing=6))
@@ -353,7 +355,12 @@ class PojazdView(ft.View):
         if d.get("pojemnosc_baterii"):
             wiersze.append(w(ft.Icons.BATTERY_CHARGING_FULL, "Bateria", f"{d['pojemnosc_baterii']} kWh"))
         if d.get("zasieg_ev"):
-            wiersze.append(w(ft.Icons.ROUTE, "Zasięg katalogowy", f"{d['zasieg_ev']} km"))
+            # Zasięg to pole tekstowe w km („380 (WLTP)”): w milach pokazujemy
+            # przeliczoną liczbę, a tekst bez liczby — tak, jak go wpisano.
+            liczba = db._liczba_lub_none(d["zasieg_ev"])
+            wiersze.append(w(ft.Icons.ROUTE, "Zasięg katalogowy",
+                             f"{d['zasieg_ev']} km" if self.j == "km" or not liczba
+                             else utils.formatuj_dystans(liczba, 0, self.j)))
         if d.get("typ_zlacza_ev"):
             wiersze.append(w(ft.Icons.EV_STATION, "Złącze ładowania", d.get("typ_zlacza_ev")))
 
@@ -418,7 +425,7 @@ class PojazdView(ft.View):
             w(ft.Icons.ALBUM, "Felgi", d.get("rozmiar_felg")),
             w(ft.Icons.SETTINGS, "Rozstaw śrub", d.get("rozstaw_srub")),
             w(ft.Icons.BUILD_CIRCLE, "Moment dokręcania kół", d.get("moment_dokrecania"),
-              podpowiedz="sprawdź po 50 km od wymiany kół"),
+              podpowiedz=f"sprawdź po {'50 km' if self.j == 'km' else '30 mi'} od wymiany kół"),
         ]
 
         return utils.karta_analizy(self._page, "Ściągawka do sklepu i warsztatu",

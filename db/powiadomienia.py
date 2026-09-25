@@ -13,6 +13,7 @@ from .ustawienia import (
     _klucz_widzianych_powiadomien, pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km,
     pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie,
 )
+from .jednostki import slowo_dystansu, tekst_dystansu
 from .synchronizacja import czy_moge_dodawac
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, swiezosc_licznika
 
@@ -243,10 +244,10 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
                 zost_km_gw = int(limit_km) - aktualny_przebieg
                 if zost_km_gw <= prog_km:
                     s = "przeterminowane" if zost_km_gw < 0 else "pilne"
-                    opis = (f"Przekroczono limit o {abs(zost_km_gw)} km" if zost_km_gw < 0
-                            else f"Zostało {zost_km_gw} km do końca gwarancji")
+                    opis = (f"Przekroczono limit o {tekst_dystansu(abs(zost_km_gw))}" if zost_km_gw < 0
+                            else f"Zostało {tekst_dystansu(zost_km_gw)} do końca gwarancji")
                     wyniki.append({
-                        "typ": "dokument", "tytul": "Gwarancja (limit km)", "opis": opis,
+                        "typ": "dokument", "tytul": f"Gwarancja (limit {slowo_dystansu()})", "opis": opis,
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
                         "klucz": "dokument:gwarancja_km",
                     })

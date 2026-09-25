@@ -14,6 +14,7 @@ from .stale import *
 from .polaczenie import *
 from .pomocnicze import *
 from .ustawienia import *
+from .jednostki import *
 from .synchronizacja import *
 from .energia import *
 from .notatki import *
@@ -46,6 +47,7 @@ from . import (
     polaczenie,
     pomocnicze,
     ustawienia,
+    jednostki,
     synchronizacja,
     energia,
     notatki,

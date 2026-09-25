@@ -43,6 +43,7 @@ class MiksinZakladkiSerwis:
         akt_prz = int(db.pobierz_aktualny_przebieg(self.state.auto_id))
         prog_km = db.pobierz_prog_km()
         prog_dni = db.pobierz_prog_dni()
+        j = utils.jednostka_dystansu()  # raz na całą listę podzespołów
 
         sredni_dzienny = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
         with db.polacz_baze() as conn:
@@ -188,7 +189,7 @@ class MiksinZakladkiSerwis:
                         wiersz_statusu = utils.etykieta(final_status, size=utils.FS["body_strong"])
 
                     data_w = str(z.get('data')) if z.get('data') else '-'
-                    prz_w = f"{utils.formatuj_liczba(int(z.get('przebieg')), 0)} km" if z.get('przebieg') else '-'
+                    prz_w = utils.formatuj_dystans(z.get('przebieg'), 0, j) if z.get('przebieg') else '-'
 
                     zid = z.get('id')
                     zn = z.get('nazwa')

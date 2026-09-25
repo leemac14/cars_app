@@ -12,6 +12,8 @@ a `pobierz_konflikty_ostatniej_synchronizacji` czytało cudzą.
 Pilnuje tego `test_listy_konfliktow_sa_jednym_obiektem`.
 """
 
+import db
+
 from .stale import ETYKIETY_TABEL_SYNC
 
 
@@ -59,7 +61,7 @@ def _opis_rekordu(tabela, dane):
     if not czesci:
         przebieg = pole("przebieg")
         if przebieg:
-            czesci.append(f"{przebieg} km")
+            czesci.append(db.tekst_dystansu(przebieg))
 
     etykieta = ETYKIETY_TABEL_SYNC.get(tabela, tabela)
     return f"{etykieta}: {' • '.join(czesci)}" if czesci else etykieta

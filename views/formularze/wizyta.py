@@ -12,7 +12,9 @@ class FormularzWizytyView(ft.View):
         self.state = state
         self.w_id = w_id
 
-        d_val, p_val, wyk_val, not_val, podpiete = datetime.now().strftime("%d.%m.%Y"), str(db.pobierz_aktualny_przebieg(self.state.auto_id) or ""), "", "", set()
+        d_val, wyk_val, not_val, podpiete = datetime.now().strftime("%d.%m.%Y"), "", "", set()
+        # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
+        self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
         self.zalacznik_val = None
         tagi_val = ""
         kat_val = "Letnie"
@@ -31,7 +33,8 @@ class FormularzWizytyView(ft.View):
                 c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, koszt_robocizny FROM wizyty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
-                    d_val, p_val, wyk_val, not_val = str(w[0] or ""), str(w[1] or ""), str(w[2] or ""), str(w[4] or "")
+                    d_val, wyk_val, not_val = str(w[0] or ""), str(w[2] or ""), str(w[4] or "")
+                    self.p_km = w[1] or None
                     koszt_zrodla, robocizna_zrodla = float(w[3] or 0.0), w[7]
                     self.zalacznik_val = w[5]
                     tagi_val = str(w[6] or "")
@@ -47,7 +50,7 @@ class FormularzWizytyView(ft.View):
             # nie jest przenoszone: stan mógł się zmienić, a ciche potrącenie
             # sztuk przy zapisie byłoby niespodzianką.
             d_val = datetime.now().strftime("%d.%m.%Y")
-            p_val = str(db.pobierz_aktualny_przebieg(self.state.auto_id) or "")
+            self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
             self.zalacznik_val = None
 
         # Części z magazynu doliczają się do kosztu wizyty, więc w polach kosztu
@@ -60,7 +63,7 @@ class FormularzWizytyView(ft.View):
                          else db.koszt_doliczony(db.pobierz_zuzycie_czesci("wizyty", duplikuj_id)))
 
         self.e_d = utils.pole_daty(page, "Data odebrania z warsztatu", d_val)
-        self.e_p = ft.TextField(label="Przebieg podczas wizyty (km)", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_p = ft.TextField(label=f"Przebieg podczas wizyty ({utils.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(self.p_km), keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, wyk_val)
         # Rachunek warsztatu osobno za robociznę i za części — albo jedną kwotą,
         # gdy rachunek podziału nie ma. Duplikat przenosi też podział.
@@ -492,7 +495,8 @@ class FormularzWizytyView(ft.View):
 
     def zapisz(self, e):
         utils.ustaw_blad(self.e_p)
-        prz = utils.parsuj_int(self.e_p.value, 0)
+        # Pole w jednostce z Ustawień, baza w km; nieruszone pole wraca bez przeliczania.
+        prz = db.dystans_na_km(utils.parsuj_int(self.e_p.value, 0), calkowity=True, km_przy_otwarciu=self.p_km)
         kos, robocizna, bledy_kosztu = self.koszt.sprawdz()
         bledy = []
         if not (self.e_p.value or "").strip(): bledy.append((self.e_p, "Wymagane"))

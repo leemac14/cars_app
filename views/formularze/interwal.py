@@ -11,29 +11,38 @@ class FormularzInterwalView(ft.View):
         self.state = state
         self.z_id = z_id
 
-        nazwa, ik, im = "", "", ""
+        nazwa, im = "", ""
         prog_km_val, prog_dni_val = "", ""
+        # Interwał i próg w km, jak w bazie; pole i lista — w jednostce z Ustawień.
+        self.ik_km = None
+        j = utils.jednostka_dystansu()
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute("SELECT nazwa, interwal_km, interwal_miesiace, prog_km, prog_dni FROM zadania WHERE id=?", (z_id,))
             w = c.fetchone()
             if w:
-                nazwa, ik, im = str(w[0]), str(w[1] or ""), str(w[2] or "")
+                nazwa, im = str(w[0]), str(w[2] or "")
+                self.ik_km = w[1] or None
                 prog_km_val, prog_dni_val = str(w[3] or ""), str(w[4] or "")
 
-        self.e_ik = ft.TextField(label="Co ile kilometrów (np. 15000)", value=ik, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_ik = ft.TextField(label=f"Co ile {db.slowo_dystansu('dopelniacz_pelny', j)} "
+                                       f"(np. {15000 if j == 'km' else 10000})",
+                                 value=db.wartosc_pola_dystansu(self.ik_km, j), keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_im = ft.TextField(label="Co ile miesięcy (np. 12)", value=im, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
 
-        dozwolone_km = [str(v) for v in db.PROGI_KM_OPCJE]
+        # Własny próg spoza listy zostaje na niej jako dodatkowa opcja — zapis
+        # formularza nie może go po cichu zamienić na domyślny.
+        opcje_km = db.opcje_progow_km(j, obecny_km=prog_km_val or None)
+        przyklady = db.opcje_progow_km(j)
         dozwolone_dni = [str(v) for v in db.PROGI_DNI_OPCJE]
 
         self.e_prog_km = ft.Dropdown(
-            label="Ostrzegaj na ile km przed",
+            label=f"Ostrzegaj na ile {db.slowo_dystansu('dopelniacz', j)} przed",
             options=(
-                [ft.DropdownOption(key="", text=f"Domyślny z Ustawień ({db.pobierz_prog_km()} km)")]
-                + [ft.DropdownOption(key=str(v), text=f"{v} km przed terminem") for v in db.PROGI_KM_OPCJE]
+                [ft.DropdownOption(key="", text=f"Domyślny z Ustawień ({db.tekst_dystansu(db.pobierz_prog_km(), 0, j)})")]
+                + [ft.DropdownOption(key=str(km), text=f"{tekst} przed terminem") for km, tekst in opcje_km]
             ),
-            value=prog_km_val if prog_km_val in dozwolone_km else "",
+            value=prog_km_val,
             **utils.styl_dropdown()
         )
         self.e_prog_dni = ft.Dropdown(
@@ -53,8 +62,8 @@ class FormularzInterwalView(ft.View):
             [
                 ft.Text(
                     "Domyślne progi z Ustawień obowiązują wszystkie podzespoły naraz. Tutaj możesz "
-                    "ustawić własne okno ostrzegania tylko dla tego jednego — np. rozrząd 5000 km "
-                    "wcześniej, a filtr powietrza dopiero 500 km przed terminem.",
+                    "ustawić własne okno ostrzegania tylko dla tego jednego — np. rozrząd "
+                    f"{przyklady[-1][1]} wcześniej, a filtr powietrza dopiero {przyklady[0][1]} przed terminem.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
                 self.e_prog_km,
@@ -94,6 +103,8 @@ class FormularzInterwalView(ft.View):
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
+        # Pole w jednostce z Ustawień, baza w km; nieruszone wraca bez przeliczania.
+        vk = db.dystans_na_km(vk, calkowity=True, km_przy_otwarciu=self.ik_km) if vk else vk
         # Pusty wybór = None = korzystaj z globalnego progu z Ustawień.
         prog_km_zapis = utils.parsuj_int(self.e_prog_km.value, None) if self.e_prog_km.value else None
         prog_dni_zapis = utils.parsuj_int(self.e_prog_dni.value, None) if self.e_prog_dni.value else None

@@ -24,6 +24,8 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
+        # Jednostka dystansu raz na ekran — lista odczytów bywa długa.
+        self.j = utils.jednostka_dystansu()
 
         wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
         appbar = utils.zbuduj_pasek_z_powrotem(
@@ -176,7 +178,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.Column([
                     ft.Text("Objęty dystans", size=utils.FS["caption"],
                             color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text(f"{utils.formatuj_liczba(p['dystans'], 0)} km",
+                    ft.Text(utils.formatuj_dystans(p['dystans'], 0, self.j),
                             size=utils.FS["display"], weight="bold"),
                 ], spacing=0, horizontal_alignment=ft.CrossAxisAlignment.END),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -185,7 +187,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
         opis = []
         if p["srednia_dzienna"]:
-            opis.append(f"średnio {utils.formatuj_liczba(p['srednia_dzienna'], 1)} km/dzień")
+            opis.append(f"średnio {utils.formatuj_dystans(p['srednia_dzienna'], 1, self.j)}/dzień")
         if p["dni"]:
             opis.append(f"{utils.formatuj_dni(p['dni'])} historii")
         opis.append(
@@ -199,7 +201,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         baner = utils.baner_nieswiezego_licznika(
             self._page, self.state.auto_id, swiezosc,
             po_zapisie=lambda: utils.przejdz(self._page, "/przebieg"),
-            tresc=("Czas na odczyt — prognozy km liczą z licznika sprzed "
+            tresc=(f"Czas na odczyt — prognozy {db.slowo_dystansu('dopelniacz', self.j)} liczą z licznika sprzed "
                    + utils.formatuj_dni_dopelniacz(swiezosc["dni"])) if swiezosc and swiezosc["dni"] else None,
             tekst_przycisku="Dodaj odczyt",
         )
@@ -235,7 +237,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         tresc = [
             ft.Row([
                 ft.Text(str(w["data"]), weight="bold", size=16),
-                ft.Text(f"{utils.formatuj_liczba(w['przebieg'], 0)} km", weight="bold", size=16,
+                ft.Text(utils.formatuj_dystans(w['przebieg'], 0, self.j), weight="bold", size=16,
                         color=ft.Colors.PRIMARY),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             ft.Row([
@@ -250,24 +252,24 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         if anomalia == "cofka":
             tresc.append(ft.Row([
                 ft.Icon(ft.Icons.WARNING, size=13, color=utils.KOLOR_STATUS["critical"]),
-                ft.Text(f"Licznik niższy o {utils.formatuj_liczba(abs(w['dystans']), 0)} km niż "
+                ft.Text(f"Licznik niższy o {utils.formatuj_dystans(abs(w['dystans']), 0, self.j)} niż "
                         f"w poprzednim wpisie — sprawdź datę albo przebieg",
                         size=12, color=utils.KOLOR_STATUS["critical"], expand=True),
             ], spacing=4))
         elif anomalia == "skok":
             tresc.append(ft.Row([
                 ft.Icon(ft.Icons.WARNING, size=13, color=utils.KOLOR_STATUS["warning"]),
-                ft.Text(f"{utils.formatuj_liczba(w['dystans'], 0)} km w {utils.formatuj_dni(w['dni'])} "
-                        f"({utils.formatuj_liczba(w['srednia_dzienna'], 0)} km/dzień) — "
+                ft.Text(f"{utils.formatuj_dystans(w['dystans'], 0, self.j)} w {utils.formatuj_dni(w['dni'])} "
+                        f"({utils.formatuj_dystans(w['srednia_dzienna'], 0, self.j)}/dzień) — "
                         f"nietypowo dużo jak na to auto",
                         size=12, color=utils.KOLOR_STATUS["warning"], expand=True),
             ], spacing=4))
         elif w.get("dystans") is not None:
-            czesci = [f"{utils.formatuj_liczba(w['dystans'], 0)} km od poprzedniego"]
+            czesci = [f"{utils.formatuj_dystans(w['dystans'], 0, self.j)} od poprzedniego"]
             if w.get("dni"):
                 czesci.append(utils.formatuj_dni(w['dni']))
             if w.get("srednia_dzienna"):
-                czesci.append(f"{utils.formatuj_liczba(w['srednia_dzienna'], 1)} km/dzień")
+                czesci.append(f"{utils.formatuj_dystans(w['srednia_dzienna'], 1, self.j)}/dzień")
             tresc.append(ft.Row([
                 ft.Icon(ft.Icons.ARROW_UPWARD, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                 ft.Text(" • ".join(czesci), size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
@@ -338,7 +340,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         # prawo do swojego tankowania i nie mieć do cudzego odczytu.
         pozycje = utils.odsiej_akcje(
             self.state.auto_id, pozycje, self.TABELE_NOTATKI[w["zrodlo"]], w["id"])
-        podtytul = f"{w['data']} • {utils.formatuj_liczba(w['przebieg'], 0)} km"
+        podtytul = f"{w['data']} • {utils.formatuj_dystans(w['przebieg'], 0, self.j)}"
         utils.pokaz_menu_kontekstowe(self._page, f"{w['etykieta_zrodla']}: {podtytul}", pozycje)
 
     def potwierdz_grupowe_usuwanie(self, e):

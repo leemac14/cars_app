@@ -155,7 +155,7 @@ def test_bez_danych_nie_ma_licznikow():
     assert wynik == {"km": None, "czas": None, "pierwsze": None, "status": None}
 
 
-def test_zdania_mowia_co_przyjdzie_pierwsze():
+def test_zdania_mowia_co_przyjdzie_pierwsze(baza):
     wynik = stan(zadanie(interwal_km=15000, interwal_miesiace=12, data=dni_temu(346), przebieg=100000),
                  przebieg=112000, sredni=10.0)
 
@@ -266,7 +266,7 @@ def test_zakladka_serwis_i_powiadomienie_licza_to_samo(baza):
 #  3. KARTA PODZESPOŁU — oba liczniki obok siebie
 # ============================================================================
 
-def test_karta_ma_oba_liczniki_i_znacznik_przy_pierwszym():
+def test_karta_ma_oba_liczniki_i_znacznik_przy_pierwszym(baza):
     wynik = stan(zadanie(interwal_km=15000, interwal_miesiace=12, data=dni_temu(150), przebieg=100000),
                  przebieg=114360, sredni=30.0)
 
@@ -279,7 +279,7 @@ def test_karta_ma_oba_liczniki_i_znacznik_przy_pierwszym():
     assert len(kontrolki(wiersz, ft.ProgressBar)) == 2, "każdy licznik ma własny pasek zużycia"
 
 
-def test_kolejnosc_kolumn_jest_stala_a_znacznik_wedruje():
+def test_kolejnosc_kolumn_jest_stala_a_znacznik_wedruje(baza):
     """Kilometry zawsze z lewej — na liście kart oko ma wiedzieć, gdzie czego
     szukać. O kolejności terminów mówi znacznik, nie miejsce."""
     wynik = stan(zadanie(interwal_km=15000, interwal_miesiace=12, data=dni_temu(346), przebieg=100000),
@@ -291,7 +291,7 @@ def test_kolejnosc_kolumn_jest_stala_a_znacznik_wedruje():
     assert teksty(kolumna_czasu)[:2] == ["Czas", "najpierw"]
 
 
-def test_jeden_licznik_nie_ma_znacznika():
+def test_jeden_licznik_nie_ma_znacznika(baza):
     wynik = stan(zadanie(interwal_km=15000, przebieg=100000), przebieg=114700, sredni=25.0)
 
     wiersz = utils.liczniki_interwalu(wynik)

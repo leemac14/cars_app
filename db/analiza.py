@@ -9,6 +9,7 @@ from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, STATUS_
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, parsuj_int_bezpiecznie
 from .ustawienia import pobierz_okno_kroczace, pobierz_walute
+from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
 from .synchronizacja import zarejestruj_nagrobek
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu
@@ -1119,6 +1120,17 @@ WIELKOSCI_RDR = {
     "koszt1000": ("Koszt / 1000 km", "waluta", True),
 }
 
+
+def etykiety_wielkosci_rdr(jednostka=None) -> dict[str, str]:
+    """{klucz: podpis chipa} — dystans w jednostce z Ustawień („Mile”,
+    „Koszt / 1000 mi”); drugi element WIELKOSCI_RDR („km”) to RODZAJ wielkości,
+    nie jednostka, i zostaje taki sam."""
+    j = jednostka_dystansu(jednostka)
+    etykiety = {klucz: opis[0] for klucz, opis in WIELKOSCI_RDR.items()}
+    etykiety["km"] = slowo_dystansu("mianownik", j)
+    etykiety["koszt1000"] = f"Koszt / 1000 {j}"
+    return etykiety
+
 # Jaki udział w końcowej różnicy musi mieć JEDEN miesiąc, żeby dało się
 # powiedzieć „wtedy się rozjechało”. Poniżej tego progu różnica narastała
 # stopniowo i wskazywanie palcem jednego miesiąca byłoby zmyślaniem.
@@ -1212,6 +1224,8 @@ def koszty_rok_do_roku(auto_id, rok=None, wielkosc="razem", narastajaco=True, dz
     etykieta, jednostka, wzrost_zly = WIELKOSCI_RDR.get(wielkosc) or WIELKOSCI_RDR["razem"]
     if wielkosc not in WIELKOSCI_RDR:
         wielkosc = "razem"
+    j = jednostka_dystansu()
+    etykieta = etykiety_wielkosci_rdr(j)[wielkosc]
     lata = lata_z_danymi(auto_id)
     wybrany = int(rok) if rok else (lata[0] if lata else dzien.year)
 
@@ -1288,14 +1302,27 @@ def koszty_rok_do_roku(auto_id, rok=None, wielkosc="razem", narastajaco=True, dz
     zmiana = (((teraz - baza) / baza * 100)
               if (baza and teraz is not None and baza > 0) else None)
 
+    # Krzywe idą prosto na wykres, więc dystans i koszt / 1000 wracają
+    # w jednostce z Ustawień. Mnożenie przez stałą nie rusza ani miesiąca
+    # rozjazdu, ani procentu — liczonych wyżej jeszcze w km.
+    def na_ekran(v):
+        if wielkosc == "km":
+            return dystans_z_km(v, j)
+        if wielkosc == "koszt1000":
+            return na_jednostke_dystansu(v, j)
+        return v
+
+    def seria(wartosci):
+        return [na_ekran(v) if v is not None else None for v in wartosci]
+
     return {
         "rok": wybrany, "rok_poprzedni": wybrany - 1, "lata": lata,
         "wielkosc": wielkosc, "etykieta": etykieta, "jednostka": jednostka,
         "wzrost_zly": wzrost_zly, "narastajaco": bool(narastajaco),
-        "biezacy": biezacy, "poprzedni": list(pokaz_p), "roznice": roznice,
+        "biezacy": seria(biezacy), "poprzedni": seria(pokaz_p), "roznice": seria(roznice),
         "ostatni_miesiac": ostatni, "niepelny": niepelny,
         "miesiac_rozjazdu": miesiac_rozjazdu,
-        "roznica_koncowa": koncowa, "zmiana_proc": zmiana,
+        "roznica_koncowa": na_ekran(koncowa) if koncowa is not None else None, "zmiana_proc": zmiana,
     }
 
 
@@ -1353,7 +1380,7 @@ def obserwacje_analityczne(auto_id, limit=None):
     if bak and bak.get("zasieg_pozostaly") is not None and bak["pewnosc"] in ("wysoka", "srednia"):
         if bak["zasieg_pozostaly"] < 80:
             tekst_baku = (
-                f"Szacunkowo zostało około {formatuj_liczba_eksport(bak['zasieg_pozostaly'], 0)} km "
+                f"Szacunkowo zostało około {tekst_dystansu(bak['zasieg_pozostaly'])} "
                 f"({formatuj_liczba_eksport(bak['procent_baku'], 0)}% baku)."
             )
             if bak.get("dni_do_pustego") is not None:
@@ -1492,14 +1519,18 @@ def obserwacje_analityczne(auto_id, limit=None):
     biezacy_1000 = krzywa.get("biezacy")
     if srednia_1000 and biezacy_1000 and srednia_1000 > 0:
         nad = (biezacy_1000 - srednia_1000) / srednia_1000 * 100
+        # Procent nie zależy od jednostki; kwoty w zdaniu — owszem.
+        j = jednostka_dystansu()
+        biezacy_txt = _kwota_txt(na_jednostke_dystansu(biezacy_1000, j))
+        srednia_txt = _kwota_txt(na_jednostke_dystansu(srednia_1000, j))
         if nad >= PROG_DROZENIA_1000KM:
             obserwacje.append(_obserwacja(
                 "drozeje_1000km", "zly" if nad >= 2 * PROG_DROZENIA_1000KM else "uwaga",
                 "koszt_km", "Auto drożeje",
                 f"Ostatnie {liczba_z_odmiana(krzywa['okno'], 'miesiąc', 'miesiące', 'miesięcy')} to "
-                f"{_kwota_txt(biezacy_1000)} na 1000 km — "
+                f"{biezacy_txt} na 1000 {j} — "
                 f"o {formatuj_liczba_eksport(nad, 0)}% więcej niż średnia z całej historii "
-                f"({_kwota_txt(srednia_1000)}). Sama suma roczna tego nie pokaże: rośnie też "
+                f"({srednia_txt}). Sama suma roczna tego nie pokaże: rośnie też "
                 f"wtedy, gdy po prostu jeździsz więcej.",
                 85,
             ))
@@ -1507,9 +1538,9 @@ def obserwacje_analityczne(auto_id, limit=None):
             obserwacje.append(_obserwacja(
                 "tanieje_1000km", "dobry", "koszt_km", "Auto tanieje",
                 f"Ostatnie {liczba_z_odmiana(krzywa['okno'], 'miesiąc', 'miesiące', 'miesięcy')} to "
-                f"{_kwota_txt(biezacy_1000)} na 1000 km — "
+                f"{biezacy_txt} na 1000 {j} — "
                 f"o {formatuj_liczba_eksport(abs(nad), 0)}% taniej niż średnia z całej historii "
-                f"({_kwota_txt(srednia_1000)}).",
+                f"({srednia_txt}).",
                 45,
             ))
 
@@ -1612,4 +1643,5 @@ __all__ = [
     "prognoza_kosztow",
     "stan_budzetow",
     "zapisz_budzet",
+    "etykiety_wielkosci_rdr",
 ]

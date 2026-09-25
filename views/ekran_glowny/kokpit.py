@@ -78,14 +78,17 @@ class MiksinKokpitu:
         # spójny język: liczba mówi „ile”, iskra mówi „w którą stronę”.
         seria_przebiegu = db.pobierz_serie_dziennego_przebiegu(self.state.auto_id, 12) if "przebieg_dzienny" in wlaczone else []
         seria_koszt_km = db.pobierz_serie_kosztu_km(self.state.auto_id, 6) if "koszt_km" in wlaczone else []
+        # Jednostka dystansu raz na cały kokpit. Iskry zostają w km: pokazują
+        # tylko kształt, a ten od mnożenia przez stałą się nie zmienia.
+        j = utils.jednostka_dystansu()
         # Krzywa narastająca to przejście po WSZYSTKICH wpisach kosztowych auta,
         # więc liczymy ją wyłącznie, gdy kafelek naprawdę stoi na kokpicie.
         dane_skumulowane = db.koszt_skumulowany(
             self.state.auto_id, z_cena_zakupu=db.czy_skumulowany_z_cena_zakupu()
         ) if "skumulowany" in wlaczone else {}
-        dane_1000km = db.koszt_na_1000km(
+        dane_1000km = utils.krzywa_1000_w_jednostce(db.koszt_na_1000km(
             self.state.auto_id, db.pobierz_okno_kroczace(self.state.auto_id)
-        ) if "koszt_1000km" in wlaczone else {}
+        ), j) if "koszt_1000km" in wlaczone else {}
 
         def idz_do_statystyk(podzakladka=0):
             def handler(e):
@@ -406,7 +409,7 @@ class MiksinKokpitu:
                                     wysokosc=WYS_ISKRY)
             if iskra is None or not dane_1000km.get("biezacy"):
                 return kafel_wartosci(
-                    ft.Icons.AUTO_GRAPH, ft.Colors.BLUE_GREY_700, "Koszt / 1000 km",
+                    ft.Icons.AUTO_GRAPH, ft.Colors.BLUE_GREY_700, f"Koszt / 1000 {j}",
                     "Za mało danych", idz_do_statystyk(1),
                 )
 
@@ -427,7 +430,7 @@ class MiksinKokpitu:
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.AUTO_GRAPH, size=15, color=ft.Colors.PRIMARY),
-                        utils.etykieta("Koszt / 1000 km", expand=True),
+                        utils.etykieta(f"Koszt / 1000 {j}", expand=True),
                     ], spacing=6),
                     tekst_wartosci(liczba_kafelka(
                         dane_1000km.get("biezacy"),
@@ -441,13 +444,13 @@ class MiksinKokpitu:
         def widget_koszt_km():
             koszt_km = dane_porownanie.get("koszt_km")
             wartosc = liczba_kafelka(
-                koszt_km or None,
-                lambda v: f"{utils.formatuj_liczba(v, 2)} {utils.symbol_waluty()}/km",
+                db.na_jednostke_dystansu(koszt_km, j) if koszt_km else None,
+                lambda v: f"{utils.formatuj_liczba(v, 2)} {utils.symbol_waluty()}/{j}",
             )
             # Liczba jest z całego życia auta, iskra pokazuje ostatnie miesiące —
             # dopiero razem widać, czy jazda ostatnio drożeje, czy tanieje.
             return kafel_z_iskra(
-                ft.Icons.ADD_ROAD, ft.Colors.PURPLE_700, "Koszt / km", wartosc,
+                ft.Icons.ADD_ROAD, ft.Colors.PURPLE_700, f"Koszt / {j}", wartosc,
                 [v for _, _, v in seria_koszt_km], idz_do_statystyk(0),
                 wzrost_zly=True, podpis_stopki=f"{len(seria_koszt_km)} ost. mies.",
             )
@@ -486,8 +489,8 @@ class MiksinKokpitu:
                     return None
                 wartosc, stopka = "Brak danych", "Uzupełnij baterię i naładuj do pełna"
             else:
-                wartosc = liczba_kafelka(zasieg["szacowany"],
-                                         lambda v: f"{utils.formatuj_liczba(v, 0)} km")
+                wartosc = liczba_kafelka(db.dystans_z_km(zasieg["szacowany"], j),
+                                         lambda v: f"{utils.formatuj_liczba(v, 0)} {j}")
                 if zasieg["procent_deklarowanego"]:
                     stopka = f"{utils.formatuj_liczba(zasieg['procent_deklarowanego'], 0)}% katalogowego"
                 elif zasieg["pojemnosc"]:
@@ -514,8 +517,8 @@ class MiksinKokpitu:
 
         def widget_przebieg_dzienny():
             sredni = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
-            wartosc = liczba_kafelka(sredni or None,
-                                     lambda v: f"{utils.formatuj_liczba(v, 1)} km/dzień")
+            wartosc = liczba_kafelka(db.dystans_z_km(sredni, j) if sredni else None,
+                                     lambda v: f"{utils.formatuj_liczba(v, 1)} {j}/dzień")
             wartosci_serii = [w for _, w in seria_przebiegu]
             # Więcej kilometrów to nie „gorzej” — stąd wzrost_zly=False, inaczej
             # aktywniejszy miesiąc dostawałby czerwoną strzałkę jak rosnący koszt.
@@ -1235,7 +1238,7 @@ class MiksinKokpitu:
                 ft.Row([
                     ft.Icon(utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid), size=15,
                             color=ft.Colors.ON_SURFACE_VARIANT),
-                    utils.etykieta(str(db.KOKPIT_WIDGETY.get(wid, wid)), expand=True),
+                    utils.etykieta(db.etykieta_z_dystansem(db.KOKPIT_WIDGETY.get(wid, wid)), expand=True),
                 ], spacing=6),
                 ft.Text("teraz pusty", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
             ], spacing=4),
@@ -1250,7 +1253,7 @@ class MiksinKokpitu:
         kafel.ink = False
         kafel.tooltip = None
 
-        nazwa = str(db.KOKPIT_WIDGETY.get(wid, wid))
+        nazwa = db.etykieta_z_dystansem(db.KOKPIT_WIDGETY.get(wid, wid))
         krzyzyk = ft.Container(
             top=2, right=2, padding=3, border_radius=utils.RADIUS["sm"],
             bgcolor=utils.tlo_karty(self._page, poziom=3),
@@ -1323,7 +1326,7 @@ class MiksinKokpitu:
         kolejnosc = [w for w in db.pobierz_widgety_kokpitu(self.state.auto_id) if w != wid]
         self._zapisz_uklad(kolejnosc)
         utils.pokaz_komunikat(
-            self._page, f"Zdjęto z kokpitu: {db.KOKPIT_WIDGETY.get(wid, wid)}")
+            self._page, f"Zdjęto z kokpitu: {db.etykieta_z_dystansem(db.KOKPIT_WIDGETY.get(wid, wid))}")
 
     def _dodaj_kafelek(self, wid):
         kolejnosc = list(db.pobierz_widgety_kokpitu(self.state.auto_id))
@@ -1343,7 +1346,7 @@ class MiksinKokpitu:
             return
         pozycje = [{
             "ikona": utils.ikona_z_mapy(utils.IKONY_KOKPITU, wid),
-            "tekst": str(db.KOKPIT_WIDGETY[wid]),
+            "tekst": db.etykieta_z_dystansem(db.KOKPIT_WIDGETY[wid]),
             "akcja": (lambda w=wid: self._dodaj_kafelek(w)),
         } for wid in dostepne]
         utils.pokaz_menu_kontekstowe(self._page, "Dodaj kafelek", pozycje)

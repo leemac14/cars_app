@@ -12,6 +12,7 @@ from .stale import (
 from .polaczenie import polacz_baze
 from .pomocnicze import liczba_z_odmiana, odmien
 from .ustawienia import pobierz_dni_przypomnienia_o_odczycie, pobierz_walute
+from .jednostki import dystans_z_km, jednostka_dystansu, tekst_dystansu
 from .notatki import przytnij_notatke, zapisz_notatke
 
 
@@ -115,8 +116,8 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
     najwyzszy_wczesniej = max((p for _, p in wczesniejsze), default=None)
     if najwyzszy_wczesniej is not None and nowy_przebieg < najwyzszy_wczesniej:
         return (
-            f"Uwaga: podany przebieg ({nowy_przebieg} km) jest niższy niż najwyższy dotychczas "
-            f"zapisany wpis ({najwyzszy_wczesniej} km). Sprawdź, czy nie brakuje cyfry."
+            f"Uwaga: podany przebieg ({tekst_dystansu(nowy_przebieg)}) jest niższy niż najwyższy dotychczas "
+            f"zapisany wpis ({tekst_dystansu(najwyzszy_wczesniej)}). Sprawdź, czy nie brakuje cyfry."
         )
 
     # 2) Wyższy niż wpis z datą PÓŹNIEJSZĄ — licznik nie cofa się w czasie
@@ -124,8 +125,8 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
         d_poz, najnizszy_pozniej = min(pozniejsze, key=lambda w: (w[1], w[0]))
         if nowy_przebieg > najnizszy_pozniej:
             return (
-                f"Uwaga: podany przebieg ({nowy_przebieg} km) jest wyższy niż we wpisie z późniejszą "
-                f"datą ({najnizszy_pozniej} km, {d_poz.strftime('%d.%m.%Y')}). Sprawdź datę albo przebieg."
+                f"Uwaga: podany przebieg ({tekst_dystansu(nowy_przebieg)}) jest wyższy niż we wpisie z późniejszą "
+                f"datą ({tekst_dystansu(najnizszy_pozniej)}, {d_poz.strftime('%d.%m.%Y')}). Sprawdź datę albo przebieg."
             )
 
     # 3) Nierealnie duży skok względem poprzedzającego wpisu (np. dodatkowa cyfra)
@@ -139,10 +140,11 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
             implikowany_dzienny = (nowy_przebieg - przebieg_poprzedni) / dni_od_poprzedniego
             if implikowany_dzienny > limit_dzienny:
                 return (
-                    f"Uwaga: od poprzedniego wpisu ({przebieg_poprzedni} km) "
+                    f"Uwaga: od poprzedniego wpisu ({tekst_dystansu(przebieg_poprzedni)}) "
                     f"{odmien(dni_od_poprzedniego, 'minął', 'minęły', 'minęło')} "
                     f"{liczba_z_odmiana(dni_od_poprzedniego, 'dzień', 'dni', 'dni')}. "
-                    f"Wynikałoby to na ok. {int(implikowany_dzienny)} km/dzień. Sprawdź, czy nie ma dodatkowej cyfry w przebiegu."
+                    f"Wynikałoby to na ok. {int(dystans_z_km(implikowany_dzienny))} {jednostka_dystansu()}/dzień. "
+                    "Sprawdź, czy nie ma dodatkowej cyfry w przebiegu."
                 )
 
     return None
@@ -173,7 +175,7 @@ def sprawdz_czy_tankowanie_duplikat(auto_id, data_str, przebieg, kwota, wyklucz_
         import utils
         return (
             f"Uwaga: masz już zapisane tankowanie z {data_str}, przebiegiem "
-            f"{utils.formatuj_liczba(przebieg, 0)} km i kwotą {utils.formatuj_liczba(kwota, 2)} "
+            f"{tekst_dystansu(przebieg)} i kwotą {utils.formatuj_liczba(kwota, 2)} "
             f"{pobierz_walute()}. Czy to nie duplikat?"
         )
     return None

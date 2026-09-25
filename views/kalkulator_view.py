@@ -7,6 +7,10 @@ class KalkulatorTrasyView(ft.View):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
+        # Dystans trasy w jednostce z Ustawień; spalanie zostaje w l/100km, więc
+        # do rachunku idą kilometry. Zapisane trasy trzymają km, jak baza.
+        self.j = utils.jednostka_dystansu()
+        self._dystans_wczytany_km = None
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Kalkulator podróży", "/", ikona=ft.Icons.MAP)
 
@@ -50,7 +54,7 @@ class KalkulatorTrasyView(ft.View):
                 cena_paliwa_domyslna = kwota / litry
 
         # Pola tekstowe (podpięte pod event on_change dla wyliczeń w locie)
-        self.e_dystans = ft.TextField(label="Planowany dystans w jedną stronę (km)", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
+        self.e_dystans = ft.TextField(label=f"Planowany dystans w jedną stronę ({self.j})", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
         self.c_powrot = ft.Checkbox(label="Podróż w obie strony (×2 dystans)", value=False, on_change=self.przelicz)
         self.e_osoby = ft.TextField(
             label="Liczba osób dzielących koszt (z kierowcą)",
@@ -162,7 +166,7 @@ class KalkulatorTrasyView(ft.View):
             pass
 
     def _chip_trasy(self, trasa):
-        opis = f"{utils.formatuj_liczba(trasa['dystans'], 0)} km"
+        opis = utils.formatuj_dystans(trasa['dystans'], 0, self.j)
         if trasa["powrot"]:
             opis += " ×2"
         return ft.Container(
@@ -179,7 +183,8 @@ class KalkulatorTrasyView(ft.View):
         )
 
     def _wczytaj_trase(self, trasa):
-        self.e_dystans.value = utils.formatuj_liczba(trasa["dystans"], 0)
+        self.e_dystans.value = utils.formatuj_liczba(db.dystans_z_km(trasa["dystans"], self.j), 0)
+        self._dystans_wczytany_km = trasa["dystans"]
         self.c_powrot.value = bool(trasa["powrot"])
         self.e_osoby.value = str(trasa["osoby"])
         self.e_dodatkowe.value = utils.formatuj_liczba(trasa["oplaty"], 2)
@@ -197,7 +202,7 @@ class KalkulatorTrasyView(ft.View):
         )
         dystans = self._pobierz_float(self.e_dystans)
         podsumowanie = ft.Text(
-            f"Zapamiętam: {utils.formatuj_liczba(dystans, 0)} km"
+            f"Zapamiętam: {utils.formatuj_liczba(dystans, 0)} {self.j}"
             + (" (tam i z powrotem)" if self.c_powrot.value else "")
             + f" • {int(utils.parsuj_float(self.e_osoby.value, 1.0)) or 1} os."
             + f" • opłaty {utils.formatuj_liczba(self._pobierz_float(self.e_dodatkowe), 2)} {utils.symbol_waluty()}",
@@ -216,7 +221,8 @@ class KalkulatorTrasyView(ft.View):
                 self._page.update()
                 return
             db.zapisz_trase_szablon(
-                self.state.auto_id, nazwa, dystans,
+                self.state.auto_id, nazwa,
+                db.dystans_na_km(dystans, self.j, km_przy_otwarciu=self._dystans_wczytany_km),
                 powrot=self.c_powrot.value,
                 osoby=int(utils.parsuj_float(self.e_osoby.value, 1.0)) or 1,
                 oplaty=self._pobierz_float(self.e_dodatkowe),
@@ -268,7 +274,8 @@ class KalkulatorTrasyView(ft.View):
         cena = self._pobierz_float(self.e_cena)
         dodatkowe = self._pobierz_float(self.e_dodatkowe)
 
-        potrzebne_litry = (dystans / 100.0) * spalanie
+        # Spalanie jest na 100 KILOMETRÓW — dystans w milach najpierw na km.
+        potrzebne_litry = (db.dystans_na_km(dystans, self.j) / 100.0) * spalanie
         koszt_paliwa = potrzebne_litry * cena
         koszt_calkowity = koszt_paliwa + dodatkowe
         koszt_osoba = koszt_calkowity / osoby
@@ -278,7 +285,7 @@ class KalkulatorTrasyView(ft.View):
         self.t_koszt_calkowity.value = f"{utils.formatuj_liczba(koszt_calkowity, 2)} {waluta}"
         self.t_koszt_osoba.value = f"{utils.formatuj_liczba(koszt_osoba, 2)} {waluta}"
 
-        opis_trasy = f" • trasa {utils.formatuj_liczba(dystans, 0)} km" if dystans > 0 else ""
+        opis_trasy = f" • trasa {utils.formatuj_liczba(dystans, 0)} {self.j}" if dystans > 0 else ""
         if self.c_powrot.value and dystans > 0:
             opis_trasy += " (tam i z powrotem)"
         self.t_litry.value = f"Potrzebne paliwo: {utils.formatuj_liczba(potrzebne_litry, 1)} L{opis_trasy}"

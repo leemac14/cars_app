@@ -104,7 +104,7 @@ class ArchiwumView(ft.View):
             fakty.append(("Utrata wartości", f"{utils.formatuj_liczba(strata)} {waluta}"))
         fakty.append(("Wydatki w historii", f"{utils.formatuj_liczba(a.get('koszt_razem') or 0)} {waluta}"))
         if a.get("przebieg"):
-            fakty.append(("Licznik na koniec", f"{utils.formatuj_liczba(a['przebieg'], 0)} km"))
+            fakty.append(("Licznik na koniec", utils.formatuj_dystans(a['przebieg'])))
         fakty.append(("Zachowanych wpisów", str(a.get("liczba_wpisow") or 0)))
 
         wiersze_faktow = [

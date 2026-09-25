@@ -9,7 +9,7 @@ from state import MIESIACE_NAZWY
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import MIESIACE_MIEJSCOWNIK, _odmiana_liczby, formatuj_dni, opis_licznika_na_karte, symbol_waluty
+from .format import MIESIACE_MIEJSCOWNIK, _odmiana_liczby, formatuj_dni, formatuj_dystans, jednostka_dystansu, opis_licznika_na_karte, symbol_waluty
 from .typografia import etykieta, podpis, wartosc
 from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_karty, tlo_odznaki, tlo_toru
 from .dialogi import odswiez_ekran
@@ -379,7 +379,9 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False, scena=None):
     if zasieg is None:
         tekst_zasiegu = ft.Text("—", **styl_zasiegu)
     else:
-        tekst_zasiegu = scena.liczba(zasieg, lambda v: f"{formatuj_liczba(v, 0)} km", **styl_zasiegu)
+        j = jednostka_dystansu()
+        tekst_zasiegu = scena.liczba(db.dystans_z_km(zasieg, j), lambda v: f"{formatuj_liczba(v, 0)} {j}",
+                                     **styl_zasiegu)
 
     gorny = ft.Row([
         ft.Row([
@@ -432,7 +434,7 @@ def wskaznik_baku(page: ft.Page, dane, kompaktowy=False, scena=None):
         if dane.get("pozostalo_jednostek") is not None:
             czesci.append(f"~{formatuj_liczba(dane['pozostalo_jednostek'], 1)} l w baku")
         if dane.get("zasieg_pelny"):
-            czesci.append(f"pełny bak ≈ {formatuj_liczba(dane['zasieg_pelny'], 0)} km")
+            czesci.append(f"pełny bak ≈ {formatuj_dystans(dane['zasieg_pelny'])}")
         elementy.append(ft.Text(" • ".join(czesci), size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
 
         nota = {
@@ -552,7 +554,8 @@ def wykres_przebiegu(page: ft.Page, wpisy, wysokosc=190):
         return None
 
     start = punkty[0]["data_obj"]
-    xy = [((w["data_obj"] - start).days, w["przebieg"], w["zrodlo"]) for w in punkty]
+    j = jednostka_dystansu()
+    xy = [((w["data_obj"] - start).days, db.dystans_z_km(w["przebieg"], j), w["zrodlo"]) for w in punkty]
     maks_x = max(x for x, _, _ in xy) or 1
     wart_y = [y for _, y, _ in xy]
     min_y, maks_y = min(wart_y), max(wart_y)
@@ -565,7 +568,7 @@ def wykres_przebiegu(page: ft.Page, wpisy, wysokosc=190):
                 color=KOLORY_ZRODEL_PRZEBIEGU.get(zrodlo, ft.Colors.PRIMARY),
                 radius=3.5, stroke_width=0,
             ),
-            tooltip=f"{punkty[i]['data']}\n{formatuj_liczba(y, 0)} km\n{punkty[i]['etykieta_zrodla']}",
+            tooltip=f"{punkty[i]['data']}\n{formatuj_liczba(y, 0)} {j}\n{punkty[i]['etykieta_zrodla']}",
         )
         for i, (x, y, zrodlo) in enumerate(xy)
     ]
@@ -807,8 +810,9 @@ def karta_kosztu_skumulowanego(page: ft.Page, dane, od_daty=None, wysokosc=210):
                                  wartosc(f"{formatuj_liczba(dane['koszt_dzien'])} {symbol_waluty()}")],
                                 spacing=2, expand=True))
     if dane.get("koszt_km"):
-        liczby.append(ft.Column([etykieta("Na kilometr"),
-                                 wartosc(f"{formatuj_liczba(dane['koszt_km'], 2)} {symbol_waluty()}")],
+        liczby.append(ft.Column([etykieta(f"Na {db.slowo_dystansu('biernik')}"),
+                                 wartosc(f"{formatuj_liczba(db.na_jednostke_dystansu(dane['koszt_km']), 2)} "
+                                         f"{symbol_waluty()}")],
                                 spacing=2, expand=True))
 
     przypisy = []
@@ -867,6 +871,43 @@ def pasek_okna_kroczacego(page: ft.Page, state):
     )
 
 
+def krzywa_1000_w_jednostce(dane, jednostka=None):
+    """Wynik db.koszt_na_1000km przeliczony na 1000 jednostek z Ustawień.
+
+    Kopia z kluczem „jednostka” — drugie wywołanie na tym samym wyniku niczego
+    już nie mnoży, więc karta, wykres i kafelek mogą wołać ją bez umawiania się,
+    kto przelicza. Koszty „razem” (suma w oknie) i procenty zostają, bo nie są
+    liczone na dystans; kilometry w oknie zamieniają się w mile."""
+    j = jednostka_dystansu() if jednostka is None else jednostka
+    if not dane:
+        return dane
+    if dane.get("jednostka", "km") == j:
+        return dict(dane, jednostka=j)
+
+    bez_zmian = {"rok", "miesiac", "klucz", "razem"}
+
+    def punkt(p):
+        nowy = {}
+        for klucz, v in p.items():
+            if klucz == "km":
+                nowy[klucz] = db.dystans_z_km(v, j)
+            elif klucz in bez_zmian or not isinstance(v, (int, float)):
+                nowy[klucz] = v
+            else:
+                nowy[klucz] = db.na_jednostke_dystansu(v, j)
+        return nowy
+
+    szczyt = dane.get("szczyt")
+    return dict(
+        dane, jednostka=j,
+        punkty=[punkt(p) for p in dane.get("punkty") or []],
+        iskra=[db.na_jednostke_dystansu(v, j) for v in dane.get("iskra") or []],
+        biezacy=db.na_jednostke_dystansu(dane.get("biezacy"), j),
+        srednia_zyciowa=db.na_jednostke_dystansu(dane.get("srednia_zyciowa"), j),
+        szczyt=punkt(szczyt) if szczyt else szczyt,
+    )
+
+
 def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
     """Krzywa kosztu na 1000 km w oknie kroczącym: gruba „Razem”, trzy cienkie
     serie kategorii, przerywana linia średniej życiowej i znacznik w szczycie.
@@ -874,6 +915,8 @@ def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
     Oś pionowa zaczyna się w ZERZE, a nie tuż pod najniższym punktem. Obcięta
     oś robi z dziesięcioprocentowej zmiany urwisko — a to jest wykres, na
     którego podstawie sprzedaje się auto."""
+    dane = krzywa_1000_w_jednostce(dane) or {}
+    j = dane.get("jednostka", "km")
     punkty = dane.get("punkty") or []
     if len(punkty) < 2:
         return None
@@ -886,8 +929,8 @@ def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
 
     def punkt_razem(i, p):
         wspolne = {"tooltip": (f"{p['miesiac']:02d}/{p['rok']}\n"
-                               f"{formatuj_liczba(p['koszt'])} {symbol_waluty()} / 1000 km\n"
-                               f"{formatuj_liczba(p['km'], 0)} km w oknie")}
+                               f"{formatuj_liczba(p['koszt'])} {symbol_waluty()} / 1000 {j}\n"
+                               f"{formatuj_liczba(p['km'], 0)} {j} w oknie")}
         if p["klucz"] == szczyt.get("klucz"):
             return fc.LineChartDataPoint(
                 i, p["koszt"],
@@ -971,6 +1014,8 @@ def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
 def karta_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
     """Cała karta: bieżące okno wielką liczbą, chip zmiany rok do roku, krzywa
     i dwa zdania przypisu — najdroższe okno i średnia życiowa."""
+    dane = krzywa_1000_w_jednostce(dane) or {}
+    j = dane.get("jednostka", "km")
     wykres = wykres_kosztu_1000km(page, dane, wysokosc=wysokosc)
     if wykres is None:
         return ft.Container(
@@ -986,7 +1031,7 @@ def karta_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
     naglowek = [
         ft.Column([
             etykieta(f"Ostatnie {dane['okno']} mies."),
-            wartosc(f"{formatuj_liczba(dane['biezacy'])} {symbol_waluty()} / 1000 km"),
+            wartosc(f"{formatuj_liczba(dane['biezacy'])} {symbol_waluty()} / 1000 {j}"),
         ], spacing=2, expand=True),
     ]
     if dane.get("zmiana_rdr") is not None:
@@ -1003,13 +1048,13 @@ def karta_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
         else:
             ocena = "w okolicach średniej życiowej"
         przypisy.append(podpis(
-            f"Średnia życiowa: {formatuj_liczba(srednia)} {symbol_waluty()} / 1000 km — "
+            f"Średnia życiowa: {formatuj_liczba(srednia)} {symbol_waluty()} / 1000 {j} — "
             f"bieżące okno jest {ocena}."))
     szczyt = dane.get("szczyt")
     if szczyt and szczyt.get("klucz"):
         przypisy.append(podpis(
             f"Najdroższe okno kończyło się w {szczyt['miesiac']:02d}/{szczyt['rok']}: "
-            f"{formatuj_liczba(szczyt['koszt'])} {symbol_waluty()} / 1000 km."))
+            f"{formatuj_liczba(szczyt['koszt'])} {symbol_waluty()} / 1000 {j}."))
 
     return ft.Container(
         padding=SPACING["lg"],
@@ -1174,8 +1219,10 @@ def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
 
 
 def _jednostka_rdr(dane):
-    return (f" {symbol_waluty()}/1000 km" if dane["wielkosc"] == "koszt1000"
-            else (" km" if dane["jednostka"] == "km" else f" {symbol_waluty()}"))
+    # Dane przychodzą już w jednostce z Ustawień (db.koszty_rok_do_roku).
+    j = jednostka_dystansu()
+    return (f" {symbol_waluty()}/1000 {j}" if dane["wielkosc"] == "koszt1000"
+            else (f" {j}" if dane["jednostka"] == "km" else f" {symbol_waluty()}"))
 
 
 def karta_rok_do_roku(page: ft.Page, state, rok=None, wysokosc=210):
@@ -1202,9 +1249,9 @@ def karta_rok_do_roku(page: ft.Page, state, rok=None, wysokosc=210):
 
     chipy = ft.Row(
         [
-            _chip_maly(opis[0], klucz == dane["wielkosc"],
+            _chip_maly(opis, klucz == dane["wielkosc"],
                        lambda e, k=klucz: wybierz_wielkosc(k))
-            for klucz, opis in db.WIELKOSCI_RDR.items()
+            for klucz, opis in db.etykiety_wielkosci_rdr().items()
         ],
         scroll=ft.ScrollMode.ADAPTIVE, spacing=8,
     )
@@ -1361,7 +1408,7 @@ def liczniki_interwalu(stan, scena=None, page=None):
             # Luźne rozciągnięcie: etykieta bierze tyle, ile potrzebuje, więc
             # znacznik stoi tuż przy niej — a na wąskim ekranie to ona się
             # zawija, zamiast wypychać znacznik poza kartę.
-            etykieta("Kilometry" if czy_km else "Czas", expand=True, expand_loose=True),
+            etykieta(db.slowo_dystansu("mianownik") if czy_km else "Czas", expand=True, expand_loose=True),
         ]
         if oba and licznik["rodzaj"] == stan.get("pierwsze"):
             naglowek.append(ft.Container(
@@ -1502,6 +1549,7 @@ __all__ = [
     "karta_rok_do_roku",
     "karta_kosztu_skumulowanego",
     "kolor_kondycji_plynny",
+    "krzywa_1000_w_jednostce",
     "liczniki_interwalu",
     "odznaka_zrodla_przebiegu",
     "pasek_budzetu",

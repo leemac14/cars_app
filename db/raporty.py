@@ -21,6 +21,7 @@ from .polaczenie import polacz_baze
 from .zalaczniki import sciezka_pliku_zalacznika
 from .pomocnicze import SEPARATOR_TYSIECY, formatuj_liczba_eksport, liczba_na_tekst, liczba_z_odmiana
 from .ustawienia import pobierz_walute
+from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu
 from .energia import formatuj_zuzycie_tekst
 from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu
 from .eksport import FOLDER_ASSETS, KATEGORIE_EKSPORTU, _MAPA_TRANSLITERACJI_PL, _RaportPDF
@@ -156,6 +157,7 @@ def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
     y += 176
 
     waluta = pobierz_walute()
+    j = jednostka_dystansu()
 
     def kafelek(x, y_kafla, szer, etykieta, wartosc, podpis=None):
         WYS_KAFLA = 172
@@ -169,7 +171,7 @@ def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
         return y_kafla + WYS_KAFLA
 
     szer_kafla = (SZER_UZYTECZNA - 24) // 2
-    kafelek(MARGINES, y, szer_kafla, "Przejechane", f"{formatuj_liczba_eksport(dane['km'], 0)} km",
+    kafelek(MARGINES, y, szer_kafla, "Przejechane", f"{formatuj_liczba_eksport(dystans_z_km(dane['km'], j), 0)} {j}",
             dane.get("porownanie_dystansu"))
     kafelek(MARGINES + szer_kafla + 24, y, szer_kafla, "Wydane łącznie",
             f"{formatuj_liczba_eksport(dane['koszty']['razem'], 0)} {waluta}",
@@ -177,7 +179,8 @@ def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
     y += 196
 
     elektryczny = bool(dane.get("zuzycie_elektryczne"))
-    koszt_km = f"{formatuj_liczba_eksport(dane['koszt_km'], 2)} {waluta}" if dane.get("koszt_km") else "—"
+    koszt_km = (f"{formatuj_liczba_eksport(na_jednostke_dystansu(dane['koszt_km'], j), 2)} {waluta}"
+                if dane.get("koszt_km") else "—")
     zuzycie = formatuj_zuzycie_tekst(dane["srednie_zuzycie"], elektryczny) if dane.get("srednie_zuzycie") else "—"
     if elektryczny:
         ilosc = f"{formatuj_liczba_eksport(dane['kwh'], 0)} kWh naładowane" if dane.get("kwh") else None
@@ -185,7 +188,7 @@ def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
     else:
         ilosc = f"{formatuj_liczba_eksport(dane['litry'], 0)} l zatankowane" if dane.get("litry") else None
         wpisy = liczba_z_odmiana(dane["liczba_tankowan"], "tankowanie", "tankowania", "tankowań")
-    kafelek(MARGINES, y, szer_kafla, "Koszt kilometra", koszt_km, f"{wpisy} w roku")
+    kafelek(MARGINES, y, szer_kafla, f"Koszt {slowo_dystansu('dopelniacz_lp', j)}", koszt_km, f"{wpisy} w roku")
     kafelek(MARGINES + szer_kafla + 24, y, szer_kafla, "Średnie zużycie", zuzycie, ilosc)
     y += 214
 
@@ -474,6 +477,7 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
 
     if podsumowanie:
         waluta = podsumowanie.get("waluta", "PLN")
+        j = jednostka_dystansu()
         pdf.set_font(pdf.czcionka, "B", 13)
         pdf.cell(0, 9, pdf.t("Podsumowanie kosztów"), ln=1)
         pdf.set_draw_color(200, 200, 200)
@@ -488,9 +492,12 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
 
         if podsumowanie.get("dystans"):
             pdf.set_font(pdf.czcionka, "", 11)
-            pdf.cell(0, 7, pdf.t(f"Przejechany dystans: {formatuj_liczba_eksport(podsumowanie['dystans'], 0)} km"), ln=1)
+            pdf.cell(0, 7, pdf.t(f"Przejechany dystans: "
+                                 f"{formatuj_liczba_eksport(dystans_z_km(podsumowanie['dystans'], j), 0)} {j}"), ln=1)
         if podsumowanie.get("koszt_km"):
-            pdf.cell(0, 7, pdf.t(f"Koszt eksploatacji: {formatuj_liczba_eksport(podsumowanie['koszt_km'], 2)} {waluta}/km"), ln=1)
+            pdf.cell(0, 7, pdf.t(f"Koszt eksploatacji: "
+                                 f"{formatuj_liczba_eksport(na_jednostke_dystansu(podsumowanie['koszt_km'], j), 2)} "
+                                 f"{waluta}/{j}"), ln=1)
         if podsumowanie.get("spalanie"):
             # Jednostka z Ustawień (l/100km, km/l, mpg — albo kWh/100km
             # u elektryka), tak samo jak na ekranie, a nie zawsze „l/100km”.
@@ -507,7 +514,11 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
         pdf.ln(6)
-        _narysuj_wykres_liniowy(pdf, punkty_przebiegu, pdf.l_margin + 24, pdf.get_y(), pdf.w - pdf.l_margin - pdf.r_margin - 26, 55)
+        # Oś w jednostce z Ustawień — tak jak wykres na ekranie.
+        j = jednostka_dystansu()
+        punkty_w_jednostce = [(e, dystans_z_km(v, j)) for e, v in punkty_przebiegu]
+        _narysuj_wykres_liniowy(pdf, punkty_w_jednostce, pdf.l_margin + 24, pdf.get_y(),
+                                pdf.w - pdf.l_margin - pdf.r_margin - 26, 55)
         pdf.set_y(pdf.get_y() + 55 + 14)
 
     for klucz, (naglowki, wiersze) in kategorie_dane.items():
@@ -598,6 +609,7 @@ def pobierz_dane_paszportu(auto_id):
         zdjecia_karoserii = c.fetchall()
 
     aktualny_przebieg = pobierz_aktualny_przebieg(auto_id)
+    j = jednostka_dystansu()
 
     specyfikacja = [
         (e, w) for e, w in (
@@ -606,8 +618,10 @@ def pobierz_dane_paszportu(auto_id):
             ("Silnik", f"{auto['pojemnosc_silnika']} cm³" if auto["pojemnosc_silnika"] else None),
             ("Moc", f"{auto['moc_silnika']} KM" if auto["moc_silnika"] else None),
             ("Paliwo", auto["typ_paliwa"]), ("Skrzynia", auto["skrzynia_biegow"]),
-            ("Gwarancja do", f"{formatuj_liczba_eksport(auto['gwarancja_przebieg'], 0)} km" if auto["gwarancja_przebieg"] else None),
-            ("Aktualny przebieg", f"{formatuj_liczba_eksport(aktualny_przebieg, 0)} km" if aktualny_przebieg else None),
+            ("Gwarancja do", f"{formatuj_liczba_eksport(dystans_z_km(auto['gwarancja_przebieg'], j), 0)} {j}"
+             if auto["gwarancja_przebieg"] else None),
+            ("Aktualny przebieg", f"{formatuj_liczba_eksport(dystans_z_km(aktualny_przebieg, j), 0)} {j}"
+             if aktualny_przebieg else None),
         ) if w
     ]
 
