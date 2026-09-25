@@ -2,6 +2,7 @@
 
 import db
 import flet as ft
+import log
 from datetime import datetime
 
 from .stale import IKONY_SEZONU_OPON, KOLOR_STATUS, RADIUS, formatuj_liczba
@@ -11,6 +12,7 @@ from .zgodnosc import ustaw_blad, ustaw_ikone
 from .wyglad import dol_bezpieczny, tlo_stanu
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, potwierdz, przejdz, zamknij_dialog, zamknij_dno
 from .formularze import pole_daty, styl_dropdown, styl_pola
+from .pojazd import dialog_odczytu_przebiegu
 from .komponenty import znacznik_wykonania
 
 
@@ -186,10 +188,34 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                 pass
         return handler
 
+    def wpisz_stan_licznika(kafelek):
+        """Odczyt licznika wpisany wprost z panelu. Po zapisie przycisk zamienia
+        się w ptaszka, a dopiero potem lista się przebudowuje i przypomnienie
+        znika — tak samo jak po „Zapłacone”."""
+        def handler(e):
+            def po_zapisie():
+                def dokoncz():
+                    # Najpierw lista (zapisuje obejrzenie), potem ekran pod
+                    # spodem — odświeża przebieg, kafle i dzwonek w tle.
+                    odswiez()
+                    przejdz(page, page.route)
+
+                kafelek.trailing = znacznik_wykonania(page, "Zapisano", po_zakonczeniu=dokoncz)
+                try:
+                    page.update()
+                except Exception:
+                    log.polkniety("ptaszek po odczycie licznika w panelu powiadomień")
+
+            dialog_odczytu_przebiegu(page, state.auto_id, po_zapisie=po_zapisie)
+        return handler
+
     def odloz(powiadomienie, dni):
         """Wycisza JEDNO powiadomienie na wybraną liczbę dni. Nie oznacza niczego
         jako wykonane i nie rusza terminu — po prostu znika z listy do czasu."""
-        db.odloz_powiadomienie(state.auto_id, powiadomienie.get("klucz"), dni, powiadomienie.get("tytul"))
+        # Pod kluczem drzemki, nie pod kluczem powiadomienia: przypomnienie
+        # o liczniku zmienia 'klucz' z każdym okresem ciszy, a drzemka ma
+        # trwać tyle dni, ile wybrano (patrz db.klucz_drzemki).
+        db.odloz_powiadomienie(state.auto_id, db.klucz_drzemki(powiadomienie), dni, powiadomienie.get("tytul"))
         pokaz_komunikat(page, f"Odłożono „{powiadomienie['tytul']}” na {dni} dni.")
         odswiez()
         przejdz(page, page.route)   # odświeża licznik przy dzwonku w tle
@@ -371,6 +397,23 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         icon=ft.Icons.CHECK,
                         on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p, kafelek, typ_p),
                     )]
+                    drzemka = przycisk_odlozenia(p)
+                    if drzemka:
+                        akcje.append(drzemka)
+                    kafelek.trailing = ft.Row(akcje, spacing=0, tight=True)
+                    pozycje.append(kafelek)
+                elif p["typ"] == "licznik":
+                    # Dotknięcie wiersza prowadzi do historii licznika jak każde
+                    # inne powiadomienie; sam odczyt wpisuje się przyciskiem, bez
+                    # schodzenia z panelu.
+                    kafelek = ft.ListTile(
+                        leading=ft.Icon(ft.Icons.SPEED, color=kolor),
+                        title=tytul_pozycji(p),
+                        subtitle=podtytul_pozycji(p, kolor),
+                        on_click=idz_do(p["trasa"]),
+                    )
+                    akcje = [ft.TextButton("Wpisz stan", icon=ft.Icons.EDIT,
+                                           on_click=wpisz_stan_licznika(kafelek))]
                     drzemka = przycisk_odlozenia(p)
                     if drzemka:
                         akcje.append(drzemka)

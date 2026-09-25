@@ -26,6 +26,7 @@ class MiksinNaglowkaAuta:
 
         wiadomosc_statusu = w["wiadomosc_statusu"]
         aktualny_przebieg = db.pobierz_aktualny_przebieg(self.state.auto_id)
+        swiezosc = db.swiezosc_licznika(self.state.auto_id, aktualny_przebieg=aktualny_przebieg)
 
         # Komplet danych pojazdu liczony RAZ: kafel pokazuje teraz także wiek,
         # tablicę i najbliższy termin, a każde z osobnego zapytania robiłoby
@@ -439,23 +440,45 @@ class MiksinNaglowkaAuta:
         if metryki_pojazdu.get("przebieg_roczny"):
             dopiski.append(f"{utils.formatuj_liczba(metryki_pojazdu['przebieg_roczny'], 0)} km/rok")
 
+        # Stary licznik mówimy przy samej liczbie: to z niej liczą się interwały,
+        # zasięg i opony, więc „sprzed 34 dni” musi stać tam, gdzie się ją czyta.
+        # Dopisek idzie jako pierwszy kawałek TEGO SAMEGO tekstu co wiek i km/rok
+        # — osobny, sztywny tekst w tym wierszu wychodziłby pod przyciski.
+        licznik_stary = bool(swiezosc and swiezosc["nieswiezy"] and swiezosc["dni"] is not None)
+        kolor_licznika = utils.KOLOR_STATUS["warning"] if licznik_stary else ft.Colors.ON_SURFACE_VARIANT
         metryki_bity = [
-            ft.Icon(ft.Icons.SPEED, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Icon(ft.Icons.SPEED, size=13, color=kolor_licznika),
             ft.Text(f"{utils.formatuj_liczba(aktualny_przebieg, 0)} km", size=13, weight="bold",
                     no_wrap=True),
             ft.Icon(ft.Icons.EDIT, size=11, color=ft.Colors.PRIMARY),
         ]
-        if dopiski:
+        if licznik_stary:
+            kawalki = [
+                ft.TextSpan("•  "),
+                ft.TextSpan(f"sprzed {utils.formatuj_dni_dopelniacz(swiezosc['dni'])}",
+                            style=ft.TextStyle(color=kolor_licznika)),
+            ]
+            if dopiski:
+                kawalki.append(ft.TextSpan("  •  " + "  •  ".join(dopiski)))
+            metryki_bity.append(ft.Text(
+                spans=kawalki,
+                size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
+        elif dopiski:
             metryki_bity.append(ft.Text(
                 "•  " + "  •  ".join(dopiski),
                 size=12, color=ft.Colors.ON_SURFACE_VARIANT,
                 expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
 
+        podpowiedz_licznika = "Dotknij: aktualizuj  •  Przytrzymaj: historia licznika"
+        if licznik_stary:
+            podpowiedz_licznika = (f"Ostatni przebieg sprzed {utils.formatuj_dni_dopelniacz(swiezosc['dni'])}"
+                                   " — prognozy km są w tyle. " + podpowiedz_licznika)
         wiersz_przebieg = ft.Container(
             content=ft.Row(metryki_bity, spacing=5),
             on_click=pokaz_szybka_aktualizacja_przebiegu,
             on_long_press=lambda e: utils.przejdz(self._page, "/przebieg"),
-            tooltip="Dotknij: aktualizuj  •  Przytrzymaj: historia licznika",
+            tooltip=podpowiedz_licznika,
         )
 
         # Najbliższy termin WPROST na kaflu. Dotąd data OC czy przeglądu była

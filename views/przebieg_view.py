@@ -196,6 +196,17 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         wiersze.append(ft.Text(" • ".join(opis), size=utils.FS["caption"],
                                color=ft.Colors.ON_SURFACE_VARIANT))
 
+        swiezosc = db.swiezosc_licznika(self.state.auto_id)
+        baner = utils.baner_nieswiezego_licznika(
+            self._page, self.state.auto_id, swiezosc,
+            po_zapisie=lambda: utils.przejdz(self._page, "/przebieg"),
+            tresc=("Czas na odczyt — prognozy km liczą z licznika sprzed "
+                   + utils.formatuj_dni_dopelniacz(swiezosc["dni"])) if swiezosc and swiezosc["dni"] else None,
+            tekst_przycisku="Dodaj odczyt",
+        )
+        if baner:
+            wiersze.append(baner)
+
         if p["anomalie"]:
             wiersze.append(ft.Container(
                 padding=ft.Padding(10, 8, 10, 8), border_radius=utils.RADIUS["sm"],

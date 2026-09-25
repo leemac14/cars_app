@@ -5,9 +5,12 @@ from date import parsuj_date
 from datetime import datetime
 from typing import Any
 
-from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, ZRODLA_ODCZYTU, ZRODLA_PRZEBIEGU, ZRODLO_ODCZYTU_DOMYSLNE
+from .stale import (
+    ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, ZRODLA_ODCZYTU, ZRODLA_PRZEBIEGU,
+    ZRODLO_ODCZYTU_DOMYSLNE,
+)
 from .polaczenie import polacz_baze
-from .ustawienia import pobierz_walute
+from .ustawienia import pobierz_dni_przypomnienia_o_odczycie, pobierz_walute
 from .notatki import przytnij_notatke, zapisz_notatke
 
 
@@ -181,18 +184,22 @@ def sprawdz_czy_koszt_duplikat(auto_id, data_str, nazwa, kwota, wyklucz_id=None)
     return None
 
 
-def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7):
+def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7, punkty=None):
     """Średni przebieg dzienny liczony na podstawie WSZYSTKICH źródeł przebiegu —
     dokładnie tych samych, których używa pobierz_historie_przebiegu() (wykres
     przebiegu w paszporcie PDF): tankowania, wizyty, pojedyncze wpisy historii
     i ręczne odczyty. Wcześniej ta funkcja liczyła TYLKO z tankowań i odczytów
     ręcznych — ktoś logujący wyłącznie wizyty serwisowe (bez tankowań w
     aplikacji) zawsze dostawał None, a przez to znikały mu prognozy terminów
-    ("Zostanie ok. X dni") w powiadomieniach i na kartach podzespołów."""
+    ("Zostanie ok. X dni") w powiadomieniach i na kartach podzespołów.
+
+    `punkty` — gotowy wynik pobierz_historie_przebiegu(), gdy wołający i tak
+    go ma (swiezosc_licznika); bez niego funkcja pobiera historię sama."""
     if not auto_id:
         return None
 
-    punkty = pobierz_historie_przebiegu(auto_id)
+    if punkty is None:
+        punkty = pobierz_historie_przebiegu(auto_id)
     if len(punkty) < 2:
         return None
 
@@ -448,6 +455,72 @@ def podsumowanie_historii_przebiegu(auto_id, wpisy=None):
     }
 
 
+def _zaokraglij_szacunek_km(km):
+    """Szacunek podajemy w setkach kilometrów — pojedyncze udawałyby dokładność,
+    której średnia nie ma. Poniżej 50 km nie ma o czym mówić."""
+    if km is None or km < 50:
+        return None
+    return max(100, int(round(km / 100.0)) * 100)
+
+
+def swiezosc_licznika(auto_id, dzis=None, aktualny_przebieg=None, sredni_dzienny=None) -> dict[str, Any] | None:
+    """Jak świeży jest stan licznika, z którego liczą się WSZYSTKIE prognozy
+    kilometrowe — interwały podzespołów, zasięg na baku, zużycie opon.
+
+    `dni` — ile dni minęło od ostatniego wpisu niosącego przebieg. To ten sam
+    wpis, który „Historia licznika” pokazuje jako ostatni (te same cztery źródła
+    i te same filtry), więc dzwonek i tamten ekran nie powiedzą dwóch różnych
+    liczb. None = auto nie ma ani jednego przebiegu.
+
+    `nieswiezy` — dni doszły do progu z Ustawień albo przebiegu nie ma wcale,
+    a przypominanie jest włączone i auto nie jest sprzedane. `okres` — który to
+    już okres ciszy (1 = pierwszy); z każdego kolejnego dzwonek robi nowe
+    powiadomienie. `przebieg` — liczba, z której liczą prognozy
+    (pobierz_aktualny_przebieg). `przybylo_km` — ile mogło przybyć od tamtej
+    pory przy średnim tempie, w setkach km; None bez średniej.
+
+    `aktualny_przebieg` i `sredni_dzienny` może podać wołający, który je już
+    policzył (pobierz_powiadomienia). None tylko bez auta."""
+    if not auto_id:
+        return None
+    with polacz_baze() as conn:
+        w = conn.execute("SELECT status FROM samochody WHERE id=?", (auto_id,)).fetchone()
+    if not w:
+        return None
+
+    dzis = dzis or datetime.now().date()
+    aktywny = str(w[0] or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_AKTYWNY
+    prog = pobierz_dni_przypomnienia_o_odczycie()
+
+    punkty = pobierz_historie_przebiegu(auto_id)
+    data = dni = przebieg = None
+    if punkty:
+        data = parsuj_date(punkty[-1][0])
+        dni = max(0, (dzis - data).days)
+        przebieg = aktualny_przebieg or pobierz_aktualny_przebieg(auto_id) or punkty[-1][1]
+
+    nieswiezy = bool(aktywny and prog > 0 and (dni is None or dni >= prog))
+    okres = 0
+    przybylo_km = None
+    if nieswiezy:
+        okres = dni // prog if dni is not None else 1
+        if dni:
+            sredni = sredni_dzienny or oblicz_sredni_dzienny_przebieg(auto_id, punkty=punkty)
+            if sredni:
+                przybylo_km = _zaokraglij_szacunek_km(sredni * dni)
+
+    return {
+        "dni": dni,
+        "data": data,
+        "przebieg": przebieg,
+        "prog": prog,
+        "aktywny": aktywny,
+        "nieswiezy": nieswiezy,
+        "okres": okres,
+        "przybylo_km": przybylo_km,
+    }
+
+
 def aktualizuj_odczyt_przebiegu(odczyt_id, przebieg, data_str):
     """Edycja konkretnego, istniejącego odczytu (z poziomu listy historii) —
     aktualizuje po ID, bez logiki upsert po dacie użytej w dodaj_odczyt_przebiegu."""
@@ -491,4 +564,5 @@ __all__ = [
     "sprawdz_czy_koszt_duplikat",
     "sprawdz_czy_przebieg_podejrzany",
     "sprawdz_czy_tankowanie_duplikat",
+    "swiezosc_licznika",
 ]

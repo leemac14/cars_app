@@ -12,7 +12,8 @@ from .ustawienia import (
     _klucz_widzianych_powiadomien, pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km,
     pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie,
 )
-from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
+from .synchronizacja import czy_moge_dodawac
+from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, swiezosc_licznika
 
 
 # ============================================================================
@@ -302,14 +303,66 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
                     "klucz": f"magazyn:{m['id']}",
                 })
 
+    # Stan licznika na końcu: przy tym samym statusie prawdziwe terminy stoją
+    # nad nim (sortowanie niżej jest stabilne), więc kafel „Termin” pokaże go
+    # dopiero wtedy, gdy nic innego nie goni.
+    przypomnienie = _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg, sredni_dzienny_przebieg)
+    if przypomnienie:
+        wyniki.append(przypomnienie)
+
     kolejnosc = {"przeterminowane": 0, "pilne": 1}
 
     wyniki.sort(key=lambda w: kolejnosc.get(w["status"], 2))
 
     if pomin_wyciszone:
         wyciszone = pobierz_wyciszone_klucze(auto_id)
-        wyniki = [w for w in wyniki if w.get("klucz") not in wyciszone]
+        wyniki = [w for w in wyniki if klucz_drzemki(w) not in wyciszone]
     return wyniki
+
+
+# ============================================================================
+#  PRZYPOMNIENIE O ODCZYCIE LICZNIKA
+# ============================================================================
+# Interwały podzespołów, zasięg na baku i zużycie opon liczą się z JEDNEJ
+# liczby — ostatniego znanego przebiegu. Miesiąc bez tankowania, wizyty, wpisu
+# serwisowego i odczytu to miesiąc, o który wszystkie te prognozy są w tyle.
+#
+# Dwa klucze. `klucz` ma numer okresu ciszy („licznik:2026-08-20:2”): w każdym
+# kolejnym okresie jest nowy, więc odznaka zapala się raz na okres, a nie tylko
+# raz. `klucz_drzemki` to cały cykl od ostatniego wpisu („licznik:2026-08-20”):
+# odłożenie na 30 dni trwa 30 dni, także gdy po drodze zacznie się nowy okres,
+# a nowy wpis z przebiegiem zaczyna nowy cykl bez starej drzemki.
+
+
+def klucz_drzemki(powiadomienie):
+    """Klucz, pod którym powiadomienie się odkłada — zwykle ten sam co
+    'klucz'. Inny ma tylko przypomnienie o liczniku (patrz wyżej)."""
+    return powiadomienie.get("klucz_drzemki") or powiadomienie.get("klucz")
+
+
+def _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg=None, sredni_dzienny_przebieg=None):
+    """Powiadomienie „Odczyt licznika” albo None. Rola „tylko podgląd” go nie
+    dostaje: niczego nie wpisze, a licznik dostarcza jej właściciel."""
+    if not czy_moge_dodawac(auto_id):
+        return None
+    swiezosc = swiezosc_licznika(auto_id, dzis=dzis, aktualny_przebieg=aktualny_przebieg or None,
+                                 sredni_dzienny=sredni_dzienny_przebieg)
+    if not swiezosc or not swiezosc["nieswiezy"]:
+        return None
+
+    import utils
+    linie = utils.linie_opisu_odczytu(swiezosc)
+    if swiezosc["data"] is None:
+        klucz_cyklu = klucz = "licznik:brak"
+    else:
+        klucz_cyklu = f"licznik:{swiezosc['data'].isoformat()}"
+        klucz = f"{klucz_cyklu}:{swiezosc['okres']}"
+    return {
+        "typ": "licznik", "tytul": "Odczyt licznika",
+        "opis": utils.polacz_linie_opisu(linie), "linie_opisu": linie,
+        "status": "pilne", "trasa": "/przebieg",
+        "klucz": klucz, "klucz_drzemki": klucz_cyklu,
+    }
 
 
 # ============================================================================
@@ -499,7 +552,7 @@ def pobierz_odlozone_powiadomienia(auto_id) -> list[dict[str, Any]]:
     if not wiersze:
         return []
 
-    zywe = {p.get("klucz"): p for p in pobierz_powiadomienia(auto_id, pomin_wyciszone=False)}
+    zywe = {klucz_drzemki(p): p for p in pobierz_powiadomienia(auto_id, pomin_wyciszone=False)}
     dzis = datetime.now().date()
     pozycje = []
     for klucz, do_dnia, tytul in wiersze:
@@ -527,6 +580,7 @@ __all__ = [
     "DNI_W_MIESIACU_INTERWALU",
     "WAGA_STATUSU_POWIADOMIENIA",
     "_posprzataj_wygasle_wyciszenia",
+    "klucz_drzemki",
     "klucz_powiadomienia",
     "niewidziane_powiadomienia",
     "oblicz_stan_interwalu",

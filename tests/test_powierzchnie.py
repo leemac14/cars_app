@@ -271,9 +271,14 @@ def test_ekran_glowny_stopniuje_zagniezdzone_powierzchnie(baza, zakladka, podzak
     assert znaleziska == [], _opis(znaleziska)
 
 
-def _kokpit_z_kompletem(scenariusz):
+def _kokpit_z_kompletem(scenariusz, swiezy_licznik=False):
     stan, _ = pomoce.przygotuj_scenariusz(scenariusz)
     stan.zakladka = 0
+    if swiezy_licznik:
+        # Dzisiejszy odczyt z tym samym przebiegiem: dane scenariusza mają
+        # miesiące, a licznik starszy niż 30 dni to już powód do działania
+        # (przypomnienie o odczycie w kaflu „Termin”).
+        db.dodaj_odczyt_przebiegu(stan.auto_id, db.pobierz_aktualny_przebieg(stan.auto_id))
     db.zapisz_widgety_kokpitu(list(db.KOKPIT_WIDGETY), stan.auto_id)
     strona = pomoce.zbuduj_strone()
     return strona, pomoce.zbuduj_widok(pomoce.klasy_widokow()["MainView"], strona, stan)
@@ -313,7 +318,7 @@ def test_kokpit_z_historia_podnosi_kafle_ktore_maja_co_powiedziec(baza):
 def test_kokpit_bez_powodow_do_dzialania_zostaje_spokojny(baza):
     """Świeży pojazd nie ma po terminie ani niczego na wyczerpaniu — kokpit ma
     być wtedy równy, a nie kolorowy „na wszelki wypadek”."""
-    strona, widok = _kokpit_z_kompletem("pojazd_z_danymi")
+    strona, widok = _kokpit_z_kompletem("pojazd_z_danymi", swiezy_licznik=True)
 
     licz = _tla_kafli(widok, strona)
 

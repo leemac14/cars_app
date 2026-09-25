@@ -388,7 +388,9 @@ def pobierz_dane_do_porownania(auto_id):
             spalanie = (l_p / d_p) * 100
     dane["spalanie"] = spalanie
 
-    powiadomienia = pobierz_powiadomienia(auto_id)
+    # Przypomnienie o liczniku mówi o danych, nie o aucie — w porównaniu
+    # liczyłoby się jako termin, którego samochód wcale nie ma.
+    powiadomienia = [p for p in pobierz_powiadomienia(auto_id) if p.get("typ") != "licznik"]
     dane["przeterminowane"] = sum(1 for p in powiadomienia if p["status"] == "przeterminowane")
     dane["pilne"] = sum(1 for p in powiadomienia if p["status"] == "pilne")
 

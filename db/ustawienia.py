@@ -1,6 +1,6 @@
 """Ustawienia globalne i per-pojazd: motyw, waluta, jednostki, progi."""
 
-from .stale import JEDNOSTKI_SPALANIA, JEDNOSTKI_ZUZYCIA_EV, KLUCZE_TERMINOW, KOLEJNOSC_TRYBOW_MOTYWU, KOLORY_MOTYWU, PROG_DNI_POWIADOMIEN, PROG_KM_POWIADOMIEN, WALUTY
+from .stale import DNI_PRZYPOMNIENIA_O_ODCZYCIE, DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE, JEDNOSTKI_SPALANIA, JEDNOSTKI_ZUZYCIA_EV, KLUCZE_TERMINOW, KOLEJNOSC_TRYBOW_MOTYWU, KOLORY_MOTYWU, PROG_DNI_POWIADOMIEN, PROG_KM_POWIADOMIEN, WALUTY
 from .polaczenie import polacz_baze
 
 
@@ -160,6 +160,28 @@ def pobierz_prog_km():
 
 def pobierz_prog_dni():
     return int(pobierz_ustawienie("prog_dni_powiadomien", str(PROG_DNI_POWIADOMIEN)) or PROG_DNI_POWIADOMIEN)
+
+
+def pobierz_dni_przypomnienia_o_odczycie():
+    """Po ilu dniach bez wpisu z przebiegiem przypomnieć o stanie licznika.
+    0 = wyłączone. Wartość spoza listy opcji (ręcznie zmieniona baza, stara
+    wersja) wraca do domyślnych 30 dni, zamiast wyłączać przypomnienie po cichu."""
+    zapisane = pobierz_ustawienie("dni_przypomnienia_o_odczycie")
+    try:
+        wartosc = int(zapisane)
+    except (TypeError, ValueError):
+        return DNI_PRZYPOMNIENIA_O_ODCZYCIE
+    return wartosc if wartosc in DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE else DNI_PRZYPOMNIENIA_O_ODCZYCIE
+
+
+def zapisz_dni_przypomnienia_o_odczycie(dni):
+    try:
+        wartosc = int(dni)
+    except (TypeError, ValueError):
+        wartosc = DNI_PRZYPOMNIENIA_O_ODCZYCIE
+    if wartosc not in DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE:
+        wartosc = DNI_PRZYPOMNIENIA_O_ODCZYCIE
+    zapisz_ustawienie("dni_przypomnienia_o_odczycie", str(wartosc))
 
 
 def pobierz_prog_dni_dokumentu(klucz):
@@ -522,6 +544,7 @@ __all__ = [
     "pobierz_kolor_motywu",
     "pobierz_moje_imie",
     "pobierz_prog_dni",
+    "pobierz_dni_przypomnienia_o_odczycie",
     "pobierz_prog_dni_dokumentu",
     "pobierz_prog_km",
     "pobierz_tryb_motywu",
@@ -541,6 +564,7 @@ __all__ = [
     "zapisz_czysta_czern",
     "zapisz_interwal_auto_synchronizacji",
     "zapisz_moje_imie",
+    "zapisz_dni_przypomnienia_o_odczycie",
     "zapisz_prog_dni_dokumentu",
     "zapisz_tryb_motywu",
     "zapisz_ustawienie",

@@ -139,6 +139,12 @@ PROGI_KM_OPCJE = [500, 1000, 1500, 2000, 3000, 5000]
 
 PROGI_DNI_OPCJE = [7, 14, 30, 60, 90]
 
+# Po ilu dniach bez ŻADNEGO wpisu niosącego przebieg (tankowanie, wizyta, wpis
+# serwisowy, odczyt) licznik uznajemy za nieświeży i dzwonek o niego prosi —
+# a potem znowu po każdym takim samym okresie ciszy. 0 = nie przypominaj.
+DNI_PRZYPOMNIENIA_O_ODCZYCIE = 30
+DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE = [14, 30, 60, 0]
+
 
 # Terminy dokumentów: (klucz ustawienia, kolumna w samochody, etykieta).
 # Każdy ma WŁASNY próg powiadomień — o kończącym się OC chce się wiedzieć
@@ -332,6 +338,8 @@ __all__ = [
     "CHECKLISTA_PRZEDWYJAZDOWA",
     "DNI_KOSZA_DOMYSLNIE",
     "DNI_KOSZA_OPCJE",
+    "DNI_PRZYPOMNIENIA_O_ODCZYCIE",
+    "DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE",
     "DOMYSLNE_INTERWALY_MIESIACE",
     "DOMYSLNE_ZADANIA",
     "ENERGIA_PALIWO",

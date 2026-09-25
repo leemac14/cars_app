@@ -89,6 +89,18 @@ class UstawieniaView(ft.View):
             **utils.styl_dropdown()
         )
 
+        # Przypomnienie o odczycie licznika: po ilu dniach bez ŻADNEGO wpisu
+        # z przebiegiem dzwonek o niego prosi (i znowu po każdym takim okresie).
+        opcje_licznika_tekst = {14: "Po 14 dniach", 30: "Po miesiącu (30 dni)",
+                                60: "Po 2 miesiącach (60 dni)", 0: "Nie przypominaj"}
+        self.e_przypomnienie_licznika = ft.Dropdown(
+            label="Przypominaj o odczycie licznika",
+            options=[ft.DropdownOption(key=str(d), text=opcje_licznika_tekst.get(d, f"{d} dni"))
+                     for d in db.DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE],
+            value=str(db.pobierz_dni_przypomnienia_o_odczycie()),
+            **utils.styl_dropdown()
+        )
+
         # --- PALETA KOLORÓW ---
         self.wybrany_kolor = db.pobierz_kolor_motywu()
         self.wiersz_kolorow = ft.Row(wrap=True, spacing=10)
@@ -264,7 +276,16 @@ class UstawieniaView(ft.View):
                     "wiedzieć dużo wcześniej niż o dacie ważności apteczki.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
-            ] + [self.dropdowny_terminow[k] for k, _, _ in db.TERMINY_DOKUMENTOW],
+            ] + [self.dropdowny_terminow[k] for k, _, _ in db.TERMINY_DOKUMENTOW] + [
+                ft.Divider(height=1),
+                self.e_przypomnienie_licznika,
+                ft.Text(
+                    "Interwały, zasięg na baku i zużycie opon liczą się z ostatniego znanego przebiegu. "
+                    "Gdy przez tyle dni nie pojawi się żaden wpis z przebiegiem (tankowanie, wizyta, "
+                    "serwis, odczyt), dzwonek poprosi o stan licznika — i znowu po każdym takim okresie.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                ),
+            ],
             "Progi powiadomień", ft.Icons.NOTIFICATIONS_ACTIVE, domyslnie_otwarte=True, page=page
         )
 
@@ -702,6 +723,7 @@ class UstawieniaView(ft.View):
     def _migawka_formularza(self):
         return (self.e_waluta.value, self.e_jednostka.value, self.e_jednostka_ev.value, self.e_prog_km.value, self.e_prog_dni.value,
                 self.e_dni_kosza.value, self.e_moje_imie.value, self.wybrany_kolor,
+                self.e_przypomnienie_licznika.value,
                 tuple(self.dropdowny_terminow[k].value for k, _, _ in db.TERMINY_DOKUMENTOW))
 
     def _czy_zmieniono(self):
@@ -716,6 +738,7 @@ class UstawieniaView(ft.View):
         for klucz, _kolumna, _etykieta in db.TERMINY_DOKUMENTOW:
             db.zapisz_prog_dni_dokumentu(klucz, self.dropdowny_terminow[klucz].value)
         db.zapisz_dni_kosza(self.e_dni_kosza.value)
+        db.zapisz_dni_przypomnienia_o_odczycie(self.e_przypomnienie_licznika.value)
         db.zapisz_moje_imie(self.e_moje_imie.value)
         
         # --- Zapis i odświeżenie wybranego koloru ---

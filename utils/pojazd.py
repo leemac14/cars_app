@@ -7,9 +7,9 @@ from datetime import datetime
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import parsuj_float, parsuj_int, symbol_waluty
+from .format import formatuj_dni_dopelniacz, parsuj_float, parsuj_int, symbol_waluty
 from .zgodnosc import ustaw_blad
-from .wyglad import powierzchnia, tlo_toru
+from .wyglad import powierzchnia, tlo_stanu, tlo_toru
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
 from .sync_ui import wypchnij_w_tle
 from .formularze import pole_daty, sprawdz_podejrzany_przebieg, styl_pola
@@ -504,10 +504,39 @@ def dialog_odczytu_przebiegu(page: ft.Page, auto_id, odczyt=None, po_zapisie=Non
     otworz_dialog(page, dlg)
 
 
+def baner_nieswiezego_licznika(page: ft.Page, auto_id, swiezosc, po_zapisie=None,
+                               tresc=None, tekst_przycisku="Wpisz stan"):
+    """Pasek „licznik jest nieświeży” nad tym, co się z licznika liczy (zakładka
+    Serwis, Historia licznika). Jeden wygląd w obu miejscach, bo mówi to samo.
+
+    None, gdy licznik jest świeży albo auto nie ma jeszcze żadnego przebiegu —
+    tym drugim zajmują się dzwonek i pusty stan ekranu. Przycisk wpisu dostaje
+    tylko ten, kto może dopisywać; podgląd widzi samo ostrzeżenie."""
+    if not swiezosc or not swiezosc.get("nieswiezy") or swiezosc.get("dni") is None:
+        return None
+    kolor = KOLOR_STATUS["warning"]
+    tresc = tresc or f"Prognozy km liczone z licznika sprzed {formatuj_dni_dopelniacz(swiezosc['dni'])}"
+    elementy = [
+        ft.Icon(ft.Icons.SPEED, size=18, color=kolor),
+        ft.Text(tresc, size=FS["caption"], color=kolor, expand=True),
+    ]
+    if db.czy_moge_dodawac(auto_id):
+        elementy.append(ft.TextButton(
+            tekst_przycisku, icon=ft.Icons.EDIT,
+            on_click=lambda e: dialog_odczytu_przebiegu(page, auto_id, po_zapisie=po_zapisie),
+        ))
+    return ft.Container(
+        padding=ft.Padding(12, 4, 4, 4), border_radius=RADIUS["sm"],
+        bgcolor=tlo_stanu(page, "warning"),
+        content=ft.Row(elementy, spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    )
+
+
 __all__ = [
     "IKONY_STATUSU_TERMINU",
     "IKONY_TERMINOW",
     "KOLORY_STATUSU_TERMINU",
+    "baner_nieswiezego_licznika",
     "dialog_odczytu_przebiegu",
     "ikona_nadwozia",
     "odznaka_pojazdu",

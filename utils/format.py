@@ -110,6 +110,11 @@ def formatuj_dni(n):
     return f"{formatuj_liczba(n, 0)} {'dzień' if abs(n) == 1 else 'dni'}"
 
 
+def formatuj_dni_dopelniacz(n):
+    """„od 1 dnia”, „sprzed 34 dni” — liczba dni w dopełniaczu."""
+    return f"{formatuj_liczba(n, 0)} {'dnia' if abs(n) == 1 else 'dni'}"
+
+
 def formatuj_okres(dni):
     """Odległość w czasie do pokazania na karcie: dni do dwóch miesięcy, dalej
     miesiące. „143 dni” trzeba przeliczać w głowie, „~5 mies.” już nie."""
@@ -185,6 +190,21 @@ def polacz_linie_opisu(linie):
     return " • ".join([linie[0]] + [linia[:1].lower() + linia[1:] for linia in linie[1:]])
 
 
+def linie_opisu_odczytu(swiezosc):
+    """[co się stało, co z tego wynika] — dwie linie przypomnienia o stanie
+    licznika. Liczby liczy db.swiezosc_licznika; tu tylko słowa."""
+    if not swiezosc:
+        return []
+    if swiezosc.get("dni") is None:
+        return ["Brak jakiegokolwiek stanu licznika",
+                "Bez przebiegu nie ma prognoz interwałów, zasięgu ani kosztu na km"]
+    druga = (f"Prognozy liczą z {formatuj_liczba(swiezosc['przebieg'], 0)} km "
+             f"({swiezosc['data'].strftime('%d.%m.%Y')})")
+    if swiezosc.get("przybylo_km"):
+        druga += f" — mogło przybyć ok. {formatuj_liczba(swiezosc['przybylo_km'], 0)} km"
+    return [f"Brak nowego przebiegu od {formatuj_dni_dopelniacz(swiezosc['dni'])}", druga]
+
+
 def opis_licznika_na_karte(licznik):
     """(wartość, podpis) licznika do kolumny na karcie podzespołu. Wartość jest
     krótka, bo stoi obok drugiej; datę niesie podpis."""
@@ -243,11 +263,13 @@ __all__ = [
     "bez_ogonkow",
     "formatuj_date_pl",
     "formatuj_dni",
+    "formatuj_dni_dopelniacz",
     "formatuj_okres",
     "formatuj_prognoze_km",
     "formatuj_spalanie",
     "kolor_i_tekst_terminu",
     "linie_opisu_interwalu",
+    "linie_opisu_odczytu",
     "oblicz_prognoze_terminu",
     "opis_licznika_na_karte",
     "parsuj_float",

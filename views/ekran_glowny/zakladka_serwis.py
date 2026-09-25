@@ -54,6 +54,19 @@ class MiksinZakladkiSerwis:
         # --- Wyraźne oddzielenie skrótów od właściwej listy podzespołów ---
         self.elementy.append(ft.Divider(height=20))
 
+        # Kilometry na kartach niżej liczą się od ostatniego znanego przebiegu.
+        # Gdy ten jest stary, każda karta jest w tyle o wszystko, co przybyło
+        # od tamtej pory — mówimy to raz, nad listą, a nie na każdej karcie.
+        if any(z.get("interwal_km") for z in baza_lista):
+            baner = utils.baner_nieswiezego_licznika(
+                self._page, self.state.auto_id,
+                db.swiezosc_licznika(self.state.auto_id, aktualny_przebieg=akt_prz,
+                                     sredni_dzienny=sredni_dzienny),
+                po_zapisie=lambda: utils.odswiez_ekran(self._page),
+            )
+            if baner:
+                self.elementy.append(baner)
+
         if not baza_lista:
             self.elementy.append(utils.ekran_braku_danych(
                 ikona=ft.Icons.HANDYMAN,
