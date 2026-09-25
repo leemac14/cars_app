@@ -28,7 +28,7 @@ nawigacja zdejmuje go razem z resztą stosu.
 import flet as ft
 import log
 
-from .stale import FS, RADIUS, SPACING
+from .stale import SPACING
 from .pojazd import tablica_rejestracyjna
 
 # Napis na tablicy, dopóki nie wiadomo, czyje to auto.

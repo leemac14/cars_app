@@ -8,7 +8,7 @@ from date import parsuj_date
 from datetime import datetime
 from typing import Any
 
-from .stale import MIESIACE_ZIMOWE, SEZONY_PRZELACZALNE
+from .stale import MIESIACE_ZIMOWE, PROG_ILOSC_MAGAZYNU_DOMYSLNY, SEZONY_PRZELACZALNE
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
@@ -486,12 +486,11 @@ def pobierz_stan_magazynu(auto_id):
         wiersze = c.fetchall()
 
     niskie = []
-    for nazwa, ilosc, jednostka, prog in wiersze:
-        try:
-            prog_efektywny = float(prog) if prog is not None else 1.0
-        except (TypeError, ValueError):
-            prog_efektywny = 1.0
-        if float(ilosc or 0) <= prog_efektywny:
+    for nazwa, ilosc, _jednostka, prog in wiersze:
+        prog_efektywny = _na_liczbe(prog)
+        if prog_efektywny is None:
+            prog_efektywny = PROG_ILOSC_MAGAZYNU_DOMYSLNY
+        if (_na_liczbe(ilosc) or 0.0) <= prog_efektywny:
             niskie.append(str(nazwa or ""))
     return {"razem": len(wiersze), "niski": len(niskie), "nazwy_niskich": niskie}
 
@@ -652,7 +651,9 @@ def pobierz_stan_opon(auto_id):
         for w in wiersze
     ]
     zamontowane = [z for z in zestawy if z["zamontowany"]]
-    biezniki = [float(z["bieznik"]) for z in zamontowane if z["bieznik"] not in (None, "")]
+    # _na_liczbe, nie float(): bieżnik zapisany tekstem („4,5”) przez starszą
+    # wersję albo drugi telefon wywracał kafelek opon wyjątkiem.
+    biezniki = [b for b in (_na_liczbe(z["bieznik"]) for z in zamontowane) if b is not None]
     sezon_teraz = zamontowane[0]["sezon"] if zamontowane else None
     docelowy = _docelowy_sezon(sezon_teraz)
     czeka = [z for z in zestawy if not z["zamontowany"] and z["sezon"] == docelowy]
@@ -689,10 +690,8 @@ def przelacz_zestaw_sezonowy(auto_id, docelowy_sezon=None):
                 "z": stan["sezon"]}
 
     def waga(z):
-        try:
-            return -float(z["bieznik"])
-        except (TypeError, ValueError):
-            return 0.0
+        bieznik = _na_liczbe(z["bieznik"])
+        return -bieznik if bieznik is not None else 0.0
 
     nowy = sorted(kandydaci, key=lambda z: (waga(z), z["id"]))[0]
 

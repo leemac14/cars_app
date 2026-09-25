@@ -111,7 +111,7 @@ class KoszView(ft.View):
 
         opis = [f"Usunięto {pozycja['data_tekst']}"]
         if pozycja["liczba_wpisow"]:
-            opis.append(f"{pozycja['liczba_wpisow']} wpisów")
+            opis.append(db.liczba_z_odmiana(pozycja['liczba_wpisow'], 'wpis', 'wpisy', 'wpisów'))
         rozmiar = _formatuj_rozmiar(pozycja["rozmiar_plikow"])
         if rozmiar:
             opis.append(rozmiar)

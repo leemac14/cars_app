@@ -9,7 +9,7 @@ from .stale import (ENERGIA_PALIWO, ENERGIA_PRAD, PRIORYTETY_DO_ZROBIENIA, STATU
                     TERMINY_DOKUMENTOW, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE)
 from .polaczenie import polacz_baze
 from .ustawienia import OKNO_1000KM_DOMYSLNE
-from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport
+from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, opis_terminu_dni
 from .energia import ETYKIETY_RODZAJU, czy_pojazd_dwuzrodlowy, domyslny_rodzaj_energii, etykiety_energii, rodzaje_energii_pojazdu
 from .przebieg import pobierz_historie_przebiegu, podsumowanie_historii_przebiegu
 from .koszty import KATEGORIE_BUDZETU, pobierz_koszty_miesieczne, pobierz_koszty_miesieczne_wg_kategorii, siatka_miesiecy
@@ -225,13 +225,13 @@ def pobierz_rozbicie_kondycji(auto_id):
                 if zostalo < 0:
                     dodaj("dokument", KARY_KONDYCJI[f"dokument_{waga_dokumentu}_przeterminowany"],
                           f"{etykieta} — po terminie",
-                          szczegol=f"Przekroczono o {abs(zostalo)} dni",
+                          szczegol=opis_terminu_dni(zostalo),
                           trasa=f"/auto/edytuj/{auto_id}",
                           waga="krytyczna" if waga_dokumentu == "krytyczny" else "ostrzezenie")
                 elif zostalo <= HORYZONT_TERMINU_KONDYCJI:
                     dodaj("dokument", KARY_KONDYCJI[f"dokument_{waga_dokumentu}_pilny"],
                           f"{etykieta} — termin się zbliża",
-                          szczegol=f"Zostało {zostalo} dni",
+                          szczegol=opis_terminu_dni(zostalo),
                           trasa=f"/auto/edytuj/{auto_id}")
 
         # ---- Usterki zgłoszone ręcznie ----
@@ -251,7 +251,8 @@ def pobierz_rozbicie_kondycji(auto_id):
                 continue
             dodaj("usterka", KARY_KONDYCJI["usterka_po_terminie"],
                   f"{u['tytul']} — zaległa usterka",
-                  szczegol=f"Priorytet {PRIORYTET_USTERKI.lower()} • przekroczono o {(dzis - d_u).days} dni",
+                  szczegol=f"Priorytet {PRIORYTET_USTERKI.lower()} • przekroczono o "
+                           f"{liczba_z_odmiana((dzis - d_u).days, 'dzień', 'dni', 'dni')}",
                   trasa="/do-zrobienia")
 
     # ---- Wiarygodność danych ----
@@ -356,7 +357,12 @@ def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, fl
         key=lambda t: (t[0], t[2])
     )
 
-    pelne = [i for i, t in enumerate(tankowania) if t[4]]
+    # Granicą odcinka może być tylko pełny bak ZE STANEM LICZNIKA. Wpis bez
+    # przebiegu (import z samym dystansem) nie mówi, gdzie odcinek się kończy:
+    # jako granica dawał ujemny odcinek, a zaraz po nim odcinek „od zera”
+    # na cały licznik auta i spalanie bliskie zeru. Jego ilość i tak wchodzi
+    # do najbliższego odcinka, który zamknie pełny bak z licznikiem.
+    pelne = [i for i, t in enumerate(tankowania) if t[4] and t[2] > 0]
     seria = []
     for a, b in zip(pelne, pelne[1:]):
         dystans = tankowania[b][2] - tankowania[a][2]
@@ -419,14 +425,17 @@ def pobierz_ciag_do_pelna(auto_id, data_str, przebieg=None, rodzaj=None, wyklucz
         wpis = (data, int(prz or 0), bool(pelny))
         (przed if (parsuj_date(data), wpis[1]) <= klucz_wpisu else po).append(wpis)
 
+    # Pełny bak bez stanu licznika nie zamyka odcinka — tak samo jak
+    # w pobierz_serie_spalania, żeby obietnica „policzy się po pełnym baku”
+    # dotyczyła tego samego baku, który naprawdę zamknie odcinek.
     niepelne = []
     for data, prz, pelny in reversed(przed):
-        if pelny:
+        if pelny and prz > 0:
             wynik["pelny_data"], wynik["pelny_przebieg"] = data, prz
             break
         niepelne.append(prz)
     for data, prz, pelny in po:
-        if pelny:
+        if pelny and prz > 0:
             wynik["zamkniety"] = True
             break
         niepelne.append(prz)
@@ -678,7 +687,7 @@ def pobierz_statystyki_energii(auto_id) -> list[dict[str, Any]]:
                  for r in wiersze),
                 key=lambda t: (t[0], t[1])
             )
-            pelne = [i for i, t in enumerate(posortowane) if t[3]]
+            pelne = [i for i, t in enumerate(posortowane) if t[3] and t[1] > 0]
             dystans_licz, ilosc_licz = 0.0, 0.0
             for a, b in zip(pelne, pelne[1:]):
                 odcinek = posortowane[b][1] - posortowane[a][1]

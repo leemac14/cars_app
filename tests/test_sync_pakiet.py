@@ -218,13 +218,14 @@ def test_wszystko_czego_uzywa_aplikacja_jest_pod_sync():
         f"sync.{n} — {', '.join(m)}" for n, m in sorted(braki.items()))
 
 
-def test_stary_plik_sync_py_juz_niczego_nie_definiuje():
-    """Pakiet ma pierwszeństwo przy imporcie, więc `sync.py` obok niego jest
-    martwy. Zostawiony wyłącznie dlatego, że nie mam prawa kasować plików —
-    ale gdyby ktoś dopisał tam kod, ten kod nigdy by się nie uruchomił."""
-    stary = audyty.KORZEN_PROJEKTU / "sync.py"
-    if not stary.exists():
-        pytest.skip("sync.py już usunięty — tak też jest dobrze")
-    assert ast.parse(stary.read_text(encoding="utf-8")).body == [], (
-        "sync.py zawiera kod, którego nikt nie uruchomi — pierwszeństwo ma pakiet sync/"
+@pytest.mark.parametrize("nazwa", ["db", "utils", "sync"])
+def test_obok_pakietu_nie_ma_starego_pliku(nazwa):
+    """Pakiet ma pierwszeństwo przy imporcie, więc `sync.py` (albo `db.py`,
+    `utils.py`) obok katalogu o tej samej nazwie jest martwy: kod dopisany
+    tam przez pomyłkę nigdy by się nie uruchomił, a przy przeglądzie
+    wyglądałby na obowiązujący."""
+    stary = audyty.KORZEN_PROJEKTU / f"{nazwa}.py"
+    assert not stary.exists(), (
+        f"{nazwa}.py leży obok pakietu {nazwa}/ — pierwszeństwo ma pakiet, "
+        "więc ten plik nigdy się nie wykona"
     )

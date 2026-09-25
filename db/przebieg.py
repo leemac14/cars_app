@@ -10,6 +10,7 @@ from .stale import (
     ZRODLO_ODCZYTU_DOMYSLNE,
 )
 from .polaczenie import polacz_baze
+from .pomocnicze import liczba_z_odmiana, odmien
 from .ustawienia import pobierz_dni_przypomnienia_o_odczycie, pobierz_walute
 from .notatki import przytnij_notatke, zapisz_notatke
 
@@ -50,12 +51,19 @@ def pobierz_aktualny_przebieg(auto_id):
 
 
 def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
-    """Zwraca ostrzeżenie (str), jeśli nowy_przebieg jest wyraźnie niższy niż
-    najwyższy dotychczas zapisany wpis dla tego auta, albo jeśli oznaczałby
-    nierealnie duży dzienny przebieg względem ostatniego chronologicznie
-    wpisu (np. literówka z brakującą lub dodatkową cyfrą). Sprawdza
-    tankowania, wizyty oraz pojedyncze wpisy w historii (niepowiązane z
-    wizytą zbiorczą — te powiązane odzwierciedla już przebieg samej wizyty)."""
+    """Zwraca ostrzeżenie (str), jeśli nowy_przebieg nie pasuje do sąsiednich
+    w czasie wpisów tego auta: jest niższy niż najwyższy wpis z tej samej albo
+    wcześniejszej daty (np. brakująca cyfra), wyższy niż wpis z datą późniejszą,
+    albo oznaczałby nierealnie duży dzienny przebieg względem poprzedzającego
+    go wpisu (np. dodatkowa cyfra). Sprawdza tankowania, wizyty, odczyty oraz
+    pojedyncze wpisy w historii (niepowiązane z wizytą zbiorczą — te powiązane
+    odzwierciedla już przebieg samej wizyty).
+
+    Porównujemy z sąsiadami W CZASIE, a nie z całą historią: paragon sprzed
+    miesiąca dopisany dziś ma legalnie niższy przebieg niż wczorajsze
+    tankowanie. Wpisy bez przebiegu (0 albo puste) nic o liczniku nie mówią
+    i są pomijane — wcześniej taki wpis z najnowszą datą robił za „ostatni
+    stan licznika” i każdy przebieg wyglądał przy nim na skok o cały licznik."""
     if not auto_id or not nowy_przebieg or nowy_przebieg <= 0:
         return None
 
@@ -86,39 +94,56 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
         c.execute(f"SELECT przebieg, data FROM odczyty_przebiegu WHERE auto_id=?{wyklucz_sql}", params)
         wpisy += c.fetchall()
 
-    najwyzszy_dotychczas = None
-    przebieg_ostatni, data_ostatniego = None, None
+    nowa_data = parsuj_date(nowa_data_str) if nowa_data_str else datetime.now().date()
+    if nowa_data == datetime.min.date():
+        nowa_data = datetime.now().date()
 
+    # Wpis bez czytelnej daty traktujemy jak wcześniejszy — tak jak liczyła to
+    # dotąd cała historia, z którą był porównywany.
+    wczesniejsze, pozniejsze = [], []
     for przebieg_raw, data_str in wpisy:
-        przebieg = int(przebieg_raw or 0)
-        najwyzszy_dotychczas = przebieg if najwyzszy_dotychczas is None else max(najwyzszy_dotychczas, przebieg)
-
+        try:
+            przebieg = int(przebieg_raw or 0)
+        except (TypeError, ValueError):
+            continue
+        if przebieg <= 0:
+            continue
         d = parsuj_date(data_str)
-        if d != datetime.min.date() and (data_ostatniego is None or d > data_ostatniego):
-            data_ostatniego, przebieg_ostatni = d, przebieg
+        (pozniejsze if d > nowa_data else wczesniejsze).append((d, przebieg))
 
-    # 1) Przebieg niższy niż najwyższy dotychczas zapisany wpis (np. brakująca cyfra)
-    if najwyzszy_dotychczas is not None and nowy_przebieg < najwyzszy_dotychczas:
+    # 1) Niższy niż najwyższy wpis z tej samej albo wcześniejszej daty (np. brakująca cyfra)
+    najwyzszy_wczesniej = max((p for _, p in wczesniejsze), default=None)
+    if najwyzszy_wczesniej is not None and nowy_przebieg < najwyzszy_wczesniej:
         return (
             f"Uwaga: podany przebieg ({nowy_przebieg} km) jest niższy niż najwyższy dotychczas "
-            f"zapisany wpis ({najwyzszy_dotychczas} km). Sprawdź, czy nie brakuje cyfry."
+            f"zapisany wpis ({najwyzszy_wczesniej} km). Sprawdź, czy nie brakuje cyfry."
         )
 
-    # 2) Nierealnie duży skok w górę względem ostatniego chronologicznie wpisu (np. dodatkowa cyfra)
-    if przebieg_ostatni is not None and nowy_przebieg > przebieg_ostatni:
-        nowa_data = parsuj_date(nowa_data_str) if nowa_data_str else datetime.now().date()
-        if nowa_data == datetime.min.date():
-            nowa_data = datetime.now().date()
-            
-        dni_od_ostatniego = max(1, (nowa_data - data_ostatniego).days)
-        sredni_dzienny = oblicz_sredni_dzienny_przebieg(auto_id) or 150.0
-        limit_dzienny = max(sredni_dzienny * 5, 500.0)
-        implikowany_dzienny = (nowy_przebieg - przebieg_ostatni) / dni_od_ostatniego
-        if implikowany_dzienny > limit_dzienny:
+    # 2) Wyższy niż wpis z datą PÓŹNIEJSZĄ — licznik nie cofa się w czasie
+    if pozniejsze:
+        d_poz, najnizszy_pozniej = min(pozniejsze, key=lambda w: (w[1], w[0]))
+        if nowy_przebieg > najnizszy_pozniej:
             return (
-                f"Uwaga: od ostatniego wpisu ({przebieg_ostatni} km) minęło {dni_od_ostatniego} dni. "
-                f"Wynikałoby to na ok. {int(implikowany_dzienny)} km/dzień. Sprawdź, czy nie ma dodatkowej cyfry w przebiegu."
+                f"Uwaga: podany przebieg ({nowy_przebieg} km) jest wyższy niż we wpisie z późniejszą "
+                f"datą ({najnizszy_pozniej} km, {d_poz.strftime('%d.%m.%Y')}). Sprawdź datę albo przebieg."
             )
+
+    # 3) Nierealnie duży skok względem poprzedzającego wpisu (np. dodatkowa cyfra)
+    z_data = [w for w in wczesniejsze if w[0] != datetime.min.date()]
+    if z_data:
+        data_poprzedniego, przebieg_poprzedni = max(z_data)
+        if nowy_przebieg > przebieg_poprzedni:
+            dni_od_poprzedniego = max(1, (nowa_data - data_poprzedniego).days)
+            sredni_dzienny = oblicz_sredni_dzienny_przebieg(auto_id) or 150.0
+            limit_dzienny = max(sredni_dzienny * 5, 500.0)
+            implikowany_dzienny = (nowy_przebieg - przebieg_poprzedni) / dni_od_poprzedniego
+            if implikowany_dzienny > limit_dzienny:
+                return (
+                    f"Uwaga: od poprzedniego wpisu ({przebieg_poprzedni} km) "
+                    f"{odmien(dni_od_poprzedniego, 'minął', 'minęły', 'minęło')} "
+                    f"{liczba_z_odmiana(dni_od_poprzedniego, 'dzień', 'dni', 'dni')}. "
+                    f"Wynikałoby to na ok. {int(implikowany_dzienny)} km/dzień. Sprawdź, czy nie ma dodatkowej cyfry w przebiegu."
+                )
 
     return None
 

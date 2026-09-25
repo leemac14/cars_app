@@ -383,7 +383,7 @@ def test_kazda_kolumna_synchronizowanej_tabeli_jest_rozstrzygnieta(baza):
     assert nierozstrzygniete == [], (
         "kolumny, które NIE jadą do chmury i nikt tego nie zadeklarował:\n  "
         + "\n  ".join(nierozstrzygniete)
-        + "\n\nDopisz je do `kolumny` w KONFIGURACJA_SYNC (sync.py) albo, jeśli mają "
+        + "\n\nDopisz je do `kolumny` w KONFIGURACJA_SYNC (sync/stale.py) albo, jeśli mają "
         "zostać lokalne, do POZA_SYNC_SWIADOMIE w tym pliku — z powodem."
     )
 
@@ -397,7 +397,7 @@ def test_kazda_kolumna_samochodu_jest_rozstrzygnieta(baza):
     assert nierozstrzygniete == [], (
         "kolumny `samochody`, które nie jadą do chmury i nikt tego nie zadeklarował: "
         + ", ".join(nierozstrzygniete)
-        + "\n\nDopisz je do KOLUMNY_POJAZDU (sync.py) albo do POZA_POJAZDEM_SWIADOMIE "
+        + "\n\nDopisz je do KOLUMNY_POJAZDU (sync/stale.py) albo do POZA_POJAZDEM_SWIADOMIE "
         "w tym pliku — z powodem."
     )
 

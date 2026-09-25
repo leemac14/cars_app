@@ -12,9 +12,11 @@ try:
 except ImportError:
     FPDF = None
 
+from .stale import ENERGIA_PRAD
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km, pobierz_walute
+from .energia import domyslny_rodzaj_energii
 from .koszty import rozbicie_kosztu
 
 
@@ -39,7 +41,20 @@ KATEGORIE_EKSPORTU = {
 }
 
 
-FOLDER_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+def _folder_assets():
+    """Katalog `assets/` projektu — ten sam, który Flet pakuje do aplikacji.
+
+    Po rozbiciu `db.py` na pakiet `os.path.dirname(__file__)` wskazywał już
+    `db/`, więc czcionki leżące tam, gdzie zawsze (`assets/` w korzeniu), przestały
+    być widoczne i PDF po cichu wracał do Helvetiki bez polskich znaków.
+    `db/assets/` zostaje jako drugi kandydat dla tych, którzy przenieśli tam
+    czcionki po rozbiciu."""
+    pakiet = os.path.dirname(os.path.abspath(__file__))
+    kandydaci = [os.path.join(os.path.dirname(pakiet), "assets"), os.path.join(pakiet, "assets")]
+    return next((k for k in kandydaci if os.path.exists(os.path.join(k, "DejaVuSans.ttf"))), kandydaci[0])
+
+
+FOLDER_ASSETS = _folder_assets()
 
 CZCIONKA_PDF_REGULAR = os.path.join(FOLDER_ASSETS, "DejaVuSans.ttf")
 
@@ -272,9 +287,13 @@ def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
     if not auto_id:
         return None
 
+    rodzaj = domyslny_rodzaj_energii(auto_id)
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT data, kwota, litry, przebieg, do_pelna FROM tankowania WHERE auto_id=?", (auto_id,))
+        c.execute(
+            "SELECT data, kwota, litry, przebieg, do_pelna, COALESCE(rodzaj_energii, ?) FROM tankowania WHERE auto_id=?",
+            (rodzaj, auto_id)
+        )
         tankowania = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
 
         c.execute(
@@ -294,13 +313,19 @@ def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
     koszt_inne = sum(float(i[1] or 0) for i in inne)
     razem = koszt_paliwo + koszt_serwis + koszt_inne
 
-    tank_sort = sorted(tankowania, key=lambda t: int(t[3] or 0))
+    # Dystans i zużycie wyłącznie z wpisów ze stanem licznika — wpis bez niego
+    # (import z samym dystansem) stawał na początku z zerem i robił z całego
+    # licznika auta „przejechany dystans”. Zużycie liczymy dla JEDNEGO źródła
+    # energii (podstawowego dla auta), żeby litry i kWh plug-ina nie trafiły
+    # do jednej sumy, a elektryk nie dostał „spalania” w l/100km.
+    z_licznikiem = sorted((t for t in tankowania if int(t[3] or 0) > 0), key=lambda t: int(t[3]))
     dystans = 0
-    if len(tank_sort) >= 2:
-        dystans = max(0, int(tank_sort[-1][3] or 0) - int(tank_sort[0][3] or 0))
+    if len(z_licznikiem) >= 2:
+        dystans = max(0, int(z_licznikiem[-1][3]) - int(z_licznikiem[0][3]))
     koszt_km = (razem / dystans) if dystans > 0 else None
 
     spalanie = None
+    tank_sort = [t for t in z_licznikiem if t[5] == rodzaj]
     peln_idx = [i for i, t in enumerate(tank_sort) if t[4]]
     if len(peln_idx) >= 2:
         p, o = peln_idx[0], peln_idx[-1]
@@ -312,6 +337,7 @@ def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
     return {
         "koszt_paliwo": koszt_paliwo, "koszt_serwis": koszt_serwis, "koszt_inne": koszt_inne,
         "razem": razem, "dystans": dystans, "koszt_km": koszt_km, "spalanie": spalanie,
+        "zuzycie_elektryczne": rodzaj == ENERGIA_PRAD,
         "waluta": pobierz_walute(),
     }
 

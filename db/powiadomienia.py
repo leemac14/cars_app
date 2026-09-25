@@ -8,6 +8,7 @@ from typing import Any
 
 from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, TERMINY_DOKUMENTOW
 from .polaczenie import polacz_baze
+from .pomocnicze import opis_terminu_dni
 from .ustawienia import (
     _klucz_widzianych_powiadomien, pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km,
     pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie,
@@ -228,7 +229,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
                 zost_dni = (d_w - dzis).days
                 if zost_dni <= prog_terminu:
                     s = "przeterminowane" if zost_dni < 0 else "pilne"
-                    opis = f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni"
+                    opis = opis_terminu_dni(zost_dni)
                     wyniki.append({
                         "typ": "dokument", "tytul": etykieta, "opis": opis,
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
@@ -270,7 +271,7 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
             prog_efektywny = min(prog_dni, wlasny_prog)
             if zost_dni <= prog_efektywny:
                 s = "przeterminowane" if zost_dni < 0 else "pilne"
-                opis = f"Przekroczono o {abs(zost_dni)} dni" if zost_dni < 0 else f"Zostało {zost_dni} dni"
+                opis = opis_terminu_dni(zost_dni)
                 # "typ_cykliczny" niesie rodzaj wpisu (wydatek / opony), żeby panel
                 # mógł dać sezonowej zmianie opon własną ikonę i własny podpis
                 # przycisku ("Zmieniono") zamiast "Zapłacone".

@@ -211,8 +211,11 @@ def zapisz_zalacznik(sciezka_zrodlowa):
                 # więc bez tej korekty zapisany JPEG zostaje trwale "położony".
                 img = ImageOps.exif_transpose(img)
 
-                # Usunięcie kanału alfa (przezroczystości), aby bezpiecznie zapisać do JPEG
-                if img.mode in ("RGBA", "P"):
+                # JPEG zna tylko RGB i skalę szarości. Wcześniej zamieniane były
+                # wyłącznie RGBA i P, więc PNG w szarości z przezroczystością (LA),
+                # 16-bitowy albo CMYK wywracał zapis i szedł do fallbacku —
+                # czyli kopiował się bajt w bajt jako plik PNG z końcówką .jpg.
+                if img.mode not in ("RGB", "L"):
                     img = img.convert("RGB")
                 
                 # Zmniejszenie rozdzielczości, jeśli zdjęcie jest za szerokie
@@ -247,10 +250,12 @@ def polacz_zdjecia_w_pdf(sciezki_zdjec):
         for sciezka in sciezki_zdjec:
             if not os.path.exists(sciezka):
                 continue
-            img = Image.open(sciezka)
-            img = ImageOps.exif_transpose(img)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
+            # Plik źródłowy zamykamy od razu — exif_transpose i convert oddają
+            # nowe obrazy w pamięci, a otwarty uchwyt blokowałby plik (Windows)
+            # do czasu, aż zbierze go odśmiecacz.
+            with Image.open(sciezka) as zrodlo:
+                img = ImageOps.exif_transpose(zrodlo)
+                img = img.convert("RGB") if img.mode != "RGB" else img.copy()
             obrazy.append(img)
 
         if not obrazy:

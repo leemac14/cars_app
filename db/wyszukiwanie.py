@@ -27,7 +27,11 @@ _WZORZEC_LICZBY = re.compile(r"^(\d+(?:[.,]\d+)?)$")
 TOLERANCJA_KWOTY = 0.02
 
 
-def _na_liczbe(tekst):
+def _liczba_z_zapytania(tekst):
+    """Liczba z fragmentu zapytania kwotowego. Osobna nazwa, a nie `_na_liczbe`:
+    pakiet `db` scala moduły gwiazdkowym importem, więc druga funkcja o tej samej
+    nazwie po cichu podmieniała `db._na_liczbe` z `pomocnicze` na tę — węższą,
+    nieznającą „45,20 zł”, nan ani inf."""
     try:
         return float(str(tekst).replace("\xa0", "").replace(" ", "").replace(",", "."))
     except (TypeError, ValueError):
@@ -46,7 +50,7 @@ def parsuj_zapytanie_kwotowe(zapytanie) -> tuple[float | None, float | None, str
 
     dopasowanie = _WZORZEC_ZAKRESU.match(tekst)
     if dopasowanie:
-        a, b = _na_liczbe(dopasowanie.group(1)), _na_liczbe(dopasowanie.group(2))
+        a, b = _liczba_z_zapytania(dopasowanie.group(1)), _liczba_z_zapytania(dopasowanie.group(2))
         if a is None or b is None:
             return None
         dolna, gorna = min(a, b), max(a, b)
@@ -55,7 +59,7 @@ def parsuj_zapytanie_kwotowe(zapytanie) -> tuple[float | None, float | None, str
     dopasowanie = _WZORZEC_POROWNANIA.match(tekst)
     if dopasowanie:
         operator = dopasowanie.group(1).lower()
-        wartosc = _na_liczbe(dopasowanie.group(2))
+        wartosc = _liczba_z_zapytania(dopasowanie.group(2))
         if wartosc is None:
             return None
         if operator in (">", ">=", "od"):
@@ -64,7 +68,7 @@ def parsuj_zapytanie_kwotowe(zapytanie) -> tuple[float | None, float | None, str
 
     dopasowanie = _WZORZEC_LICZBY.match(tekst)
     if dopasowanie:
-        wartosc = _na_liczbe(dopasowanie.group(1))
+        wartosc = _liczba_z_zapytania(dopasowanie.group(1))
         if wartosc is None:
             return None
         margines = max(wartosc * TOLERANCJA_KWOTY, 0.5)
@@ -954,7 +958,7 @@ __all__ = [
     "_historia_surowa",
     "_koniec_miesiaca",
     "_kwota_jawna",
-    "_na_liczbe",
+    "_liczba_z_zapytania",
     "_numer_miesiaca",
     "_opis_filtrow",
     "_pasuje_do_filtrow",

@@ -1,5 +1,4 @@
 import flet as ft
-from datetime import datetime
 import db
 import sync
 import utils
@@ -188,10 +187,10 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         if p["srednia_dzienna"]:
             opis.append(f"średnio {utils.formatuj_liczba(p['srednia_dzienna'], 1)} km/dzień")
         if p["dni"]:
-            opis.append(f"{p['dni']} dni historii")
+            opis.append(f"{utils.formatuj_dni(p['dni'])} historii")
         opis.append(
             "ostatni wpis dzisiaj" if p["dni_od_ostatniego"] == 0
-            else f"ostatni wpis {p['dni_od_ostatniego']} dni temu"
+            else f"ostatni wpis {utils.formatuj_dni(p['dni_od_ostatniego'])} temu"
         )
         wiersze.append(ft.Text(" • ".join(opis), size=utils.FS["caption"],
                                color=ft.Colors.ON_SURFACE_VARIANT))
@@ -258,7 +257,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         elif anomalia == "skok":
             tresc.append(ft.Row([
                 ft.Icon(ft.Icons.WARNING, size=13, color=utils.KOLOR_STATUS["warning"]),
-                ft.Text(f"{utils.formatuj_liczba(w['dystans'], 0)} km w {w['dni']} dni "
+                ft.Text(f"{utils.formatuj_liczba(w['dystans'], 0)} km w {utils.formatuj_dni(w['dni'])} "
                         f"({utils.formatuj_liczba(w['srednia_dzienna'], 0)} km/dzień) — "
                         f"nietypowo dużo jak na to auto",
                         size=12, color=utils.KOLOR_STATUS["warning"], expand=True),
@@ -266,7 +265,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         elif w.get("dystans") is not None:
             czesci = [f"{utils.formatuj_liczba(w['dystans'], 0)} km od poprzedniego"]
             if w.get("dni"):
-                czesci.append(f"{w['dni']} dni")
+                czesci.append(utils.formatuj_dni(w['dni']))
             if w.get("srednia_dzienna"):
                 czesci.append(f"{utils.formatuj_liczba(w['srednia_dzienna'], 1)} km/dzień")
             tresc.append(ft.Row([
@@ -348,7 +347,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             wynik = db.usun_wiele_z_cofnieciem(self.tabela_cel, list(self.zaznaczone_id))
             self.zakoncz_zaznaczanie()
             utils.przejdz(self._page, "/przebieg")
-            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} odczytów.", wynik)
+            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {db.liczba_z_odmiana(ile, 'odczyt', 'odczyty', 'odczytów')}.", wynik)
         utils.potwierdz(self._page, "Usuwanie",
                         f"Czy na pewno usunąć {ile} zaznaczonych odczytów?", wykonaj)
 

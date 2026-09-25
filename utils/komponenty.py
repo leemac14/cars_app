@@ -118,10 +118,14 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
     # chip pokazuje się wtedy jako zaznaczony, a po zapisie wpis trafia w kolor
     # swojego tagu.
     slownik = {db.klucz_nazwy(n): n for _, n, _ in db.pobierz_tagi(state.auto_id)}
-    wybrane = set()
+    # Słownik zamiast zbioru: zachowuje kolejność. `",".join(set)` układał
+    # tagi przy każdym zapisie inaczej (kolejność zbioru napisów zależy od
+    # losowego ziarna haszowania), więc sam zapis bez zmian zmieniał tekst
+    # wpisu — a synchronizacja widziała w tym edycję i wysyłała rekord od nowa.
+    wybrane = {}
     for t in (aktualne_tagi_str or "").split(","):
         if t.strip():
-            wybrane.add(slownik.get(db.klucz_nazwy(t), t.strip()))
+            wybrane[slownik.get(db.klucz_nazwy(t), t.strip())] = None
     # Tagi wpisu, których nie ma w słowniku (np. z importu CSV). Stoją w edytorze
     # przez całą edycję, także odznaczone — inaczej po jednym kliknięciu
     # znikałyby bez śladu.
@@ -185,17 +189,25 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                             # Kolor spoza palety (#RRGGBB z danych) nie ma swojego
                             # kółka — bez nowego wyboru zostaje taki, jaki był.
                             nowy_kolor = pobierz_kolor() or aktualny_kolor
-                            db.edytuj_tag_w_slowniku(state.auto_id, tid, tn, nowa_nazwa, nowy_kolor)
+                            if not db.edytuj_tag_w_slowniku(state.auto_id, tid, tn, nowa_nazwa, nowy_kolor):
+                                ustaw_blad(e_nazwa, "Taki tag już istnieje")
+                                e_nazwa.update()
+                                return
+                            nowa_nazwa = db.normalizuj_nazwe(nowa_nazwa)
                             if tn in wybrane:
-                                wybrane.remove(tn)
-                                wybrane.add(nowa_nazwa)
+                                # Ta sama pozycja na liście — zmiana nazwy nie
+                                # przestawia tagu na koniec.
+                                pozycje = list(wybrane)
+                                pozycje[pozycje.index(tn)] = nowa_nazwa
+                                wybrane.clear()
+                                wybrane.update(dict.fromkeys(pozycje))
                             zamknij_dialog(page, dlg)
                             odswiez_tagi()
 
                     def usun_tag(e_btn):
                         def wykonaj():
                             db.usun_tag_ze_slownika(state.auto_id, tid, tn)
-                            if tn in wybrane: wybrane.remove(tn)
+                            wybrane.pop(tn, None)
                             odswiez_tagi()
                         zamknij_dialog(page, dlg)
                         potwierdz(page, "Usuń tag", f"Usunąć '{tn}'? Zniknie ze wszystkich historycznych wpisów.", wykonaj)
@@ -241,9 +253,9 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
 
     def przelacz_tag(nazwa):
         if nazwa in wybrane:
-            wybrane.remove(nazwa)
+            wybrane.pop(nazwa)
         else:
-            wybrane.add(nazwa)
+            wybrane[nazwa] = None
         odswiez_tagi()
 
     def okno_nowego_tagu(nazwa_spoza_slownika=""):
@@ -270,8 +282,8 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                 # nie trafiłby w kolor swojego tagu.
                 nazwa_tagu = next((nazwa for tid, nazwa, _ in db.pobierz_tagi(state.auto_id) if tid == tag_id), n)
                 if nazwa_spoza_slownika:
-                    wybrane.discard(nazwa_spoza_slownika)
-                wybrane.add(nazwa_tagu)
+                    wybrane.pop(nazwa_spoza_slownika, None)
+                wybrane[nazwa_tagu] = None
                 zamknij_dialog(page, dlg)
                 odswiez_tagi()
 

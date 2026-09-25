@@ -196,7 +196,7 @@ def scal_duplikaty_nazw(auto_id, tabela, id_docelowy, ids_zrodlowe):
         # Tagi i warsztaty są w innych tabelach zapisane NAZWĄ, nie kluczem obcym.
         if tabela == "tagi":
             for _, stara_nazwa, _ in znikajace:
-                _podmien_tag_w_tekstach(c, auto_id, stara_nazwa, nazwa_docelowa)
+                przepisz_tag_we_wpisach(c, auto_id, stara_nazwa, nazwa_docelowa)
         elif tabela == "warsztaty":
             for _, stara_nazwa, _ in znikajace:
                 for tab in ("wizyty", "historia"):
@@ -223,32 +223,55 @@ def scal_duplikaty_nazw(auto_id, tabela, id_docelowy, ids_zrodlowe):
     return len(ids_zrodlowe)
 
 
-def _podmien_tag_w_tekstach(c, auto_id, stara_nazwa, nowa_nazwa):
-    """Tagi trzymane są jako lista rozdzielona przecinkami w kolumnie 'tagi'.
-    Podmieniamy element listy, nie fragment tekstu — inaczej tag „UB” zjadłby
-    kawałek nazwy „UBEZPIECZENIE”."""
-    for tabela in ("tankowania", "wizyty", "inne_koszty"):
+# Tabele, w których wpis trzyma swoje tagi jako tekst („Myjnia,Trasa”).
+TABELE_Z_TAGAMI = ("tankowania", "wizyty", "inne_koszty")
+
+
+def przepisz_tag_we_wpisach(c, auto_id, stara_nazwa, nowa_nazwa=None):
+    """Podmienia (albo, z `nowa_nazwa=None`, wymazuje) tag w tekstowej liście
+    tagów każdego wpisu pojazdu. Zwraca liczbę zmienionych wpisów.
+
+    Dopasowanie po `klucz_nazwy`, tak samo jak przy kolorowaniu: wpis bywa
+    zapisany inną pisownią niż tag w słowniku („myjnia” przy „MYJNIA”), a stare
+    porównanie znak w znak (plus LIKE, który w SQLite nie zna wielkości polskich
+    liter) zostawiało takie wpisy ze starą nazwą po zmianie i po usunięciu tagu.
+    Element listy, nie fragment tekstu — tag „UB” nie zjada „UBEZPIECZENIE”.
+    Po podmianie duplikaty znikają: zmiana „A” na „B” we wpisie z „A,B” daje „B”."""
+    klucz_starej = klucz_nazwy(stara_nazwa)
+    if not klucz_starej:
+        return 0
+    zmienione = 0
+    for tabela in TABELE_Z_TAGAMI:
         c.execute(f"SELECT id, tagi FROM {tabela} WHERE auto_id=? AND tagi IS NOT NULL AND tagi <> ''", (auto_id,))
         for wiersz_id, tekst in c.fetchall():
             elementy = [t.strip() for t in str(tekst or "").split(",") if t.strip()]
-            zmienione, widziane = [], set()
+            if not any(klucz_nazwy(t) == klucz_starej for t in elementy):
+                continue
+            nowe, widziane = [], set()
             for element in elementy:
-                docelowy = nowa_nazwa if element == stara_nazwa else element
-                if docelowy not in widziane:
-                    widziane.add(docelowy)
-                    zmienione.append(docelowy)
-            nowy_tekst = ", ".join(zmienione)
+                docelowy = element
+                if klucz_nazwy(element) == klucz_starej:
+                    if not nowa_nazwa:
+                        continue
+                    docelowy = nowa_nazwa
+                if klucz_nazwy(docelowy) not in widziane:
+                    widziane.add(klucz_nazwy(docelowy))
+                    nowe.append(docelowy)
+            nowy_tekst = ",".join(nowe)
             if nowy_tekst != tekst:
-                c.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowy_tekst, wiersz_id))
+                c.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowy_tekst or None, wiersz_id))
+                zmienione += 1
+    return zmienione
 
 
 __all__ = [
     "POLA_NAZW_DO_NORMALIZACJI",
     "PRZEPIECIA_PRZY_SCALANIU",
-    "_podmien_tag_w_tekstach",
+    "TABELE_Z_TAGAMI",
     "dopasuj_istniejaca_nazwe",
     "klucz_nazwy",
     "normalizuj_nazwe",
+    "przepisz_tag_we_wpisach",
     "scal_duplikaty_nazw",
     "znajdz_duplikaty_nazw",
 ]

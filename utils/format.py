@@ -2,6 +2,7 @@
 
 import db
 import flet as ft
+import math
 import re
 from date import parsuj_date
 from datetime import date, datetime, timedelta
@@ -9,26 +10,31 @@ from datetime import date, datetime, timedelta
 from .stale import KOLOR_STATUS, formatuj_liczba
 
 
-def parsuj_int(wartosc, domyslna=0):
-    if wartosc is None: return domyslna
-    tekst = str(wartosc).strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
-    if not tekst: return domyslna
-    try:
-        return int(round(float(tekst)))
-    except (ValueError, TypeError):
-        dopasowanie = re.search(r"-?\d+", tekst)
-        return int(dopasowanie.group()) if dopasowanie else domyslna
+# Liczba całkowita z kropkami co trzy cyfry — „150.000” w polu licznika to
+# sto pięćdziesiąt tysięcy kilometrów, a nie 150 z ułamkiem.
+_WZORZEC_TYSIECY_Z_KROPKA = re.compile(r"-?\d{1,3}(?:\.\d{3})+")
 
 
 def parsuj_float(wartosc, domyslna=0.0):
-    if wartosc is None: return domyslna
-    tekst = str(wartosc).strip().replace("\xa0", "").replace(" ", "").replace(",", ".")
-    if not tekst: return domyslna
-    try:
-        return float(tekst)
-    except (ValueError, TypeError):
-        dopasowanie = re.search(r"-?\d+(\.\d+)?", tekst)
-        return float(dopasowanie.group()) if dopasowanie else domyslna
+    """Liczba z pola formularza: '12,5', '1 234,56', '1.234,56', '45,20 zł'.
+
+    Tym samym parserem, co import CSV i warstwa danych (db._parsuj_liczbe_csv).
+    Własna wersja zamieniała każdy przecinek na kropkę, więc „1.234,56 zł”
+    czytała jako 1,234, a „inf” i „nan” przepuszczała jako liczby."""
+    if wartosc is None:
+        return domyslna
+    liczba = db._parsuj_liczbe_csv(wartosc)
+    return liczba if liczba is not None and math.isfinite(liczba) else domyslna
+
+
+def parsuj_int(wartosc, domyslna=0):
+    if wartosc is None:
+        return domyslna
+    tekst = str(wartosc).replace("\xa0", "").replace(" ", "").strip()
+    if _WZORZEC_TYSIECY_Z_KROPKA.fullmatch(tekst):
+        tekst = tekst.replace(".", "")
+    liczba = parsuj_float(tekst, None)
+    return int(round(liczba)) if liczba is not None else domyslna
 
 
 _MAPA_OGONKOW = str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ")
@@ -233,7 +239,7 @@ def kolor_i_tekst_terminu(termin_str):
     roznica = (d_obj - dzis).days
     
     if roznica < 0:
-        return KOLOR_STATUS["critical"], f"Po terminie ({abs(roznica)} dni)"
+        return KOLOR_STATUS["critical"], f"Po terminie ({formatuj_dni(abs(roznica))})"
     elif roznica == 0:
         return KOLOR_STATUS["critical"], "Na dzisiaj!"
     elif roznica == 1:
@@ -277,13 +283,9 @@ def opis_przerwanego_ciagu(ciag, rodzaj=None, przebieg=None):
 
 def _odmiana_liczby(n, forma_1, forma_2_4, forma_pozostale):
     """Generyczna polska odmiana liczebnikowa: 1 -> forma_1, 2-4 (poza
-    nastolatkami 12-14) -> forma_2_4, pozostałe -> forma_pozostale."""
-    if n == 1:
-        return forma_1
-    ostatnia, dziesiatki = n % 10, n % 100
-    if 2 <= ostatnia <= 4 and not (12 <= dziesiatki <= 14):
-        return forma_2_4
-    return forma_pozostale
+    nastolatkami 12-14) -> forma_2_4, pozostałe -> forma_pozostale.
+    Liczy `db.odmien` — jedno miejsce dla ekranu i warstwy danych."""
+    return db.odmien(n, forma_1, forma_2_4, forma_pozostale)
 
 
 __all__ = [

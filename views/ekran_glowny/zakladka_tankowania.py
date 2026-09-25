@@ -58,12 +58,17 @@ class MiksinZakladkiTankowania:
                 rodzaj = t['rodzaj']
                 prz_akt = int(t.get('przebieg') or 0)
 
+                # Wpis bez stanu licznika (import z samym dystansem) nie jest
+                # punktem na liczniku: nie może być ani „poprzednim przebiegiem”,
+                # ani pełnym bakiem zamykającym odcinek — inaczej następny wpis
+                # dostawał dystans równy całemu licznikowi auta.
                 poprz = poprzedni_przebieg.get(rodzaj)
-                t['dystans'] = max(0, prz_akt - poprz) if poprz is not None else 0
-                poprzedni_przebieg[rodzaj] = prz_akt
+                t['dystans'] = max(0, prz_akt - poprz) if (poprz is not None and prz_akt > 0) else 0
+                if prz_akt > 0:
+                    poprzedni_przebieg[rodzaj] = prz_akt
 
                 t['spalanie'] = None
-                if t.get('do_pelna'):
+                if t.get('do_pelna') and prz_akt > 0:
                     idx_poprzedniego = ostatni_pelny.get(rodzaj)
                     if idx_poprzedniego is not None:
                         prz_ostatni_pelny = int(baza_lista[idx_poprzedniego].get('przebieg') or 0)

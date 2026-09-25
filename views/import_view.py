@@ -218,7 +218,7 @@ class ImportCSVView(ft.View):
         self.btn_importuj.disabled = not self.gotowe
         utils.ustaw_tekst_przycisku(
             self.btn_importuj,
-            f"Importuj {len(self.gotowe)} wpisów" if self.gotowe else "Importuj")
+            f"Importuj {db.liczba_z_odmiana(len(self.gotowe), 'wpis', 'wpisy', 'wpisów')}" if self.gotowe else "Importuj")
         self._page.update()
 
     def _importuj(self, e):
@@ -233,7 +233,7 @@ class ImportCSVView(ft.View):
                     utils.ukryj_ladowanie(self._page, dlg)
                     utils.wypchnij_w_tle(self._page, self.state.auto_id, "import CSV")
                     utils.przejdz(self._page, "/")
-                    utils.pokaz_komunikat(self._page, f"Zaimportowano {ile} wpisów.")
+                    utils.pokaz_komunikat(self._page, f"Zaimportowano {db.liczba_z_odmiana(ile, 'wpis', 'wpisy', 'wpisów')}.")
                 except Exception as ex:
                     utils.ukryj_ladowanie(self._page, dlg)
                     utils.pokaz_komunikat(self._page, f"Błąd importu: {ex}", utils.KOLOR_STATUS["error"])
@@ -242,7 +242,8 @@ class ImportCSVView(ft.View):
         utils.potwierdz(
             self._page,
             "Zaimportować wpisy?",
-            f"Do pojazdu „{self.state.auto_nazwa}” zostanie dodanych {len(self.gotowe)} wpisów "
+            f"Do pojazdu „{self.state.auto_nazwa}” trafi "
+            f"{db.liczba_z_odmiana(len(self.gotowe), 'nowy wpis', 'nowe wpisy', 'nowych wpisów')} "
             f"({self._konfiguracja()['etykieta'].lower()}). "
             f"Duplikaty są już odfiltrowane. Operacji nie da się cofnąć jednym kliknięciem "
             f"— w razie czego zrób najpierw kopię bazy.",

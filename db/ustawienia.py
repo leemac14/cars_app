@@ -154,12 +154,23 @@ def pobierz_kolor_auta(auto_id):
     return pobierz_kolor_motywu()
 
 
+def _dodatni_int(tekst, domyslna):
+    """Liczba > 0 z zapisanego ustawienia albo `domyslna`. Śmieć w bazie (ręczna
+    edycja, kopia ze starszej wersji) nie może wywracać każdego ekranu, który
+    liczy powiadomienia — a gołe int() rzucało wtedy ValueError."""
+    try:
+        wartosc = int(float(str(tekst).strip()))
+    except (TypeError, ValueError):
+        return domyslna
+    return wartosc if wartosc > 0 else domyslna
+
+
 def pobierz_prog_km():
-    return int(pobierz_ustawienie("prog_km_powiadomien", str(PROG_KM_POWIADOMIEN)) or PROG_KM_POWIADOMIEN)
+    return _dodatni_int(pobierz_ustawienie("prog_km_powiadomien"), PROG_KM_POWIADOMIEN)
 
 
 def pobierz_prog_dni():
-    return int(pobierz_ustawienie("prog_dni_powiadomien", str(PROG_DNI_POWIADOMIEN)) or PROG_DNI_POWIADOMIEN)
+    return _dodatni_int(pobierz_ustawienie("prog_dni_powiadomien"), PROG_DNI_POWIADOMIEN)
 
 
 def pobierz_dni_przypomnienia_o_odczycie():
@@ -404,7 +415,10 @@ def pobierz_zakres_wykresu(auto_id, klucz) -> int:
     historia. Domyślnie ROK: sześć miesięcy zaszyte wcześniej w wykresie
     wydatków gubiło poprzedni sezon, a cała historia przy kilku latach danych
     zlewała ostatnie miesiące w jedną kreskę przy krawędzi."""
-    return _odczytaj_zakresy_wykresow(auto_id).get(klucz, ZAKRES_WYKRESU_DOMYSLNY)
+    # Liczba spoza zakresów wykresu (np. 24 — okno koszt/1000 km — wpisane
+    # pod kluczem wykresu) wraca do domyślnego, jak każdy inny śmieć.
+    zakres = _odczytaj_zakresy_wykresow(auto_id).get(klucz, ZAKRES_WYKRESU_DOMYSLNY)
+    return zakres if zakres in ZAKRESY_WYKRESU else ZAKRES_WYKRESU_DOMYSLNY
 
 
 def pobierz_okno_kroczace(auto_id) -> int:

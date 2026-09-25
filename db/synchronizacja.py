@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from .stale import MAKS_BACKOFF_MINUT_SYNC
 from .polaczenie import polacz_baze
+from .pomocnicze import liczba_z_odmiana, odmien
 from .ustawienia import pobierz_moje_imie
 
 # ============================ ROLE WSPÓŁDZIELENIA ============================
@@ -266,9 +267,8 @@ def opis_oczekujacej_synchronizacji():
     ile = liczba_oczekujacych_synchronizacji()
     if not ile:
         return ""
-    if ile == 1:
-        return "1 pojazd czeka na wysłanie zmian"
-    return f"{ile} pojazdy czekają na wysłanie zmian"
+    return (f"{liczba_z_odmiana(ile, 'pojazd', 'pojazdy', 'pojazdów')} "
+            f"{odmien(ile, 'czeka', 'czekają', 'czeka')} na wysłanie zmian")
 
 
 # ============================== NAGROBKI ==============================

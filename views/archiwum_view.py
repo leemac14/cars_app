@@ -166,7 +166,7 @@ class ArchiwumView(ft.View):
                     self._page, f"„{a['nazwa']}” przeniesiony do kosza.", wynik
                 )
             dni = db.pobierz_dni_kosza()
-            okres = f"przez {dni} dni" if dni else "bez limitu czasu"
+            okres = f"przez {utils.formatuj_dni(dni)}" if dni else "bez limitu czasu"
             utils.potwierdz(
                 self._page, "Przenieść do kosza?",
                 f"„{a['nazwa']}” zniknie także z archiwum i trafi do kosza, gdzie poczeka {okres}. "

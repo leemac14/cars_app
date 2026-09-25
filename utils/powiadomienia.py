@@ -5,8 +5,8 @@ import flet as ft
 import log
 from datetime import datetime
 
-from .stale import IKONY_SEZONU_OPON, KOLOR_STATUS, RADIUS, formatuj_liczba
-from .format import _odmiana_liczby, kolor_i_tekst_terminu, parsuj_float, parsuj_int, symbol_waluty
+from .stale import KOLOR_STATUS, RADIUS, formatuj_liczba
+from .format import _odmiana_liczby, formatuj_dni, kolor_i_tekst_terminu, parsuj_float, parsuj_int, symbol_waluty
 from .typografia import podpis
 from .zgodnosc import ustaw_blad, ustaw_ikone
 from .wyglad import dol_bezpieczny, tlo_stanu
@@ -216,7 +216,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         # o liczniku zmienia 'klucz' z każdym okresem ciszy, a drzemka ma
         # trwać tyle dni, ile wybrano (patrz db.klucz_drzemki).
         db.odloz_powiadomienie(state.auto_id, db.klucz_drzemki(powiadomienie), dni, powiadomienie.get("tytul"))
-        pokaz_komunikat(page, f"Odłożono „{powiadomienie['tytul']}” na {dni} dni.")
+        pokaz_komunikat(page, f"Odłożono „{powiadomienie['tytul']}” na {formatuj_dni(dni)}.")
         odswiez()
         przejdz(page, page.route)   # odświeża licznik przy dzwonku w tle
 

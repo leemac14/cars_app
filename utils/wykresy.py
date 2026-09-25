@@ -9,7 +9,7 @@ from state import MIESIACE_NAZWY
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_PODZRODEL_ODCZYTU, IKONY_ZRODEL_PRZEBIEGU, KOLORY_ZRODEL_PRZEBIEGU, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import MIESIACE_MIEJSCOWNIK, _odmiana_liczby, opis_licznika_na_karte, symbol_waluty
+from .format import MIESIACE_MIEJSCOWNIK, _odmiana_liczby, formatuj_dni, opis_licznika_na_karte, symbol_waluty
 from .typografia import etykieta, podpis, wartosc
 from .wyglad import _mieszaj_kolory, pasek_przewijany, powierzchnia, tlo_karty, tlo_odznaki, tlo_toru
 from .dialogi import odswiez_ekran
@@ -348,7 +348,7 @@ def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
                       f" do limitu na {stan['etykieta_okresu'].lower()}")
         else:
             podpis = (f"Zostało {formatuj_liczba(stan['pozostalo'])} {symbol_waluty()}"
-                      f" na {stan['dni_pozostalo']} dni ({stan['etykieta_okresu'].lower()})")
+                      f" na {formatuj_dni(stan['dni_pozostalo'])} ({stan['etykieta_okresu'].lower()})")
         elementy.append(ft.Text(podpis, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
 
     return ft.Column(elementy, spacing=SPACING["xs"])

@@ -271,9 +271,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             db.aktualizuj_najnowszy_wpis(zadanie_id)
             self.zakoncz_zaznaczanie()
             utils.przejdz(self._page, f"/historia/{zadanie_id}")
-            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} wpisów z historii.", wynik)
+            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {db.liczba_z_odmiana(ile, 'wpis', 'wpisy', 'wpisów')} z historii.", wynik)
 
-        utils.potwierdz(self._page, "Usuwanie wpisów", f"Czy na pewno usunąć {ile} elementów z historii?", wykonaj)
+        utils.potwierdz(self._page, "Usuwanie wpisów", f"Czy na pewno usunąć {db.liczba_z_odmiana(ile, 'element', 'elementy', 'elementów')} z historii?", wykonaj)
 
 class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
     def _zwroc_pozycje_na_liste(self, wizyta_id):
@@ -608,5 +608,5 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             db.przelicz_wszystkie_zadania(self.state.auto_id)
             self.zakoncz_zaznaczanie()
             utils.przejdz(self._page, "/wizyty")
-            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} wizyt w warsztacie.", wynik)
+            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {db.liczba_z_odmiana(ile, 'wizytę', 'wizyty', 'wizyt')} w warsztacie.", wynik)
         utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno usunąć {ile} wybranych wizyt?", wykonaj)

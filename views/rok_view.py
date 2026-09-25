@@ -272,9 +272,13 @@ class RokWPigulceView(ft.View):
 
         if d.get("zmiana_rdr") is not None:
             drozej = d["zmiana_rdr"] > 0
+            # Rok w toku porównuje się z tym samym okresem poprzedniego roku —
+            # podpis musi to mówić, bo kwota w nawiasie nie jest całym rokiem.
+            etykieta_rdr = (f"Względem {d['rok'] - 1} (do {d['poprzedni_do'][:5]})"
+                            if d.get("niepelny") and d.get("poprzedni_do") else f"Względem {d['rok'] - 1} roku")
             pozycje.append((
                 ft.Icons.COMPARE_ARROWS, utils.KOLOR_STATUS["critical"] if drozej else utils.KOLOR_STATUS["ok"],
-                f"Względem {d['rok'] - 1} roku",
+                etykieta_rdr,
                 f"{'Drożej' if drozej else 'Taniej'} o {utils.formatuj_liczba(abs(d['zmiana_rdr']), 0)}% "
                 f"({utils.formatuj_liczba(d['poprzedni_rok'])} {utils.symbol_waluty()})"
             ))

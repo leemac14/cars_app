@@ -11,7 +11,7 @@ db/kosz.py                          9
 db/magazyn.py                       2
 db/nawigacja.py                     4
 db/przebieg.py                      1
-db/raporty.py                       2
+db/raporty.py                       1
 db/usuwanie.py                      5
 db/wizyty.py                        4
 db/zalaczniki.py                    5
