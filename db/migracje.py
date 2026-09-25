@@ -894,8 +894,11 @@ def sprawdz_kopie_przed_wczytaniem(sciezka) -> tuple[bool, str]:
 
 
 
+# `WERSJA_SCHEMATU` ŚWIADOMIE poza `__all__`: init_db() przypisuje ją na nowo
+# przez `global`, więc kopia w `db` zamarzłaby na None (ta sama pułapka, którą
+# opisuje tests/test_sync_pakiet.py). Z zewnątrz czyta się ją przez
+# wersja_schematu_aplikacji().
 __all__ = [
-    "WERSJA_SCHEMATU",
     "init_db",
     "porzadki_startowe",
     "sprawdz_kopie_przed_wczytaniem",

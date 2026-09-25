@@ -392,9 +392,10 @@ class MainView(
             elif odrzucone:
                 utils.pokaz_komunikat(self._page, utils.podsumowanie_odrzuconych(odrzucone), utils.KOLOR_STATUS["warning"])
             elif db.czy_tylko_podglad(self.state.auto_id):
-                utils.pokaz_komunikat(self._page, f"Pobrano {pobrano} zmian. Ten pojazd masz w trybie tylko do odczytu.")
+                utils.pokaz_komunikat(self._page, f"Pobrano {db.liczba_z_odmiana(pobrano, 'zmianę', 'zmiany', 'zmian')}. Ten pojazd masz w trybie tylko do odczytu.")
             else:
-                utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+                utils.pokaz_komunikat(self._page, f"Wysłano {db.liczba_z_odmiana(wyslano, 'rekord', 'rekordy', 'rekordów')}, "
+                                      f"pobrano {db.liczba_z_odmiana(pobrano, 'rekord', 'rekordy', 'rekordów')}.")
         except sync.SynchronizacjaWToku:
             utils.pokaz_komunikat(self._page, "Synchronizacja już trwa — chwilę to potrwa.")
         except Exception as ex:
@@ -430,8 +431,8 @@ class MainView(
 
             self.zakoncz_zaznaczanie()
             utils.przejdz(self._page, "/")
-            utils.pokaz_komunikat_cofnij(self._page, f"Pomyślnie usunięto {ile} elementów.", wynik)
-        utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno usunąć {ile} elementów?", wykonaj)
+            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {db.liczba_z_odmiana(ile, 'element', 'elementy', 'elementów')}.", wynik)
+        utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno usunąć {db.liczba_z_odmiana(ile, 'element', 'elementy', 'elementów')}?", wykonaj)
 
     # ================= KOSZTY — TANKOWANIA I POZOSTAŁE WYDATKI =================
     def buduj_koszty(self):

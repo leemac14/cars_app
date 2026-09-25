@@ -70,6 +70,10 @@ def liczba_na_tekst(wartosc, decimale=2, separator_tysiecy=""):
     liczba = _na_liczbe(wartosc)
     if liczba is None:
         return None
+    # „-0,00” po zaokrągleniu drobnego minusa (saldo rozliczeń, różnica
+    # dwóch kwot) to zero — minus przed nim tylko myli.
+    if round(liczba, max(decimale, 0)) == 0:
+        liczba = 0.0
 
     tekst = f"{liczba:,.{decimale}f}" if decimale > 0 else f"{round(liczba):,}"
     calosc, _, ulamek = tekst.partition(".")
@@ -108,6 +112,40 @@ def formatuj_rozmiar(bajty):
 
 
 
+def odmien(liczba, jeden, dwa, wiele):
+    """Polska odmiana przez liczbę: 1 wpis, 2 wpisy, 5 wpisów, 12 wpisów, 22 wpisy.
+
+    Jedno miejsce dla warstwy danych i interfejsu (`utils._odmiana_liczby` woła
+    właśnie tę funkcję). Świadoma kopia żyje w `log.odmien` — log nie importuje
+    niczego z projektu, więc tamtej nie da się usunąć."""
+    liczba = abs(parsuj_int_bezpiecznie(liczba, 0))
+    if liczba == 1:
+        return jeden
+    if 2 <= liczba % 10 <= 4 and not 12 <= liczba % 100 <= 14:
+        return dwa
+    return wiele
+
+
+def liczba_z_odmiana(liczba, jeden, dwa, wiele):
+    """„1 wpis”, „3 wpisy”, „1 234 wpisów” — liczba ze spacją co trzy cyfry
+    i rzeczownikiem w formie zgodnej z tą liczbą."""
+    return f"{liczba_na_tekst(liczba, 0, SEPARATOR_TYSIECY) or liczba} {odmien(liczba, jeden, dwa, wiele)}"
+
+
+def opis_terminu_dni(zostalo):
+    """Termin w dniach jako zdanie: „Został 1 dzień”, „Zostały 3 dni”,
+    „Zostało 12 dni”, „Termin mija dziś”, „Przekroczono o 1 dzień”.
+
+    Wspólne dla powiadomień i kondycji — obie mówią o tych samych terminach
+    i nie mogą się różnić jednym „dni” przy jedynce."""
+    zostalo = parsuj_int_bezpiecznie(zostalo, 0)
+    if zostalo < 0:
+        return f"Przekroczono o {liczba_z_odmiana(-zostalo, 'dzień', 'dni', 'dni')}"
+    if zostalo == 0:
+        return "Termin mija dziś"
+    return f"{odmien(zostalo, 'Został', 'Zostały', 'Zostało')} {liczba_z_odmiana(zostalo, 'dzień', 'dni', 'dni')}"
+
+
 def _parsuj_liczbe_csv(tekst):
     """Odporny parser liczby z arkusza: '1 234,56', '1,234.56', '12.5', '12,5',
     '45,20 zł'. Zwraca float albo None. Celowo bez regexpów — pojedyncze przejście
@@ -144,5 +182,8 @@ __all__ = [
     "formatuj_liczba_eksport",
     "formatuj_rozmiar",
     "liczba_na_tekst",
+    "liczba_z_odmiana",
+    "odmien",
+    "opis_terminu_dni",
     "parsuj_int_bezpiecznie",
 ]

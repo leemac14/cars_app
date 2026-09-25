@@ -15,9 +15,11 @@ except ImportError:
     Image = None
     ImageOps = None
 
+import log
+
 from .polaczenie import polacz_baze
 from .zalaczniki import sciezka_pliku_zalacznika
-from .pomocnicze import SEPARATOR_TYSIECY, formatuj_liczba_eksport, liczba_na_tekst
+from .pomocnicze import SEPARATOR_TYSIECY, formatuj_liczba_eksport, liczba_na_tekst, liczba_z_odmiana
 from .ustawienia import pobierz_walute
 from .energia import formatuj_zuzycie_tekst
 from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu
@@ -174,12 +176,17 @@ def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
             f"~{formatuj_liczba_eksport(dane['sredni_koszt_miesiaca'], 0)} {waluta} na miesiąc")
     y += 196
 
+    elektryczny = bool(dane.get("zuzycie_elektryczne"))
     koszt_km = f"{formatuj_liczba_eksport(dane['koszt_km'], 2)} {waluta}" if dane.get("koszt_km") else "—"
-    zuzycie = formatuj_zuzycie_tekst(dane["srednie_zuzycie"]) if dane.get("srednie_zuzycie") else "—"
-    kafelek(MARGINES, y, szer_kafla, "Koszt kilometra", koszt_km,
-            f"{dane['liczba_tankowan']} tankowań w roku")
-    kafelek(MARGINES + szer_kafla + 24, y, szer_kafla, "Średnie zużycie", zuzycie,
-            f"{formatuj_liczba_eksport(dane['litry'], 0)} l zatankowane" if dane.get("litry") else None)
+    zuzycie = formatuj_zuzycie_tekst(dane["srednie_zuzycie"], elektryczny) if dane.get("srednie_zuzycie") else "—"
+    if elektryczny:
+        ilosc = f"{formatuj_liczba_eksport(dane['kwh'], 0)} kWh naładowane" if dane.get("kwh") else None
+        wpisy = liczba_z_odmiana(dane["liczba_tankowan"], "ładowanie", "ładowania", "ładowań")
+    else:
+        ilosc = f"{formatuj_liczba_eksport(dane['litry'], 0)} l zatankowane" if dane.get("litry") else None
+        wpisy = liczba_z_odmiana(dane["liczba_tankowan"], "tankowanie", "tankowania", "tankowań")
+    kafelek(MARGINES, y, szer_kafla, "Koszt kilometra", koszt_km, f"{wpisy} w roku")
+    kafelek(MARGINES + szer_kafla + 24, y, szer_kafla, "Średnie zużycie", zuzycie, ilosc)
     y += 214
 
     # --- rytm roku: koszty miesiąc po miesiącu ---
@@ -223,8 +230,9 @@ def generuj_grafike_roku(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
                       f"{nw['opis']} • {formatuj_liczba_eksport(nw['kwota'], 0)} {waluta}"))
     if dane.get("zmiana_rdr") is not None:
         znak = "+" if dane["zmiana_rdr"] > 0 else ""
-        fakty.append((f"Względem {dane['rok'] - 1}",
-                      f"{znak}{formatuj_liczba_eksport(dane['zmiana_rdr'], 0)}%"))
+        etykieta_rdr = (f"Względem {dane['rok'] - 1} (do {dane['poprzedni_do'][:5]})"
+                        if dane.get("niepelny") and dane.get("poprzedni_do") else f"Względem {dane['rok'] - 1}")
+        fakty.append((etykieta_rdr, f"{znak}{formatuj_liczba_eksport(dane['zmiana_rdr'], 0)}%"))
 
     for etykieta, wartosc in fakty:
         if y + WYS_WIERSZA > STOPKA_Y - 20:
@@ -308,10 +316,24 @@ def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikac
         try:
             szer_strony = pdf.w - pdf.l_margin - pdf.r_margin
             szer_zdj = min(120, szer_strony)
-            pdf.image(zdjecie_glowne, x=pdf.l_margin + (szer_strony - szer_zdj) / 2, y=pdf.get_y(), w=szer_zdj)
-            pdf.set_y(pdf.get_y() + szer_zdj * 0.62 + 6)
+            # Wysokość z PRAWDZIWYCH proporcji zdjęcia. Stałe 0,62 pasowało
+            # tylko do kadru poziomego — zdjęcie zrobione pionowo wychodziło
+            # wyżej, niż zakładał kursor, i nazwa auta lądowała na nim.
+            # Wysokie kadry zwężamy, żeby strona tytułowa się zmieściła.
+            proporcja = 0.62
+            if Image is not None:
+                with Image.open(zdjecie_glowne) as obraz:
+                    szer_px, wys_px = obraz.size
+                if szer_px > 0:
+                    proporcja = wys_px / szer_px
+            wys_maks = 90
+            if szer_zdj * proporcja > wys_maks:
+                szer_zdj = wys_maks / proporcja
+            pdf.image(zdjecie_glowne, x=pdf.l_margin + (szer_strony - szer_zdj) / 2, y=pdf.get_y(),
+                      w=szer_zdj, h=szer_zdj * proporcja)
+            pdf.set_y(pdf.get_y() + szer_zdj * proporcja + 6)
         except Exception:
-            pass
+            log.polkniety("zdjęcie pojazdu na stronie tytułowej paszportu")
 
     pdf.set_font(pdf.czcionka, "B", 22)
     pdf.cell(0, 14, pdf.t(str(auto_nazwa or "Pojazd")), ln=1, align="C")
@@ -470,7 +492,11 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         if podsumowanie.get("koszt_km"):
             pdf.cell(0, 7, pdf.t(f"Koszt eksploatacji: {formatuj_liczba_eksport(podsumowanie['koszt_km'], 2)} {waluta}/km"), ln=1)
         if podsumowanie.get("spalanie"):
-            pdf.cell(0, 7, pdf.t(f"Średnie spalanie: {formatuj_liczba_eksport(podsumowanie['spalanie'], 1)} l/100km"), ln=1)
+            # Jednostka z Ustawień (l/100km, km/l, mpg — albo kWh/100km
+            # u elektryka), tak samo jak na ekranie, a nie zawsze „l/100km”.
+            elektryczny = bool(podsumowanie.get("zuzycie_elektryczne"))
+            etykieta = "Średnie zużycie energii" if elektryczny else "Średnie spalanie"
+            pdf.cell(0, 7, pdf.t(f"{etykieta}: {formatuj_zuzycie_tekst(podsumowanie['spalanie'], elektryczny)}"), ln=1)
         pdf.ln(6)
 
     if tryb_paszportu and punkty_przebiegu:

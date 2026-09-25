@@ -35,7 +35,18 @@ class MiksinZakladkiStatystyki:
         tankowania.sort(key=lambda x: int(x.get('przebieg') or 0))
 
         pal = sum(float(t.get('kwota') or 0) for t in tankowania) if tankowania else 0.0
-        dystans = (int(tankowania[-1].get('przebieg') or 0) - int(tankowania[0].get('przebieg') or 0)) if len(tankowania) > 1 else 0
+        # Dystans z samych liczników — wpis bez przebiegu (import z samym
+        # dystansem) stał na początku posortowanej listy z zerem i robił
+        # z całego licznika auta „przejechane”, zaniżając koszt kilometra.
+        liczniki = [int(t.get('przebieg') or 0) for t in tankowania if int(t.get('przebieg') or 0) > 0]
+        dystans = (max(liczniki) - min(liczniki)) if len(liczniki) > 1 else 0
+
+        # Wykresy zużycia i cen mówią o JEDNYM źródle energii: podstawowym dla
+        # auta (paliwo, u elektryka prąd). Plug-in miesza tu litry z kWh tak
+        # samo, jak wcześniej mieszał je ranking stacji.
+        rodzaj_wykresow = db.domyslny_rodzaj_energii(self.state.auto_id)
+        etykiety_wykresow = db.etykiety_energii(rodzaj_wykresow)
+        jednostka_wykresow = etykiety_wykresow["jednostka"]
 
         razem = pal + serw + inn
         koszt_km = (razem / dystans) if dystans > 0 else 0.0
@@ -318,7 +329,7 @@ class MiksinZakladkiStatystyki:
                             bgcolor=utils.tlo_toru(self._page),
                             height=6, border_radius=3,
                         )),
-                        ft.Text(f"{liczba_kat} {'wpis' if liczba_kat == 1 else 'wpisy/-ów'}",
+                        ft.Text(db.liczba_z_odmiana(liczba_kat, "wpis", "wpisy", "wpisów"),
                                 size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                     ], spacing=3))
                 karta_kategorii_innych = ft.Container(
@@ -436,15 +447,9 @@ class MiksinZakladkiStatystyki:
                 )
             )
 
-            segmenty_spalania = []
-            pelne_idx_all = [i for i, t in enumerate(tankowania) if t.get('do_pelna')]
-            for a, b in zip(pelne_idx_all, pelne_idx_all[1:]):
-                prz_a = int(tankowania[a].get('przebieg') or 0)
-                prz_b = int(tankowania[b].get('przebieg') or 0)
-                dystans_seg = prz_b - prz_a
-                litry_seg = sum(float(tankowania[k].get('litry') or 0) for k in range(a + 1, b + 1))
-                if dystans_seg > 0:
-                    segmenty_spalania.append((tankowania[b].get('data'), (litry_seg / dystans_seg) * 100))
+            # Ta sama metoda odcinków „do pełna”, co kafelek, trend i obserwacje
+            # (kolejność po dacie, jedno źródło energii, granica tylko z licznikiem).
+            segmenty_spalania = db.pobierz_serie_spalania(self.state.auto_id, limit=None, rodzaj=rodzaj_wykresow)
 
             spalanie_wg_mc = {}
             for data_str, wartosc in segmenty_spalania:
@@ -529,7 +534,7 @@ class MiksinZakladkiStatystyki:
                             rounded_stroke_cap=True,
                         )
                     ],
-                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text("L/100km", size=10), title_size=14),
+                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text(f"{jednostka_wykresow}/100km", size=10), title_size=14),
                     bottom_axis=fc.ChartAxis(labels=etykiety_osi, label_size=24),
                     min_y=max(0, min_val - zapas),
                     max_y=max_val_sp + zapas,
@@ -544,7 +549,7 @@ class MiksinZakladkiStatystyki:
                         padding=15,
                         content=ft.Column([
                             ft.Row([
-                                ft.Text("Średnie spalanie w miesiącu", weight="bold", size=14, expand=True),
+                                ft.Text(f"{etykiety_wykresow['zuzycie']} w miesiącu", weight="bold", size=14, expand=True),
                                 znacznik_trendu
                             ]),
                             ft.Container(height=200, content=wykres_liniowy),
@@ -556,7 +561,7 @@ class MiksinZakladkiStatystyki:
             # Zakres bierze też ranking stacji: karta stoi pod wykresem w tej
             # samej sekcji, więc „najtańsza stacja” musi dotyczyć tego samego
             # okresu, co krzywa nad nią.
-            trend_paliwa = db.pobierz_trend_cen_paliwa(self.state.auto_id, granica_cen)
+            trend_paliwa = db.pobierz_trend_cen_paliwa(self.state.auto_id, granica_cen, rodzaj_wykresow)
 
             cena_wg_mc = {}
             for data_str, cena in trend_paliwa["punkty"]:
@@ -611,7 +616,7 @@ class MiksinZakladkiStatystyki:
                             rounded_stroke_cap=True,
                         )
                     ],
-                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text(f"{utils.symbol_waluty()}/L", size=10), title_size=14),
+                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text(f"{utils.symbol_waluty()}/{jednostka_wykresow}", size=10), title_size=14),
                     bottom_axis=fc.ChartAxis(labels=etykiety_osi_c, label_size=24),
                     min_y=max(0, min_c - zapas_c),
                     max_y=max_c + zapas_c,
@@ -625,7 +630,8 @@ class MiksinZakladkiStatystyki:
                     content=ft.Container(
                         padding=15,
                         content=ft.Column([
-                            ft.Text("Średnia cena za litr w miesiącu", weight="bold", size=14),
+                            ft.Text(f"Średnia cena za {'kWh' if rodzaj_wykresow == db.ENERGIA_PRAD else 'litr'} w miesiącu",
+                                    weight="bold", size=14),
                             ft.Container(height=200, content=wykres_cen),
                         ], spacing=10)
                     )
@@ -645,7 +651,7 @@ class MiksinZakladkiStatystyki:
                                         expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                             ], spacing=6, expand=True),
                             ft.Text(
-                                f"{utils.formatuj_liczba(s['srednia_cena'], 2)} {utils.symbol_waluty()}/L  •  {s['liczba_tankowan']}x",
+                                f"{utils.formatuj_liczba(s['srednia_cena'], 2)} {utils.symbol_waluty()}/{jednostka_wykresow}  •  {s['liczba_tankowan']}x",
                                 size=13, weight="bold" if czy_najtansza else "normal", no_wrap=True,
                                 color=utils.KOLOR_STATUS["ok"] if czy_najtansza else ft.Colors.ON_SURFACE,
                             )
@@ -658,7 +664,7 @@ class MiksinZakladkiStatystyki:
                         padding=15,
                         content=ft.Column([
                             ft.Row([ft.Icon(ft.Icons.LOCAL_GAS_STATION, color=ft.Colors.PRIMARY),
-                                    ft.Text("Ranking stacji (śr. cena/L)", weight="bold", size=14, expand=True)], spacing=8),
+                                    ft.Text(f"Ranking stacji (śr. cena/{jednostka_wykresow})", weight="bold", size=14, expand=True)], spacing=8),
                             ft.Divider(height=10),
                             ft.Column(wiersze_stacji, spacing=10),
                         ])
@@ -883,7 +889,7 @@ class MiksinZakladkiStatystyki:
                 wiersze_trendu.append(ft.Text(
                     f"Porównanie {trend['odcinkow_ostatnio']} ostatnich odcinków „do pełna” "
                     f"ze średnią {trend['odcinkow_wczesniej']} wcześniejszych"
-                    + (f" (okno {trend['dni_okna']} dni)." if trend["dni_okna"] else ".")
+                    + (f" (okno {utils.formatuj_dni(trend['dni_okna'])})." if trend["dni_okna"] else ".")
                     + (" Sezon policzony z tego samego odcinka kalendarza w poprzednich "
                        "latach; kolor i obserwacje biorą się ze zmiany po jego odjęciu."
                        if trend.get("sezon_proc") is not None else ""),
@@ -945,9 +951,11 @@ class MiksinZakladkiStatystyki:
                             size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                     ], spacing=6))
                 wiersze_prognozy.append(ft.Text(
-                    f"Ekstrapolacja ze średniej z {prognoza['miesiecy_bazowych']} pełnych miesięcy. "
+                    f"Ekstrapolacja ze średniej z "
+                    f"{db.liczba_z_odmiana(prognoza['miesiecy_bazowych'], 'pełnego miesiąca', 'pełnych miesięcy', 'pełnych miesięcy')}. "
                     f"Bieżący miesiąc nie wchodzi do podstawy, żeby jego niepełność nie zaniżała wyniku. "
-                    f"Do końca roku zostało {prognoza['dni_pozostalo']} dni.",
+                    f"Do końca roku {db.odmien(prognoza['dni_pozostalo'], 'został', 'zostały', 'zostało')} "
+                    f"{utils.formatuj_dni(prognoza['dni_pozostalo'])}.",
                     size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                 ))
                 wiersze_prognozy.append(ft.FilledTonalButton(

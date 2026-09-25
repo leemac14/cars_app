@@ -2,8 +2,16 @@
 
 import sqlite3
 
+from .stale import ENERGIA_PRAD
 from .polaczenie import polacz_baze
-from .pomocnicze import formatuj_liczba_eksport
+from .pomocnicze import SEPARATOR_TYSIECY, formatuj_liczba_eksport, liczba_na_tekst
+from .energia import normalizuj_rodzaj_energii
+
+
+def _km(przebieg):
+    """Stan licznika na karcie osi czasu — ze spacją co trzy cyfry, jak
+    wszędzie indziej na ekranie („123 456 km”, nie „123456 km”)."""
+    return f"{liczba_na_tekst(przebieg or 0, 0, SEPARATOR_TYSIECY)} km"
 
 
 def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float | None, str | None, str, str | None, str | None]]:
@@ -11,7 +19,7 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
     (tankowania, historia serwisowa, wizyty zbiorcze, inne koszty, galeria
     karoserii, odczyty przebiegu) — używana przez widok /timeline ("dziennik
     życia auta"). Wpisy historii powiązane z wizytą zbiorczą są pomijane
-    (reprezentuje je already sama wizyta), analogicznie do eksportu danych.
+    (reprezentuje je już sama wizyta), analogicznie do eksportu danych.
     Zwraca listę krotek: (id_timeline, typ, data, tytul, opis, kwota, zalacznik,
     trasa, dodane_przez, notatka). 'dodane_przez' zasila filtr autorstwa przy
     pojeździe współdzielonym; zdjęcia karoserii nie mają tej kolumny, więc trafia
@@ -27,15 +35,19 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
         c = conn.cursor()
 
         c.execute(
-            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, zalacznik, dodane_przez, notatka "
+            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, zalacznik, dodane_przez, notatka, rodzaj_energii "
             "FROM tankowania WHERE auto_id=?", (auto_id,)
         )
         for r in c.fetchall():
-            opis = f"{formatuj_liczba_eksport(r['litry'], 1)} L" + (f" • {r['stacja']}" if r['stacja'] else "")
-            opis += f" • {int(r['przebieg'] or 0)} km"
+            # Ładowanie to nie „12 L” — jednostka i nazwa idą za rodzajem wpisu.
+            prad = normalizuj_rodzaj_energii(r["rodzaj_energii"], auto_id) == ENERGIA_PRAD
+            opis = (f"{formatuj_liczba_eksport(r['litry'], 1)} {'kWh' if prad else 'L'}"
+                    + (f" • {r['stacja']}" if r['stacja'] else ""))
+            opis += f" • {_km(r['przebieg'])}"
+            nazwa = "Ładowanie" if prad else "Tankowanie"
             zdarzenia.append((
                 f"tankowanie_{r['id']}", "Tankowanie", r["data"],
-                "Tankowanie" + (" (do pełna)" if r["do_pelna"] else ""), opis,
+                nazwa + (" (do pełna)" if r["do_pelna"] else ""), opis,
                 float(r["kwota"] or 0), r["zalacznik"], f"/tankowanie/edytuj/{r['id']}",
                 r["dodane_przez"], r["notatka"],
             ))
@@ -46,7 +58,7 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
             "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
         )
         for r in c.fetchall():
-            opis = f"{int(r['przebieg'] or 0)} km" + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            opis = _km(r['przebieg']) + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
             zdarzenia.append((
                 f"historia_{r['id']}", "Serwis", r["data"],
                 str(r["nazwa"]), opis,
@@ -91,7 +103,7 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
         for r in c.fetchall():
             zdarzenia.append((
                 f"odczyt_{r['id']}", "Odczyt przebiegu", r["data"],
-                "Odczyt licznika", f"{int(r['przebieg'] or 0)} km",
+                "Odczyt licznika", _km(r['przebieg']),
                 None, None, "/przebieg", None, r["notatka"],
             ))
 

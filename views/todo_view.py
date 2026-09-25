@@ -502,8 +502,8 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             wynik = db.usun_wiele_z_cofnieciem("do_zrobienia", list(self.zaznaczone_id))
             self.zakoncz_zaznaczanie()
             utils.przejdz(self._page, "/do-zrobienia")
-            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} pozycji.", wynik)
-        utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno chcesz usunąć {ile} zaznaczonych pozycji?", wykonaj)
+            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {db.liczba_z_odmiana(ile, 'pozycję', 'pozycje', 'pozycji')}.", wynik)
+        utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno chcesz usunąć zaznaczone pozycje ({ile})?", wykonaj)
 
     def _zapytaj_i_utworz_wizyte(self, ids, tytul_dialogu, tresc_dialogu):
         chk_podzespoly = ft.Checkbox(label="Zapisz luźne pozycje jako stałe podzespoły", value=False)

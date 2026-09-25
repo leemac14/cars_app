@@ -119,24 +119,9 @@ def wczytaj_plik_csv(sciezka) -> tuple[list[str], list[list[str]]]:
 
 def dopasuj_kolumny_tankowan(naglowki):
     """Automatyczne zgadywanie, która kolumna pliku odpowiada któremu polu.
-    Zwraca {pole: indeks_kolumny lub None} — użytkownik może to potem poprawić."""
-    znormalizowane = [_normalizuj_naglowek(h) for h in naglowki]
-    mapowanie = {pole: None for pole in POLA_IMPORTU_TANKOWAN}
-    zajete = set()
-
-    for pole, aliasy in _ALIASY_IMPORTU.items():
-        for dokladne in (True, False):
-            for i, h in enumerate(znormalizowane):
-                if i in zajete or not h:
-                    continue
-                trafienie = (h in aliasy) if dokladne else any(a in h for a in aliasy)
-                if trafienie:
-                    mapowanie[pole] = i
-                    zajete.add(i)
-                    break
-            if mapowanie[pole] is not None:
-                break
-    return mapowanie
+    Zwraca {pole: indeks_kolumny lub None} — użytkownik może to potem poprawić.
+    Ten sam mechanizm, co przy pozostałych typach importu (_dopasuj_kolumny)."""
+    return _dopasuj_kolumny(naglowki, POLA_IMPORTU_TANKOWAN, _ALIASY_IMPORTU)
 
 
 def przygotuj_import_tankowan(auto_id, naglowki, wiersze, mapowanie):

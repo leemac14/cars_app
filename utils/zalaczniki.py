@@ -91,7 +91,7 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
 
         stan["nowa_sciezka"] = polaczony
         stan["usuniete"] = False
-        odswiez(polaczony, f"{len(sciezki)} zdjęć połączonych w PDF", True)
+        odswiez(polaczony, f"{db.liczba_z_odmiana(len(sciezki), 'zdjęcie', 'zdjęcia', 'zdjęć')} w jednym PDF", True)
 
     def po_wyborze(e):
         if obsluzono["wartosc"]:

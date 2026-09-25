@@ -344,9 +344,11 @@ def main(page: ft.Page):
             utils.przejdz(page, "/")
             komunikat = "Pomyślnie wczytano bazę! Stara zapisana jako .bak"
             if naprawione:
-                komunikat += f" Dopasowano {naprawione} zdjęć/załączników do tego urządzenia."
+                komunikat += (f" Dopasowano do tego urządzenia "
+                              f"{db.liczba_z_odmiana(naprawione, 'załącznik', 'załączniki', 'załączników')}.")
             if brakujace_zalaczniki:
-                komunikat += f" Uwaga: {brakujace_zalaczniki} załączników nie ma w archiwum."
+                komunikat += (f" Uwaga: w archiwum brakuje "
+                              f"{db.liczba_z_odmiana(brakujace_zalaczniki, 'załącznika', 'załączników', 'załączników')}.")
             utils.pokaz_komunikat(page, komunikat)
         except sqlite3.DatabaseError:
             if kopia_zrobiona:
@@ -440,6 +442,9 @@ def main(page: ft.Page):
                 if res:
                     utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
             else:
+                # Starsza ścieżka (on_result): bufor po przerwanym eksporcie
+                # CSV/PDF zapisałby się zamiast kopii bazy — czyścimy go.
+                _pending_export["bajty"] = None
                 file_picker.save_file(file_name="kopia_baza.zip")
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])

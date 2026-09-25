@@ -828,7 +828,7 @@ class MiksinKokpitu:
                 stan["suma"],
                 lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
             )
-            stopka = (f"{stan['liczba']} wpisów w {dzisiaj.year}" if stan["liczba"]
+            stopka = (f"{db.liczba_z_odmiana(stan['liczba'], 'wpis', 'wpisy', 'wpisów')} w {dzisiaj.year}" if stan["liczba"]
                       else f"brak wpisów w {dzisiaj.year}")
             return ft.Container(
                 width=SZER_KAFLA + 20, padding=15,
@@ -859,11 +859,11 @@ class MiksinKokpitu:
             if stan["najblizsze"]:
                 dni = stan["najblizsze"]["dni"]
                 if dni < 0:
-                    opis = f"{stan['najblizsze']['tytul']} — {abs(dni)} dni po terminie"
+                    opis = f"{stan['najblizsze']['tytul']} — {utils.formatuj_dni(abs(dni))} po terminie"
                 elif dni == 0:
                     opis = f"{stan['najblizsze']['tytul']} — dziś"
                 else:
-                    opis = f"{stan['najblizsze']['tytul']} — za {dni} dni"
+                    opis = f"{stan['najblizsze']['tytul']} — za {utils.formatuj_dni(dni)}"
             else:
                 opis = "bez terminów"
 
@@ -902,7 +902,7 @@ class MiksinKokpitu:
             niski = stan["niski"]
             kolor = utils.KOLOR_STATUS["warning"] if niski else utils.KOLOR_STATUS["ok"]
             stopka = (", ".join(stan["nazwy_niskich"][:2]) if niski
-                      else f"{stan['razem']} pozycji na stanie")
+                      else f"{db.liczba_z_odmiana(stan['razem'], 'pozycja', 'pozycje', 'pozycji')} na stanie")
             return ft.Container(
                 width=SZER_KAFLA + 40, padding=15,
                 **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor)),

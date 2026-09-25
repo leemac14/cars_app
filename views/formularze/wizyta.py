@@ -174,7 +174,7 @@ class FormularzWizytyView(ft.View):
         gotowe = len(db.pakiety_dla_pojazdu(self.state.auto_id))
         if not wlasne:
             return f"{gotowe} gotowych — zaznacz kilka podzespołów naraz"
-        wlasne_opis = "1 własny" if wlasne == 1 else f"{wlasne} własne" if wlasne < 5 else f"{wlasne} własnych"
+        wlasne_opis = db.liczba_z_odmiana(wlasne, "własny", "własne", "własnych")
         return f"{gotowe} gotowych + {wlasne_opis}"
 
     def _odswiez_przycisk_pakietow(self):
@@ -348,7 +348,7 @@ class FormularzWizytyView(ft.View):
 
         def przelicz(e=None):
             ile = sum(1 for chk in checkboxy if chk.value)
-            licznik.value = f"Wybrano {ile} z {len(checkboxy)} podzespołów"
+            licznik.value = f"Wybrano {ile} z {db.liczba_z_odmiana(len(checkboxy), 'podzespołu', 'podzespołów', 'podzespołów')}"
             try:
                 licznik.update()
             except Exception:
@@ -540,15 +540,29 @@ class FormularzWizytyView(ft.View):
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
                 cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
 
-                # Zapamiętujemy zdalne_id usuwanych wpisów historii — DELETE+INSERT
-                # niżej to z punktu widzenia sync'a "usunięcie starych + utworzenie
-                # nowych", więc stare zdalne_id muszą dostać nagrobek (rejestrujemy
-                # go dopiero po commicie tej transakcji, patrz niżej).
-                cur.execute("SELECT zdalne_id FROM historia WHERE wizyta_id=? AND zdalne_id IS NOT NULL", (self.w_id,))
-                zdalne_id_historii_do_nagrobka = [r[0] for r in cur.fetchall()]
-
-                cur.execute("DELETE FROM historia WHERE wizyta_id=?", (self.w_id,))
-                for zid in wybrane: 
+                # Pozycje, które zostają zaznaczone, POPRAWIAMY w miejscu, a nie
+                # kasujemy i zakładamy od nowa. Skasowanie gubiło to, co pozycja
+                # niesie poza datą i przebiegiem — cenę pozycji z listy Do
+                # zrobienia (od niej zależy zwrot pozycji z wizyty), notatkę
+                # i załącznik — a do tego każda poprawka literówki w dacie
+                # robiła z całej wizyty nagrobki plus nowe rekordy w chmurze.
+                # Nagrobek dostają tylko pozycje odznaczone (rejestrujemy go
+                # dopiero po commicie tej transakcji, patrz niżej).
+                cur.execute("SELECT id, zadanie_id, zdalne_id FROM historia WHERE wizyta_id=? ORDER BY id", (self.w_id,))
+                zostaja = set()
+                for h_id, zid, zdalne_id in cur.fetchall():
+                    if zid in wybrane and zid not in zostaja:
+                        kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
+                        cur.execute("UPDATE historia SET data=?, przebieg=?, wykonawca=?, kategoria=? WHERE id=?",
+                                    (self.e_d.value, prz, wyk, kat, h_id))
+                        zostaja.add(zid)
+                        continue
+                    if zdalne_id:
+                        zdalne_id_historii_do_nagrobka.append(zdalne_id)
+                    cur.execute("DELETE FROM historia WHERE id=?", (h_id,))
+                for zid in wybrane:
+                    if zid in zostaja:
+                        continue
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
                     cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,0,?,?,?)", (self.w_id, zid, self.e_d.value, prz, wyk, kat, osoba_wizyty))
                 wizyta_id = self.w_id

@@ -86,7 +86,7 @@ def pokaz_bledy_formularza(page: ft.Page, bledy):
 
 def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
     """
-    Wspólna logika 'niski przebieg — potwierdź ponownie' używana przy zapisie
+    Wspólna logika 'nietypowy przebieg — potwierdź ponownie' używana przy zapisie
     tankowań i wpisów historii. Pamięta DOKŁADNĄ wartość, która została już
     potwierdzona (nie tylko fakt, że jakieś ostrzeżenie się kiedyś pojawiło),
     więc zmiana na INNĄ podejrzaną wartość ponownie wymusi potwierdzenie.
@@ -98,7 +98,9 @@ def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, aut
 
     if ostrzezenie and getattr(pole_przebiegu, "_potwierdzona_wartosc", None) != nowy_przebieg:
         pole_przebiegu._potwierdzona_wartosc = nowy_przebieg
-        ustaw_blad(pole_przebiegu, "Niski przebieg — kliknij Zapisz ponownie, aby potwierdzić")
+        # Ostrzeżenie bywa o przebiegu za niskim ALBO za wysokim (dodatkowa
+        # cyfra) — samo pole nie może twierdzić, że chodzi o „niski”.
+        ustaw_blad(pole_przebiegu, "Nietypowy przebieg — kliknij Zapisz ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, ostrzezenie, KOLOR_STATUS["warning"])
         return True

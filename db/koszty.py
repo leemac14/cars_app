@@ -7,6 +7,7 @@ from typing import Any
 from .stale import KATEGORIA_INNE_DOMYSLNA, KATEGORIE_INNYCH_KOSZTOW
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
+from .energia import domyslny_rodzaj_energii
 
 KATEGORIE_BUDZETU = {
     "paliwo": "Paliwo i energia",
@@ -190,21 +191,9 @@ def pobierz_koszt_miesiaca_do_dnia(auto_id, rok, miesiac, do_dnia):
 
     suma = 0.0
     with polacz_baze() as conn:
-        c = conn.cursor()
-        wiersze = []
-        c.execute("SELECT data, kwota FROM tankowania WHERE auto_id=?", (auto_id,))
-        wiersze += c.fetchall()
-        c.execute(
-            "SELECT h.data, h.cena FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
-        )
-        wiersze += c.fetchall()
-        c.execute("SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?", (auto_id,))
-        wiersze += c.fetchall()
-        c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
-        wiersze += c.fetchall()
+        wiersze = _wiersze_kosztow(conn, auto_id)
 
-    for data_str, kwota in wiersze:
+    for data_str, kwota, _kategoria in wiersze:
         d = parsuj_date(data_str)
         if d == datetime.min.date():
             continue
@@ -266,11 +255,15 @@ def pobierz_stacje_paliw(auto_id) -> list[str]:
     return [nazwa for nazwa, _ in wynik]
 
 
-def pobierz_trend_cen_paliwa(auto_id, od_data=None):
-    """Cena za litr w czasie (do wykresu) oraz zestawienie średnich cen per
-    stacja (do rankingu „najtańsza stacja, na której tankowałeś”). Uwzględnia
-    tylko tankowania z dodatnią liczbą litrów; stacja jest opcjonalna — wpisy
-    bez niej trafiają do 'punkty', ale nie do rankingu 'stacje'.
+def pobierz_trend_cen_paliwa(auto_id, od_data=None, rodzaj=None):
+    """Cena za litr (albo kWh) w czasie (do wykresu) oraz zestawienie średnich
+    cen per stacja (do rankingu „najtańsza stacja, na której tankowałeś”).
+    Uwzględnia tylko tankowania z dodatnią ilością; stacja jest opcjonalna —
+    wpisy bez niej trafiają do 'punkty', ale nie do rankingu 'stacje'.
+    `rodzaj` — jedno źródło energii; domyślnie podstawowe dla pojazdu (paliwo,
+    a u elektryka prąd). Hybryda plug-in bez tego filtra wrzucała do jednej
+    średniej złotówki za litr i za kWh, a „garaż” z ładowarką wygrywał ranking
+    stacji paliw o kilka złotych na „jednostce”.
     `od_data` (zakres wybrany chipami nad wykresem) obcina OBA wyniki naraz —
     krzywa cen i ranking stacji pod nią muszą mówić o tym samym okresie.
     Zwraca {"punkty": [(data, cena_za_litr), ...] posortowane chronologicznie,
@@ -279,15 +272,17 @@ def pobierz_trend_cen_paliwa(auto_id, od_data=None):
     if not auto_id:
         return {"punkty": [], "stacje": [], "najtansza": None}
 
+    domyslny = domyslny_rodzaj_energii(auto_id)
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT data, kwota, litry, stacja FROM tankowania WHERE auto_id=? AND litry > 0",
-            (auto_id,)
+            "SELECT data, kwota, litry, stacja FROM tankowania "
+            "WHERE auto_id=? AND litry > 0 AND COALESCE(rodzaj_energii, ?) = ?",
+            (auto_id, domyslny, rodzaj or domyslny)
         )
         wiersze = c.fetchall()
 
-        dane = []
+    dane = []
     for data_str, kwota, litry, stacja in wiersze:
         litry_f = float(litry or 0)
         if litry_f <= 0:

@@ -140,7 +140,7 @@ def pokaz_dialog_konfliktow(page: ft.Page, konflikty, auto_id=None, po_zmianie=N
                     po_zmianie()
                 else:
                     przejdz(page, page.route or "/")
-                pokaz_komunikat(page, f"Przywrócono wersję z chmury dla {ile} rekordów.")
+                pokaz_komunikat(page, f"Przywrócono wersję z chmury: {db.liczba_z_odmiana(ile, 'rekord', 'rekordy', 'rekordów')}.")
             except Exception as ex:
                 ukryj_ladowanie(page, okno)
                 pokaz_komunikat(page, f"Nie udało się przywrócić: {ex}", KOLOR_STATUS["error"])
@@ -188,7 +188,7 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
             elif odrzucone:
                 pokaz_komunikat(page, podsumowanie_odrzuconych(odrzucone), KOLOR_STATUS["warning"])
             elif db.czy_tylko_podglad(auto_id):
-                pokaz_komunikat(page, f"Pobrano {pobrano} zmian. Ten pojazd masz w trybie tylko do odczytu.")
+                pokaz_komunikat(page, f"Pobrano {db.liczba_z_odmiana(pobrano, 'zmianę', 'zmiany', 'zmian')}. Ten pojazd masz w trybie tylko do odczytu.")
             else:
                 pokaz_komunikat(page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
         except sync.SynchronizacjaWToku:
@@ -437,7 +437,7 @@ def zablokowane(page: ft.Page, auto_id, autor=None, pokaz=True):
     zabronione?”. Zwraca True i — domyślnie — tłumaczy dlaczego.
 
     Sam interfejs nie jest zabezpieczeniem; twardą granicę stawia wyzwalacz
-    w Supabase, a druga warstwa siedzi w sync.py (przy roli podglądu nic nie
+    w Supabase, a druga warstwa siedzi w pakiecie sync/ (przy roli podglądu nic nie
     jest wysyłane). To jest warstwa trzecia: żeby nie dało się kliknąć czegoś,
     co i tak zostanie cofnięte."""
     if wolno_zmieniac(auto_id, autor):
@@ -485,7 +485,7 @@ async def synchronizuj_cicho(page: ft.Page, auto_id, odswiez=True):
             except Exception:
                 log.polkniety(f"odświeżenie ekranu {trasa} po dociągnięciu zmian")
         try:
-            pokaz_komunikat(page, f"Pobrano {pobrano} zmian od pozostałych użytkowników.")
+            pokaz_komunikat(page, f"Pobrano {db.liczba_z_odmiana(pobrano, 'zmianę', 'zmiany', 'zmian')} od pozostałych użytkowników.")
         except Exception:
             log.polkniety("komunikat o pobranych zmianach")
     return wyslano, pobrano

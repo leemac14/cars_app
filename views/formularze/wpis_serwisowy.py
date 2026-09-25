@@ -134,15 +134,17 @@ class FormularzWpisView(ft.View):
                 return utils.pokaz_bledy_formularza(self._page, bledy)
             return utils.pokaz_komunikat(self._page, "Sprawdź ilości wykorzystanych części z magazynu.", utils.KOLOR_STATUS["error"])
 
-        # Pobieramy wykonawcę i jeśli wpisano z palca nową nazwę, zapisujemy ją do bazy
+        if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.h_id, tabela="historia", nowa_data_str=self.e_d.value):
+            return
+
+        # Nowy warsztat wpisany z palca trafia do bazy dopiero PO wszystkich
+        # sprawdzeniach — przy przerwanym zapisie (nietypowy przebieg,
+        # a potem „Wróć”) zostawał w słowniku warsztatów bez żadnego wpisu.
         wyk = self.get_wykonawca() or "Warsztat"
         if wyk and wyk != "Warsztat":
             db.dodaj_warsztat(self.state.auto_id, wyk)
-            
-        kat = self.e_kat.value if self.e_kat.visible else None
 
-        if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.h_id, tabela="historia", nowa_data_str=self.e_d.value):
-            return
+        kat = self.e_kat.value if self.e_kat.visible else None
 
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val

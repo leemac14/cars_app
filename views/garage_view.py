@@ -155,7 +155,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 wynik = db.usun_wiele_z_cofnieciem(tabela, list(self.zaznaczone_id))
             self.zakoncz_zaznaczanie()
             utils.przejdz(self._page, "/magazyn")
-            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} elementów.", wynik)
+            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {db.liczba_z_odmiana(ile, 'element', 'elementy', 'elementów')}.", wynik)
 
         tresc = f"Czy na pewno chcesz usunąć {ile} zaznaczonych elementów?"
         if tabela == "magazyn_czesci":

@@ -224,7 +224,7 @@ class FormularzTankowanieView(ft.View):
         k4 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
                                     domyslnie_otwarte=bool(notatka_val))
 
-        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz tankowanie", self.zapisz, "/")]
+        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, f"Zapisz {self.etykiety['zdarzenie']}", self.zapisz, "/")]
 
         super().__init__(
             route=f"/tankowanie/edytuj/{t_id}" if t_id else "/tankowanie/nowe",

@@ -7,7 +7,7 @@ from typing import Any
 
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
-from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, parsuj_int_bezpiecznie
+from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, parsuj_int_bezpiecznie
 from .ustawienia import pobierz_okno_kroczace, pobierz_walute
 from .synchronizacja import zarejestruj_nagrobek
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
@@ -501,7 +501,7 @@ def pobierz_zasieg_na_baku(auto_id):
         # Po dacie, przy remisie po przebiegu — ta sama kolejność co wszędzie
         # indziej, żeby dwa tankowania jednego dnia nie dały ujemnego dystansu.
         wpisy = sorted(c.fetchall(), key=lambda r: (parsuj_date(r[0]), int(r[1] or 0)))
-    pelne = [i for i, r in enumerate(wpisy) if r[3]]
+    pelne = [i for i, r in enumerate(wpisy) if r[3] and int(r[1] or 0) > 0]
 
     wynik = {
         "pojemnosc": pojemnosc,
@@ -662,19 +662,31 @@ def prognoza_kosztow(auto_id, dzis=None, miesiecy_bazowych=6):
 
 # -------------------- ROK W PIGUŁCE --------------------
 
+# Od jakiej części dystansu odniesienia wolno powiedzieć „prawie”.
+PROG_PRAWIE = 0.9
+
+
 def _porownanie_dystansu(km):
     """Zamienia przebieg w obraz („to prawie okrążenie Ziemi”). Bierzemy
     największy dystans odniesienia, który mieści się w przejechanym — tak, żeby
-    porównanie zawsze brzmiało jak osiągnięcie, a nie jak wymówka."""
+    porównanie zawsze brzmiało jak osiągnięcie, a nie jak wymówka.
+
+    „Prawie” tylko wtedy, gdy do następnego dystansu brakuje niewiele (90%).
+    Wcześniej „prawie przejazd do Berlina” dostawał ktoś, kto przejechał
+    650 km — czyli WIĘCEJ niż do Berlina."""
     if not km or km <= 0:
         return None
-    for dystans, opis in _DYSTANSE_ODNIESIENIA:
+    for i, (dystans, opis) in enumerate(_DYSTANSE_ODNIESIENIA):
         if km >= dystans:
+            wiekszy = _DYSTANSE_ODNIESIENIA[i - 1] if i > 0 else None
+            if wiekszy and km >= wiekszy[0] * PROG_PRAWIE:
+                return f"prawie {wiekszy[1]}"
             razy = km / dystans
             if razy >= 1.9:
                 return f"{opis} — {formatuj_liczba_eksport(razy, 1)} raza"
-            return f"prawie {opis}"
-    return None
+            return f"więcej niż {opis}"
+    najmniejszy, opis = _DYSTANSE_ODNIESIENIA[-1]
+    return f"prawie {opis}" if km >= najmniejszy * PROG_PRAWIE else None
 
 
 def _zmiana_1000km(koszt, km, koszt_poprzedni, km_poprzedni):
@@ -719,9 +731,13 @@ def podsumowanie_roku(auto_id, rok=None):
     if not auto_id:
         return None
     rok = int(rok or datetime.now().year)
-    poczatek, koniec = date_cls(rok, 1, 1), date_cls(rok, 12, 31)
+    koniec = date_cls(rok, 12, 31)
     dzis = datetime.now().date()
     granica = min(koniec, dzis) if rok == dzis.year else koniec
+    # Rok w toku porównujemy z TYM SAMYM kawałkiem roku poprzedniego (styczeń
+    # – dzisiejszy dzień), a nie z całym rokiem: inaczej we wrześniu każdy rok
+    # wychodził „taniej o 30%”, bo brakowało mu jeszcze jesieni.
+    granica_poprzedniego = _przesun_o_lata(granica, 1)
 
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
@@ -768,7 +784,7 @@ def podsumowanie_roku(auto_id, rok=None):
     km = _km_w_roku(historia_prz, rok, granica)
     # Rok poprzedni liczymy tą samą miarą — bez niego „koszt na 1000 km” nie ma
     # z czym się porównać, a sama kwota nie mówi, czy auto drożeje.
-    km_poprzedni = _km_w_roku(historia_prz, rok - 1)
+    km_poprzedni = _km_w_roku(historia_prz, rok - 1, granica_poprzedniego)
 
     # --- tankowania roku ---
     tank_roku = []
@@ -803,7 +819,8 @@ def podsumowanie_roku(auto_id, rok=None):
         }
 
     # --- średnie zużycie roku: odcinki zamknięte W TYM roku ---
-    seria = pobierz_serie_spalania(auto_id, limit=None, rodzaj=domyslny_rodzaj_energii(auto_id))
+    rodzaj_zuzycia = domyslny_rodzaj_energii(auto_id)
+    seria = pobierz_serie_spalania(auto_id, limit=None, rodzaj=rodzaj_zuzycia)
     zuzycie_roku = [w for data_str, w in seria
                     if parsuj_date(data_str) != datetime.min.date()
                     and parsuj_date(data_str).year == rok]
@@ -826,11 +843,11 @@ def podsumowanie_roku(auto_id, rok=None):
                  and parsuj_date(k[0]).year == rok and parsuj_date(k[0]) <= granica and k[1] > 0]
     najwiekszy = max(kandydaci, key=lambda k: k[1]) if kandydaci else None
 
-    # --- porównanie z poprzednim rokiem ---
+    # --- porównanie z poprzednim rokiem (ten sam okres, patrz wyżej) ---
     poprzedni = 0.0
     for data_str, kwota, _kat in wiersze_kosztow:
         d = parsuj_date(data_str)
-        if d != datetime.min.date() and d.year == rok - 1:
+        if d != datetime.min.date() and d.year == rok - 1 and d <= granica_poprzedniego:
             poprzedni += float(kwota or 0.0)
 
     return {
@@ -851,6 +868,9 @@ def podsumowanie_roku(auto_id, rok=None):
         "kwh": kwh,
         "ulubiona_stacja": ulubiona,
         "srednie_zuzycie": srednie_zuzycie,
+        # W jakiej jednostce jest `srednie_zuzycie` — grafika roku pisała
+        # zużycie elektryka w l/100km, bo o źródle nic nie wiedziała.
+        "zuzycie_elektryczne": rodzaj_zuzycia == ENERGIA_PRAD,
         "liczba_wizyt": len([w for w in wizyty_wpisy
                              if parsuj_date(w.get("data")) != datetime.min.date()
                              and parsuj_date(w.get("data")).year == rok]),
@@ -860,6 +880,9 @@ def podsumowanie_roku(auto_id, rok=None):
         "najwiekszy_wydatek": ({"data": najwiekszy[0], "kwota": najwiekszy[1], "opis": najwiekszy[2]}
                                if najwiekszy else None),
         "poprzedni_rok": poprzedni if poprzedni > 0 else None,
+        # Do którego dnia liczy się `poprzedni_rok` — przy roku w toku to ten
+        # sam dzień rok wcześniej, przy zamkniętym 31 grudnia.
+        "poprzedni_do": granica_poprzedniego.strftime("%d.%m.%Y"),
         "zmiana_rdr": ((kategorie["razem"] - poprzedni) / poprzedni * 100) if poprzedni > 0 else None,
         # Zmiana kwoty rok do roku rośnie także wtedy, gdy po prostu jeździsz
         # więcej. Ta druga liczba dzieli przez dystans, więc mówi o CENIE jazdy.
@@ -1315,7 +1338,8 @@ def obserwacje_analityczne(auto_id, limit=None):
         elif b["status"] == "uwaga":
             if b["dzien_przekroczenia"]:
                 tekst = (f"Przy obecnym tempie limit na {etykieta} skończy się "
-                         f"{b['dzien_przekroczenia']} — {b['dni_pozostalo']} dni przed końcem okresu.")
+                         f"{b['dzien_przekroczenia']} — "
+                         f"{liczba_z_odmiana(b['dni_pozostalo'], 'dzień', 'dni', 'dni')} przed końcem okresu.")
             else:
                 tekst = (f"Wykorzystane {formatuj_liczba_eksport(b['procent'], 0)}% limitu na {etykieta}, "
                          f"zostało {_kwota_txt(b['pozostalo'])}.")
@@ -1415,27 +1439,31 @@ def obserwacje_analityczne(auto_id, limit=None):
                 45,
             ))
 
-    # 6. Ceny paliwa: gdzie tankujesz drożej, niż musisz.
-    ceny = pobierz_trend_cen_paliwa(auto_id)
+    # 6. Ceny paliwa: gdzie tankujesz drożej, niż musisz. Jedno źródło energii
+    #    naraz — przy hybrydzie plug-in ładowarka w garażu nie może wygrać
+    #    rankingu stacji paliw, a oszczędność liczy się tym samym źródłem.
+    rodzaj_cen = domyslny_rodzaj_energii(auto_id)
+    ceny = pobierz_trend_cen_paliwa(auto_id, rodzaj=rodzaj_cen)
     stacje = [st for st in ceny.get("stacje", []) if st["liczba_tankowan"] >= 2]
     if len(stacje) >= 2:
         najtansza, najdrozsza = stacje[0], stacje[-1]
         roznica = najdrozsza["srednia_cena"] - najtansza["srednia_cena"]
         if najtansza["srednia_cena"] > 0 and roznica / najtansza["srednia_cena"] >= 0.04:
             litry_rocznie = 0.0
-            seria = pobierz_serie_spalania(auto_id, limit=5, rodzaj=ENERGIA_PALIWO)
+            seria = pobierz_serie_spalania(auto_id, limit=5, rodzaj=rodzaj_cen)
             sredni_dzienny = oblicz_sredni_dzienny_przebieg(auto_id)
             if seria and sredni_dzienny:
                 spalanie = sum(w for _, w in seria) / len(seria)
                 litry_rocznie = spalanie / 100 * sredni_dzienny * 365
             oszczednosc = roznica * litry_rocznie
-            ogon = (f" Tankując zawsze tam, zaoszczędziłbyś około {_kwota_txt(oszczednosc)} rocznie."
-                    if oszczednosc >= 50 else "")
+            prad = rodzaj_cen == ENERGIA_PRAD
+            ogon = (f" {'Ładując' if prad else 'Tankując'} zawsze tam, zaoszczędziłbyś około "
+                    f"{_kwota_txt(oszczednosc)} rocznie." if oszczednosc >= 50 else "")
             obserwacje.append(_obserwacja(
                 "stacje_ceny", "neutralny", "stacja", "Różnice między stacjami",
                 f"„{najtansza['nazwa']}” wychodzi średnio o "
-                f"{formatuj_liczba_eksport(roznica, 2)} {pobierz_walute()} na jednostce taniej niż "
-                f"„{najdrozsza['nazwa']}”.{ogon}",
+                f"{formatuj_liczba_eksport(roznica, 2)} {pobierz_walute()} na "
+                f"{'kWh' if prad else 'litrze'} taniej niż „{najdrozsza['nazwa']}”.{ogon}",
                 40,
             ))
 
@@ -1468,7 +1496,8 @@ def obserwacje_analityczne(auto_id, limit=None):
             obserwacje.append(_obserwacja(
                 "drozeje_1000km", "zly" if nad >= 2 * PROG_DROZENIA_1000KM else "uwaga",
                 "koszt_km", "Auto drożeje",
-                f"Ostatnie {krzywa['okno']} miesięcy to {_kwota_txt(biezacy_1000)} na 1000 km — "
+                f"Ostatnie {liczba_z_odmiana(krzywa['okno'], 'miesiąc', 'miesiące', 'miesięcy')} to "
+                f"{_kwota_txt(biezacy_1000)} na 1000 km — "
                 f"o {formatuj_liczba_eksport(nad, 0)}% więcej niż średnia z całej historii "
                 f"({_kwota_txt(srednia_1000)}). Sama suma roczna tego nie pokaże: rośnie też "
                 f"wtedy, gdy po prostu jeździsz więcej.",
@@ -1477,7 +1506,8 @@ def obserwacje_analityczne(auto_id, limit=None):
         elif nad <= -PROG_DROZENIA_1000KM:
             obserwacje.append(_obserwacja(
                 "tanieje_1000km", "dobry", "koszt_km", "Auto tanieje",
-                f"Ostatnie {krzywa['okno']} miesięcy to {_kwota_txt(biezacy_1000)} na 1000 km — "
+                f"Ostatnie {liczba_z_odmiana(krzywa['okno'], 'miesiąc', 'miesiące', 'miesięcy')} to "
+                f"{_kwota_txt(biezacy_1000)} na 1000 km — "
                 f"o {formatuj_liczba_eksport(abs(nad), 0)}% taniej niż średnia z całej historii "
                 f"({_kwota_txt(srednia_1000)}).",
                 45,
@@ -1544,6 +1574,7 @@ __all__ = [
     "MIN_ODCINKOW_SEZONU",
     "OKRESY_BUDZETU",
     "PROG_DROZENIA_1000KM",
+    "PROG_PRAWIE",
     "PROG_ROZJAZDU",
     "PROG_ISTOTNOSCI_TRENDU",
     "PROG_WYROZNIENIA_WYDATKU",

@@ -5,14 +5,14 @@ from date import parsuj_date
 from datetime import date as date_cls, datetime
 from typing import Any
 
-from .stale import ROK_MIN, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
+from .stale import ENERGIA_PALIWO, ROK_MIN, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, parsuj_int_bezpiecznie
 from .ustawienia import pobierz_okno_kroczace, pobierz_prog_dni_dokumentu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .koszty import DNI_W_MIESIACU, koszty_w_okresie
 from .powiadomienia import pobierz_powiadomienia
-from .statystyki import koszt_na_1000km, oblicz_kondycje_pojazdu
+from .statystyki import koszt_na_1000km, oblicz_kondycje_pojazdu, pobierz_statystyki_energii
 
 
 # ==================== TOŻSAMOŚĆ I METRYKI POJAZDU ====================
@@ -247,9 +247,8 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
     if dni_posiadania is not None and dni_posiadania < 0:
         dni_posiadania = None  # data sprzedaży przed zakupem albo zakup w przyszłości
     przebieg_zakupu = parsuj_int_bezpiecznie(dane.get("przebieg_zakupu"), 0)
+    # Bez przebiegu przy zakupie nie ma czego odjąć — wtedy None.
     km_u_ciebie = (przebieg - przebieg_zakupu) if (przebieg_zakupu > 0 and przebieg > przebieg_zakupu) else None
-    if km_u_ciebie is None and dni_posiadania and przebieg > 0 and not przebieg_zakupu:
-        km_u_ciebie = None  # bez przebiegu przy zakupie nie ma czego odjąć
 
     km_rocznie_u_ciebie = (
         km_u_ciebie / (dni_posiadania / 365.25)
@@ -352,8 +351,14 @@ def pobierz_dane_do_porownania(auto_id):
 
         dane["koszt_razem"] = dane["koszt_paliwo"] + dane["koszt_serwis"] + dane["koszt_inne"]
 
-        c.execute("SELECT przebieg, litry, do_pelna FROM tankowania WHERE auto_id=? ORDER BY przebieg", (auto_id,))
-        tankowania = c.fetchall()
+        # Dystans z samych liczników: wpis bez przebiegu (import z samym
+        # dystansem) stawał na początku listy z zerem i robił z całego
+        # licznika auta „przejechane w aplikacji”, zaniżając koszt kilometra.
+        c.execute(
+            "SELECT MIN(przebieg), MAX(przebieg), COUNT(*) FROM tankowania WHERE auto_id=? AND przebieg > 0",
+            (auto_id,)
+        )
+        prz_min, prz_max, prz_ile = c.fetchone()
 
         c.execute("SELECT COUNT(*) FROM historia h JOIN zadania z ON h.zadanie_id=z.id WHERE z.auto_id=?", (auto_id,))
         dane["liczba_wpisow_historii"] = c.fetchone()[0]
@@ -373,20 +378,15 @@ def pobierz_dane_do_porownania(auto_id):
     # radaru w porównaniu pojazdów.
     dane["kondycja"] = oblicz_kondycje_pojazdu(auto_id)
 
-    dystans = 0
-    if len(tankowania) >= 2:
-        dystans = max(0, int(tankowania[-1]["przebieg"] or 0) - int(tankowania[0]["przebieg"] or 0))
+    dystans = max(0, int(prz_max or 0) - int(prz_min or 0)) if (prz_ile or 0) >= 2 else 0
     dane["koszt_km"] = (dane["koszt_razem"] / dystans) if dystans > 0 else None
 
-    spalanie = None
-    peln_idx = [i for i, t in enumerate(tankowania) if t["do_pelna"]]
-    if len(peln_idx) >= 2:
-        p, o = peln_idx[0], peln_idx[-1]
-        d_p = int(tankowania[o]["przebieg"] or 0) - int(tankowania[p]["przebieg"] or 0)
-        l_p = sum(float(tankowania[k]["litry"] or 0) for k in range(p + 1, o + 1))
-        if d_p > 0:
-            spalanie = (l_p / d_p) * 100
-    dane["spalanie"] = spalanie
+    # Spalanie to wyłącznie PALIWO — tą samą metodą odcinków „do pełna”, co
+    # w Statystykach. Wcześniej litry i kWh szły do jednej sumy: elektryk
+    # dostawał „16 l/100km” i wygrywał „Najniższe spalanie” z dieslem, a plug-in
+    # miał liczbę bez znaczenia. Elektryk nie ma tu wartości w ogóle.
+    paliwo = next((s for s in pobierz_statystyki_energii(auto_id) if s["rodzaj"] == ENERGIA_PALIWO), None)
+    dane["spalanie"] = paliwo["zuzycie"] if paliwo and paliwo["zuzycie"] > 0 else None
 
     # Przypomnienie o liczniku mówi o danych, nie o aucie — w porównaniu
     # liczyłoby się jako termin, którego samochód wcale nie ma.

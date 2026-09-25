@@ -93,11 +93,15 @@ def _wolno_usunac(tabela, dane):
 
 
 def usun_z_cofnieciem(tabela, rekord_id):
-    """Usuwa pojedynczy rekord i zwraca callback cofnij() przywracający go z tymi
-    samymi wartościami (i tym samym id, o ile nic go w międzyczasie nie zajęło).
+    """Usuwa pojedynczy rekord i zwraca {"cofnij", "finalizuj", "dane"}.
+
+    cofnij() wstawia rekord z powrotem z tymi samymi wartościami — ale pod
+    NOWYM id (wstawiamy kolumny bez `id`, patrz kolumny_bez_id). Zostaje
+    `zdalne_id`, więc synchronizacja rozpoznaje w nim ten sam rekord, a części
+    z magazynu podpięte do wpisu serwisowego są przemapowane na nowe id.
     Dla tabel z załącznikiem plik NIE jest fizycznie kasowany od razu — zostaje
-    przeniesiony do folderu tymczasowego i wraca na miejsce przy cofnięciu, albo
-    zostaje skasowany dopiero wywołaniem usun_odroczony_zalacznik()."""
+    przeniesiony do folderu odroczonych i wraca na miejsce przy cofnięciu, albo
+    znika dopiero w finalizuj()."""
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -123,7 +127,9 @@ def usun_z_cofnieciem(tabela, rekord_id):
         oryginalna = sciezka_pliku_zalacznika(dane.get("zalacznik"))
         if oryginalna and os.path.exists(oryginalna):
             folder_tmp = _upewnij_folder_odroczonych()
-            sciezka_tymczasowa = os.path.join(folder_tmp, os.path.basename(oryginalna))
+            # Unikalny prefiks jak przy usuwaniu grupowym — dwa usunięcia pod
+            # rząd z tym samym plikiem w folderze odroczonych nie mogą się nadpisać.
+            sciezka_tymczasowa = os.path.join(folder_tmp, f"u_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
             try:
                 shutil.move(oryginalna, sciezka_tymczasowa)
             except Exception:

@@ -7,7 +7,7 @@ from datetime import datetime
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import formatuj_dni_dopelniacz, parsuj_float, parsuj_int, symbol_waluty
+from .format import formatuj_dni, formatuj_dni_dopelniacz, parsuj_float, parsuj_int, symbol_waluty
 from .zgodnosc import ustaw_blad
 from .wyglad import powierzchnia, tlo_stanu, tlo_toru
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
@@ -45,7 +45,7 @@ def usun_auto(page: ft.Page, state):
         pokaz_komunikat_cofnij(page, f"Pojazd „{nazwa}” przeniesiony do kosza.", wynik)
 
     dni = db.pobierz_dni_kosza()
-    okres = f"przez {dni} dni" if dni else "bez limitu czasu"
+    okres = f"przez {formatuj_dni(dni)}" if dni else "bez limitu czasu"
     potwierdz(
         page, "Usunąć pojazd?",
         f"„{nazwa}” trafi do kosza wraz z całą historią serwisową i zdjęciami. "

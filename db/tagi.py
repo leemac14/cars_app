@@ -2,7 +2,7 @@
 
 from .polaczenie import polacz_baze
 from .synchronizacja import zarejestruj_nagrobek
-from .nazwy import klucz_nazwy, normalizuj_nazwe
+from .nazwy import klucz_nazwy, normalizuj_nazwe, przepisz_tag_we_wpisach
 
 
 # Kolejność, w jakiej nowe tagi dostają kolory: najpierw barwy najłatwiejsze do
@@ -75,39 +75,31 @@ def usun_tag_ze_slownika(auto_id, tag_id, nazwa):
         c.execute("SELECT zdalne_id FROM tagi WHERE id=?", (tag_id,))
         w = c.fetchone()
         conn.execute("DELETE FROM tagi WHERE id=?", (tag_id,))
-
-        for tabela in ["tankowania", "wizyty", "inne_koszty"]:
-            c = conn.cursor()
-            c.execute(f"SELECT id, tagi FROM {tabela} WHERE auto_id=? AND tagi LIKE ?", (auto_id, f'%{nazwa}%'))
-            for r_id, tagi_str in c.fetchall():
-                if not tagi_str: continue
-                tagi_lista = [t.strip() for t in tagi_str.split(",") if t.strip()]
-                if nazwa in tagi_lista:
-                    tagi_lista.remove(nazwa)
-                    nowe_tagi = ",".join(tagi_lista)
-                    conn.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowe_tagi, r_id))
+        przepisz_tag_we_wpisach(c, auto_id, nazwa)
 
     if w and w[0]:
         zarejestruj_nagrobek("tagi", w[0])
 
 
 def edytuj_tag_w_slowniku(auto_id, tag_id, stara_nazwa, nowa_nazwa, nowy_kolor):
-    """Aktualizuje nazwę/kolor taga i kaskadowo podmienia ją w tekstowych wpisach rekordu."""
+    """Aktualizuje nazwę/kolor taga i kaskadowo podmienia ją w tekstowych
+    wpisach. Zwraca False (i niczego nie zmienia), gdy nowa nazwa to tylko
+    inna pisownia INNEGO tagu tego pojazdu — dwa tagi o jednym kluczu nie
+    dałyby się odróżnić ani w filtrze, ani przy kolorowaniu. Do połączenia
+    dwóch tagów służy narzędzie scalania duplikatów."""
+    nowa_nazwa = normalizuj_nazwe(nowa_nazwa)
+    if not nowa_nazwa:
+        return False
+    klucz = klucz_nazwy(nowa_nazwa)
     with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, nazwa FROM tagi WHERE auto_id=? AND id<>?", (auto_id, tag_id))
+        if any(klucz_nazwy(n) == klucz for _, n in c.fetchall()):
+            return False
         conn.execute("UPDATE tagi SET nazwa=?, kolor=? WHERE id=?", (nowa_nazwa, nowy_kolor, tag_id))
-        
         if stara_nazwa != nowa_nazwa:
-            for tabela in ["tankowania", "wizyty", "inne_koszty"]:
-                c = conn.cursor()
-                c.execute(f"SELECT id, tagi FROM {tabela} WHERE auto_id=? AND tagi LIKE ?", (auto_id, f'%{stara_nazwa}%'))
-                for r_id, tagi_str in c.fetchall():
-                    if not tagi_str: continue
-                    tagi_lista = [t.strip() for t in tagi_str.split(",") if t.strip()]
-                    if stara_nazwa in tagi_lista:
-                        idx = tagi_lista.index(stara_nazwa)
-                        tagi_lista[idx] = nowa_nazwa
-                        nowe_tagi = ",".join(tagi_lista)
-                        conn.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowe_tagi, r_id))
+            przepisz_tag_we_wpisach(c, auto_id, stara_nazwa, nowa_nazwa)
+    return True
 
 
 __all__ = [

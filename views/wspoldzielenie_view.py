@@ -455,9 +455,10 @@ class WspoldzielenieView(ft.View):
                 elif odrzucone:
                     utils.pokaz_komunikat(self._page, utils.podsumowanie_odrzuconych(odrzucone), utils.KOLOR_STATUS["warning"])
                 elif self.rola == db.ROLA_PODGLAD:
-                    utils.pokaz_komunikat(self._page, f"Pobrano {pobrano} zmian.")
+                    utils.pokaz_komunikat(self._page, f"Pobrano {db.liczba_z_odmiana(pobrano, 'zmianę', 'zmiany', 'zmian')}.")
                 else:
-                    utils.pokaz_komunikat(self._page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+                    utils.pokaz_komunikat(self._page, f"Wysłano {db.liczba_z_odmiana(wyslano, 'rekord', 'rekordy', 'rekordów')}, "
+                                          f"pobrano {db.liczba_z_odmiana(pobrano, 'rekord', 'rekordy', 'rekordów')}.")
             except sync.SynchronizacjaWToku:
                 utils.ukryj_ladowanie(self._page, dlg)
                 utils.pokaz_komunikat(self._page, "Synchronizacja już trwa — chwilę to potrwa.")
@@ -480,7 +481,7 @@ class WspoldzielenieView(ft.View):
                     utils.ukryj_ladowanie(self._page, dlg)
                     utils.przejdz(self._page, "/wspoldzielenie")
                     if przywrocono:
-                        utils.pokaz_komunikat(self._page, f"Przywrócono {przywrocono} rekordów z chmury.")
+                        utils.pokaz_komunikat(self._page, f"Przywrócono {db.liczba_z_odmiana(przywrocono, 'rekord', 'rekordy', 'rekordów')} z chmury.")
                     else:
                         utils.pokaz_komunikat(self._page, "Brak danych do przywrócenia — wszystko już jest na miejscu.")
                 except Exception as ex:
