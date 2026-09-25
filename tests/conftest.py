@@ -83,6 +83,12 @@ def magazyn(tmp_path, monkeypatch):
     for podkatalog in ("zalaczniki", "zalaczniki_odroczone", "kosz_zalaczniki"):
         (katalog / podkatalog).mkdir()
 
+    # Nowy katalog to nowa baza, a fixture `baza` wstawia ją kopią pliku — z
+    # pominięciem polacz_baze, więc bez podbicia znacznika zmian. Metryki
+    # policzone w poprzednim teście (ten sam numer pojazdu, inne dane) nie mogą
+    # przeżyć w pamięci (patrz db/pamiec.py).
+    db.zanotuj_zmiane_danych()
+
     return katalog
 
 

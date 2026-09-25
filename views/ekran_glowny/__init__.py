@@ -54,6 +54,8 @@ class MainView(
         self.kokpit_edycja = False       # True = kafelki kokpitu można przeciągać (patrz _buduj_kokpit)
         self.kokpit_kontener = None      # kontener przełączany między siatką a trybem układania
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
+        self._metryki_kokpitu = {}       # dane kafelków z pamięci metryk (patrz _zawartosc_kokpitu)
+        self._kokpit_bez_kafelkow = False  # żaden kafelek nie jest włączony (patrz buduj_kokpit_ekran)
         self._scena_zakladki = None      # animacja wejścia aktywnej zakładki (utils.ScenaWejscia)
         self.przelacznik_zakladek = None # zawartość zakładki żyje w nim (patrz przelacz_zakladke)
         self._gotowy = False             # True dopiero po super().__init__ (patrz _po_zbudowaniu_zakladki)

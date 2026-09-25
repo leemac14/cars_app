@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, TERMINY_DOKUMENTOW
+from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .pomocnicze import opis_terminu_dni
 from .ustawienia import (
@@ -167,10 +168,21 @@ def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=
     źródła), po którym rozpoznajemy je między odświeżeniami. Treść się do tego
     nie nadaje, bo opis zmienia się z każdym dniem („Zostało 12 dni”).
     pomin_wyciszone=False zwraca komplet, łącznie z odłożonymi — potrzebne
-    panelowi powiadomień do sekcji „Odkładane”."""
+    panelowi powiadomień do sekcji „Odkładane”.
+
+    Z progami z Ustawień wynik trzyma pamięć do najbliższego zapisu (patrz
+    db/pamiec.py) — kafelek „Termin”, dzwonek, kondycja i porównanie pytały
+    o tę samą listę osobno. Jawnie podany próg to podgląd „co by było”
+    i liczy się zawsze od nowa."""
     if not auto_id:
         return []
+    if prog_km is None and prog_dni is None:
+        klucz = "powiadomienia" if pomin_wyciszone else "powiadomienia:z_odlozonymi"
+        return z_pamieci(klucz, auto_id, lambda: _policz_powiadomienia(auto_id, None, None, pomin_wyciszone))
+    return _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone)
 
+
+def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
     if prog_km is None: prog_km = pobierz_prog_km()
     prog_dni_wymuszony = prog_dni is not None
     if prog_dni is None: prog_dni = pobierz_prog_dni()

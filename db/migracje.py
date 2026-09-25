@@ -9,6 +9,7 @@ import zipfile
 import log
 
 from .stale import BAZA_DANYCH
+from .pamiec import zanotuj_zmiane_danych
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .zalaczniki import _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki
@@ -742,9 +743,15 @@ def init_db():
 
             cursor.execute(
                 "INSERT INTO ustawienia (klucz, wartosc) VALUES ('schema_version', ?) "
-                "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc", 
+                "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc",
                 (str(i + 1),)
             )
+
+    # Plik bazy mógł właśnie zostać podmieniony w całości — wczytanie kopii
+    # zapasowej kopiuje go z pominięciem polacz_baze, a kopia już zmigrowana nie
+    # zapisze tu ani jednego wiersza. To, co policzono ze starego pliku (metryki
+    # kokpitu, odznaki), musi więc zniknąć z pamięci wprost.
+    zanotuj_zmiane_danych()
 
 
 def porzadki_startowe() -> tuple[int, int]:

@@ -3,6 +3,7 @@
 import sqlite3
 from datetime import datetime
 
+from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .pojazd import terminy_pojazdu
@@ -141,7 +142,9 @@ def zanotuj_uzycie_ekranu(ekran_id):
     if not ekran_id:
         return
     try:
-        with polacz_baze() as conn:
+        # Pamięć interfejsu, nie dane: router woła to przy KAŻDYM przejściu,
+        # więc zapis nie może unieważniać pamięci metryk (patrz db/pamiec.py).
+        with polacz_baze(zmienia_dane=False) as conn:
             conn.execute(
                 "INSERT INTO ekrany_uzycie (ekran_id, licznik, ostatnio) VALUES (?, 1, ?) "
                 "ON CONFLICT(ekran_id) DO UPDATE SET licznik = licznik + 1, ostatnio = excluded.ostatnio",
@@ -189,10 +192,18 @@ def liczniki_nawigacji(auto_id):
     Szuflada, kafelki sekcji i pasek zakładek pokazują te same liczby, więc
     liczenie ich osobno w każdym miejscu byłoby trzema zapytaniami o to samo.
 
+    Wynik trzyma pamięć (patrz db/pamiec.py) do najbliższego zapisu: ekran
+    główny pyta o odznaki przy każdym powrocie i przy każdej zmianie zakładki,
+    a zmieniają się one dopiero wtedy, gdy ktoś coś zapisze.
+
     Zwraca słownik {ekran_id: liczba}; brak klucza = brak odznaki."""
-    wynik = {}
     if not auto_id:
-        return wynik
+        return {}
+    return z_pamieci("liczniki_nawigacji", auto_id, lambda: _policz_liczniki_nawigacji(auto_id))
+
+
+def _policz_liczniki_nawigacji(auto_id):
+    wynik = {}
     try:
         with polacz_baze() as conn:
             c = conn.cursor()

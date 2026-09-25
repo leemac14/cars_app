@@ -12,11 +12,38 @@ def pobierz_ustawienie(klucz, domyslna=None):
         return w[0] if w else domyslna
 
 
+# Klucze, które pamiętają wyłącznie STAN INTERFEJSU: gdzie użytkownik skończył,
+# jak ułożył kafelki, czego ostatnio szukał. Ich zapis nie zmienia żadnej liczby
+# policzonej z bazy, więc nie unieważnia pamięci metryk (patrz db/pamiec.py).
+# Router zapisuje pozycję startową przy przejściach między ekranami — gdyby to
+# czyściło pamięć, kokpit liczyłby się od nowa po każdym powrocie.
+USTAWIENIA_INTERFEJSU = frozenset({
+    "ostatni_pojazd",
+    "ostatnia_zakladka",
+    "ostatnia_podzakladka_kosztow",
+    "ostatnie_wyszukiwania",        # db.KLUCZ_HISTORII_WYSZUKIWAN
+})
+
+# Układ kokpitu: wspólny „kokpit_widgety” i per pojazd „kokpit_widgety_<id>”.
+# Metryki liczą się dla kafelka, nie dla jego miejsca w siatce, a kafelek
+# dołożony w trybie układania dolicza tylko własne (patrz db.metryki_kokpitu).
+PRZEDROSTKI_USTAWIEN_INTERFEJSU = ("kokpit_widgety",)
+
+
+def ustawienie_interfejsu(klucz) -> bool:
+    """Czy zapis tego klucza to tylko pamięć interfejsu (patrz wyżej)."""
+    klucz = str(klucz)
+    return klucz in USTAWIENIA_INTERFEJSU or klucz.startswith(PRZEDROSTKI_USTAWIEN_INTERFEJSU)
+
+
 def zapisz_ustawienie(klucz, wartosc):
-    with polacz_baze() as conn:
+    # WHERE przy DO UPDATE: zapis tej samej wartości (Ustawienia → „Zapisz”
+    # bez żadnej zmiany) nie zmienia wiersza, więc nie unieważnia pamięci metryk.
+    with polacz_baze(zmienia_dane=not ustawienie_interfejsu(klucz)) as conn:
         conn.execute(
             "INSERT INTO ustawienia (klucz, wartosc) VALUES (?, ?) "
-            "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc",
+            "ON CONFLICT(klucz) DO UPDATE SET wartosc=excluded.wartosc "
+            "WHERE wartosc IS NOT excluded.wartosc",
             (klucz, wartosc)
         )
 
@@ -26,7 +53,7 @@ def usun_ustawienie(klucz):
     tam, gdzie „brak wpisu” znaczy coś innego niż pusty string — np. próg dni
     dla konkretnego terminu (wtedy obowiązuje globalny) albo układ kokpitu
     pojazdu (wtedy dziedziczy wspólny)."""
-    with polacz_baze() as conn:
+    with polacz_baze(zmienia_dane=not ustawienie_interfejsu(klucz)) as conn:
         conn.execute("DELETE FROM ustawienia WHERE klucz=?", (klucz,))
 
 
@@ -537,6 +564,9 @@ __all__ = [
     "KOKPIT_WIDGETY",
     "KOKPIT_WIDGETY_DOMYSLNE",
     "USTAWIENIA_PER_POJAZD",
+    "USTAWIENIA_INTERFEJSU",
+    "PRZEDROSTKI_USTAWIEN_INTERFEJSU",
+    "ustawienie_interfejsu",
     "KLUCZ_OKNA_1000KM",
     "OKNA_1000KM",
     "OKNO_1000KM_DOMYSLNE",

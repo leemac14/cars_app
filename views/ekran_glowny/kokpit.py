@@ -1,6 +1,5 @@
 """Kokpit: kafelki wybrane przez użytkownika w siatce, tryb układania i skróty."""
 
-import calendar
 import db
 import flet as ft
 import sync
@@ -51,44 +50,27 @@ class MiksinKokpitu:
         scena = self._scena_zakladki or utils.ScenaWejscia(wlaczona=False)
 
         wlaczone = db.pobierz_widgety_kokpitu(self.state.auto_id)
+        # buduj_kokpit_ekran pyta o to samo zaraz po nas — bez drugiego zapytania.
+        self._kokpit_bez_kafelkow = not wlaczone
         if not wlaczone:
             return ft.Container()
 
         dzisiaj = datetime.now()
-        # Rola przy tym pojeździe — czytana RAZ na przebudowę, bo pyta o nią
-        # sześć kafelków akcji naraz.
-        tylko_podglad = db.czy_tylko_podglad(self.state.auto_id)
-
-        # --- Dane wspólne, liczone tylko gdy faktycznie potrzebne przez wybrane widżety ---
-        potrzebne_mc = {"koszt_miesiac", "wykres"} & set(wlaczone)
-        dane_mc = db.pobierz_koszty_miesieczne(self.state.auto_id, 6) if potrzebne_mc else []
-
-        potrzebne_porownanie = {"koszt_km", "spalanie"} & set(wlaczone)
-        dane_porownanie = db.pobierz_dane_do_porownania(self.state.auto_id) if potrzebne_porownanie else None
-        dane_porownanie = dane_porownanie or {}
-
-        # Punkty do sparkline przy „Śr. spalanie” — ta sama metoda liczenia, co
-        # wykres trendu w Statystykach, tylko per odcinek między pełnymi bakami.
-        # Przy hybrydzie plug-in kafelek „Śr. spalanie” pokazuje stronę PALIWOWĄ
-        # (dla elektryka — prądową): mieszanie litrów z kWh w jednej serii dałoby
-        # liczbę bez znaczenia. Pełne rozbicie jest w Statystykach.
-        rodzaj_kokpitu = db.domyslny_rodzaj_energii(self.state.auto_id)
-        seria_spalania = db.pobierz_serie_spalania(self.state.auto_id, 12, rodzaj=rodzaj_kokpitu) if "spalanie" in wlaczone else []
-        # Iskra przy pozostałych kafelkach liczbowych — kokpit ma wtedy jeden,
-        # spójny język: liczba mówi „ile”, iskra mówi „w którą stronę”.
-        seria_przebiegu = db.pobierz_serie_dziennego_przebiegu(self.state.auto_id, 12) if "przebieg_dzienny" in wlaczone else []
-        seria_koszt_km = db.pobierz_serie_kosztu_km(self.state.auto_id, 6) if "koszt_km" in wlaczone else []
-        # Jednostka dystansu raz na cały kokpit. Iskry zostają w km: pokazują
-        # tylko kształt, a ten od mnożenia przez stałą się nie zmienia.
+        # Waluta i jednostka dystansu RAZ na przebudowę. Każda kwota na każdym
+        # kafelku pytała bazę o symbol waluty osobno — przy komplecie kafelków
+        # dwadzieścia kilka wejść do bazy po ten sam napis. Zmiana w Ustawieniach
+        # i tak przebudowuje cały ekran. Iskry zostają w km: pokazują tylko
+        # kształt, a ten od mnożenia przez stałą się nie zmienia.
+        waluta = utils.symbol_waluty()
         j = utils.jednostka_dystansu()
-        # Krzywa narastająca to przejście po WSZYSTKICH wpisach kosztowych auta,
-        # więc liczymy ją wyłącznie, gdy kafelek naprawdę stoi na kokpicie.
-        dane_skumulowane = db.koszt_skumulowany(
-            self.state.auto_id, z_cena_zakupu=db.czy_skumulowany_z_cena_zakupu()
-        ) if "skumulowany" in wlaczone else {}
-        dane_1000km = utils.krzywa_1000_w_jednostce(db.koszt_na_1000km(
-            self.state.auto_id, db.pobierz_okno_kroczace(self.state.auto_id)
-        ), j) if "koszt_1000km" in wlaczone else {}
+
+        def metryka(nazwa):
+            """Dane kafelka z pamięci metryk (patrz db/kokpit.py) — liczone raz
+            dla wszystkich kafelków i trzymane do najbliższego zapisu. Słownik
+            wypełnia _zawartosc_kokpitu przy KAŻDEJ przebudowie siatki, więc
+            kafelek dołożony w trybie układania ma dane od razu, a nie dopiero
+            po ponownym wejściu na ekran."""
+            return self._metryki_kokpitu[nazwa]
 
         def idz_do_statystyk(podzakladka=0):
             def handler(e):
@@ -207,6 +189,7 @@ class MiksinKokpitu:
             )
 
         def widget_koszt_miesiac():
+            dane_mc = metryka("koszty_miesieczne")
             koszt_biezacy = dane_mc[-1][2] if dane_mc else 0.0
             dzien_dzisiaj = dzisiaj.day
 
@@ -216,18 +199,9 @@ class MiksinKokpitu:
             if dzien_dzisiaj < 7 or not dane_mc:
                 zmiana_mc, bez_trendu = None, "Za wcześnie na trend"
             else:
-                rok_poprz, mies_poprz = dzisiaj.year, dzisiaj.month - 1
-                if mies_poprz <= 0:
-                    mies_poprz += 12
-                    rok_poprz -= 1
-                dni_w_poprz_miesiacu = calendar.monthrange(rok_poprz, mies_poprz)[1]
-                # Zabezpieczenie na 31. dzień miesiąca porównywanego z krótszym
-                # poprzednim miesiącem (np. 31 marca -> luty ma max 28/29 dni).
-                do_dnia = min(dzien_dzisiaj, dni_w_poprz_miesiacu)
-
-                koszt_poprzedni_do_dnia = db.pobierz_koszt_miesiaca_do_dnia(
-                    self.state.auto_id, rok_poprz, mies_poprz, do_dnia
-                )
+                # Poprzedni miesiąc do TEGO SAMEGO dnia (z zabezpieczeniem na
+                # 31 marca kontra luty) liczy metryka — patrz db/kokpit.py.
+                koszt_poprzedni_do_dnia = metryka("koszt_poprzedniego_miesiaca") or 0.0
 
                 # Liczenie i kolorowanie chipa oddane do utils.znacznik_trendu:
                 # ten sam próg 5% i ta sama paleta, co na pozostałych kafelkach
@@ -251,7 +225,7 @@ class MiksinKokpitu:
                     utils.etykieta("Koszt w mies.", expand=True),
                 ], spacing=6),
                 liczba_kafelka(koszt_biezacy,
-                               lambda v: f"{utils.formatuj_liczba(v)} {utils.symbol_waluty()}"),
+                               lambda v: f"{utils.formatuj_liczba(v)} {waluta}"),
             ]
             if iskra_mc is not None:
                 zawartosc.append(iskra_mc)
@@ -275,7 +249,7 @@ class MiksinKokpitu:
             )
 
         def widget_termin():
-            powiadomienia = db.pobierz_powiadomienia(self.state.auto_id)
+            powiadomienia = metryka("powiadomienia")
             if powiadomienia:
                 p = powiadomienia[0]
                 kolor_p = utils.KOLOR_STATUS["critical"] if p["status"] == "przeterminowane" else utils.KOLOR_STATUS["warning"]
@@ -321,6 +295,7 @@ class MiksinKokpitu:
             )
 
         def widget_wykres():
+            dane_mc = metryka("koszty_miesieczne")
             maks_mc = max((s for _, _, s in dane_mc), default=0)
             dzis = datetime.now()
             slupki = []
@@ -336,7 +311,7 @@ class MiksinKokpitu:
                         scena.wysokosc(ft.Container(
                             width=20, height=wysokosc, border_radius=5,
                             bgcolor=ft.Colors.PRIMARY if biezacy else ft.Colors.with_opacity(0.35, ft.Colors.PRIMARY),
-                            tooltip=f"{MIESIACE_NAZWY[mies - 1]} {rok}: {utils.formatuj_liczba(suma)} {utils.symbol_waluty()}",
+                            tooltip=f"{MIESIACE_NAZWY[mies - 1]} {rok}: {utils.formatuj_liczba(suma)} {waluta}",
                             animate=ft.Animation(300, ft.AnimationCurve.EASE_OUT),
                         ), wysokosc, od=4),
                         ft.Text(f"{mies:02d}", size=10, weight="bold" if biezacy else "normal",
@@ -364,6 +339,7 @@ class MiksinKokpitu:
             Krzywa narastająca rośnie ZAWSZE, więc „rośnie o 12%" nie niosłoby
             tu żadnej informacji; stopka mówi zamiast tego, od kiedy liczy się
             rachunek i ile wychodzi na dzień."""
+            dane_skumulowane = metryka("skumulowany") or {}
             iskra = utils.sparkline(dane_skumulowane.get("iskra") or [],
                                     ft.Colors.PRIMARY, wysokosc=WYS_ISKRY)
             if iskra is None:
@@ -378,7 +354,7 @@ class MiksinKokpitu:
                               + dane_skumulowane["start"].strftime("%m.%Y"))
             if dane_skumulowane.get("koszt_dzien"):
                 stopka.append(f"{utils.formatuj_liczba(dane_skumulowane['koszt_dzien'])} "
-                              f"{utils.symbol_waluty()}/dzień")
+                              f"{waluta}/dzień")
 
             return ft.Container(
                 width=SZER_KAFLA + 60, padding=15,
@@ -392,7 +368,7 @@ class MiksinKokpitu:
                     ], spacing=6),
                     tekst_wartosci(liczba_kafelka(
                         dane_skumulowane.get("suma") or None,
-                        lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+                        lambda v: f"{utils.formatuj_liczba(v, 0)} {waluta}",
                     )),
                     iskra,
                     stopka_iskry(" · ".join(stopka)),
@@ -405,6 +381,7 @@ class MiksinKokpitu:
             Chip trendu bierze zmianę ROK DO ROKU, a nie początek kontra koniec
             iskry: przy dziesięcioletniej historii ta druga porównywałaby dzisiaj
             z czasami, których nikt już nie pamięta."""
+            dane_1000km = utils.krzywa_1000_w_jednostce(metryka("koszt_1000km"), j) or {}
             iskra = utils.sparkline(dane_1000km.get("iskra") or [], ft.Colors.PRIMARY,
                                     wysokosc=WYS_ISKRY)
             if iskra is None or not dane_1000km.get("biezacy"):
@@ -417,7 +394,7 @@ class MiksinKokpitu:
             srednia = dane_1000km.get("srednia_zyciowa")
             if srednia:
                 stopka_tekst += (f" • średnio {utils.formatuj_liczba(srednia, 0)} "
-                                 f"{utils.symbol_waluty()}")
+                                 f"{waluta}")
             chip_rdr = (utils.znacznik_trendu(dane_1000km["zmiana_rdr"], wzrost_zly=True,
                                               rozmiar=utils.FS["caption"])
                         if dane_1000km.get("zmiana_rdr") is not None else None)
@@ -434,7 +411,7 @@ class MiksinKokpitu:
                     ], spacing=6),
                     tekst_wartosci(liczba_kafelka(
                         dane_1000km.get("biezacy"),
-                        lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+                        lambda v: f"{utils.formatuj_liczba(v, 0)} {waluta}",
                     )),
                     iskra,
                     stopka_iskry(stopka_tekst, chip=chip_rdr),
@@ -442,10 +419,11 @@ class MiksinKokpitu:
             )
 
         def widget_koszt_km():
-            koszt_km = dane_porownanie.get("koszt_km")
+            koszt_km = metryka("porownanie").get("koszt_km")
+            seria_koszt_km = metryka("seria_kosztu_km")
             wartosc = liczba_kafelka(
                 db.na_jednostke_dystansu(koszt_km, j) if koszt_km else None,
-                lambda v: f"{utils.formatuj_liczba(v, 2)} {utils.symbol_waluty()}/{j}",
+                lambda v: f"{utils.formatuj_liczba(v, 2)} {waluta}/{j}",
             )
             # Liczba jest z całego życia auta, iskra pokazuje ostatnie miesiące —
             # dopiero razem widać, czy jazda ostatnio drożeje, czy tanieje.
@@ -456,11 +434,14 @@ class MiksinKokpitu:
             )
 
         def widget_spalanie():
-            czy_prad_kokpit = rodzaj_kokpitu == db.ENERGIA_PRAD
-            wartosci_serii = [w for _, w in seria_spalania]
+            # Przy hybrydzie plug-in strona PALIWOWA, przy elektryku — prądowa
+            # (patrz db/kokpit.py); pełne rozbicie jest w Statystykach.
+            dane_spalania = metryka("spalanie")
+            czy_prad_kokpit = dane_spalania["rodzaj"] == db.ENERGIA_PRAD
+            wartosci_serii = [w for _, w in dane_spalania["seria"]]
             # Średnia z odcinków TEGO źródła, a nie ogólna z porównania —
             # przy plug-inie tamta mieszała oba światy.
-            spalanie = (sum(wartosci_serii) / len(wartosci_serii)) if wartosci_serii else dane_porownanie.get("spalanie")
+            spalanie = (sum(wartosci_serii) / len(wartosci_serii)) if wartosci_serii else metryka("porownanie").get("spalanie")
             # Odliczamy liczbę JUŻ przeliczoną na jednostkę z Ustawień. Przy km/l
             # i mpg mniejsze zużycie znaczy WIĘKSZĄ liczbę, więc animowanie
             # l/100km jechałoby na ekranie w drugą stronę, a start od zera byłby
@@ -482,7 +463,7 @@ class MiksinKokpitu:
         def widget_zasieg_ev():
             """Katalogowy zasięg jest z broszury, ten liczymy z Twojego
             rzeczywistego zużycia — i to on mówi, czy dojedziesz."""
-            zasieg = db.pobierz_zasieg_ev(self.state.auto_id)
+            zasieg = metryka("zasieg_ev")
             if not zasieg or not zasieg["szacowany"]:
                 # W aucie spalinowym ten kafelek nie będzie miał danych NIGDY.
                 if self._chowaj_puste:
@@ -516,10 +497,10 @@ class MiksinKokpitu:
             )
 
         def widget_przebieg_dzienny():
-            sredni = db.oblicz_sredni_dzienny_przebieg(self.state.auto_id)
+            sredni = metryka("sredni_przebieg")
             wartosc = liczba_kafelka(db.dystans_z_km(sredni, j) if sredni else None,
                                      lambda v: f"{utils.formatuj_liczba(v, 1)} {j}/dzień")
-            wartosci_serii = [w for _, w in seria_przebiegu]
+            wartosci_serii = [w for _, w in metryka("seria_przebiegu")]
             # Więcej kilometrów to nie „gorzej” — stąd wzrost_zly=False, inaczej
             # aktywniejszy miesiąc dostawałby czerwoną strzałkę jak rosnący koszt.
             return kafel_z_iskra(
@@ -529,7 +510,7 @@ class MiksinKokpitu:
             )
 
         def widget_ostatnia_aktywnosc():
-            zdarzenia = db.pobierz_ostatnia_aktywnosc(self.state.auto_id, limit=3)
+            zdarzenia = metryka("ostatnia_aktywnosc")
             if not zdarzenia:
                 return ft.Container()
 
@@ -560,7 +541,7 @@ class MiksinKokpitu:
             )
 
         def widget_kondycja():
-            kondycja = db.oblicz_kondycje_pojazdu(self.state.auto_id)
+            kondycja = metryka("kondycja")
             kolor_kond, _, etykieta_kond = utils.wskaznik_kondycji(kondycja)
             kolor_gauge = utils.kolor_kondycji_plynny(kondycja)
 
@@ -593,7 +574,7 @@ class MiksinKokpitu:
             """Najważniejsze spostrzeżenie o pojeździe — jedno zdanie zamiast
             kolejnej liczby. Kokpit ma ograniczoną uwagę, więc bierzemy tylko
             pozycję z najwyższą wagą; pełna lista jest w Analiza → Obserwacje."""
-            obserwacje = db.obserwacje_analityczne(self.state.auto_id, limit=1)
+            obserwacje = metryka("obserwacja")
             if not obserwacje:
                 return kafel_wartosci(
                     ft.Icons.INSIGHTS, ft.Colors.BLUE_GREY_700, "Obserwacja",
@@ -629,7 +610,7 @@ class MiksinKokpitu:
             """Pasek najbardziej zagrożonego limitu. stan_budzetow sortuje po
             pilności, więc pierwszy element to dokładnie ten, o którym trzeba
             wiedzieć — wszystkie paski naraz byłyby w kokpicie ścianą tekstu."""
-            stany = db.stan_budzetow(self.state.auto_id)
+            stany = metryka("budzety")
             if not stany:
                 return kafel_pusty(
                     ft.Icons.SAVINGS, ft.Colors.BLUE_GREY_700, "Budżet",
@@ -654,7 +635,7 @@ class MiksinKokpitu:
             )
 
         def widget_zasieg_bak():
-            dane = db.pobierz_zasieg_na_baku(self.state.auto_id)
+            dane = metryka("zasieg_bak")
             if not dane:
                 return kafel_pusty(
                     ft.Icons.LOCAL_GAS_STATION, ft.Colors.BLUE_GREY_700, "Zasięg na baku",
@@ -669,7 +650,7 @@ class MiksinKokpitu:
             )
 
         def widget_prognoza_rok():
-            prognoza = db.prognoza_kosztow(self.state.auto_id)
+            prognoza = metryka("prognoza")
             if not prognoza:
                 return kafel_wartosci(
                     ft.Icons.QUERY_STATS, ft.Colors.BLUE_GREY_700, "Prognoza roczna",
@@ -677,10 +658,10 @@ class MiksinKokpitu:
                 )
             wartosc = liczba_kafelka(
                 prognoza["prognoza_calego_roku"],
-                lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+                lambda v: f"{utils.formatuj_liczba(v, 0)} {waluta}",
             )
             stopka = (f"do końca roku jeszcze "
-                      f"{utils.formatuj_liczba(prognoza['prognoza_do_konca'], 0)} {utils.symbol_waluty()}")
+                      f"{utils.formatuj_liczba(prognoza['prognoza_do_konca'], 0)} {waluta}")
             return ft.Container(
                 width=SZER_KAFLA + 60, padding=15,
                 **utils.powierzchnia(self._page, "kafel"),
@@ -709,12 +690,13 @@ class MiksinKokpitu:
                 self.state.magazyn_zakladka = 0
                 utils.przejdz(self._page, "/magazyn")
 
-            stan = db.pobierz_stan_opon(self.state.auto_id)
-            if not stan:
+            opony = metryka("opony")
+            if not opony:
                 return kafel_pusty(
                     ft.Icons.TIRE_REPAIR, ft.Colors.BLUE_GREY_700, "Opony",
                     "Brak zestawów", idz_do_opon,
                 )
+            stan = opony["stan"]
 
             sezon = stan["sezon"]
             kolor_sezonu = utils.KOLORY_SEZONU_OPON.get(sezon or "", ft.Colors.BLUE_GREY_700)
@@ -722,8 +704,7 @@ class MiksinKokpitu:
 
             # Termin bierzemy z przypomnienia typu „opony”, jeśli takie istnieje —
             # to ono jest w tej aplikacji źródłem prawdy o dacie zmiany.
-            terminy = [w for w in db.pobierz_wydatki_cykliczne(self.state.auto_id)
-                       if w[6] == db.TYP_CYKLICZNY_OPONY]
+            terminy = opony["terminy"]
             stopka = None
             if terminy:
                 _, tekst_terminu = utils.kolor_i_tekst_terminu(terminy[0][4])
@@ -776,7 +757,7 @@ class MiksinKokpitu:
             """Postęp listy przedwyjazdowej. Kafelek ma sens dokładnie wtedy,
             kiedy lista jest ZACZĘTA, ale nie skończona — dlatego podsumowanie
             wybiera właśnie taką (patrz db.podsumowanie_checklist)."""
-            stan = db.podsumowanie_checklist(self.state.auto_id)
+            stan = metryka("checklista")
             if not stan:
                 return kafel_pusty(
                     ft.Icons.FACT_CHECK, ft.Colors.BLUE_GREY_700, "Checklista",
@@ -819,17 +800,14 @@ class MiksinKokpitu:
             „innych kosztów”, bo ta pozycja rośnie z KILOMETRAMI, a nie z wiekiem
             auta — i tylko wtedy da się zauważyć, że tanie paliwo na trasie
             zjadła bramka."""
-            poczatek_roku = dzisiaj.replace(month=1, day=1).date()
-            stan = db.suma_kategorii_innych(
-                self.state.auto_id, db.KATEGORIA_INNE_DROGOWE, poczatek_roku, dzisiaj.date()
-            )
+            stan = metryka("oplaty_drogowe")
             # Zero wpisów to nie „0 zł opłat”, tylko auto, które takich kosztów
             # nie prowadzi — kwota zero nie jest tu informacją.
             if self._chowaj_puste and not stan["liczba"]:
                 return None
             wartosc = liczba_kafelka(
                 stan["suma"],
-                lambda v: f"{utils.formatuj_liczba(v, 0)} {utils.symbol_waluty()}",
+                lambda v: f"{utils.formatuj_liczba(v, 0)} {waluta}",
             )
             stopka = (f"{db.liczba_z_odmiana(stan['liczba'], 'wpis', 'wpisy', 'wpisów')} w {dzisiaj.year}" if stan["liczba"]
                       else f"brak wpisów w {dzisiaj.year}")
@@ -851,7 +829,7 @@ class MiksinKokpitu:
             )
 
         def widget_do_zrobienia():
-            stan = db.podsumowanie_do_zrobienia(self.state.auto_id)
+            stan = metryka("do_zrobienia")
             if not stan or not stan["otwarte"]:
                 return kafel_wartosci(
                     ft.Icons.CHECKLIST_RTL, ft.Colors.GREEN_700, "Do zrobienia",  # paleta: tożsamość — akcent kafla
@@ -896,7 +874,7 @@ class MiksinKokpitu:
                 self.state.magazyn_zakladka = 1
                 utils.przejdz(self._page, "/magazyn")
 
-            stan = db.pobierz_stan_magazynu(self.state.auto_id)
+            stan = metryka("magazyn")
             if not stan["razem"]:
                 return kafel_pusty(
                     ft.Icons.INVENTORY_2, ft.Colors.BLUE_GREY_700, "Magazyn",
@@ -934,7 +912,7 @@ class MiksinKokpitu:
             """Kafelek-przycisk: zamiast liczby ma czynność. Rola „podgląd” nie
             dostaje go wcale (None) — przycisk, który zawsze odmawia, jest gorszy
             od jego braku (ta sama zasada, co przy chowaniu akcji w menu wpisu)."""
-            if tylko_podglad:
+            if metryka("tylko_podglad"):
                 return None
             return ft.Container(
                 width=SZER_KAFLA, padding=15,
@@ -1045,6 +1023,11 @@ class MiksinKokpitu:
         # kokpit, a flaga zamrożona w domknięciu zostawiłaby go pustym aż do
         # ponownego wejścia na ekran.
         self._chowaj_puste = db.czy_chowac_puste_kafelki()
+        # Dane WSZYSTKICH kafelków siatki jednym wywołaniem, z pamięci metryk
+        # (patrz db/kokpit.py). Powrót na kokpit bez żadnego zapisu po drodze
+        # i każde przestawienie kafelka w trybie układania nie pytają bazy
+        # o żadną liczbę; kafelek dołożony przed chwilą dolicza tylko swoje.
+        self._metryki_kokpitu = db.metryki_kokpitu(self.state.auto_id, wlaczone)
         if self.kokpit_edycja:
             # Pasek nad siatką zamiast osobnego panelu z klockami: kafelki
             # zostają na swoich miejscach, więc układa się je tam, gdzie się je
@@ -1377,7 +1360,7 @@ class MiksinKokpitu:
 
         self.elementy.append(self._buduj_kokpit())
 
-        if not db.pobierz_widgety_kokpitu(self.state.auto_id):
+        if self._kokpit_bez_kafelkow:
             # Pusty kokpit bez słowa wyjaśnienia wyglądałby jak zepsuty ekran,
             # a nie jak ekran czekający na wybór kafelków.
             self.elementy.append(ft.Container(

@@ -1,9 +1,10 @@
 """Warstwa danych aplikacji — baza SQLite, logika domenowa, eksport i import.
 
 Pakiet powstał z rozbicia jednego pliku db.py. Moduły są ułożone od najmniej
-zależnych do najbardziej: `stale` i `polaczenie` nie zależą od niczego,
-`migracje` (init_db) na końcu, bo dotyka wszystkiego. Cały interfejs jest
-re-eksportowany tutaj, więc `import db` i `db.cokolwiek(...)` działa jak dawniej.
+zależnych do najbardziej: `stale`, `pamiec` i `polaczenie` nie zależą od
+niczego poza sobą, `migracje` (init_db) na końcu, bo dotyka wszystkiego. Cały
+interfejs jest re-eksportowany tutaj, więc `import db` i `db.cokolwiek(...)`
+działa jak dawniej.
 """
 
 # Ten plik istnieje po to, żeby scalić moduły pakietu w jedną przestrzeń nazw —
@@ -11,6 +12,7 @@ re-eksportowany tutaj, więc `import db` i `db.cokolwiek(...)` działa jak dawni
 # ruff: noqa: F401, F403
 
 from .stale import *
+from .pamiec import *
 from .polaczenie import *
 from .pomocnicze import *
 from .ustawienia import *
@@ -35,6 +37,7 @@ from .usuwanie import *
 from .rozliczenia import *
 from .kosz import *
 from .nawigacja import *
+from .kokpit import *
 from .wyszukiwanie import *
 from .os_czasu import *
 from .eksport import *
@@ -44,6 +47,7 @@ from .migracje import *
 
 from . import (
     stale,
+    pamiec,
     polaczenie,
     pomocnicze,
     ustawienia,
@@ -68,6 +72,7 @@ from . import (
     rozliczenia,
     kosz,
     nawigacja,
+    kokpit,
     wyszukiwanie,
     os_czasu,
     eksport,

@@ -7,6 +7,7 @@ from typing import Any
 
 from .stale import (ENERGIA_PALIWO, ENERGIA_PRAD, PRIORYTETY_DO_ZROBIENIA, STATUS_POJAZDU_AKTYWNY,
                     TERMINY_DOKUMENTOW, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE)
+from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .ustawienia import OKNO_1000KM_DOMYSLNE
 from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, opis_terminu_dni
@@ -128,10 +129,17 @@ def pobierz_rozbicie_kondycji(auto_id):
 
     Powiadomienia bierzemy z pomin_wyciszone=False: odłożenie przypomnienia
     („zrobię za dwa tygodnie”) nie naprawia auta, więc nie może podbijać wyniku.
+
+    Wynik trzyma pamięć do najbliższego zapisu (patrz db/pamiec.py): przy
+    jednym wejściu na ekran główny tę samą kondycję liczyły osobno kafelek,
+    nagłówek pojazdu (metryki pojazdu) i porównanie (koszt / km na kokpicie).
     """
     if not auto_id:
         return {"wynik": None, "odjete": 0, "powody": [], "grupy": {}}
+    return z_pamieci("rozbicie_kondycji", auto_id, lambda: _policz_rozbicie_kondycji(auto_id))
 
+
+def _policz_rozbicie_kondycji(auto_id):
     dzis = datetime.now().date()
     powody = []
 
