@@ -369,6 +369,73 @@ def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, fl
     return seria
 
 
+def pobierz_ciag_do_pelna(auto_id, data_str, przebieg=None, rodzaj=None, wyklucz_id=None) -> dict[str, Any]:
+    """Ciąg tankowań bez „do pełna”, do którego trafi wpis z dnia `data_str`
+    (licznik `przebieg`) — pod ostrzeżenie w formularzu tankowania.
+
+    Zużycie liczy się wyłącznie z odcinków zamkniętych dwoma tankowaniami „do
+    pełna” (pobierz_serie_spalania). Niepełne po drodze nie przepadają:
+    dopisują się do odcinka, który zamknie NASTĘPNY pełny bak, więc do tego
+    czasu zużycie za te kilometry czeka. Bez ostrzeżenia przy wpisie wychodziło
+    to dopiero jako dziura w statystykach — tygodnie później i bez wskazania,
+    który wpis ją zrobił.
+
+    Kolejność i źródło energii jak w pobierz_serie_spalania: po dacie, przy
+    remisie po przebiegu; `rodzaj` None = wszystkie wpisy. `przebieg` None =
+    wpis na końcu swojego dnia (formularz, zanim wpisano licznik).
+    `wyklucz_id` — edytowany wpis, żeby nie stał sam przed sobą.
+
+    Zwraca słownik:
+      niepelnych     — ile INNYCH tankowań bez „do pełna” jest w tym samym ciągu
+                       (przed wpisem od ostatniego pełnego baku i po nim, do
+                       najbliższego pełnego),
+      pelny_data     — data ostatniego pełnego baku przed wpisem albo None,
+      pelny_przebieg — jego licznik albo None,
+      najdalej       — najwyższy licznik wśród tych innych niepełnych albo None,
+      zamkniety      — czy po wpisie jest już tankowanie do pełna; wtedy odcinek
+                       jest zamknięty i nic nie czeka."""
+    wynik = {"niepelnych": 0, "pelny_data": None, "pelny_przebieg": None,
+             "najdalej": None, "zamkniety": False}
+    if not auto_id:
+        return wynik
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        if rodzaj:
+            c.execute(
+                "SELECT id, data, przebieg, do_pelna FROM tankowania "
+                "WHERE auto_id=? AND COALESCE(rodzaj_energii, ?) = ?",
+                (auto_id, domyslny_rodzaj_energii(auto_id), rodzaj)
+            )
+        else:
+            c.execute("SELECT id, data, przebieg, do_pelna FROM tankowania WHERE auto_id=?", (auto_id,))
+        wiersze = [w for w in c.fetchall() if w[0] != wyklucz_id]
+
+    # Remis (ten sam dzień i licznik) liczy się jako „przed” — nowy wpis ląduje
+    # za tymi, które już są.
+    klucz_wpisu = (parsuj_date(data_str), przebieg if przebieg is not None else float("inf"))
+    przed, po = [], []
+    for _, data, prz, pelny in sorted(wiersze, key=lambda w: (parsuj_date(w[1]), int(w[2] or 0))):
+        wpis = (data, int(prz or 0), bool(pelny))
+        (przed if (parsuj_date(data), wpis[1]) <= klucz_wpisu else po).append(wpis)
+
+    niepelne = []
+    for data, prz, pelny in reversed(przed):
+        if pelny:
+            wynik["pelny_data"], wynik["pelny_przebieg"] = data, prz
+            break
+        niepelne.append(prz)
+    for data, prz, pelny in po:
+        if pelny:
+            wynik["zamkniety"] = True
+            break
+        niepelne.append(prz)
+
+    wynik["niepelnych"] = len(niepelne)
+    wynik["najdalej"] = max(niepelne) if niepelne else None
+    return wynik
+
+
 def pobierz_serie_dziennego_przebiegu(auto_id, limit=12, min_dni=7) -> list[tuple[str, float]]:
     """Średni przebieg dzienny w kolejnych odcinkach czasu — punkty do sparkline
     przy kafelku „Śr. dzienny” w kokpicie. Odcinki sklejamy tak, aby każdy miał
@@ -800,6 +867,7 @@ __all__ = [
     "WAGA_DOKUMENTU",
     "koszt_na_1000km",
     "oblicz_kondycje_pojazdu",
+    "pobierz_ciag_do_pelna",
     "pobierz_przebieg_miesieczny",
     "pobierz_rozbicie_kondycji",
     "pobierz_serie_dziennego_przebiegu",

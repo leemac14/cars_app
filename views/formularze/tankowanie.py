@@ -85,6 +85,7 @@ class FormularzTankowanieView(ft.View):
                     else:
                         self.e_dys.value = ""
                 self.e_dys.update()
+                self._odswiez_ostrzezenie_ciagu()
             except ValueError:
                 pass
             finally:
@@ -105,12 +106,14 @@ class FormularzTankowanieView(ft.View):
                     else:
                         self.e_p.value = str(int(dys))
                 self.e_p.update()
+                self._odswiez_ostrzezenie_ciagu()
             except ValueError:
                 pass
             finally:
                 self._blokada_sync = False
 
-        self.e_d = utils.pole_daty(page, "Data tankowania", d_val)
+        self.e_d = utils.pole_daty(page, "Data tankowania", d_val,
+                                   po_zmianie=lambda: self._odswiez_ostrzezenie_ciagu(aktualizuj=False))
         self.k_stacja, self.get_stacja, self.ustaw_stacja = utils.komponent_wyboru_stacji(
             page, state, stacja_val,
             elektryczny=(self.rodzaj_energii == db.ENERGIA_PRAD)
@@ -124,7 +127,24 @@ class FormularzTankowanieView(ft.View):
 
         self.e_l = ft.TextField(label=self.etykiety["ilosc"], value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_k = ft.TextField(label=f"Całkowity Koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
-        self.c_pel = ft.Checkbox(label=self.etykiety["do_pelna"], value=pelna_val)
+        self.c_pel = ft.Checkbox(label=self.etykiety["do_pelna"], value=pelna_val,
+                                 on_change=lambda e: self._odswiez_ostrzezenie_ciagu())
+
+        # Pasek „przerywa ciąg” pod polem, którego dotyczy, i jeszcze PRZED
+        # zapisem: zapomniany pełny bak poprawia się jednym kliknięciem, a celowe
+        # dolewanie przechodzi bez dodatkowego potwierdzenia.
+        kolor_ciagu = utils.KOLOR_STATUS["warning"]
+        self.t_ciagu = ft.Text("", size=utils.FS["caption"], color=kolor_ciagu, expand=True)
+        self.baner_ciagu = ft.Container(
+            visible=False,
+            padding=ft.Padding(12, 8, 12, 8), border_radius=utils.RADIUS["sm"],
+            bgcolor=utils.tlo_stanu(page, "warning"),
+            content=ft.Row([
+                ft.Icon(ft.Icons.LINK_OFF, size=18, color=kolor_ciagu),
+                self.t_ciagu,
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+        self._odswiez_ostrzezenie_ciagu(aktualizuj=False)
 
         # Wolne ładowanie w domu bywa kilka razy tańsze od szybkiego na trasie —
         # bez tego rozróżnienia średnia cena za kWh nic nie mówi.
@@ -153,6 +173,7 @@ class FormularzTankowanieView(ft.View):
                  for i, r in enumerate(self.rodzaje)],
                 nowy_idx, przelacz_rodzaj,
             )
+            self._odswiez_ostrzezenie_ciagu(aktualizuj=False)
             try:
                 self._page.update()
             except Exception:
@@ -189,7 +210,7 @@ class FormularzTankowanieView(ft.View):
                 self.przelacznik_rodzaju,
             ]
         zawartosc_k2 += [
-            self.k_stacja, self.e_l, self.e_ladowanie, self.e_k, self.c_pel,
+            self.k_stacja, self.e_l, self.e_ladowanie, self.e_k, self.c_pel, self.baner_ciagu,
             ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi,
         ]
         k2 = utils.karta_formularza(
@@ -217,6 +238,31 @@ class FormularzTankowanieView(ft.View):
     
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
+
+    def _przebieg_z_pol(self):
+        """Licznik tak, jak policzy go zapis: wpisany wprost albo z dystansu od
+        poprzedniego wpisu. None, dopóki oba pola są puste."""
+        prz = utils.parsuj_int(self.e_p.value, 0)
+        dys = utils.parsuj_float(self.e_dys.value, 0.0)
+        if prz <= 0 and dys > 0:
+            prz = int(self.ostatni_prz + dys)
+        return prz if prz > 0 else None
+
+    def _odswiez_ostrzezenie_ciagu(self, aktualizuj=True):
+        """Pasek pod „do pełna”: widoczny, gdy ten wpis byłby kolejnym z rzędu
+        bez pełnego baku, a odcinka nie zamyka jeszcze żaden późniejszy pełny.
+        Liczony od nowa przy każdej zmianie, od której zależy: pole „do pełna”,
+        data, licznik i źródło energii."""
+        tekst = None
+        if not self.c_pel.value:
+            przebieg = self._przebieg_z_pol()
+            ciag = db.pobierz_ciag_do_pelna(self.state.auto_id, self.e_d.value, przebieg,
+                                            self.rodzaj_energii, wyklucz_id=self.t_id)
+            tekst = utils.opis_przerwanego_ciagu(ciag, self.rodzaj_energii, przebieg)
+        self.t_ciagu.value = tekst or ""
+        self.baner_ciagu.visible = bool(tekst)
+        if aktualizuj:
+            self.baner_ciagu.update()
 
     def zapisz(self, e):
         for pole in (self.e_p, self.e_dys, self.e_l, self.e_k): utils.ustaw_blad(pole)

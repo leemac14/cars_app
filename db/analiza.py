@@ -461,7 +461,8 @@ def pobierz_zasieg_na_baku(auto_id):
 
     Ta druga liczba jest szacunkiem z licznika, nie odczytem z pływaka: bierzemy
     kilometry przejechane od ostatniego pełnego baku i mnożymy przez rzeczywiste
-    zużycie. Dlatego zwracamy też 'pewnosc' i 'dni_od_tankowania' — im starsze
+    zużycie, a dolewki zapisane po nim (tankowania bez „do pełna”) dodajemy do
+    stanu. Dlatego zwracamy też 'pewnosc' i 'dni_od_tankowania' — im starsze
     tankowanie, tym większa szansa, że po drodze ktoś dolał paliwa bez wpisu.
 
     Zwraca None, gdy nie podano pojemności baku albo nie da się policzyć
@@ -493,11 +494,14 @@ def pobierz_zasieg_na_baku(auto_id):
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT data, przebieg FROM tankowania "
-            "WHERE auto_id=? AND COALESCE(rodzaj_energii, ?) = ? AND do_pelna=1",
+            "SELECT data, przebieg, litry, do_pelna FROM tankowania "
+            "WHERE auto_id=? AND COALESCE(rodzaj_energii, ?) = ?",
             (auto_id, domyslny_rodzaj_energii(auto_id), rodzaj)
         )
-        pelne = c.fetchall()
+        # Po dacie, przy remisie po przebiegu — ta sama kolejność co wszędzie
+        # indziej, żeby dwa tankowania jednego dnia nie dały ujemnego dystansu.
+        wpisy = sorted(c.fetchall(), key=lambda r: (parsuj_date(r[0]), int(r[1] or 0)))
+    pelne = [i for i, r in enumerate(wpisy) if r[3]]
 
     wynik = {
         "pojemnosc": pojemnosc,
@@ -518,10 +522,7 @@ def pobierz_zasieg_na_baku(auto_id):
     if not pelne:
         return wynik
 
-    # Ostatnie tankowanie do pełna: po dacie, przy remisie po przebiegu — ta sama
-    # kolejność co wszędzie indziej, żeby dwa tankowania jednego dnia nie dały
-    # ujemnego dystansu.
-    ostatnie = max(pelne, key=lambda r: (parsuj_date(r[0]), int(r[1] or 0)))
+    ostatnie = wpisy[pelne[-1]]
     data_tank = parsuj_date(ostatnie[0])
     przebieg_tank = int(ostatnie[1] or 0)
     aktualny = pobierz_aktualny_przebieg(auto_id) or 0
@@ -530,8 +531,17 @@ def pobierz_zasieg_na_baku(auto_id):
     if przejechane < 0:
         return wynik
 
-    zuzyte = przejechane * spalanie / 100
-    pozostalo = pojemnosc - zuzyte
+    # Dolewki po ostatnim pełnym baku też są w baku — bez nich po dolaniu
+    # wskaźnik pokazywał tyle, jakby nikt nic nie dolał, i zaraz po tankowaniu
+    # straszył „Czas zatankować”. Krok po kroku: zużycie do dolewki, potem
+    # dolewka — nigdy poniżej pustego baku ani ponad jego pojemność.
+    pozostalo, licznik = pojemnosc, przebieg_tank
+    for _, przebieg_d, litry_d, _ in wpisy[pelne[-1] + 1:]:
+        przebieg_d = max(licznik, int(przebieg_d or 0))
+        pozostalo = max(0.0, pozostalo - (przebieg_d - licznik) * spalanie / 100)
+        pozostalo = min(pojemnosc, pozostalo + float(litry_d or 0))
+        licznik = przebieg_d
+    pozostalo -= (max(aktualny, licznik) - licznik) * spalanie / 100
     dni = (datetime.now().date() - data_tank).days if data_tank != datetime.min.date() else None
     zasieg_pozostaly = max(0.0, pozostalo / spalanie * 100)
 

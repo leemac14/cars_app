@@ -244,6 +244,37 @@ def kolor_i_tekst_terminu(termin_str):
         return KOLOR_STATUS["ok"], str(termin_str)
 
 
+def opis_przerwanego_ciagu(ciag, rodzaj=None, przebieg=None):
+    """Zdanie pod polem „do pełna”, gdy wpis byłby kolejnym z rzędu bez pełnego
+    baku (`ciag` z db.pobierz_ciag_do_pelna). None, gdy nie ma o czym mówić:
+    poprzedni wpis był pełny albo odcinek zamyka już późniejszy pełny bak.
+
+    Mówi „policzy się dopiero”, a nie „nie policzy się”: niepełne tankowania nie
+    przepadają, tylko dopisują się do odcinka, który zamknie następny pełny bak.
+    `przebieg` — licznik z formularza (None, gdy pole jest jeszcze puste)."""
+    if not ciag or ciag.get("zamkniety") or not ciag.get("niepelnych"):
+        return None
+
+    prad = rodzaj == db.ENERGIA_PRAD
+    ile = ciag["niepelnych"] + 1
+    formy = ("ładowanie", "ładowania", "ładowań") if prad else ("tankowanie", "tankowania", "tankowań")
+    poczatek = f"{ile} {_odmiana_liczby(ile, *formy)} z rzędu bez „do pełna”"
+
+    if ciag.get("pelny_przebieg") is None:
+        zdarzenia = "ładowania" if prad else "tankowania"
+        return f"{poczatek} — zużycie zacznie się liczyć dopiero od pierwszego {zdarzenia} do pełna."
+
+    odcinek = ""
+    km = max(przebieg or 0, ciag.get("najdalej") or 0) - ciag["pelny_przebieg"]
+    if km > 0:
+        odcinek += f" za {formatuj_liczba(km, 0)} km"
+    dzien = parsuj_date(ciag.get("pelny_data"))
+    if dzien != datetime.min.date():
+        odcinek += f" od {formatuj_date_pl(dzien)}"
+    po_czym = "ładowaniu" if prad else "tankowaniu"
+    return f"{poczatek} — zużycie{odcinek} policzy się dopiero po {po_czym} do pełna."
+
+
 def _odmiana_liczby(n, forma_1, forma_2_4, forma_pozostale):
     """Generyczna polska odmiana liczebnikowa: 1 -> forma_1, 2-4 (poza
     nastolatkami 12-14) -> forma_2_4, pozostałe -> forma_pozostale."""
@@ -272,6 +303,7 @@ __all__ = [
     "linie_opisu_odczytu",
     "oblicz_prognoze_terminu",
     "opis_licznika_na_karte",
+    "opis_przerwanego_ciagu",
     "parsuj_float",
     "parsuj_int",
     "polacz_linie_opisu",
