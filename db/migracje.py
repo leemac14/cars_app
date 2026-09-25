@@ -618,6 +618,26 @@ def init_db():
             """
             ALTER TABLE wizyty ADD COLUMN koszt_robocizny REAL;
             ALTER TABLE historia ADD COLUMN koszt_robocizny REAL;
+            """,
+            # Wersja 43: rozliczenia współdzielonego auta. Ekran podziału
+            # pokazywał proporcje miesiąca, ale nie prowadził rachunku — a przy
+            # wspólnym aucie liczy się saldo: kto komu ile jest winien.
+            #
+            # Rozliczenie NIE jest datą odcięcia. Trzyma migawkę: ile każda
+            # osoba miała na plusie albo minusie w chwili „Rozliczone” (`salda`,
+            # w groszach), kto dzielił koszty zamkniętego okresu (`uczestnicy`)
+            # i kto komu oddał (`przelewy`). Saldo to cała podpisana historia
+            # minus wszystkie migawki — dzięki temu wpis sprzed rozliczenia
+            # dopisany, poprawiony albo usunięty po nim (albo przysłany z drugiego
+            # telefonu dzień później) nie przepada, tylko pojawia się w bieżącym
+            # saldzie. `klucz` i `poprzednie` łączą rozliczenia w łańcuch: dwa
+            # kliknięcia „Rozliczone” na dwóch telefonach przed synchronizacją
+            # mają tego samego poprzednika i liczy się tylko pierwsze z nich —
+            # inaczej wyzerowałyby to samo saldo dwa razy.
+            """
+            CREATE TABLE IF NOT EXISTS rozliczenia (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, uczestnicy TEXT NOT NULL DEFAULT '[]', salda TEXT NOT NULL DEFAULT '{}', przelewy TEXT NOT NULL DEFAULT '[]', notatka TEXT, klucz TEXT, poprzednie TEXT, dodane_przez TEXT, data_utworzenia TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto ON rozliczenia(auto_id);
+            CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto_zdalne ON rozliczenia(auto_id, zdalne_id);
             """
         ]
 

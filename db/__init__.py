@@ -31,6 +31,7 @@ from .tagi import *
 from .rejestry import *
 from .wizyty import *
 from .usuwanie import *
+from .rozliczenia import *
 from .kosz import *
 from .nawigacja import *
 from .wyszukiwanie import *
@@ -62,6 +63,7 @@ from . import (
     rejestry,
     wizyty,
     usuwanie,
+    rozliczenia,
     kosz,
     nawigacja,
     wyszukiwanie,

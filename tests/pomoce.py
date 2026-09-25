@@ -241,6 +241,13 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (zid["checklista"], "Ciśnienie w oponach", 0, 1, "poz-1"))
         zid["pozycja_checklisty"] = c.lastrowid
 
+        c.execute("INSERT INTO rozliczenia (auto_id, data, uczestnicy, salda, przelewy, notatka, klucz, "
+                  "dodane_przez, data_utworzenia, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                  (auto, "01.01.2026", '["Kamil", "Ola"]', '{"Kamil": 5000, "Ola": -5000}',
+                   '[{"od": "Ola", "do": "Kamil", "kwota": 5000}]', "Przelew", f"rozl-{nazwa}",
+                   "Kamil", "2026-01-01 20:00:00", "rozl-1"))
+        zid["rozliczenie"] = c.lastrowid
+
         # Tabela spoza kosza — świadomie, żeby testy widziały różnicę.
         c.execute("INSERT INTO wyciszone_powiadomienia (auto_id, klucz, do_dnia, tytul) VALUES (?,?,?,?)",
                   (auto, "oc", "2026-12-31", "Polisa OC"))

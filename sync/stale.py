@@ -1,7 +1,7 @@
 """Adres projektu Supabase, mapa tabel i etykiety — bez ani jednej instrukcji.
 
 Ten moduł jest na samym dole pakietu, bo `KONFIGURACJA_SYNC` jest jedynym
-opisem tego, CO w ogóle jedzie do chmury: dziewiętnaście tabel, ich klucze
+opisem tego, CO w ogóle jedzie do chmury: dwadzieścia tabel, ich klucze
 i kolumny. Dołożenie tabeli do synchronizacji to wpis tutaj, a nie łatka
 w pięciu miejscach — i dlatego `tests/test_schemat.py` porównuje ten słownik
 wprost z `PRAGMA table_info`.
@@ -93,6 +93,11 @@ KONFIGURACJA_SYNC = [
     # co zostało już sprawdzone przed wyjazdem.
     {"tabela": "checklisty", "kolumny": ["nazwa", "opis", "ostatnie_uzycie"], "fk": {}},
     {"tabela": "checklisty_pozycje", "kolumny": ["tresc", "kolejnosc", "odhaczone"], "fk": {"checklista_id": "checklisty"}},
+    # Saldo jest wspólne, więc „Rozliczone” kliknięte na jednym telefonie musi
+    # wyzerować je także na drugim. Rozliczenie się nie zmienia (najwyżej się je
+    # cofa), a migawka sald jedzie w całości — z niej drugi telefon liczy to samo
+    # saldo, nawet jeśli część wpisów dostanie dopiero przy następnej wymianie.
+    {"tabela": "rozliczenia", "kolumny": ["data", "uczestnicy", "salda", "przelewy", "notatka", "klucz", "poprzednie", "dodane_przez", "data_utworzenia"], "fk": {}},
 ]
 
 
@@ -151,6 +156,7 @@ ETYKIETY_TABEL_SYNC = {
     "trasy_szablony": "Zapisana trasa",
     "checklisty": "Checklista",
     "checklisty_pozycje": "Pozycja checklisty",
+    "rozliczenia": "Rozliczenie",
     "info_pojazdu": "Dane pojazdu",
 }
 

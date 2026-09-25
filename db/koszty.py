@@ -333,6 +333,51 @@ def pobierz_trend_cen_paliwa(auto_id, od_data=None):
     return {"punkty": punkty, "stacje": stacje, "najtansza": stacje[0] if stacje else None}
 
 
+# ---------------------------------------------------------------------------
+# Kto płacił: wydatki z podpisem autora
+# ---------------------------------------------------------------------------
+# Zestawienie miesiąca i saldo rozliczeń (db/rozliczenia.py) czytają wydatki
+# z tego samego źródła — inaczej „kto ile wydał” i „kto komu ile jest winien”
+# rozjechałyby się przy pierwszej nowej kategorii kosztów.
+
+BEZ_PODPISU = "Nieprzypisane"
+
+
+def klucz_osoby(nazwa):
+    """Podpis autora sprowadzony do postaci, po której się grupuje: bez
+    wielkości liter i nadmiarowych spacji. „Kamil” i „kamil ” to ta sama
+    osoba — podpis wpisuje się ręcznie w Ustawieniach, więc bywa różny na
+    dwóch telefonach albo po poprawce. Pusty podpis daje pusty klucz."""
+    return " ".join(str(nazwa or "").split()).casefold()
+
+
+def nazwa_osoby(warianty):
+    """Pisownia do pokazania: najczęstsza z grupy (przy remisie — późniejsza
+    alfabetycznie, tak samo jak nazwy stacji)."""
+    return max(warianty.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+
+def _wydatki_z_autorem(conn, auto_id):
+    """[(data, kwota, kategoria, dodane_przez, dystans)] — wszystkie wydatki
+    pojazdu z podpisem autora. Wizyta zbiorcza wchodzi jako całość, a jej
+    wpisy historii są pomijane (tak samo jak w `_wiersze_kosztow`); dystans ma
+    tylko tankowanie."""
+    c = conn.cursor()
+    wiersze = []
+    c.execute("SELECT data, kwota, dodane_przez, dystans FROM tankowania WHERE auto_id=?", (auto_id,))
+    wiersze += [(d, k, "paliwo", o, dy) for d, k, o, dy in c.fetchall()]
+    c.execute(
+        "SELECT h.data, h.cena, h.dodane_przez FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+        "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+    )
+    wiersze += [(d, k, "serwis", o, 0) for d, k, o in c.fetchall()]
+    c.execute("SELECT data, koszt_calkowity, dodane_przez FROM wizyty WHERE auto_id=?", (auto_id,))
+    wiersze += [(d, k, "serwis", o, 0) for d, k, o in c.fetchall()]
+    c.execute("SELECT data, kwota, dodane_przez FROM inne_koszty WHERE auto_id=?", (auto_id,))
+    wiersze += [(d, k, "inne", o, 0) for d, k, o in c.fetchall()]
+    return wiersze
+
+
 def pobierz_podzial_kosztow(auto_id, rok, miesiac):
     """Zestawienie 'kto ile wydał / przejechał' dla współdzielonego pojazdu w
     danym miesiącu, na podstawie kolumny dodane_przez. Zwraca listę słowników
@@ -341,57 +386,38 @@ def pobierz_podzial_kosztow(auto_id, rok, miesiac):
     Uwaga: dystans_km to suma pola 'dystans' z tankowań DODANYCH przez daną
     osobę w tym miesiącu — to przybliżenie ('kto tankował po ilu km'), nie
     dokładny pomiar tego, kto faktycznie siedział za kierownicą. Wpisy bez
-    przypisanej osoby (sprzed tej funkcji) trafiają pod 'Nieprzypisane'."""
+    przypisanej osoby (sprzed tej funkcji) trafiają pod 'Nieprzypisane'.
+    Podpisy różniące się tylko wielkością liter albo spacjami to jedna osoba
+    (`klucz_osoby`)."""
     if not auto_id:
         return []
 
-    prefiks = f"{rok:04d}-{miesiac:02d}"
     osoby = {}
-
-    def wpis(nazwa):
-        nazwa = (nazwa or "Nieprzypisane").strip() or "Nieprzypisane"
-        return osoby.setdefault(nazwa, {"osoba": nazwa, "paliwo": 0.0, "serwis": 0.0, "inne": 0.0, "dystans_km": 0.0, "tankowania": 0})
+    warianty = {}
 
     with polacz_baze() as conn:
-        c = conn.cursor()
+        wydatki = _wydatki_z_autorem(conn, auto_id)
 
-        c.execute("SELECT data, kwota, dystans, dodane_przez FROM tankowania WHERE auto_id=?", (auto_id,))
-        for data, kwota, dystans, osoba in c.fetchall():
-            d = parsuj_date(data)
-            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
-                continue
-            w = wpis(osoba)
-            w["paliwo"] += float(kwota or 0)
-            w["dystans_km"] += float(dystans or 0)
+    for data, kwota, kategoria, autor, dystans in wydatki:
+        d = parsuj_date(data)
+        if d == datetime.min.date() or (d.year, d.month) != (rok, miesiac):
+            continue
+        klucz = klucz_osoby(autor)
+        nazwa = " ".join(str(autor or "").split()) or BEZ_PODPISU
+        warianty.setdefault(klucz, {}).setdefault(nazwa, 0)
+        warianty[klucz][nazwa] += 1
+        w = osoby.setdefault(klucz, {"paliwo": 0.0, "serwis": 0.0, "inne": 0.0,
+                                     "dystans_km": 0.0, "tankowania": 0})
+        w[kategoria] += float(_na_liczbe(kwota) or 0)
+        if kategoria == "paliwo":
+            w["dystans_km"] += float(_na_liczbe(dystans) or 0)
             w["tankowania"] += 1
 
-        c.execute(
-            "SELECT h.data, h.cena, h.dodane_przez FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
-        )
-        for data, cena, osoba in c.fetchall():
-            d = parsuj_date(data)
-            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
-                continue
-            wpis(osoba)["serwis"] += float(cena or 0)
-
-        c.execute("SELECT data, koszt_calkowity, dodane_przez FROM wizyty WHERE auto_id=?", (auto_id,))
-        for data, koszt, osoba in c.fetchall():
-            d = parsuj_date(data)
-            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
-                continue
-            wpis(osoba)["serwis"] += float(koszt or 0)
-
-        c.execute("SELECT data, kwota, dodane_przez FROM inne_koszty WHERE auto_id=?", (auto_id,))
-        for data, kwota, osoba in c.fetchall():
-            d = parsuj_date(data)
-            if d == datetime.min.date() or f"{d.year:04d}-{d.month:02d}" != prefiks:
-                continue
-            wpis(osoba)["inne"] += float(kwota or 0)
-
-    wynik = list(osoby.values())
-    for w in wynik:
+    wynik = []
+    for klucz, w in osoby.items():
+        w["osoba"] = nazwa_osoby(warianty[klucz]) if klucz else BEZ_PODPISU
         w["razem"] = w["paliwo"] + w["serwis"] + w["inne"]
+        wynik.append(w)
     wynik.sort(key=lambda w: w["razem"], reverse=True)
     return wynik
 
@@ -580,10 +606,13 @@ def porownaj_czesci_wlasne(auto_id, od_data=None, do_data=None) -> list[dict[str
 __all__ = [
     "DNI_W_MIESIACU",
     "KATEGORIE_BUDZETU",
+    "BEZ_PODPISU",
     "_rekordy_napraw",
     "_w_okresie",
     "_wiersze_kosztow",
+    "_wydatki_z_autorem",
     "etykieta_kategorii_innych",
+    "klucz_osoby",
     "klucz_stacji",
     "koszty_w_okresie",
     "pobierz_koszt_miesiaca_do_dnia",
@@ -597,5 +626,6 @@ __all__ = [
     "siatka_miesiecy",
     "pobierz_stacje_paliw",
     "pobierz_trend_cen_paliwa",
+    "nazwa_osoby",
     "suma_kategorii_innych",
 ]

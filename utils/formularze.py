@@ -10,7 +10,10 @@ from .zgodnosc import ustaw_blad, ustaw_ikone
 from .dialogi import otworz_dialog, pokaz_komunikat, przejdz
 
 
-def pole_daty(page: ft.Page, label, wartosc_poczatkowa=None):
+def pole_daty(page: ft.Page, label, wartosc_poczatkowa=None, po_zmianie=None):
+    """Pole daty tylko do wyboru z kalendarza. `po_zmianie` (bez argumentów)
+    woła się po wyborze nowej daty — pole jest tylko do odczytu, więc jego
+    własne `on_change` nigdy nie zadziała."""
     pole = ft.TextField(
         label=label, 
         value=str(wartosc_poczatkowa) if wartosc_poczatkowa else "",
@@ -50,6 +53,8 @@ def pole_daty(page: ft.Page, label, wartosc_poczatkowa=None):
                     pole.value = str(val)
 
                 ustaw_blad(pole)
+                if po_zmianie:
+                    po_zmianie()
                 page.update()
 
         picker = ft.DatePicker(
