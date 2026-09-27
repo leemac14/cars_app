@@ -5,6 +5,7 @@ import flet as ft
 from datetime import date, datetime, timezone
 
 from .stale import FS, KOLOR_STATUS, RADIUS, SPACING
+from .format import opis_nietypowej_ceny
 from .wyglad import dol_bezpieczny, powierzchnia, tlo_karty
 from .zgodnosc import ustaw_blad, ustaw_ikone
 from .dialogi import otworz_dialog, pokaz_komunikat, przejdz
@@ -124,6 +125,27 @@ def sprawdz_duplikat_tankowania(page: ft.Page, pole_kwoty: ft.TextField, auto_id
         return True
 
     pole_kwoty._duplikat_potwierdzony = None
+    return False
+
+
+def sprawdz_nietypowa_cene(page: ft.Page, pole_ceny: ft.TextField, auto_id, data_str, rodzaj, cena, wyklucz_id=None):
+    """Analogicznie do sprawdz_podejrzany_przebieg — ostrzega, gdy cena za litr
+    (albo kWh) odstaje co najmniej trzykrotnie od każdej z cen tego samego źródła
+    z wpisów najbliższych w czasie (db.nietypowa_cena). Prawie zawsze to cyfra
+    albo przecinek za dużo lub za mało w litrach, cenie albo kwocie. Pamięta
+    potwierdzoną cenę, więc inna nietypowa wartość znów wymaga potwierdzenia.
+    Zwraca True, jeśli zapis należy przerwać."""
+    wynik = db.nietypowa_cena(cena, db.ceny_jednostkowe_w_poblizu(auto_id, data_str, rodzaj, wyklucz_id=wyklucz_id))
+    klucz = (round(cena or 0, 3), rodzaj)
+
+    if wynik and getattr(pole_ceny, "_cena_potwierdzona", None) != klucz:
+        pole_ceny._cena_potwierdzona = klucz
+        ustaw_blad(pole_ceny, "Nietypowa cena — kliknij Zapisz ponownie, aby potwierdzić")
+        page.update()
+        pokaz_komunikat(page, opis_nietypowej_ceny(wynik, rodzaj), KOLOR_STATUS["warning"])
+        return True
+
+    pole_ceny._cena_potwierdzona = None
     return False
 
 
@@ -295,6 +317,7 @@ __all__ = [
     "przyciski_akcji",
     "sprawdz_duplikat_kosztu",
     "sprawdz_duplikat_tankowania",
+    "sprawdz_nietypowa_cene",
     "sprawdz_podejrzany_przebieg",
     "styl_dropdown",
     "styl_pola",

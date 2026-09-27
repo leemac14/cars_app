@@ -307,6 +307,28 @@ def opis_przerwanego_ciagu(ciag, rodzaj=None, przebieg=None):
     return f"{poczatek} — zużycie{odcinek} policzy się dopiero po {po_czym} do pełna."
 
 
+def opis_nietypowej_ceny(wynik, rodzaj=None):
+    """Zdanie pod litrami, ceną i kwotą, gdy cena odstaje od cen z wpisów
+    najbliższych w czasie (`wynik` z db.nietypowa_cena). None, gdy nie ma o czym
+    mówić. Mówi, w którą stronę i ile razy — dziesięć razy to prawie zawsze cyfra
+    albo przecinek za dużo lub za mało w którymś z pól."""
+    if not wynik:
+        return None
+
+    def cena(wartosc):
+        # Groszowa cena z literówki („0,004 zł/L”) nie może udawać zera.
+        return formatuj_liczba(wartosc, 2 if wartosc >= 0.1 else 3)
+
+    za = f"{symbol_waluty()}/{db.etykiety_energii(rodzaj)['jednostka']}"
+    kierunek = "więcej" if wynik["wyzsza"] else "mniej"
+    wpisy = "ładowaniach" if rodzaj == db.ENERGIA_PRAD else "tankowaniach"
+    return (
+        f"{cena(wynik['cena'])} {za} — ok. {formatuj_liczba(wynik['krotnosc'], 0)} razy {kierunek} "
+        f"niż w ostatnich {wpisy} (najbliżej {cena(wynik['odniesienie'])} {za}). "
+        "Sprawdź cyfry i przecinek w polach powyżej."
+    )
+
+
 def _odmiana_liczby(n, forma_1, forma_2_4, forma_pozostale):
     """Generyczna polska odmiana liczebnikowa: 1 -> forma_1, 2-4 (poza
     nastolatkami 12-14) -> forma_2_4, pozostałe -> forma_pozostale.
@@ -334,6 +356,7 @@ __all__ = [
     "linie_opisu_odczytu",
     "oblicz_prognoze_terminu",
     "opis_licznika_na_karte",
+    "opis_nietypowej_ceny",
     "opis_przerwanego_ciagu",
     "parsuj_float",
     "parsuj_int",

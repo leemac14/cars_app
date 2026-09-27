@@ -7,6 +7,53 @@ from date import na_iso
 from datetime import datetime
 
 
+# Litry, cena i kwota: wystarczą dowolne dwa pola, trzecie liczy się samo.
+_POLA_TROJKI = ("ilosc", "cena", "kwota")
+
+
+def _wylicz_pole(cel, wartosci):
+    """Wartość pola `cel` z dwóch pozostałych (`wartosci`: klucz -> liczba > 0)
+    albo None. Zaokrąglenie jak na dystrybutorze: litry i kwota do setnych, cena
+    do tysięcznych — to, co stoi w polu, idzie do bazy bez zmian."""
+    ilosc, cena, kwota = (wartosci.get(k) for k in _POLA_TROJKI)
+    if cel == "kwota" and ilosc and cena:
+        wynik = round(ilosc * cena, 2)
+    elif cel == "ilosc" and kwota and cena:
+        wynik = round(kwota / cena, 2)
+    elif cel == "cena" and kwota and ilosc:
+        wynik = round(kwota / ilosc, 3)
+    else:
+        return None
+    return wynik if wynik > 0 else None
+
+
+def _formy_pola(klucz, prad):
+    """(na początek zdania, mianownik, dopełniacz, zaimek w bierniku, czy liczba
+    pojedyncza) — do podpisu pod trójką. „kWh” się nie odmienia."""
+    if klucz == "ilosc":
+        return ("kWh", "kWh", "kWh", "je", False) if prad else ("Litry", "litry", "litrów", "je", False)
+    if klucz == "cena":
+        return ("Cena", "cena", "ceny", "ją", True)
+    return ("Kwota", "kwota", "kwoty", "ją", True)
+
+
+def _baner_ostrzezenia(page, ikona):
+    """Pasek ostrzeżenia pod polem, którego dotyczy: (kontener, tekst). Ukryty,
+    dopóki formularz nie ma czego powiedzieć."""
+    kolor = utils.KOLOR_STATUS["warning"]
+    tekst = ft.Text("", size=utils.FS["caption"], color=kolor, expand=True)
+    baner = ft.Container(
+        visible=False,
+        padding=ft.Padding(12, 8, 12, 8), border_radius=utils.RADIUS["sm"],
+        bgcolor=utils.tlo_stanu(page, "warning"),
+        content=ft.Row([
+            ft.Icon(ikona, size=18, color=kolor),
+            tekst,
+        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    )
+    return baner, tekst
+
+
 class FormularzTankowanieView(ft.View):
     def __init__(self, page: ft.Page, state, t_id=None):
         self._page = page
@@ -51,8 +98,9 @@ class FormularzTankowanieView(ft.View):
                     self.prz_przy_otwarciu, self.dys_przy_otwarciu = w[1] or None, w[2] or None
                     p_val = db.wartosc_pola_dystansu(w[1], self.j) if w[1] else ""
                     dys_val = db.wartosc_pola_dystansu(w[2], self.j, decimale=2) if w[2] else ""
-                    l_val = str(w[3] or "")
-                    k_val = str(w[4] or "")
+                    # Ten sam zapis, co pole wyliczane obok („45,3”, nie „45.3”).
+                    l_val = utils.liczba_do_pola(w[3]) if w[3] else ""
+                    k_val = utils.liczba_do_pola(w[4]) if w[4] else ""
                     pelna_val = bool(w[5])
                     stacja_val = str(w[6] or "") if len(w) > 6 else ""
                     self.zalacznik_val = w[7] if len(w) > 7 else None
@@ -122,8 +170,7 @@ class FormularzTankowanieView(ft.View):
             finally:
                 self._blokada_sync = False
 
-        self.e_d = utils.pole_daty(page, "Data tankowania", d_val,
-                                   po_zmianie=lambda: self._odswiez_ostrzezenie_ciagu(aktualizuj=False))
+        self.e_d = utils.pole_daty(page, "Data tankowania", d_val, po_zmianie=self._po_zmianie_daty)
         self.k_stacja, self.get_stacja, self.ustaw_stacja = utils.komponent_wyboru_stacji(
             page, state, stacja_val,
             elektryczny=(self.rodzaj_energii == db.ENERGIA_PRAD)
@@ -135,25 +182,43 @@ class FormularzTankowanieView(ft.View):
         
         self.etykiety = db.etykiety_energii(self.rodzaj_energii)
 
+        # Litry, cena i kwota: wpisujesz dowolne dwa, trzecie liczy się samo —
+        # zawsze to, którego najdłużej nikt nie ruszał, więc trójka zawsze się
+        # zgadza. Cena nie ma kolumny: zapisują się litry i kwota, a cena zostaje
+        # ich ilorazem, tak jak w statystykach.
         self.e_l = ft.TextField(label=self.etykiety["ilosc"], value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_cena = ft.TextField(label=f"{self.etykiety['cena_za']} ({utils.symbol_waluty()})", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_k = ft.TextField(label=f"Całkowity Koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        for klucz in _POLA_TROJKI:
+            pole = self._pole_trojki(klucz)
+            pole.on_change = lambda e, k=klucz: self._zmiana_w_trojce(k)
+            pole.on_blur = lambda e, k=klucz: self._wyjscie_z_trojki(k)
+        # Otwarty wpis ma litry i kwotę z bazy; zmiana ceny przelicza wtedy litry,
+        # bo kwota to pieniądze z paragonu i wyciągu — z trzech liczb najpewniejsza.
+        self._wpisane = [k for k, wartosc in (("ilosc", l_val), ("kwota", k_val)) if wartosc]
+        self._przelicz_trojke()
+        self.t_trojki = utils.podpis("")
+
+        # Nietypowa cena (db.nietypowa_cena): pasek pod trójką, a przy zapisie
+        # potwierdzenie jak przy duplikacie. Ceny odniesienia czytane raz na
+        # datę i źródło — pole zmienia się przy każdej cyfrze, historia nie.
+        self.baner_ceny, self.t_ceny = _baner_ostrzezenia(page, ft.Icons.PRICE_CHANGE)
+        self._pamiec_cen = {}
+        self.k_trojka = ft.Column([
+            self.e_l, self.e_cena,
+            ft.Column([self.e_k, self.t_trojki], spacing=utils.SPACING["xs"]),
+            self.baner_ceny,
+        ], spacing=utils.SPACING["md"])
+        self._odswiez_opis_trojki()
+        self._odswiez_ostrzezenie_ceny(aktualizuj=False)
+
         self.c_pel = ft.Checkbox(label=self.etykiety["do_pelna"], value=pelna_val,
                                  on_change=lambda e: self._odswiez_ostrzezenie_ciagu())
 
         # Pasek „przerywa ciąg” pod polem, którego dotyczy, i jeszcze PRZED
         # zapisem: zapomniany pełny bak poprawia się jednym kliknięciem, a celowe
         # dolewanie przechodzi bez dodatkowego potwierdzenia.
-        kolor_ciagu = utils.KOLOR_STATUS["warning"]
-        self.t_ciagu = ft.Text("", size=utils.FS["caption"], color=kolor_ciagu, expand=True)
-        self.baner_ciagu = ft.Container(
-            visible=False,
-            padding=ft.Padding(12, 8, 12, 8), border_radius=utils.RADIUS["sm"],
-            bgcolor=utils.tlo_stanu(page, "warning"),
-            content=ft.Row([
-                ft.Icon(ft.Icons.LINK_OFF, size=18, color=kolor_ciagu),
-                self.t_ciagu,
-            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        )
+        self.baner_ciagu, self.t_ciagu = _baner_ostrzezenia(page, ft.Icons.LINK_OFF)
         self._odswiez_ostrzezenie_ciagu(aktualizuj=False)
 
         # Wolne ładowanie w domu bywa kilka razy tańsze od szybkiego na trasie —
@@ -173,6 +238,7 @@ class FormularzTankowanieView(ft.View):
             self.rodzaj_energii = self.rodzaje[nowy_idx]
             self.etykiety = db.etykiety_energii(self.rodzaj_energii)
             self.e_l.label = self.etykiety["ilosc"]
+            self.e_cena.label = f"{self.etykiety['cena_za']} ({utils.symbol_waluty()})"
             self.c_pel.label = self.etykiety["do_pelna"]
             self.e_ladowanie.visible = (self.rodzaj_energii == db.ENERGIA_PRAD)
             if not self.e_ladowanie.visible:
@@ -184,6 +250,8 @@ class FormularzTankowanieView(ft.View):
                 nowy_idx, przelacz_rodzaj,
             )
             self._odswiez_ostrzezenie_ciagu(aktualizuj=False)
+            self._odswiez_opis_trojki()
+            self._odswiez_ostrzezenie_ceny(aktualizuj=False)
             try:
                 self._page.update()
             except Exception:
@@ -220,7 +288,7 @@ class FormularzTankowanieView(ft.View):
                 self.przelacznik_rodzaju,
             ]
         zawartosc_k2 += [
-            self.k_stacja, self.e_l, self.e_ladowanie, self.e_k, self.c_pel, self.baner_ciagu,
+            self.k_stacja, self.e_ladowanie, self.k_trojka, self.c_pel, self.baner_ciagu,
             ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi,
         ]
         k2 = utils.karta_formularza(
@@ -243,7 +311,7 @@ class FormularzTankowanieView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_d.value, self.e_p.value, self.e_dys.value, self.e_l.value,
-                self.e_k.value, self.c_pel.value, self.get_stacja(), self.get_tagi(),
+                self.e_cena.value, self.e_k.value, self.c_pel.value, self.get_stacja(), self.get_tagi(),
                 self.rodzaj_energii, self.e_ladowanie.value, self.k_notatka.value)
     
     def _czy_zmieniono(self):
@@ -276,16 +344,153 @@ class FormularzTankowanieView(ft.View):
         if aktualizuj:
             self.baner_ciagu.update()
 
+    def _po_zmianie_daty(self):
+        """Data zmienia i ciąg „do pełna”, i ceny odniesienia. Stronę odświeża
+        potem pole_daty — stąd bez własnych update()."""
+        self._odswiez_ostrzezenie_ciagu(aktualizuj=False)
+        self._odswiez_ostrzezenie_ceny(aktualizuj=False)
+
+    # ------------------------------------------------ litry · cena · kwota
+
+    def _pole_trojki(self, klucz):
+        return {"ilosc": self.e_l, "cena": self.e_cena, "kwota": self.e_k}[klucz]
+
+    def _wartosci_trojki(self):
+        """{klucz: liczba > 0} — pola, z których da się liczyć; puste i błędne
+        (zero, litery) pomija."""
+        wartosci = {}
+        for klucz in _POLA_TROJKI:
+            liczba = utils.parsuj_float(self._pole_trojki(klucz).value, None)
+            if liczba is not None and liczba > 0:
+                wartosci[klucz] = liczba
+        return wartosci
+
+    def _zmiana_w_trojce(self, klucz):
+        """Pole ruszone ręcznie staje się najświeższe. `_wpisane` trzyma dwa
+        ostatnio ruszane pola (najdawniejsze pierwsze), a trzecie liczy się z nich
+        — więc wpisanie pola wyliczonego przelicza to, którego najdłużej nikt nie
+        ruszał. Pole wyczyszczone wypada z listy."""
+        if klucz in self._wpisane:
+            self._wpisane.remove(klucz)
+        if (self._pole_trojki(klucz).value or "").strip():
+            self._wpisane.append(klucz)
+            del self._wpisane[:-2]
+        # Błędy z poprzedniej próby zapisu mówią już o innych liczbach.
+        for pole in (self.e_l, self.e_cena, self.e_k):
+            utils.ustaw_blad(pole)
+        self._przelicz_trojke(pomin=klucz)
+        self._odswiez_opis_trojki()
+        self._odswiez_ostrzezenie_ceny(pokaz=False, aktualizuj=False)
+        self.k_trojka.update()
+
+    def _wyjscie_z_trojki(self, klucz):
+        """Wyczyszczone i opuszczone pole wraca wyliczone z dwóch pozostałych.
+        Dopiero teraz może też pokazać się pasek ceny — w trakcie pisania pierwsza
+        cyfra litrów daje cenę dziesięć razy za wysoką i pasek migałby co wpis."""
+        if klucz not in self._wpisane and not (self._pole_trojki(klucz).value or "").strip():
+            self._przelicz_trojke()
+            self._odswiez_opis_trojki()
+        self._odswiez_ostrzezenie_ceny(pokaz=True, aktualizuj=False)
+        self.k_trojka.update()
+
+    def _przelicz_trojke(self, pomin=None):
+        """Pole spoza dwóch ostatnio ruszanych — wyliczone z nich, a przy mniej niż
+        dwóch puste (nie ma z czego liczyć). Pole właśnie wyczyszczone (`pomin`)
+        zostaje puste do wyjścia z niego: wróciłoby pod palcem, zanim zdąży się
+        wpisać nową wartość."""
+        for klucz in _POLA_TROJKI:
+            if klucz in self._wpisane or klucz == pomin:
+                continue
+            wartosc = _wylicz_pole(klucz, self._wartosci_trojki()) if len(self._wpisane) == 2 else None
+            self._pole_trojki(klucz).value = utils.liczba_do_pola(wartosc)
+
+    def _wyliczane_pole(self):
+        """Klucz pola, które stoi wyliczone z dwóch pozostałych, albo None."""
+        if len(self._wpisane) < 2:
+            return None
+        klucz = next(k for k in _POLA_TROJKI if k not in self._wpisane)
+        return klucz if (self._pole_trojki(klucz).value or "").strip() else None
+
+    def _odswiez_opis_trojki(self):
+        """Ikona kalkulatora w polu wyliczonym i podpis pod trójką — mówi, z czego
+        pole wyszło i co przeliczy się, gdy wpisać je ręcznie."""
+        wyliczane = self._wyliczane_pole()
+        for klucz in _POLA_TROJKI:
+            self._pole_trojki(klucz).suffix_icon = ft.Icons.CALCULATE_OUTLINED if klucz == wyliczane else None
+        if not wyliczane:
+            self.t_trojki.value = "Wystarczą dwa z trzech pól — trzecie policzy się samo."
+            return
+        prad = self.rodzaj_energii == db.ENERGIA_PRAD
+        poczatek, _, _, zaimek, pojedyncza = _formy_pola(wyliczane, prad)
+        zrodla = " i ".join(_formy_pola(k, prad)[2] for k in _POLA_TROJKI if k != wyliczane)
+        _, nastepne, _, _, nastepne_pojedyncze = _formy_pola(self._wpisane[0], prad)
+        self.t_trojki.value = (
+            f"{poczatek} {'wyliczona' if pojedyncza else 'wyliczone'} z {zrodla} — wpisz {zaimek}, "
+            f"a {'przeliczy się' if nastepne_pojedyncze else 'przeliczą się'} {nastepne}."
+        )
+
+    def _cena_z_pol(self):
+        """Cena, jaką zapisze formularz: iloraz kwoty i ilości, a dopóki jednej
+        z nich brakuje — cena wpisana wprost. None, gdy nie ma z czego jej wziąć."""
+        wartosci = self._wartosci_trojki()
+        if "ilosc" in wartosci and "kwota" in wartosci:
+            return wartosci["kwota"] / wartosci["ilosc"]
+        return wartosci.get("cena")
+
+    def _ceny_odniesienia(self):
+        klucz = (self.rodzaj_energii, self.e_d.value)
+        if klucz not in self._pamiec_cen:
+            self._pamiec_cen[klucz] = db.ceny_jednostkowe_w_poblizu(
+                self.state.auto_id, self.e_d.value, self.rodzaj_energii, wyklucz_id=self.t_id)
+        return self._pamiec_cen[klucz]
+
+    def _odswiez_ostrzezenie_ceny(self, pokaz=True, aktualizuj=True):
+        """Pasek pod trójką, gdy cena odstaje co najmniej trzykrotnie od każdej
+        z cen tego samego źródła z wpisów najbliższych w czasie. Znika od razu,
+        gdy literówka jest poprawiona; pokazuje się tylko przy `pokaz` (wyjście
+        z pola, otwarcie formularza, zmiana daty albo źródła)."""
+        cena = self._cena_z_pol()
+        wynik = db.nietypowa_cena(cena, self._ceny_odniesienia()) if cena else None
+        if not wynik:
+            self.baner_ceny.visible = False
+        elif pokaz or self.baner_ceny.visible:
+            self.t_ceny.value = utils.opis_nietypowej_ceny(wynik, self.rodzaj_energii)
+            self.baner_ceny.visible = True
+        if aktualizuj:
+            self.k_trojka.update()
+
+    def _trojka_do_zapisu(self):
+        """(litry, kwota, błędy). Wystarczą dwa pola z trzech — brakujące liczy
+        się tak samo jak na żywo. Zapisują się litry i kwota; cena nie ma kolumny,
+        zostaje ich ilorazem."""
+        wartosci, bledy = {}, []
+        for klucz in _POLA_TROJKI:
+            pole = self._pole_trojki(klucz)
+            if not (pole.value or "").strip():
+                continue
+            liczba = utils.parsuj_float(pole.value, None)
+            if liczba is None or liczba <= 0:
+                bledy.append((pole, "Podaj liczbę większą od zera"))
+            else:
+                wartosci[klucz] = liczba
+        if bledy:
+            return None, None, bledy
+        if len(wartosci) < 2:
+            return None, None, [(self._pole_trojki(k), "Uzupełnij dwa z trzech pól")
+                                for k in _POLA_TROJKI if k not in wartosci]
+        lit = wartosci.get("ilosc") or _wylicz_pole("ilosc", wartosci)
+        kwo = wartosci.get("kwota") or _wylicz_pole("kwota", wartosci)
+        if not lit or not kwo:
+            # Grosz za tysiąc litrów: po zaokrągleniu do setnych zostaje zero.
+            brakujace = "ilosc" if not lit else "kwota"
+            return None, None, [(self._pole_trojki(brakujace), "Podaj liczbę większą od zera")]
+        return lit, kwo, []
+
     def zapisz(self, e):
-        for pole in (self.e_p, self.e_dys, self.e_l, self.e_k): utils.ustaw_blad(pole)
+        for pole in (self.e_p, self.e_dys, self.e_l, self.e_cena, self.e_k): utils.ustaw_blad(pole)
         prz = utils.parsuj_int(self.e_p.value, 0)
         dys = utils.parsuj_float(self.e_dys.value, 0.0)
-        lit = utils.parsuj_float(self.e_l.value, 0.0)
-        kwo = utils.parsuj_float(self.e_k.value, 0.0)
-        
-        bledy = []
-        if lit <= 0: bledy.append((self.e_l, "Wymagane"))
-        if kwo <= 0: bledy.append((self.e_k, "Wymagane"))
+        lit, kwo, bledy = self._trojka_do_zapisu()
         if prz <= 0 and dys <= 0: 
             bledy.append((self.e_p, "Wymagane"))
             bledy.append((self.e_dys, "Wymagane"))
@@ -302,6 +507,10 @@ class FormularzTankowanieView(ft.View):
             dys = float(prz - self.ostatni_prz)
 
         if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.t_id, tabela="tankowania", nowa_data_str=self.e_d.value):
+            return
+
+        if utils.sprawdz_nietypowa_cene(self._page, self.e_cena, self.state.auto_id, self.e_d.value,
+                                        self.rodzaj_energii, kwo / lit, wyklucz_id=self.t_id):
             return
 
         if utils.sprawdz_duplikat_tankowania(self._page, self.e_k, self.state.auto_id, self.e_d.value, prz, kwo, wyklucz_id=self.t_id):

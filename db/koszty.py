@@ -1,6 +1,7 @@
 """Stacje paliw, trend cen i podział kosztów."""
 
-from date import parsuj_date
+import math
+from date import na_iso, parsuj_date
 from datetime import datetime
 from typing import Any
 
@@ -329,6 +330,78 @@ def pobierz_trend_cen_paliwa(auto_id, od_data=None, rodzaj=None):
 
 
 # ---------------------------------------------------------------------------
+# Nietypowa cena w formularzu tankowania
+# ---------------------------------------------------------------------------
+# Cena za litr nie ma kolumny — to iloraz kwoty i ilości. Cyfra albo przecinek
+# za dużo lub za mało w jednym z pól formularza robi z niej liczbę dziesięć razy
+# za dużą albo za małą, a potem psuje średnią cenę, ranking stacji i spalanie.
+#
+# Porównanie z NAJBLIŻSZĄ z cen odniesienia, a nie z medianą: w jednym aucie
+# stoją obok siebie LPG i benzyna (ponad dwa razy drożej), a u elektryka garaż
+# i szybka ładowarka (nawet sześć razy). Mediana zapalałaby ostrzeżenie przy
+# każdej zmianie źródła; najbliższa cena milknie, gdy podobna trafiła się choć
+# raz. Próg trzykrotny łapie błędy rzędu wielkości, a przepuszcza zwykłe wahania
+# cen i pierwsze tankowanie gazu po samej benzynie.
+PROG_NIETYPOWEJ_CENY = 3.0
+# Ile wpisów z okolicy daty tankowania bierze udział w porównaniu.
+CENY_ODNIESIENIA = 10
+
+
+def ceny_jednostkowe_w_poblizu(auto_id, data_str=None, rodzaj=None, wyklucz_id=None,
+                               ile=CENY_ODNIESIENIA) -> list[float]:
+    """Ceny za litr (albo kWh) z `ile` wpisów tego samego źródła energii
+    najbliższych w czasie dacie `data_str` — wstecz i w przód, bo tankowanie
+    bywa dopisywane po tygodniach, a cena sprzed dwóch lat to inna cena. Bez
+    czytelnej daty — najnowsze wpisy. Tylko wpisy z dodatnią ilością i kwotą;
+    `wyklucz_id` — edytowany wpis, żeby nie był sam swoim odniesieniem."""
+    if not auto_id:
+        return []
+    domyslny = domyslny_rodzaj_energii(auto_id)
+    parametry = [auto_id, domyslny, rodzaj or domyslny]
+    wyklucz_sql = ""
+    if wyklucz_id:
+        wyklucz_sql = " AND id != ?"
+        parametry.append(wyklucz_id)
+    iso = na_iso(data_str) if data_str else None
+    if iso:
+        kolejnosc = "data_iso IS NULL, ABS(julianday(data_iso) - julianday(?)), id DESC"
+        parametry.append(iso)
+    else:
+        kolejnosc = "data_iso IS NULL, data_iso DESC, id DESC"
+    parametry.append(int(ile))
+    with polacz_baze() as conn:
+        wiersze = conn.execute(
+            "SELECT kwota, litry FROM tankowania "
+            "WHERE auto_id=? AND litry > 0 AND kwota > 0 AND COALESCE(rodzaj_energii, ?) = ?"
+            f"{wyklucz_sql} ORDER BY {kolejnosc} LIMIT ?",
+            parametry,
+        ).fetchall()
+    ceny = []
+    for kwota, litry in wiersze:
+        kwota_f, litry_f = _na_liczbe(kwota), _na_liczbe(litry)
+        if kwota_f and litry_f and kwota_f > 0 and litry_f > 0:
+            ceny.append(kwota_f / litry_f)
+    return ceny
+
+
+def nietypowa_cena(cena, ceny_odniesienia, prog=PROG_NIETYPOWEJ_CENY) -> dict[str, Any] | None:
+    """Cena za litr (albo kWh), która odstaje co najmniej `prog` razy od KAŻDEJ
+    z cen odniesienia (ceny_jednostkowe_w_poblizu). None, gdy nie ma z czym
+    porównać albo cena mieści się w normie.
+    Wynik: {"cena", "odniesienie" — najbliższa z cen odniesienia, "krotnosc" —
+    ile razy (zawsze co najmniej `prog`), "wyzsza" — czy cena jest wyższa}."""
+    cena = _na_liczbe(cena)
+    odniesienia = [c for c in map(_na_liczbe, ceny_odniesienia or []) if c and c > 0]
+    if not cena or cena <= 0 or not odniesienia:
+        return None
+    najblizsza = min(odniesienia, key=lambda c: abs(math.log(cena / c)))
+    krotnosc = max(cena / najblizsza, najblizsza / cena)
+    if krotnosc < prog:
+        return None
+    return {"cena": cena, "odniesienie": najblizsza, "krotnosc": krotnosc, "wyzsza": cena > najblizsza}
+
+
+# ---------------------------------------------------------------------------
 # Kto płacił: wydatki z podpisem autora
 # ---------------------------------------------------------------------------
 # Zestawienie miesiąca i saldo rozliczeń (db/rozliczenia.py) czytają wydatki
@@ -599,13 +672,16 @@ def porownaj_czesci_wlasne(auto_id, od_data=None, do_data=None) -> list[dict[str
 
 
 __all__ = [
+    "CENY_ODNIESIENIA",
     "DNI_W_MIESIACU",
     "KATEGORIE_BUDZETU",
     "BEZ_PODPISU",
+    "PROG_NIETYPOWEJ_CENY",
     "_rekordy_napraw",
     "_w_okresie",
     "_wiersze_kosztow",
     "_wydatki_z_autorem",
+    "ceny_jednostkowe_w_poblizu",
     "etykieta_kategorii_innych",
     "klucz_osoby",
     "klucz_stacji",
@@ -622,5 +698,6 @@ __all__ = [
     "pobierz_stacje_paliw",
     "pobierz_trend_cen_paliwa",
     "nazwa_osoby",
+    "nietypowa_cena",
     "suma_kategorii_innych",
 ]
