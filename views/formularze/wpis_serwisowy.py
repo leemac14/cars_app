@@ -3,6 +3,7 @@
 import db
 import flet as ft
 import utils
+from date import na_iso
 from datetime import datetime
 
 
@@ -156,7 +157,7 @@ class FormularzWpisView(ft.View):
         zdalne_id_czesci_do_nagrobka = []
         with db.polacz_baze() as conn:
             if self.h_id:
-                conn.execute("UPDATE historia SET data=?, przebieg=?, cena=?, koszt_robocizny=?, wykonawca=?, kategoria=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, koszt_razem, robocizna, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
+                conn.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, cena=?, koszt_robocizny=?, wykonawca=?, kategoria=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
                 historia_id = self.h_id
                 # Edycja: najpierw oddajemy do magazynu to, co ten wpis zdjął
                 # poprzednio, a dopiero potem potrącamy nowy zestaw. Inaczej
@@ -164,7 +165,7 @@ class FormularzWpisView(ft.View):
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wpisu(historia_id, conn=conn)
             else:
                 kursor = conn.cursor()
-                kursor.execute("INSERT INTO historia (zadanie_id, data, przebieg, cena, koszt_robocizny, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, prz, koszt_razem, robocizna, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie()))
+                kursor.execute("INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, koszt_robocizny, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie()))
                 historia_id = kursor.lastrowid
 
             db.rozlicz_czesci_z_magazynu_wpisu(historia_id, nowe_uzyte, conn=conn)

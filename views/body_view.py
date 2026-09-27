@@ -2,7 +2,7 @@ import flet as ft
 from datetime import datetime
 import db
 import utils
-from date import parsuj_date
+from date import na_iso, parsuj_date
 
 class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state):
@@ -402,8 +402,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
 
             with db.polacz_baze() as conn:
                 conn.execute(
-                    "UPDATE zdjecia_karoserii SET data=?, strefa=?, zalacznik=?, opis=?, przebieg=?, typ_porownania=? WHERE id=?",
-                    (self.e_d.value, self.e_strefa.value, nowy_zalacznik, self.e_opis.value, prz, self.e_typ.value, self.wpis_id)
+                    "UPDATE zdjecia_karoserii SET data=?, data_iso=?, strefa=?, zalacznik=?, opis=?, przebieg=?, typ_porownania=? WHERE id=?",
+                    (self.e_d.value, na_iso(self.e_d.value), self.e_strefa.value, nowy_zalacznik, self.e_opis.value, prz, self.e_typ.value, self.wpis_id)
                 )
             db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
@@ -429,8 +429,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
             with db.polacz_baze() as conn:
                 for zalacznik in przygotowane:
                     conn.execute(
-                        "INSERT INTO zdjecia_karoserii (auto_id, data, strefa, zalacznik, opis, przebieg, typ_porownania) VALUES (?,?,?,?,?,?,?)",
-                        (self.state.auto_id, self.e_d.value, self.e_strefa.value, zalacznik, self.e_opis.value, prz, self.e_typ.value)
+                        "INSERT INTO zdjecia_karoserii (auto_id, data, data_iso, strefa, zalacznik, opis, przebieg, typ_porownania) VALUES (?,?,?,?,?,?,?,?)",
+                        (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), self.e_strefa.value, zalacznik, self.e_opis.value, prz, self.e_typ.value)
                     )
         except Exception as ex:
             for zalacznik in przygotowane:

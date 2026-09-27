@@ -3,6 +3,7 @@
 import db
 import flet as ft
 import utils
+from date import na_iso
 from datetime import datetime
 
 
@@ -542,7 +543,7 @@ class FormularzWizytyView(ft.View):
                 cur.execute("SELECT dodane_przez FROM wizyty WHERE id=?", (self.w_id,))
                 w_osoba = cur.fetchone()
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
-                cur.execute("UPDATE wizyty SET data=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
+                cur.execute("UPDATE wizyty SET data=?, data_iso=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, zalacznik=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
 
                 # Pozycje, które zostają zaznaczone, POPRAWIAMY w miejscu, a nie
                 # kasujemy i zakładamy od nowa. Skasowanie gubiło to, co pozycja
@@ -557,8 +558,8 @@ class FormularzWizytyView(ft.View):
                 for h_id, zid, zdalne_id in cur.fetchall():
                     if zid in wybrane and zid not in zostaja:
                         kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                        cur.execute("UPDATE historia SET data=?, przebieg=?, wykonawca=?, kategoria=? WHERE id=?",
-                                    (self.e_d.value, prz, wyk, kat, h_id))
+                        cur.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, wykonawca=?, kategoria=? WHERE id=?",
+                                    (self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, h_id))
                         zostaja.add(zid)
                         continue
                     if zdalne_id:
@@ -568,16 +569,16 @@ class FormularzWizytyView(ft.View):
                     if zid in zostaja:
                         continue
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,0,?,?,?)", (self.w_id, zid, self.e_d.value, prz, wyk, kat, osoba_wizyty))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?)", (self.w_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, osoba_wizyty))
                 wizyta_id = self.w_id
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
             else:
                 osoba_wizyty = db.pobierz_moje_imie()
-                cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
+                cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, zalacznik, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, osoba_wizyty))
                 wizyta_id = cur.lastrowid
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,0,?,?,?)", (wizyta_id, zid, self.e_d.value, prz, wyk, kat, osoba_wizyty))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, osoba_wizyty))
  
             db.rozlicz_czesci_z_magazynu(wizyta_id, nowe_uzyte, conn=conn)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)

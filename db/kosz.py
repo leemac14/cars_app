@@ -11,6 +11,7 @@ from typing import Any
 from .stale import DNI_KOSZA_DOMYSLNIE, DNI_KOSZA_OPCJE, FOLDER_KOSZ, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
 from .pomocnicze import parsuj_int_bezpiecznie
+from .daty import uzupelnij_date_iso
 from .ustawienia import _pobierz_ustawienia_pojazdu, _przywroc_ustawienia_pojazdu, _usun_ustawienia_pojazdu, pobierz_ustawienie, zapisz_ustawienie
 from .synchronizacja import usun_z_kolejki_sync, zakolejkuj_synchronizacje, zarejestruj_nagrobek
 from .zalaczniki import pelna_sciezka_zalacznika, sciezka_pliku_zalacznika, usun_plik_zalacznika, wzgledna_sciezka_zalacznika
@@ -406,6 +407,9 @@ def przywroc_auto_z_kosza(kosz_id):
                         dane[kolumna] = mapy.get(rodzic, {}).get(dane[kolumna], dane[kolumna])
                 if dane.get("zalacznik") in podmiana:
                     dane["zalacznik"] = podmiana[dane["zalacznik"]]
+                # Migawka sprzed wersji 44 nie zna `data_iso` — liczymy ją z daty
+                # jak przy każdym zapisie, zamiast przywracać wpis bez niej.
+                uzupelnij_date_iso(tab, dane)
                 if not id_wolne(tab, stare_id):
                     dane.pop("id", None)
                 nazwy_kolumn = list(dane.keys())

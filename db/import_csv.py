@@ -3,7 +3,7 @@
 import csv
 import io
 import re
-from date import parsuj_date
+from date import na_iso, parsuj_date
 from datetime import datetime
 
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, KATEGORIA_INNE_DOMYSLNA
@@ -224,9 +224,9 @@ def zaimportuj_tankowania(auto_id, gotowe):
     with polacz_baze() as conn:
         for g in gotowe:
             conn.execute(
-                "INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, "
-                "rodzaj_energii, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (auto_id, g["data"], g["przebieg"], g["dystans"], g["litry"],
+                "INSERT INTO tankowania (auto_id, data, data_iso, przebieg, dystans, litry, kwota, do_pelna, stacja, "
+                "rodzaj_energii, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (auto_id, g["data"], na_iso(g["data"]), g["przebieg"], g["dystans"], g["litry"],
                  g["kwota"], g["do_pelna"], g["stacja"] or None,
                  g.get("rodzaj_energii") or domyslny_rodzaj_energii(auto_id), kto)
             )
@@ -360,12 +360,12 @@ def zaimportuj_inne_koszty(auto_id, gotowe):
     with polacz_baze() as conn:
         for g in gotowe:
             conn.execute(
-                "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, dodane_przez) "
-                "VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO inne_koszty (auto_id, data, data_iso, kategoria, nazwa, kwota, tagi, dodane_przez) "
+                "VALUES (?,?,?,?,?,?,?,?)",
                 # Kolumna z pliku trafia do TAGÓW (tak było od zawsze), a kategoria
                 # dostaje wartość domyślną — importowany wydatek nie ma skąd
                 # wiedzieć, czy był mandatem, czy myjnią.
-                (auto_id, g["data"], KATEGORIA_INNE_DOMYSLNA, g["nazwa"], g["kwota"], g["tagi"] or None, kto)
+                (auto_id, g["data"], na_iso(g["data"]), KATEGORIA_INNE_DOMYSLNA, g["nazwa"], g["kwota"], g["tagi"] or None, kto)
             )
     return len(gotowe)
 
@@ -413,8 +413,8 @@ def zaimportuj_odczyty(auto_id, gotowe):
     with polacz_baze() as conn:
         for g in gotowe:
             conn.execute(
-                "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg, zrodlo) VALUES (?,?,?,?)",
-                (auto_id, g["data"], g["przebieg"], "import")
+                "INSERT INTO odczyty_przebiegu (auto_id, data, data_iso, przebieg, zrodlo) VALUES (?,?,?,?,?)",
+                (auto_id, g["data"], na_iso(g["data"]), g["przebieg"], "import")
             )
     return len(gotowe)
 

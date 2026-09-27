@@ -3,6 +3,7 @@
 import db
 import flet as ft
 import utils
+from date import na_iso
 from datetime import datetime
 
 
@@ -123,8 +124,8 @@ class FormularzZadanieView(ft.View):
                         
                     kat = "Letnie" if self.c_dotyczy_opon.value else None
                     c.execute(
-                        "INSERT INTO historia (zadanie_id, data, przebieg, cena, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)", 
-                        (nowe_z_id, self.e_d.value, prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie())
+                        "INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)", 
+                        (nowe_z_id, self.e_d.value, na_iso(self.e_d.value), prz, kos, wyk, kat, nowy_zalacznik, db.pobierz_moje_imie())
                     )
         if not self.z_id and self.c_dodaj_wymiane.value:
             db.aktualizuj_najnowszy_wpis(nowe_z_id)

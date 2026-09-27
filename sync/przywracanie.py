@@ -48,6 +48,7 @@ def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
                     w = c.fetchone()
                     lokalny_fk = w[0] if w else None
             wartosci[pole_fk] = lokalny_fk
+        db.uzupelnij_date_iso(tabela, wartosci)
 
         if tabela not in TABELE_POSREDNIE:
             wartosci["auto_id"] = auto_id

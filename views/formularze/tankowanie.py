@@ -3,6 +3,7 @@
 import db
 import flet as ft
 import utils
+from date import na_iso
 from datetime import datetime
 
 
@@ -317,12 +318,12 @@ class FormularzTankowanieView(ft.View):
 
         with db.polacz_baze() as conn:
             if self.t_id: 
-                conn.execute("UPDATE tankowania SET data=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, rodzaj_energii=?, typ_ladowania=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
-                             (self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
+                conn.execute("UPDATE tankowania SET data=?, data_iso=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, rodzaj_energii=?, typ_ladowania=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
+                             (self.e_d.value, na_iso(self.e_d.value), prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
                 rekord_id = self.t_id
             else: 
-                kursor = conn.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", 
-                             (self.state.auto_id, self.e_d.value, prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie()))
+                kursor = conn.execute("INSERT INTO tankowania (auto_id, data, data_iso, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                             (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie()))
                 rekord_id = kursor.lastrowid
         # Notatkę zapisujemy osobno i TYLKO gdy treść się zmieniła — inaczej
         # poprawka ceny przestemplowałaby cudzy podpis pod notatką na swój.

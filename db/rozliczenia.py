@@ -25,7 +25,7 @@ from bisect import bisect_left
 from datetime import date, datetime
 from typing import Any
 
-from date import parsuj_date
+from date import na_iso, parsuj_date
 
 from .stale import MAKS_DLUGOSC_NOTATKI
 from .polaczenie import polacz_baze
@@ -383,11 +383,12 @@ def zapisz_rozliczenie(auto_id, data_str=None, notatka=None):
         przelewy = [{"od": _nazwa(warianty, a), "do": _nazwa(warianty, b), "kwota": g}
                     for a, b, g in _przelewy(saldo)]
         tekst_notatki = " ".join(str(notatka or "").split())[:MAKS_DLUGOSC_NOTATKI] or None
+        data_tekst = d.strftime(FORMAT_DATY_ROZLICZENIA)
         c = conn.cursor()
         c.execute(
-            "INSERT INTO rozliczenia (auto_id, data, uczestnicy, salda, przelewy, notatka, klucz, "
-            "poprzednie, dodane_przez, data_utworzenia) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (auto_id, d.strftime(FORMAT_DATY_ROZLICZENIA),
+            "INSERT INTO rozliczenia (auto_id, data, data_iso, uczestnicy, salda, przelewy, notatka, klucz, "
+            "poprzednie, dodane_przez, data_utworzenia) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (auto_id, data_tekst, na_iso(data_tekst),
              json.dumps(sorted(_nazwa(warianty, k) for k in uczestnicy), ensure_ascii=False),
              json.dumps(salda, ensure_ascii=False, sort_keys=True),
              json.dumps(przelewy, ensure_ascii=False),

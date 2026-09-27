@@ -35,6 +35,7 @@ import pytest  # noqa: E402
 
 import db  # noqa: E402
 import pomoce  # noqa: E402
+from date import na_iso  # noqa: E402
 import probki_baz  # noqa: E402
 
 
@@ -227,8 +228,9 @@ def test_probka_awansuje_do_biezacego_schematu(magazyn, schemat_wzorcowy, probka
 
 @pytest.mark.parametrize("probka", PROBKI, ids=[p.stem for p in PROBKI])
 def test_probka_przechodzi_migracje_uzupelniajace_dane(magazyn, probka):
-    """Pięć migracji nie zmienia schematu, tylko UZUPEŁNIA istniejące wiersze.
-    Bez danych w próbce wykonują się na zerze wierszy i niczego nie dowodzą."""
+    """Pięć migracji nie zmienia schematu, tylko UZUPEŁNIA istniejące wiersze,
+    a 44 robi to obok nowej kolumny. Bez danych w próbce wykonują się na zerze
+    wierszy i niczego nie dowodzą."""
     wersja = probki_baz.wersja_probki(probka)
     probki_baz.odtworz_z_probki(probka, db.BAZA_DANYCH)
 
@@ -269,6 +271,15 @@ def test_probka_przechodzi_migracje_uzupelniajace_dane(magazyn, probka):
                     "WHERE cena IS NOT NULL AND cena >= 0 AND ilosc > 0 AND cena_jednostkowa IS NULL"
                 )
                 assert c.fetchone()[0] == 0, f"{probka.stem}: pozycja magazynu bez ceny za jednostkę"
+
+            # Migracja 44: każdy wiersz ma `data_iso` wyliczoną z `data` tą samą
+            # funkcją co zapis — wiersze sprzed niej wypełnione wstecz, nie puste.
+            for tabela in db.TABELE_Z_DATA_ISO:
+                c.execute(f"SELECT data, data_iso FROM {tabela}")
+                rozne = [(d, iso) for d, iso in c.fetchall() if iso != na_iso(d)]
+                assert rozne == [], f"{probka.stem}: {tabela} ma data_iso niezgodną z datą: {rozne[:3]}"
+            c.execute("SELECT COUNT(*) FROM tankowania WHERE data_iso IS NOT NULL")
+            assert c.fetchone()[0] > 0, f"{probka.stem}: data_iso nie wypełniła się wstecz"
 
     if wersja <= 37:
         # Migracja 38: układ zakładek zmienił ZNACZENIE numerów. Kto skończył na

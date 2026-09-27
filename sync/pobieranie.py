@@ -79,6 +79,8 @@ def _zastosuj_rekord(konfig, rekord, auto_id, znane):
                 w = c.fetchone()
                 lokalny_fk = w[0] if w else None
         wartosci[pole_fk] = lokalny_fk
+    # `data_iso` nie jedzie przez chmurę — każdy telefon liczy ją z `data`.
+    db.uzupelnij_date_iso(tabela, wartosci)
 
     if lokalny is None:
         # --- Zabezpieczenie przed dublowaniem przy migracji starszych tankowań ---

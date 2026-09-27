@@ -5,6 +5,7 @@ import db
 import flet as ft
 import sqlite3
 import utils
+from date import na_iso
 from datetime import datetime
 
 from .vin import dekoduj_wmi_lokalnie, pobierz_dane_vin, rok_produkcji_z_vin
@@ -749,9 +750,10 @@ class FormularzAutoView(ft.View):
                     # Korekta przebiegu z formularza pojazdu ma własne źródło —
                     # w historii licznika od razu widać, że nie jest to odczyt
                     # z deski rozdzielczej, tylko poprawka danych auta.
+                    data_odczytu = datetime.now().strftime("%d.%m.%Y")
                     conn.execute(
-                        "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg, zrodlo) VALUES (?, ?, ?, ?)", 
-                        (zapisane_id, datetime.now().strftime("%d.%m.%Y"), prz, "pojazd")
+                        "INSERT INTO odczyty_przebiegu (auto_id, data, data_iso, przebieg, zrodlo) VALUES (?, ?, ?, ?, ?)",
+                        (zapisane_id, data_odczytu, na_iso(data_odczytu), prz, "pojazd")
                     )
 
             db.zatwierdz_zalacznik(self.zg_val, przygotowany_zdj)

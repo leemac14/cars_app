@@ -11,6 +11,7 @@ import log
 from .stale import BAZA_DANYCH
 from .pamiec import zanotuj_zmiane_danych
 from .polaczenie import polacz_baze
+from .daty import przelicz_daty_iso
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .zalaczniki import _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki
 from .kosz import posprzataj_kosz
@@ -639,6 +640,33 @@ def init_db():
             CREATE TABLE IF NOT EXISTS rozliczenia (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, uczestnicy TEXT NOT NULL DEFAULT '[]', salda TEXT NOT NULL DEFAULT '{}', przelewy TEXT NOT NULL DEFAULT '[]', notatka TEXT, klucz TEXT, poprzednie TEXT, dodane_przez TEXT, data_utworzenia TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto ON rozliczenia(auto_id);
             CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto_zdalne ON rozliczenia(auto_id, zdalne_id);
+            """,
+            # Wersja 44: sortowalna data obok dotychczasowej. `data` zostaje jak
+            # była (DD.MM.RRRR), a obok niej staje `data_iso` (RRRR-MM-DD) —
+            # tekst, który SQLite umie posortować i porównać zakresem. Bez niej
+            # każde „od–do” wczytywało cały pojazd i parsowało daty w Pythonie,
+            # a indeksy z wersji 7 i 22 kończyły się na auto_id. Historia nie ma
+            # auto_id, więc jej indeks idzie przez podzespół — tak ją zawężają
+            # zapytania (JOIN zadania). Istniejące wiersze wypełnia blok
+            # `if i == 43` niżej, każdy późniejszy zapis — kod, który zapisuje
+            # datę (db/daty.py).
+            """
+            ALTER TABLE tankowania ADD COLUMN data_iso TEXT;
+            ALTER TABLE inne_koszty ADD COLUMN data_iso TEXT;
+            ALTER TABLE wizyty ADD COLUMN data_iso TEXT;
+            ALTER TABLE historia ADD COLUMN data_iso TEXT;
+            ALTER TABLE odczyty_przebiegu ADD COLUMN data_iso TEXT;
+            ALTER TABLE rozliczenia ADD COLUMN data_iso TEXT;
+            ALTER TABLE zdjecia_karoserii ADD COLUMN data_iso TEXT;
+            ALTER TABLE zadania ADD COLUMN data_iso TEXT;
+            CREATE INDEX IF NOT EXISTS idx_tankowania_auto_data_iso ON tankowania(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_inne_koszty_auto_data_iso ON inne_koszty(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_wizyty_auto_data_iso ON wizyty(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_historia_zadanie_data_iso ON historia(zadanie_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_odczyty_przebiegu_auto_data_iso ON odczyty_przebiegu(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto_data_iso ON rozliczenia(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_zdjecia_karoserii_auto_data_iso ON zdjecia_karoserii(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_zadania_auto_data_iso ON zadania(auto_id, data_iso);
             """
         ]
 
@@ -733,6 +761,14 @@ def init_db():
                             "UPDATE magazyn_czesci SET cena_jednostkowa=? WHERE id=?",
                             (round(cena / kupiona, 4), czesc_id)
                         )
+
+            # `data_iso` dla wszystkiego, co już leży w bazie — tą samą funkcją,
+            # którą liczy każdy późniejszy zapis, więc wiersz sprzed aktualizacji
+            # i wiersz dopisany po niej z tą samą datą mają tę samą wartość.
+            # Datę, której aplikacja nie umie odczytać, zostawiamy z NULL-em:
+            # lista (parsuj_date) też nie widzi w niej daty.
+            if i == 43:
+                przelicz_daty_iso(conn)
 
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")

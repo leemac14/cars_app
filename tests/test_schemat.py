@@ -76,6 +76,17 @@ POZA_SYNC_SWIADOMIE = {
     # źródło prawdy (`historia`) i tak przyjeżdża komplet.
     ("zadania", "data"),
     ("zadania", "przebieg"),
+    # WYLICZANE z `data` (db/daty.py) przy każdym zapisie, także przy wpisaniu
+    # rekordu z chmury. Jedzie `data`, a każdy telefon liczy z niej to samo —
+    # wysłana kopia byłaby drugą prawdą o tej samej dacie i nowym polem w
+    # chmurze, którego starsze wersje aplikacji nie znają.
+    ("tankowania", "data_iso"),
+    ("inne_koszty", "data_iso"),
+    ("wizyty", "data_iso"),
+    ("historia", "data_iso"),
+    ("odczyty_przebiegu", "data_iso"),
+    ("rozliczenia", "data_iso"),
+    ("zadania", "data_iso"),
 }
 
 

@@ -1,7 +1,7 @@
 """Licznik kilometrów: odczyty, historia, wykrywanie podejrzanych skoków."""
 
 import sqlite3
-from date import parsuj_date
+from date import na_iso, parsuj_date
 from datetime import datetime
 from typing import Any
 
@@ -308,8 +308,8 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None, zrodl
             rekord_id, nadpisano = w[0], True
         else:
             kursor = conn.execute(
-                "INSERT INTO odczyty_przebiegu (auto_id, data, przebieg, zrodlo) VALUES (?,?,?,?)",
-                (auto_id, data_str, przebieg, zrodlo)
+                "INSERT INTO odczyty_przebiegu (auto_id, data, data_iso, przebieg, zrodlo) VALUES (?,?,?,?,?)",
+                (auto_id, data_str, na_iso(data_str), przebieg, zrodlo)
             )
             rekord_id, nadpisano = kursor.lastrowid, False
 
@@ -552,7 +552,10 @@ def aktualizuj_odczyt_przebiegu(odczyt_id, przebieg, data_str):
     """Edycja konkretnego, istniejącego odczytu (z poziomu listy historii) —
     aktualizuje po ID, bez logiki upsert po dacie użytej w dodaj_odczyt_przebiegu."""
     with polacz_baze() as conn:
-        conn.execute("UPDATE odczyty_przebiegu SET przebieg=?, data=? WHERE id=?", (przebieg, data_str, odczyt_id))
+        conn.execute(
+            "UPDATE odczyty_przebiegu SET przebieg=?, data=?, data_iso=? WHERE id=?",
+            (przebieg, data_str, na_iso(data_str), odczyt_id)
+        )
 
 
 def aktualizuj_najnowszy_wpis(zadanie_id):
@@ -562,9 +565,10 @@ def aktualizuj_najnowszy_wpis(zadanie_id):
         wpisy = c.fetchall()
         if wpisy:
             wpisy.sort(key=lambda x: (parsuj_date(x[0]), int(x[1] or 0)), reverse=True)
-            c.execute("UPDATE zadania SET data=?, przebieg=? WHERE id=?", (wpisy[0][0], int(wpisy[0][1] or 0), zadanie_id))
+            c.execute("UPDATE zadania SET data=?, data_iso=?, przebieg=? WHERE id=?",
+                      (wpisy[0][0], na_iso(wpisy[0][0]), int(wpisy[0][1] or 0), zadanie_id))
         else:
-            c.execute("UPDATE zadania SET data=NULL, przebieg=NULL WHERE id=?", (zadanie_id,))
+            c.execute("UPDATE zadania SET data=NULL, data_iso=NULL, przebieg=NULL WHERE id=?", (zadanie_id,))
 
 
 def przelicz_wszystkie_zadania(auto_id):

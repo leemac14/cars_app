@@ -15,6 +15,7 @@ from .stale import *
 from .pamiec import *
 from .polaczenie import *
 from .pomocnicze import *
+from .daty import *
 from .ustawienia import *
 from .jednostki import *
 from .synchronizacja import *
@@ -50,6 +51,7 @@ from . import (
     pamiec,
     polaczenie,
     pomocnicze,
+    daty,
     ustawienia,
     jednostki,
     synchronizacja,

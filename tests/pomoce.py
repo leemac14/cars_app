@@ -252,6 +252,10 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
         c.execute("INSERT INTO wyciszone_powiadomienia (auto_id, klucz, do_dnia, tytul) VALUES (?,?,?,?)",
                   (auto, "oc", "2026-12-31", "Polisa OC"))
 
+        # Aplikacja dopisuje `data_iso` przy każdym zapisie daty — wpisy
+        # wstawione tu SQL-em dostają ją tak, jak dostałyby w aplikacji.
+        db.przelicz_daty_iso(conn)
+
     # Ustawienie przywiązane do pojazdu — musi pojechać do kosza i wrócić.
     db.zapisz_ustawienie(db.ustawienia._klucz_kokpitu(auto), "przebieg,paliwo,terminy")
 
@@ -564,3 +568,5 @@ def dosyp_dane(auto_id, dni_wstecz=200):
         c.execute("INSERT INTO zestawy_opon (auto_id, sezon, rozmiar, ilosc, zamontowane, os_montazu) "
                   "VALUES (?,?,?,?,?,?)",
                   (auto_id, "Letnie", "205/55 R16", 4, 0, "Wszystkie"))
+
+        db.przelicz_daty_iso(conn)

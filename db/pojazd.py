@@ -82,10 +82,14 @@ def pobierz_sprzedane_pojazdy() -> list[dict[str, Any]]:
         c.execute(
             "SELECT id, nazwa, nr_rej, marka, model, zdjecie_glowne, nadwozie, kolor_motywu, "
             "data_sprzedazy, cena_sprzedazy, cena_zakupu, data_zakupu "
-            "FROM samochody WHERE COALESCE(status, 'aktywny') = ? ORDER BY data_sprzedazy DESC, nazwa",
+            "FROM samochody WHERE COALESCE(status, 'aktywny') = ? ORDER BY nazwa",
             (STATUS_POJAZDU_SPRZEDANY,)
         )
         auta = [dict(w) for w in c.fetchall()]
+        # Najpierw ostatnio sprzedane. Nie w SQL-u: data sprzedaży to tekst
+        # DD.MM.RRRR, który sortowałby się po dniu miesiąca. Sortowanie jest
+        # stabilne także z reverse, więc przy tej samej dacie zostaje nazwa.
+        auta.sort(key=lambda a: parsuj_date(a["data_sprzedazy"]), reverse=True)
 
         for a in auta:
             aid = a["id"]

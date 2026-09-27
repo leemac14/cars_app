@@ -277,6 +277,17 @@ JEDNOSTKI_MAGAZYNU = ["szt", "l", "ml", "kg", "g"]
 TABELE_Z_ZALACZNIKIEM = {"tankowania", "wizyty", "inne_koszty", "zdjecia_karoserii", "historia", "zestawy_opon", "magazyn_czesci"}
 
 
+# Tabele, w których obok `data` (DD.MM.RRRR, bez zmian) leży `data_iso`
+# (RRRR-MM-DD, migracja 44). Tekstu DD.MM.RRRR SQLite nie posortuje ani nie
+# porówna zakresem, `data_iso` — tak. Wartość to zawsze `date.na_iso(data)`,
+# dopisywana przy KAŻDYM zapisie daty: jawnie w SQL albo przez
+# `uzupelnij_date_iso` tam, gdzie wiersz jest słownikiem (chmura, kosz).
+TABELE_Z_DATA_ISO = (
+    "tankowania", "inne_koszty", "wizyty", "historia",
+    "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
+)
+
+
 # Stan licznika zapisuje się w aplikacji na cztery sposoby. Trzy z nich są
 # „przy okazji” — nikt nie dodaje tankowania po to, żeby zanotować przebieg —
 # ale dla historii licznika są tak samo wiarygodne jak odczyt wpisany wprost.
@@ -417,6 +428,7 @@ __all__ = [
     "STORAGE_PATH",
     "STREFY_KAROSERII",
     "TABELE_NOTATKI_Z_PODPISEM",
+    "TABELE_Z_DATA_ISO",
     "TABELE_Z_ZALACZNIKIEM",
     "TERMINY_DOKUMENTOW",
     "TYPY_LADOWANIA",

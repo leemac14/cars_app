@@ -5,8 +5,6 @@ import io
 import os
 import re
 import zipfile
-from date import parsuj_date
-from datetime import datetime
 try:
     from fpdf import FPDF
 except ImportError:
@@ -15,6 +13,7 @@ except ImportError:
 from .stale import ENERGIA_PRAD
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
+from .daty import warunek_zakresu_dat
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km, pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, slowo_dystansu
 from .energia import domyslny_rodzaj_energii
@@ -70,19 +69,6 @@ _MAPA_TRANSLITERACJI_PL = str.maketrans({
 })
 
 
-def _data_w_zakresie(data_str, od_data, do_data):
-    if not od_data and not do_data:
-        return True
-    d = parsuj_date(data_str)
-    if d == datetime.min.date():
-        return False
-    if od_data and d < od_data:
-        return False
-    if do_data and d > do_data:
-        return False
-    return True
-
-
 def _kolumny_rozbicia(koszt, robocizna, z_magazynu):
     """„Robocizna” i „Części” do tabeli eksportu. Części razem z magazynem, żeby
     obie kolumny sumowały się do „Koszt”. Naprawa bez podziału ma obie puste —
@@ -116,43 +102,47 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     with polacz_baze() as conn:
         c = conn.cursor()
 
+        # Zakres i kolejność po `data_iso` liczy SQLite, na indeksie
+        # (auto_id, data_iso) — bez parsowania w Pythonie każdej daty pojazdu.
+        # Wpis bez czytelnej daty wypada przy podanym zakresie, a bez zakresu
+        # stoi na początku (NULL) — tak jak przy dawnym filtrze w Pythonie.
         if "tankowania" in kategorie:
+            warunek, parametry = warunek_zakresu_dat("data_iso", od_data, do_data)
             c.execute(
                 "SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi, notatka "
-                "FROM tankowania WHERE auto_id=?", (auto_id,)
+                f"FROM tankowania WHERE auto_id=?{warunek} ORDER BY data_iso, id", (auto_id, *parametry)
             )
             wiersze = []
             for data, prz, dys, lit, kwo, pelna, stacja, tagi, notatka in c.fetchall():
-                if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([
-                        data, licznik(prz), formatuj_liczba_eksport(dystans_z_km(dys, j)), formatuj_liczba_eksport(lit),
-                        formatuj_liczba_eksport(kwo), "Tak" if pelna else "Nie", stacja or "", tagi or "",
-                        notatka or ""
-                    ])
-            wiersze.sort(key=lambda w: parsuj_date(w[0]))
+                wiersze.append([
+                    data, licznik(prz), formatuj_liczba_eksport(dystans_z_km(dys, j)), formatuj_liczba_eksport(lit),
+                    formatuj_liczba_eksport(kwo), "Tak" if pelna else "Nie", stacja or "", tagi or "",
+                    notatka or ""
+                ])
             wynik["tankowania"] = (
                 ["Data", f"Przebieg ({j})", f"Dystans ({j})", "Litry", "Kwota", "Do pełna", "Stacja", "Tagi", "Notatka"], wiersze
             )
 
         if "historia" in kategorie:
+            warunek, parametry = warunek_zakresu_dat("h.data_iso", od_data, do_data)
             c.execute(
                 "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.koszt_robocizny, "
                 "(SELECT SUM(x.koszt) FROM historia_czesci_magazynu x WHERE x.historia_id = h.id), "
                 "h.wykonawca, h.kategoria, h.notatka "
                 "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-                "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+                f"WHERE z.auto_id=? AND h.wizyta_id IS NULL{warunek} ORDER BY h.data_iso, h.id",
+                (auto_id, *parametry)
             )
             wiersze = []
             for data, nazwa, prz, cena, robocizna, magazyn, wyk, kat, notatka in c.fetchall():
-                if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([data, nazwa, licznik(prz), formatuj_liczba_eksport(cena),
-                                    *_kolumny_rozbicia(cena, robocizna, magazyn),
-                                    wyk or "", kat or "", notatka or ""])
-            wiersze.sort(key=lambda w: parsuj_date(w[0]))
+                wiersze.append([data, nazwa, licznik(prz), formatuj_liczba_eksport(cena),
+                                *_kolumny_rozbicia(cena, robocizna, magazyn),
+                                wyk or "", kat or "", notatka or ""])
             wynik["historia"] = (["Data", "Podzespół", f"Przebieg ({j})", "Koszt", "Robocizna", "Części",
                                   "Wykonawca", "Kategoria", "Notatka"], wiersze)
 
         if "wizyty" in kategorie:
+            warunek, parametry = warunek_zakresu_dat("w.data_iso", od_data, do_data)
             c.execute(
                 "SELECT w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.koszt_robocizny, "
                 "(SELECT SUM(x.koszt) FROM wizyta_czesci_magazynu x WHERE x.wizyta_id = w.id), "
@@ -160,29 +150,30 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
                 "GROUP_CONCAT(z.nazwa, ', ') FROM wizyty w "
                 "LEFT JOIN historia h ON h.wizyta_id = w.id "
                 "LEFT JOIN zadania z ON h.zadanie_id = z.id "
-                "WHERE w.auto_id=? GROUP BY w.id", (auto_id,)
+                f"WHERE w.auto_id=?{warunek} GROUP BY w.id ORDER BY w.data_iso, w.id", (auto_id, *parametry)
             )
             wiersze = []
             for data, prz, wyk, kosz, robocizna, magazyn, notatki, tagi, czesci in c.fetchall():
-                if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([
-                        data, licznik(prz), wyk or "", formatuj_liczba_eksport(kosz),
-                        *_kolumny_rozbicia(kosz, robocizna, magazyn),
-                        czesci or "", tagi or "", notatki or ""
-                    ])
-            wiersze.sort(key=lambda w: parsuj_date(w[0]))
+                wiersze.append([
+                    data, licznik(prz), wyk or "", formatuj_liczba_eksport(kosz),
+                    *_kolumny_rozbicia(kosz, robocizna, magazyn),
+                    czesci or "", tagi or "", notatki or ""
+                ])
             wynik["wizyty"] = (
                 ["Data", f"Przebieg ({j})", "Warsztat", "Koszt", "Robocizna", "Części", "Podzespoły", "Tagi",
                  "Notatki"], wiersze
             )
 
         if "inne_koszty" in kategorie:
-            c.execute("SELECT data, nazwa, kategoria, kwota, tagi, notatka FROM inne_koszty WHERE auto_id=?", (auto_id,))
-            wiersze = []
-            for data, nazwa, kat, kwota, tagi, notatka in c.fetchall():
-                if _data_w_zakresie(data, od_data, do_data):
-                    wiersze.append([data, nazwa or "", kat or "", formatuj_liczba_eksport(kwota), tagi or "", notatka or ""])
-            wiersze.sort(key=lambda w: parsuj_date(w[0]))
+            warunek, parametry = warunek_zakresu_dat("data_iso", od_data, do_data)
+            c.execute(
+                "SELECT data, nazwa, kategoria, kwota, tagi, notatka FROM inne_koszty "
+                f"WHERE auto_id=?{warunek} ORDER BY data_iso, id", (auto_id, *parametry)
+            )
+            wiersze = [
+                [data, nazwa or "", kat or "", formatuj_liczba_eksport(kwota), tagi or "", notatka or ""]
+                for data, nazwa, kat, kwota, tagi, notatka in c.fetchall()
+            ]
             wynik["inne_koszty"] = (["Data", "Opis", "Kategoria", "Kwota", "Tagi", "Notatka"], wiersze)
 
         if "magazyn_czesci" in kategorie:
@@ -273,12 +264,12 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             wynik["warsztaty"] = (["Nazwa", "Telefon", "Adres", "Notatki"], wiersze)
 
         if "odczyty_przebiegu" in kategorie:
-            c.execute("SELECT data, przebieg, notatka FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
-            wiersze = [
-                [data, licznik(prz), notatka or ""] for data, prz, notatka in c.fetchall()
-                if _data_w_zakresie(data, od_data, do_data)
-            ]
-            wiersze.sort(key=lambda w: parsuj_date(w[0]))
+            warunek, parametry = warunek_zakresu_dat("data_iso", od_data, do_data)
+            c.execute(
+                "SELECT data, przebieg, notatka FROM odczyty_przebiegu "
+                f"WHERE auto_id=?{warunek} ORDER BY data_iso, id", (auto_id, *parametry)
+            )
+            wiersze = [[data, licznik(prz), notatka or ""] for data, prz, notatka in c.fetchall()]
             wynik["odczyty_przebiegu"] = (["Data", f"Przebieg ({j})", "Notatka"], wiersze)
 
         if "tagi" in kategorie:
@@ -296,25 +287,27 @@ def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
         return None
 
     rodzaj = domyslny_rodzaj_energii(auto_id)
+    warunek, parametry = warunek_zakresu_dat("data_iso", od_data, do_data)
+    warunek_h, _ = warunek_zakresu_dat("h.data_iso", od_data, do_data)
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT data, kwota, litry, przebieg, do_pelna, COALESCE(rodzaj_energii, ?) FROM tankowania WHERE auto_id=?",
-            (rodzaj, auto_id)
+            "SELECT data, kwota, litry, przebieg, do_pelna, COALESCE(rodzaj_energii, ?) FROM tankowania "
+            f"WHERE auto_id=?{warunek}", (rodzaj, auto_id, *parametry)
         )
-        tankowania = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+        tankowania = c.fetchall()
 
         c.execute(
             "SELECT h.data, h.cena FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
+            f"WHERE z.auto_id=? AND h.wizyta_id IS NULL{warunek_h}", (auto_id, *parametry)
         )
-        historia = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+        historia = c.fetchall()
 
-        c.execute("SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?", (auto_id,))
-        wizyty = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+        c.execute(f"SELECT data, koszt_calkowity FROM wizyty WHERE auto_id=?{warunek}", (auto_id, *parametry))
+        wizyty = c.fetchall()
 
-        c.execute("SELECT data, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
-        inne = [r for r in c.fetchall() if _data_w_zakresie(r[0], od_data, do_data)]
+        c.execute(f"SELECT data, kwota FROM inne_koszty WHERE auto_id=?{warunek}", (auto_id, *parametry))
+        inne = c.fetchall()
 
     koszt_paliwo = sum(float(t[1] or 0) for t in tankowania)
     koszt_serwis = sum(float(h[1] or 0) for h in historia) + sum(float(w[1] or 0) for w in wizyty)
@@ -429,7 +422,6 @@ __all__ = [
     "KATEGORIE_EKSPORTU",
     "_MAPA_TRANSLITERACJI_PL",
     "_RaportPDF",
-    "_data_w_zakresie",
     "_kolumny_rozbicia",
     "generuj_csv",
     "generuj_eksport_csv",

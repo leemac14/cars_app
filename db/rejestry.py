@@ -1,7 +1,7 @@
 """Warsztaty, wydatki cykliczne, szablony tras, własne pakiety serwisowe
 i domyślne podzespoły zależne od napędu."""
 
-from date import parsuj_date
+from date import na_iso, parsuj_date
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -140,9 +140,10 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
         dzis = datetime.now()
         if czy_koszt:
             kategoria = "Cykliczne" if typ == TYP_CYKLICZNY_WYDATEK else KATEGORIA_INNE_DOMYSLNA
+            data_wpisu = dzis.strftime("%d.%m.%Y")
             conn.execute(
-                "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, dodane_przez) VALUES (?,?,?,?,?,?)",
-                (auto_id, dzis.strftime("%d.%m.%Y"), kategoria, nazwa, kwota, pobierz_moje_imie())
+                "INSERT INTO inne_koszty (auto_id, data, data_iso, kategoria, nazwa, kwota, dodane_przez) VALUES (?,?,?,?,?,?,?)",
+                (auto_id, data_wpisu, na_iso(data_wpisu), kategoria, nazwa, kwota, pobierz_moje_imie())
             )
         nowa_data = (dzis + timedelta(days=int(okres_dni or 30))).strftime("%d.%m.%Y")
         conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, wydatek_id))

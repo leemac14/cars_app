@@ -604,7 +604,7 @@ def pobierz_dane_paszportu(auto_id):
 
         c.execute(
             "SELECT data, strefa, zalacznik, opis FROM zdjecia_karoserii "
-            "WHERE auto_id=? ORDER BY data", (auto_id,)
+            "WHERE auto_id=? ORDER BY data_iso, id", (auto_id,)
         )
         zdjecia_karoserii = c.fetchall()
 

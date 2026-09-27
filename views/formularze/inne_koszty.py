@@ -3,6 +3,7 @@
 import db
 import flet as ft
 import utils
+from date import na_iso
 from datetime import datetime
 
 
@@ -106,14 +107,14 @@ class FormularzInneView(ft.View):
         with db.polacz_baze() as conn:
             if self.i_id: 
                 conn.execute(
-                    "UPDATE inne_koszty SET data=?, kategoria=?, nazwa=?, kwota=?, tagi=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?",
-                    (self.e_d.value, kategoria, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.i_id)
+                    "UPDATE inne_koszty SET data=?, data_iso=?, kategoria=?, nazwa=?, kwota=?, tagi=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?",
+                    (self.e_d.value, na_iso(self.e_d.value), kategoria, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.i_id)
                 )
                 rekord_id = self.i_id
             else: 
                 kursor = conn.execute(
-                    "INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
-                    (self.state.auto_id, self.e_d.value, kategoria, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie())
+                    "INSERT INTO inne_koszty (auto_id, data, data_iso, kategoria, nazwa, kwota, tagi, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), kategoria, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie())
                 )
                 rekord_id = kursor.lastrowid
 

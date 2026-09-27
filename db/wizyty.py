@@ -4,6 +4,7 @@ import os
 import shutil
 import sqlite3
 import uuid
+from date import na_iso
 from datetime import datetime
 from typing import Any
 
@@ -42,8 +43,8 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
         tytuly = [p[0] for p in pozycje]
         notatki = "Utworzono z listy: " + ", ".join(tytuly)
 
-        cur.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, notatki, dodane_przez) VALUES (?,?,?,?,?,?,?)",
-                    (auto_id, dzis, prz, "", suma_kosztow, notatki, pobierz_moje_imie()))
+        cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, notatki, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
+                    (auto_id, dzis, na_iso(dzis), prz, "", suma_kosztow, notatki, pobierz_moje_imie()))
         wizyta_id = cur.lastrowid
 
         for tytul, koszt, zadanie_id in pozycje:
@@ -71,8 +72,8 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
 
             if zadanie_id:
                 kat = "Letnie" if czy_opony else None
-                cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
-                            (wizyta_id, zadanie_id, dzis, prz, koszt or 0.0, "", kat, pobierz_moje_imie()))
+                cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (wizyta_id, zadanie_id, dzis, na_iso(dzis), prz, koszt or 0.0, "", kat, pobierz_moje_imie()))
 
         cur.execute(f"DELETE FROM do_zrobienia WHERE id IN ({placeholders})", tuple(ids_list))
 
