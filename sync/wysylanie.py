@@ -7,6 +7,7 @@ jest wybierany jawnie, a przegrany trafia na listę konfliktów zamiast znikną�
 
 import db
 import sqlite3
+from itertools import combinations
 
 from .role import _wolno_wypchnac_zmiane
 from .konflikty import _zarejestruj_konflikt, _zarejestruj_odrzucenie
@@ -19,11 +20,24 @@ def _zgodny_z_zapamietanym(dane, zapamietany, dopisane=()):
     Kolumna z `dopisane` (patrz KONFIGURACJA_SYNC), dopóki jest pusta, nie
     zmienia rekordu: hash sprzed jej dopisania liczył się bez tego klucza.
     Bez tej tolerancji każdy wiersz tabeli wyglądałby po aktualizacji na
-    zmieniony, a porównanie z wersją w chmurze — na konflikt."""
+    zmieniony, a porównanie z wersją w chmurze — na konflikt.
+
+    Dopisywano je w różnych wersjach, więc hash bywa „pomiędzy”: wpis
+    zsynchronizowany po dojściu robocizny, a przed gwarancją, ma pusty klucz
+    `koszt_robocizny`, ale kluczy gwarancji nie ma wcale. Dlatego próbujemy
+    bez KAŻDEGO zestawu pustych dopisanych kolumn, a nie tylko bez wszystkich
+    naraz. Fałszywej zgodności to nie daje: hash zgadza się tylko z treścią,
+    z której go policzono."""
+    dane = dane or {}
     if _hash_zawartosci(dane) == zapamietany:
         return True
-    bez_pustych = {k: v for k, v in (dane or {}).items() if not (k in dopisane and v is None)}
-    return len(bez_pustych) != len(dane or {}) and _hash_zawartosci(bez_pustych) == zapamietany
+    puste = [k for k in dane if k in dopisane and dane[k] is None]
+    for ile in range(len(puste), 0, -1):
+        for pominiete in combinations(puste, ile):
+            bez_pustych = {k: v for k, v in dane.items() if k not in pominiete}
+            if _hash_zawartosci(bez_pustych) == zapamietany:
+                return True
+    return False
 
 
 def _wypchnij_tabele(klient, wspolny_id, auto_id, konfig, rola=None):

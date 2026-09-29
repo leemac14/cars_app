@@ -281,8 +281,8 @@ class UstawieniaView(ft.View):
                 self.e_prog_km,
                 self.e_prog_dni,
                 ft.Text(
-                    "Próg dni powyżej obowiązuje podzespoły z interwałem czasowym oraz każdy termin, "
-                    "któremu nie ustawisz własnego wyprzedzenia poniżej.",
+                    "Próg dni powyżej obowiązuje podzespoły z interwałem czasowym, gwarancje napraw "
+                    "oraz każdy termin, któremu nie ustawisz własnego wyprzedzenia poniżej.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
                 ft.Divider(height=1),

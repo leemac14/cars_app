@@ -62,6 +62,7 @@ class PojazdView(ft.View):
             self._hero(),
             self._metryki(),
             self._terminy(),
+            self._gwarancje_napraw(),
             self._zakup_i_wartosc(),
             self._specyfikacja(),
             self._ubezpieczenie(),
@@ -73,7 +74,7 @@ class PojazdView(ft.View):
 
         super().__init__(
             route="/pojazd", padding=15, spacing=15, appbar=appbar,
-            controls=elementy,
+            controls=[e for e in elementy if e is not None],
             scroll=ft.ScrollMode.AUTO,
         )
         self.scena.uruchom(page)
@@ -240,6 +241,23 @@ class PojazdView(ft.View):
             ], spacing=6))
 
         return utils.karta_analizy(self._page, "Terminy i dokumenty", ft.Icons.SHIELD, wiersze)
+
+    # ================= GWARANCJE NAPRAW =================
+
+    def _gwarancje_napraw(self):
+        """Trwające gwarancje na części — obok gwarancji całego auta z terminów.
+        Z ostatniej wymiany każdego podzespołu, od kończącej się najwcześniej;
+        dotknięcie prowadzi do historii podzespołu. Bez żadnej — bez sekcji:
+        pusta karta tylko odsuwałaby resztę w dół."""
+        gwarancje = db.gwarancje_pojazdu(self.state.auto_id)
+        if not gwarancje:
+            return None
+        wiersze = [
+            utils.pozycja_gwarancji(
+                g, self.j, on_click=lambda e, zid=g["zadanie_id"]: utils.przejdz(self._page, f"/historia/{zid}"))
+            for g in gwarancje
+        ]
+        return utils.karta_analizy(self._page, "Gwarancje na naprawy", ft.Icons.GPP_GOOD, wiersze)
 
     # ================= ZAKUP I WARTOŚĆ =================
 

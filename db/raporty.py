@@ -24,6 +24,9 @@ from .ustawienia import pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu
 from .energia import formatuj_zuzycie_tekst
 from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu
+from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, opis_gwarancji, zakres_gwarancji
+from .nazwy import klucz_nazwy
+from .rejestry import WARSZTAT_BEZ_NAZWY
 from .eksport import FOLDER_ASSETS, KATEGORIE_EKSPORTU, _MAPA_TRANSLITERACJI_PL, _RaportPDF
 
 
@@ -310,10 +313,52 @@ def _narysuj_wykres_liniowy(pdf, punkty, x, y, w, h):
     pdf.set_text_color(0, 0, 0)
 
 
-def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja, terminy):
+def _przytnij_do_szerokosci(pdf, tekst, szerokosc):
+    """Tekst w bieżącej czcionce, który zmieści się w `szerokosc` mm — z „...”
+    na końcu, gdy trzeba było uciąć. `cell` nie zawija, a wychodzący za margines
+    napis przepada na krawędzi kartki."""
+    tekst = pdf.t(tekst)
+    if pdf.get_string_width(tekst) <= szerokosc:
+        return tekst
+    while tekst and pdf.get_string_width(tekst + "...") > szerokosc:
+        tekst = tekst[:-1]
+    return tekst.rstrip() + "..."
+
+
+def _rysuj_gwarancje_napraw(pdf, gwarancje):
+    """Sekcja „Gwarancje na naprawy”: część i ile zostało (zielono, a w progu
+    przypomnienia pomarańczowo — jak w aplikacji), pod spodem limity, dzień
+    wymiany i warsztat. Dla kupującego to lista rzeczy, za które nie zapłaci
+    drugi raz."""
+    pdf.set_font(pdf.czcionka, "B", 13)
+    pdf.cell(0, 9, pdf.t("Gwarancje na naprawy"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+    pdf.ln(3)
+
+    szerokosc = pdf.w - pdf.l_margin - pdf.r_margin
+    for nazwa, opis, szczegoly, status in gwarancje:
+        kolor = (210, 130, 20) if status == STATUS_GWARANCJI_BLISKO else (40, 150, 70)
+        pdf.set_font(pdf.czcionka, "B", 10)
+        pdf.set_text_color(0, 0, 0)
+        nazwa = _przytnij_do_szerokosci(pdf, f"{nazwa} — ", szerokosc * 0.55)
+        szer_nazwy = pdf.get_string_width(nazwa) + 1
+        pdf.cell(szer_nazwy, 6, nazwa)
+        pdf.set_font(pdf.czcionka, "", 10)
+        pdf.set_text_color(*kolor)
+        pdf.cell(0, 6, _przytnij_do_szerokosci(pdf, opis, szerokosc - szer_nazwy), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font(pdf.czcionka, "", 8.5)
+        pdf.set_text_color(110, 110, 110)
+        pdf.cell(0, 5, _przytnij_do_szerokosci(pdf, szczegoly, szerokosc), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(5)
+
+
+def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja, terminy, gwarancje=None):
     """Strona tytułowa 'Cyfrowego paszportu pojazdu': zdjęcie, nazwa, specyfikacja
-    w dwóch kolumnach oraz ważne terminy kolorowane jak w reszcie aplikacji.
-    Używane wyłącznie przez generuj_pdf_raportu(tryb_paszportu=True)."""
+    w dwóch kolumnach, ważne terminy kolorowane jak w reszcie aplikacji i trwające
+    gwarancje napraw. Używane wyłącznie przez generuj_pdf_raportu(tryb_paszportu=True)."""
     zdjecie_glowne = sciezka_pliku_zalacznika(zdjecie_glowne)
     if zdjecie_glowne and os.path.exists(zdjecie_glowne):
         try:
@@ -397,6 +442,9 @@ def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikac
             pdf.set_text_color(0, 0, 0)
         pdf.ln(6)
 
+    if gwarancje:
+        _rysuj_gwarancje_napraw(pdf, gwarancje)
+
     pdf.add_page()
 
 
@@ -445,7 +493,8 @@ def _rysuj_galerie_karoserii(pdf, zdjecia_karoserii):
 
 def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=None,
                          tryb_paszportu=False, zdjecie_glowne=None, specyfikacja=None,
-                         terminy=None, punkty_przebiegu=None, zdjecia_karoserii=None):
+                         terminy=None, punkty_przebiegu=None, zdjecia_karoserii=None,
+                         gwarancje=None):
     """
     kategorie_dane: {klucz: (naglowki, wiersze)} — jak z pobierz_dane_eksportu().
     podsumowanie: opcjonalny słownik z oblicz_podsumowanie_okresu() do nagłówka raportu.
@@ -453,7 +502,8 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
     stronę tytułową (zdjęcie, nazwa, specyfikacja, ważne terminy) i — jeśli podano —
     wykres przebiegu w czasie oraz galerię zdjęć karoserii na końcu. Używane przez
     generuj_pdf_paszportu() do zbudowania "Cyfrowego paszportu pojazdu". Pozostałe
-    nowe parametry mają znaczenie tylko w tym trybie.
+    nowe parametry mają znaczenie tylko w tym trybie. `gwarancje` — krotki
+    (część, „gwarancja jeszcze…”, szczegóły, status) z pobierz_dane_paszportu().
     Zwraca bajty pliku PDF. Rzuca RuntimeError, jeśli fpdf2 nie jest zainstalowane.
     """
     if FPDF is None:
@@ -463,7 +513,8 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
     pdf.add_page()
 
     if tryb_paszportu:
-        _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja or [], terminy or [])
+        _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja or [], terminy or [],
+                                         gwarancje or [])
     else:
         pdf.set_font(pdf.czcionka, "B", 18)
         pdf.cell(0, 12, pdf.t(f"Raport pojazdu: {auto_nazwa}"), ln=1)
@@ -637,14 +688,30 @@ def pobierz_dane_paszportu(auto_id):
         "terminy": terminy,
         "punkty_przebiegu": pobierz_historie_przebiegu(auto_id),
         "zdjecia_karoserii": zdjecia_karoserii,
+        "gwarancje": _gwarancje_do_paszportu(auto_id, j),
     }
+
+
+def _gwarancje_do_paszportu(auto_id, j):
+    """Trwające gwarancje napraw jako (część, „gwarancja jeszcze…”, szczegóły,
+    status). Minione pomijamy: kupującego obchodzi to, co jeszcze chroni."""
+    wynik = []
+    for g in gwarancje_pojazdu(auto_id):
+        szczegoly = f"{zakres_gwarancji(g, j)} · wymiana {g['data']}"
+        if g["wykonawca"] and klucz_nazwy(g["wykonawca"]) != klucz_nazwy(WARSZTAT_BEZ_NAZWY):
+            szczegoly += f" · {g['wykonawca']}"
+        wynik.append((g["nazwa"], opis_gwarancji(g, j), szczegoly, g["status"]))
+    return wynik
 
 
 __all__ = [
     "MIESIACE_SKROT",
     "_CZCIONKI_KANDYDACI",
+    "_gwarancje_do_paszportu",
     "_narysuj_wykres_liniowy",
+    "_przytnij_do_szerokosci",
     "_rysuj_galerie_karoserii",
+    "_rysuj_gwarancje_napraw",
     "_rysuj_strone_tytulowa_paszportu",
     "_znajdz_czcionki_grafiki",
     "generuj_grafike_roku",

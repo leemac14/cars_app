@@ -6,7 +6,7 @@ from date import parsuj_date
 from datetime import datetime, timedelta
 from typing import Any
 
-from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, TERMINY_DOKUMENTOW
+from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, STATUS_POJAZDU_SPRZEDANY, TERMINY_DOKUMENTOW
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .pomocnicze import opis_terminu_dni
@@ -17,6 +17,7 @@ from .ustawienia import (
 from .jednostki import slowo_dystansu, tekst_dystansu
 from .synchronizacja import czy_moge_dodawac
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, swiezosc_licznika
+from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, linie_przypomnienia_gwarancji
 
 
 # ============================================================================
@@ -222,7 +223,7 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
 
         kolumny_terminow = ", ".join(kol for _, kol, _ in TERMINY_DOKUMENTOW)
         c.execute(
-            f"SELECT {kolumny_terminow}, gwarancja_przebieg FROM samochody WHERE id=?",
+            f"SELECT {kolumny_terminow}, gwarancja_przebieg, status FROM samochody WHERE id=?",
             (auto_id,)
         )
         w = c.fetchone()
@@ -262,6 +263,25 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
                         "typ": "dokument", "tytul": f"Gwarancja (limit {slowo_dystansu()})", "opis": opis,
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
                         "klucz": "dokument:gwarancja_km",
+                    })
+
+            # Gwarancje napraw w progu przypomnienia (te same progi, co podzespoły):
+            # „sprawdź część, zanim minie”. Po końcu gwarancji nie ma już czego
+            # zrobić, więc powiadomienie znika, zamiast wisieć jako „po terminie”.
+            # Sprzedane auto nie przypomina — gwarancja pojechała z kupującym.
+            if w["status"] != STATUS_POJAZDU_SPRZEDANY:
+                for g in gwarancje_pojazdu(auto_id, dzis=dzis, aktualny_przebieg=aktualny_przebieg,
+                                           sredni_dzienny=sredni_dzienny_przebieg,
+                                           prog_dni=prog_dni, prog_km=prog_km):
+                    if g["status"] != STATUS_GWARANCJI_BLISKO:
+                        continue
+                    linie = linie_przypomnienia_gwarancji(g)
+                    wyniki.append({
+                        "typ": "gwarancja", "tytul": f"Gwarancja: {g['nazwa']}",
+                        "opis": " • ".join([linie[0]] + [linia[:1].lower() + linia[1:] for linia in linie[1:]]),
+                        "linie_opisu": linie,
+                        "status": "pilne", "trasa": f"/historia/{g['zadanie_id']}",
+                        "klucz": f"gwarancja:{g['historia_id']}",
                     })
         # Wydatki cykliczne (raty, abonamenty, ubezpieczenia ratalne) — termin
         # liczy się jak dla dokumentów, ale akcją jest "Zapłacone", nie przejście

@@ -51,6 +51,13 @@ class MiksinZakladkiSerwis:
             c = conn.cursor()
             c.execute("SELECT * FROM zadania WHERE auto_id=?", (self.state.auto_id,))
             baza_lista = [dict(row) for row in c.fetchall()]
+        # Gwarancja z OSTATNIEJ wymiany podzespołu, dopóki trwa — to ona mówi,
+        # czy za drugą wymianę klocków płaci się jeszcze raz (db.gwarancje_pojazdu).
+        gwarancje_podzespolow = {
+            g["zadanie_id"]: g for g in db.gwarancje_pojazdu(
+                self.state.auto_id, aktualny_przebieg=akt_prz, sredni_dzienny=sredni_dzienny,
+                prog_dni=prog_dni, prog_km=prog_km)
+        }
 
         # --- Wyraźne oddzielenie skrótów od właściwej listy podzespołów ---
         self.elementy.append(ft.Divider(height=20))
@@ -193,19 +200,24 @@ class MiksinZakladkiSerwis:
 
                     zid = z.get('id')
                     zn = z.get('nazwa')
+                    tresc_karty = [
+                        ft.Row([ft.Text(str(zn), weight="bold", size=utils.FS["title"], expand=True), ft.Icon(ico, color=kol)]),
+                        ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
+                        wiersz_statusu
+                    ]
+                    tekst_gwarancji = ""
+                    if zid in gwarancje_podzespolow:
+                        tekst_gwarancji = utils.tekst_gwarancji(gwarancje_podzespolow[zid], j, szczegoly=False)
+                        tresc_karty.append(utils.wiersz_gwarancji(gwarancje_podzespolow[zid], j, szczegoly=False))
                     karta_z, kontener = utils.karta_listy(
-                        ft.Column([
-                            ft.Row([ft.Text(str(zn), weight="bold", size=utils.FS["title"], expand=True), ft.Icon(ico, color=kol)]),
-                            ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
-                            wiersz_statusu
-                        ]),
+                        ft.Column(tresc_karty),
                         kolor_paska=kol,
                         page=self._page,
                     )
 
                     self.karty_ref[zid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, zid, lambda zid=zid, zn=zn: pokaz_menu(zid, zn), "zadania")
-                    tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status}".lower()
+                    tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status} {tekst_gwarancji}".lower()
                     self.wszystkie_karty_serwis.append({"karta": karta_z, "szukaj": tekst_szukaj})
                     self.lista_kart_serwis.controls.append(karta_z)
 

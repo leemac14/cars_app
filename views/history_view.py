@@ -50,6 +50,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             # kolumna krotki to wartość filtra „Podział” (pusta przy wizycie).
             rozbicia = {w[0]: db.rozbicie_kosztu(w[3], w[14], (zuzycie_wpisow.get(w[0]) or {}).get("koszt"))
                         for w in wpisy if w[4] is None}
+            # Gwarancje napraw po identyfikatorze wpisu — także te, które minęły,
+            # i te, po których część wymieniono jeszcze raz (db.gwarancje_wpisow).
+            gwarancje = db.gwarancje_wpisow(z_id)
             wpisy = [tuple(w) + (utils.etykieta_podzialu(rozbicia.get(w[0])),) for w in wpisy]
 
             if not wpisy:
@@ -107,15 +110,25 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     # Wpisu z wizyty zbiorczej nadal nie edytujemy stąd (dane trzyma
                     # wizyta), ale NOTATKĘ da się dopisać — jest własnością tego
                     # jednego wpisu, więc blokowanie jej tutaj byłoby sztuczne.
+                    # Gwarancja też jest własnością jednej pozycji: wspólną ustawia
+                    # formularz wizyty, a tu — wyjątek dla tego podzespołu
+                    # (akumulator z trzyletnią, reszta z roczną). Obie zmieniają
+                    # dane, więc przechodzą przez sito roli jak menu zwykłego wpisu.
                     if w_id:
-                        utils.pokaz_menu_kontekstowe(self._page, "Wpis z wizyty zbiorczej", [
-                            utils.pozycja_menu_notatki(
-                                self._page, "historia", h_id, notatka,
-                                lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
-                            ),
-                            {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty zbiorcze”",
-                             "akcja": lambda: utils.przejdz(self._page, "/wizyty")},
-                        ])
+                        utils.pokaz_menu_kontekstowe(self._page, "Wpis z wizyty zbiorczej", utils.odsiej_akcje(
+                            self.state.auto_id, [
+                                utils.pozycja_menu_notatki(
+                                    self._page, "historia", h_id, notatka,
+                                    lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
+                                ),
+                                {"ikona": ft.Icons.GPP_GOOD,
+                                 "tekst": "Zmień gwarancję tej pozycji" if h_id in gwarancje else "Gwarancja tej pozycji",
+                                 "akcja": lambda: utils.dialog_gwarancji_wpisu(
+                                     self._page, h_id, lambda: utils.przejdz(self._page, f"/historia/{z_id}"))},
+                                {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty zbiorcze”", "czyta": True,
+                                 "akcja": lambda: utils.przejdz(self._page, "/wizyty")},
+                            ], "historia", h_id,
+                        ))
                         return
 
                     def usun_wpis():
@@ -184,6 +197,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         tresc_h.append(dopisek_rozbicia)
                     if opis_magazynu:
                         tresc_h.append(ft.Text(opis_magazynu, size=13, color=ft.Colors.TEAL_700))
+                    tekst_gwarancji = ""
+                    if h_id in gwarancje:
+                        tekst_gwarancji = utils.tekst_gwarancji(gwarancje[h_id], j)
+                        tresc_h.append(utils.wiersz_gwarancji(gwarancje[h_id], j))
                     tresc_h.append(utils.podglad_notatki(
                         self._page, notatka, notatka_autor, notatka_data, "Notatka do wpisu",
                         on_edytuj=lambda rid=h_id: utils.szybka_notatka(
@@ -221,7 +238,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     kontener.on_long_press = _on_long_press
 
                     tekst_szukaj = (f"{data} {sub_tekst} {k_str} {utils.opis_rozbicia_kosztu(rozbicia.get(h_id))} "
-                                    f"{opis_magazynu} {notatka or ''}").lower()
+                                    f"{opis_magazynu} {tekst_gwarancji} {notatka or ''}").lower()
                     self.wszystkie_karty.append({
                         "karta": karta, "szukaj": tekst_szukaj, "data": data,
                         # Wpis z wizyty zbiorczej niesie koszt CAŁEJ wizyty — do

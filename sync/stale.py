@@ -61,10 +61,12 @@ KONFIGURACJA_SYNC = [
     # inaczej nowy klucz zmieniałby hash KAŻDEGO wiersza, telefon po
     # aktualizacji wysyłałby całą tabelę od nowa, a drugi telefon zgłaszałby
     # przy każdym wierszu konflikt z wersją, którą właśnie wysłał pierwszy.
-    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "koszt_robocizny", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {},
-     "dopisane": ["koszt_robocizny"]},
-    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "koszt_robocizny", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
-     "dopisane": ["koszt_robocizny"]},
+    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "koszt_robocizny", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji", "gwarancja_data", "gwarancja_przebieg"], "fk": {},
+     "dopisane": ["koszt_robocizny", "gwarancja_data", "gwarancja_przebieg"]},
+    # Gwarancja naprawy jedzie do drugiej osoby: to ona stoi z autem
+    # w warsztacie, kiedy klocki zaczną piszczeć drugi raz.
+    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "koszt_robocizny", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji", "gwarancja_data", "gwarancja_przebieg"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
+     "dopisane": ["koszt_robocizny", "gwarancja_data", "gwarancja_przebieg"]},
     # Koszt zużycia jedzie razem z ilością: to on mówi drugiej osobie, ile
     # z kosztu wizyty przyszło z magazynu — bez niego jej edycja tej wizyty
     # doliczyłaby części drugi raz.

@@ -431,11 +431,12 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
     return ft.Column(elementy, spacing=SPACING["xs"])
 
 
-# „Ile zostało do…”: ikony dokumentów jak na Karcie pojazdu, do tego podzespół
-# i okrągły przebieg (db.odliczania_pojazdu zwraca klucz, nie ikonę).
+# „Ile zostało do…”: ikony dokumentów jak na Karcie pojazdu, do tego podzespół,
+# gwarancja naprawy i okrągły przebieg (db.odliczania_pojazdu zwraca klucz, nie ikonę).
 IKONY_ODLICZAN = {
     **IKONY_TERMINOW,
     "podzespol": ft.Icons.HANDYMAN,
+    "gwarancja_naprawy": ft.Icons.GPP_GOOD,
     "przebieg": ft.Icons.FLAG,
 }
 

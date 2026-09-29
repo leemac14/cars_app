@@ -667,6 +667,27 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto_data_iso ON rozliczenia(auto_id, data_iso);
             CREATE INDEX IF NOT EXISTS idx_zdjecia_karoserii_auto_data_iso ON zdjecia_karoserii(auto_id, data_iso);
             CREATE INDEX IF NOT EXISTS idx_zadania_auto_data_iso ON zadania(auto_id, data_iso);
+            """,
+            # Wersja 45: gwarancja na wykonaną naprawę. Gwarancja na całe auto
+            # siedzi w terminach pojazdu (wersja 27), ale gwarancja na CZĘŚĆ nie
+            # miała się gdzie zapisać — a to ona decyduje, czy za powtórną
+            # wymianę płaci się drugi raz. Ten sam wzorzec, co przy aucie: data
+            # końca (DD.MM.RRRR, jak `samochody.gwarancja_data`) i stan licznika
+            # w km, do którego gwarancja obowiązuje; obowiązuje to, co skończy
+            # się pierwsze, a NULL w obu znaczy „bez gwarancji”.
+            #
+            # Liczy się gwarancja WPISU (także pozycji wizyty zbiorczej) — to ją
+            # czytają karty, dzwonek i paszport. Wizyta ma własną parę kolumn
+            # tylko jako „gwarancję wspólną” z formularza: jej zmiana przechodzi
+            # na pozycje, które ją mają, a pozycja z inną (wyjątek ustawiony
+            # w historii podzespołu) zostaje przy swojej. Bez zapisanej wspólnej
+            # wizyta z dwiema pozycjami i jednym wyjątkiem nie wiedziałaby,
+            # która z dwóch gwarancji jest wyjątkiem.
+            """
+            ALTER TABLE historia ADD COLUMN gwarancja_data TEXT;
+            ALTER TABLE historia ADD COLUMN gwarancja_przebieg INTEGER;
+            ALTER TABLE wizyty ADD COLUMN gwarancja_data TEXT;
+            ALTER TABLE wizyty ADD COLUMN gwarancja_przebieg INTEGER;
             """
         ]
 

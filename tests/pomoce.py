@@ -158,10 +158,10 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (auto, "Olej silnikowy i filtr", 15000, 0, "zad-1"))
         zid["zadanie"] = c.lastrowid
 
-        c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, zalacznik, zdalne_id) "
-                  "VALUES (?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, zalacznik, "
+                  "gwarancja_data, gwarancja_przebieg, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
                   (auto, "2026-01-10", 100000, "Warsztat u Janka", 480.0, 200.0,
-                   plik(f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "wiz-1"))
+                   plik(f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "10.01.2028", 130000, "wiz-1"))
         zid["wizyta"] = c.lastrowid
 
         c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, zalacznik, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -223,10 +223,12 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (auto, "Umówić przegląd", "Zadzwonić do Janka", "Wysoki", zid["zadanie"], 0, "2026-02-01", "todo-1"))
         zid["do_zrobienia"] = c.lastrowid
 
-        c.execute("INSERT INTO historia (zadanie_id, wizyta_id, data, przebieg, kategoria, cena, wykonawca, notatka, zalacznik, zdalne_id) "
-                  "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        # Z gwarancją naprawy (dwa lata albo 30 000 km), tą samą co wspólna
+        # wizyty — kosz i synchronizacja mają ją przenieść jak każdą inną kolumnę.
+        c.execute("INSERT INTO historia (zadanie_id, wizyta_id, data, przebieg, kategoria, cena, wykonawca, notatka, zalacznik, "
+                  "gwarancja_data, gwarancja_przebieg, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                   (zid["zadanie"], zid["wizyta"], "2026-01-10", 100000, "Serwis", 480.0, "Warsztat u Janka", "Olej Castrol",
-                   plik(f"{nazwa}_wpis.jpg", b"WPIS") if z_zalacznikami else None, "hist-1"))
+                   plik(f"{nazwa}_wpis.jpg", b"WPIS") if z_zalacznikami else None, "10.01.2028", 130000, "hist-1"))
         zid["historia"] = c.lastrowid
 
         c.execute("INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta, koszt, zdalne_id) VALUES (?,?,?,?,?)",

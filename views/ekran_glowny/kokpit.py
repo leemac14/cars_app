@@ -315,7 +315,7 @@ class MiksinKokpitu:
                 width=SZER_KAFLA + 100, padding=15,
                 **utils.powierzchnia(self._page, "kafel", stan=stan_kafla),
                 ink=True, on_click=otworz,
-                tooltip="Wszystkie odliczania: dokumenty, gwarancja, podzespoły i okrągły przebieg",
+                tooltip="Wszystkie odliczania: dokumenty, gwarancje, podzespoły i okrągły przebieg",
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.HOURGLASS_BOTTOM, size=15, color=ft.Colors.PRIMARY),

@@ -420,6 +420,10 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                     kafelek.trailing = ft.Row(akcje, spacing=0, tight=True)
                     pozycje.append(kafelek)
                 else:
+                    # Gwarancja naprawy ma swoją tarczę: to nie termin do
+                    # dotrzymania, tylko ostatnia chwila na reklamację za darmo.
+                    if p["typ"] == "gwarancja":
+                        ikona = ft.Icons.GPP_MAYBE
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=tytul_pozycji(p),

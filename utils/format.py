@@ -344,10 +344,14 @@ def data_odliczania(pozycja):
 
 def podpis_odliczania(pozycja, j=None):
     """Druga linijka wiersza albo None: drugi licznik podzespołu, brak prognozy
-    daty albo to, od kiedy liczy się gwarancja."""
+    daty, to, od kiedy liczy się gwarancja, a przy gwarancji naprawy — dzień
+    wymiany i oba limity."""
     rodzaj = pozycja.get("rodzaj")
     if rodzaj == "podzespol" and pozycja.get("drugi"):
         return _zdanie_drugiego_licznika(pozycja["drugi"])
+    if rodzaj == "gwarancja_naprawy" and pozycja.get("gwarancja"):
+        gwarancja = pozycja["gwarancja"]
+        return f"Wymiana {gwarancja['data']} · {db.zakres_gwarancji(gwarancja, j)}"
     zostalo_km = pozycja.get("zostalo_km")
     if zostalo_km is not None and zostalo_km >= 0 and pozycja.get("dni") is None:
         return "Bez średniego przebiegu nie ma prognozy daty"

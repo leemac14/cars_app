@@ -4,14 +4,15 @@ Dzwonek pokazuje tylko to, co już weszło w próg powiadomienia, Karta pojazdu 
 same dokumenty, zakładka Serwis — same podzespoły. Pytanie zadawane najczęściej
 po otwarciu aplikacji („ile jeszcze do przeglądu, do OC, do oleju?”) nie miało
 miejsca, w którym odpowiedź stoi w jednym rzędzie. Tu stoją: terminy dokumentów,
-limit przebiegu gwarancji, każdy podzespół z interwałem i najbliższy okrągły
-przebieg — od najbliższego.
+limit przebiegu gwarancji, gwarancje napraw, każdy podzespół z interwałem
+i najbliższy okrągły przebieg — od najbliższego.
 
 Nic nie liczy się tu po swojemu. Dokumenty biorą dni i status z
 `terminy_pojazdu` (te same progi, co powiadomienia), podzespoły — z
 `oblicz_stan_interwalu` (ten sam licznik „najpierw”, co karta w Serwisie
-i dzwonek), prognozy dat — z tego samego średniego przebiegu dziennego. Nowy
-jest tylko pasek: jaka część okresu już minęła.
+i dzwonek), gwarancje napraw — z `gwarancje_pojazdu` (ta sama ostatnia wymiana,
+co karta w Serwisie), prognozy dat — z tego samego średniego przebiegu
+dziennego. Nowy jest tylko pasek: jaka część okresu już minęła.
 
   • dokument — rok przed terminem: OC, AC, assistance i przegląd odnawia się
     co rok, a początku okresu baza nie trzyma;
@@ -19,6 +20,8 @@ jest tylko pasek: jaka część okresu już minęła.
     żadnej z tych dat pasek nie ma początku (None) — zgadnięta długość
     gwarancji kłamałaby bardziej niż brak paska;
   • limit przebiegu gwarancji — od zera na liczniku;
+  • gwarancja naprawy — od dnia (albo licznika) wymiany; tylko ta, która
+    jeszcze trwa — po końcu nie ma już czego odliczać;
   • podzespół — zużycie interwału licznika, który skończy się pierwszy;
   • okrągły przebieg — od poprzedniej okrągłej liczby.
 """
@@ -34,6 +37,7 @@ from .polaczenie import polacz_baze
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km
 from .jednostki import dystans_z_km, jednostka_dystansu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
+from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu
 from .powiadomienia import oblicz_stan_interwalu
 from .pojazd import pobierz_dane_pojazdu, terminy_pojazdu
 
@@ -117,7 +121,7 @@ def _pozycja(**pola):
         "klucz": None, "rodzaj": None, "ikona": None, "tytul": None,
         "dni": None, "dni_sortowania": None, "data": None, "prognoza": False,
         "zostalo_km": None, "cel_km": None, "od_km": None, "udzial": None,
-        "poczatek": None, "poczatek_z": None, "drugi": None,
+        "poczatek": None, "poczatek_z": None, "drugi": None, "gwarancja": None,
         "status": "ok", "trasa": None,
     }
     pozycja.update(pola)
@@ -207,6 +211,28 @@ def _podzespoly(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis):
     return wynik
 
 
+def _gwarancje_napraw(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis):
+    """Jeden wiersz na gwarancję naprawy, która jeszcze trwa — limitem, który
+    skończy się pierwszy (jak podzespół). Pełny stan gwarancji jedzie obok
+    w `gwarancja`: podpis wiersza pokazuje oba limity i dzień wymiany."""
+    wynik = []
+    for g in gwarancje_pojazdu(auto_id, dzis=dzis, aktualny_przebieg=przebieg,
+                               sredni_dzienny=sredni_dzienny, prog_dni=prog_dni, prog_km=prog_km):
+        po_km = g["pierwsze"] == "przebieg"
+        wynik.append(_pozycja(
+            klucz=f"gwarancja:{g['historia_id']}", rodzaj="gwarancja_naprawy", ikona="gwarancja_naprawy",
+            tytul=f"{g['nazwa']} — gwarancja",
+            dni=g["dni_km"] if po_km else g["dni"], dni_sortowania=g["dni_do_konca"],
+            data=g["data_km"] if po_km else g["koniec"], prognoza=po_km,
+            zostalo_km=g["zostalo_km"] if po_km else None,
+            cel_km=g["limit_km"], od_km=g["przebieg_wymiany"],
+            udzial=g["udzial"], poczatek=g["data_wymiany"], gwarancja=g,
+            status="blisko" if g["status"] == STATUS_GWARANCJI_BLISKO else "ok",
+            trasa=f"/historia/{g['zadanie_id']}",
+        ))
+    return wynik
+
+
 def _okragly_przebieg(przebieg, sredni_dzienny, dzis):
     """Najbliższa wielokrotność KROK_OKRAGLEGO_PRZEBIEGU w jednostce z Ustawień.
     Stan dokładnie na okrągłej liczbie celuje już w następną."""
@@ -245,7 +271,8 @@ def _klucz_kolejnosci(pozycja):
 def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
     """Wszystkie odliczania pojazdu od najbliższego. Pozycja to słownik:
 
-    * klucz, rodzaj ("dokument" / "gwarancja_km" / "podzespol" / "przebieg"),
+    * klucz, rodzaj ("dokument" / "gwarancja_km" / "gwarancja_naprawy" /
+      "podzespol" / "przebieg"),
       ikona (klucz ikony), tytul (None przy pozycjach, których nazwa zależy od
       jednostki dystansu), trasa (dokąd prowadzi dotknięcie wiersza);
     * dni — do końca (ujemne: po terminie; None: nie wiadomo, np. kilometry bez
@@ -256,6 +283,7 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
     * udzial — jaka część okresu minęła (0–1; None: okres bez początku),
       poczatek i poczatek_z — skąd pasek dokumentu liczy okres;
     * drugi — drugi licznik podzespołu (z db.oblicz_stan_interwalu) albo None;
+    * gwarancja — pełny stan gwarancji naprawy (z db.gwarancje_pojazdu) albo None;
     * status — "po_terminie" / "blisko" / "ok" / "info" (okrągły przebieg).
 
     Sprzedane auto nie ma już czego odliczać — lista jest pusta."""
@@ -274,6 +302,7 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
     wynik = (
         _dokumenty(auto_id, dane, dzis)
         + _limit_gwarancji(auto_id, dane, przebieg, sredni_dzienny, prog_km, dzis)
+        + _gwarancje_napraw(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis)
         + _podzespoly(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis)
         + _okragly_przebieg(przebieg, sredni_dzienny, dzis)
     )

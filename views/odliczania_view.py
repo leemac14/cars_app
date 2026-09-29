@@ -134,7 +134,7 @@ class OdliczaniaView(ft.View):
             return pozycja["trasa"]
         if pozycja["rodzaj"] in ("dokument", "gwarancja_km"):
             return "/pojazd"
-        if pozycja["rodzaj"] == "przebieg":
+        if pozycja["rodzaj"] in ("przebieg", "gwarancja_naprawy"):
             return pozycja["trasa"]
         return None
 
@@ -165,7 +165,8 @@ class OdliczaniaView(ft.View):
                     "Pasek pokazuje, jaka część okresu już minęła. OC, AC, assistance, przegląd, "
                     "gaśnica i apteczka liczą rok przed terminem; gwarancja producenta — od "
                     "pierwszej rejestracji, a bez niej od zakupu; jej limit przebiegu — od zera na "
-                    "liczniku. Podzespół pokazuje licznik, który skończy się pierwszy — ten sam, co "
+                    "liczniku; gwarancja naprawy — od dnia (albo licznika) wymiany. Podzespół "
+                    "i gwarancja naprawy pokazują licznik, który skończy się pierwszy — ten sam, co "
                     "karta w zakładce Serwis i dzwonek. Okrągły przebieg to najbliższe pełne "
                     f"{krok}. Daty przy kilometrach to prognoza ze średniego przebiegu dziennego. "
                     "Kolor mówi to samo, co powiadomienia: pomarańczowy — termin w progu "

@@ -26,6 +26,7 @@ from .magazyn import *
 from .checklisty import *
 from .przebieg import *
 from .koszty import *
+from .gwarancje import *
 from .powiadomienia import *
 from .statystyki import *
 from .pojazd import *
@@ -63,6 +64,7 @@ from . import (
     checklisty,
     przebieg,
     koszty,
+    gwarancje,
     powiadomienia,
     statystyki,
     pojazd,
