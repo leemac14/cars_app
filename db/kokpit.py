@@ -48,6 +48,7 @@ from .pojazd import pobierz_dane_do_porownania
 from .analiza import koszt_skumulowany, obserwacje_analityczne, pobierz_zasieg_na_baku, prognoza_kosztow, stan_budzetow
 from .rejestry import pobierz_wydatki_cykliczne
 from .nawigacja import pobierz_ostatnia_aktywnosc
+from .odliczania import odliczania_pojazdu
 
 
 def _koszt_poprzedniego_miesiaca(auto_id):
@@ -101,6 +102,9 @@ METRYKI_KOKPITU = {
     "koszty_miesieczne": lambda auto_id: pobierz_koszty_miesieczne(auto_id, 6),
     "koszt_poprzedniego_miesiaca": lambda auto_id: _koszt_poprzedniego_miesiaca(auto_id),
     "powiadomienia": lambda auto_id: pobierz_powiadomienia(auto_id),
+    # Dzień jest w kluczu pamięci, więc odliczania przesuwają się o północy
+    # także bez żadnego zapisu.
+    "odliczania": lambda auto_id: odliczania_pojazdu(auto_id),
     "porownanie": lambda auto_id: pobierz_dane_do_porownania(auto_id) or {},
     "spalanie": lambda auto_id: _spalanie(auto_id),
     # Iskry przy kafelkach liczbowych: liczba mówi „ile”, iskra — „w którą stronę”.
@@ -131,6 +135,7 @@ METRYKI_KOKPITU = {
 METRYKI_KAFELKOW = {
     "koszt_miesiac": ("koszty_miesieczne", "koszt_poprzedniego_miesiaca"),
     "termin": ("powiadomienia",),
+    "ile_zostalo": ("odliczania",),
     "wykres": ("koszty_miesieczne",),
     "skumulowany": ("skumulowany",),
     "koszt_1000km": ("koszt_1000km",),

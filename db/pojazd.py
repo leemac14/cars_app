@@ -160,15 +160,17 @@ def pobierz_dane_pojazdu(auto_id):
     return dict(w) if w else None
 
 
-def terminy_pojazdu(auto_id, dane=None):
+def terminy_pojazdu(auto_id, dane=None, dzis=None):
     """Wszystkie terminy dokumentów pojazdu z policzonymi dniami i statusem.
     Status ('po_terminie' / 'blisko' / 'ok') liczy się względem progu USTAWIONEGO
-    DLA TEGO DOKUMENTU, więc pokrywa się dokładnie z momentem powiadomienia."""
+    DLA TEGO DOKUMENTU, więc pokrywa się dokładnie z momentem powiadomienia.
+    `dzis` podaje „Ile zostało do…”, żeby wszystkie jego odliczania liczyły się
+    od tego samego dnia."""
     dane = dane or pobierz_dane_pojazdu(auto_id)
     if not dane:
         return []
 
-    dzis = datetime.now().date()
+    dzis = dzis or datetime.now().date()
     wynik = []
     for klucz, kolumna, etykieta in TERMINY_POJAZDU:
         wartosc = dane.get(kolumna)

@@ -310,6 +310,7 @@ def przelacz_grupe_szuflady(grupa_id):
 KOKPIT_WIDGETY = {
     "koszt_miesiac": "Koszt w tym miesiącu",
     "termin": "Najbliższy termin",
+    "ile_zostalo": "Ile zostało do…",
     "wykres": "Wykres wydatków (6 mies.)",
     "skumulowany": "Koszt skumulowany",
     "koszt_1000km": "Koszt na 1000 km (okno)",

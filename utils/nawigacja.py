@@ -57,6 +57,14 @@ EKRANY = [
     {"id": "pojazd", "tytul": "Karta pojazdu", "opis": "Terminy, wartość, ubezpieczenie, ściągawka",
      "ikona": ft.Icons.BADGE, "grupa": "pojazd", "trasa": "/pojazd",
      "slowa": ["oc", "ac", "przegląd", "polisa", "vin", "dane techniczne", "assistance", "tablica", "ubezpieczenie"]},
+    # Obok Karty pojazdu, bo odpowiada na pytanie, z którym się tam wchodzi
+    # („kiedy przegląd?”) — tylko dla wszystkiego naraz, nie dla samych dokumentów.
+    # Opis i słowa świadomie bez „oc”, „olej” i „koszt”: wyszukiwarka ma dla
+    # nich swoje ekrany (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "ile-zostalo", "tytul": "Ile zostało do…", "opis": "Przegląd, polisy, interwały i okrągły przebieg od najbliższego",
+     "ikona": ft.Icons.HOURGLASS_BOTTOM, "grupa": "pojazd", "trasa": "/ile-zostalo",
+     "slowa": ["odliczanie", "ile zostało", "do kiedy", "termin", "terminy", "gwarancja", "polisa",
+               "interwał", "kamień milowy", "okrągły przebieg", "przyszłość"]},
     {"id": "przebieg", "tytul": "Historia przebiegu", "opis": "Wszystkie odczyty licznika i ich źródła",
      "ikona": ft.Icons.SPEED, "grupa": "pojazd", "trasa": "/przebieg",
      "slowa": ["licznik", "kilometry", "km", "mile", "odczyt", "stan licznika", "przebiegi"]},

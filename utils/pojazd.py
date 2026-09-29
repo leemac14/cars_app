@@ -7,7 +7,11 @@ from datetime import datetime
 
 from .animacje import ScenaWejscia
 from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
-from .format import formatuj_dni, formatuj_dni_dopelniacz, parsuj_float, parsuj_int, symbol_waluty
+from .format import (
+    data_odliczania, formatuj_dni, formatuj_dni_dopelniacz, krotki_opis_odliczania, opis_odliczania,
+    parsuj_float, parsuj_int, podpis_odliczania, symbol_waluty, tytul_odliczania,
+)
+from .typografia import podpis
 from .zgodnosc import ustaw_blad
 from .wyglad import powierzchnia, tlo_stanu, tlo_toru
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
@@ -427,6 +431,84 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
     return ft.Column(elementy, spacing=SPACING["xs"])
 
 
+# „Ile zostało do…”: ikony dokumentów jak na Karcie pojazdu, do tego podzespół
+# i okrągły przebieg (db.odliczania_pojazdu zwraca klucz, nie ikonę).
+IKONY_ODLICZAN = {
+    **IKONY_TERMINOW,
+    "podzespol": ft.Icons.HANDYMAN,
+    "przebieg": ft.Icons.FLAG,
+}
+
+
+# Statusy terminów plus „info” okrągłego przebiegu: to nie obowiązek, więc nie
+# świeci ani na zielono („w porządku”), ani na czerwono — kolorem informacji.
+KOLORY_STATUSU_ODLICZANIA = {**KOLORY_STATUSU_TERMINU, "info": KOLOR_STATUS["info"]}
+
+
+IKONY_STATUSU_ODLICZANIA = {**IKONY_STATUSU_TERMINU, "info": ft.Icons.TRENDING_UP}
+
+
+def kolor_odliczania(pozycja):
+    return KOLORY_STATUSU_ODLICZANIA.get(pozycja.get("status"), KOLOR_STATUS["neutral"])
+
+
+def wiersz_odliczania(page: ft.Page, pozycja, j=None, scena=None):
+    """Wiersz „Ile zostało do…”: nazwa i data, pasek, pod nim ile zostało.
+
+    Układ ten sam, co pasek terminu na Karcie pojazdu, ale pasek mówi co innego:
+    jaka część OKRESU już minęła (rok polisy, interwał podzespołu, droga do
+    okrągłego przebiegu), więc rośnie przez cały okres, a nie dopiero w progu
+    powiadomienia. Na tej liście pytanie brzmi „ile zostało”, nie „czy już się
+    martwić”. Pozycja bez początku okresu (gwarancja bez daty rejestracji
+    i zakupu) nie ma paska wcale — pusty tor udawałby „jeszcze daleko”."""
+    scena = scena or ScenaWejscia(wlaczona=False)
+    scena.nastepny_wiersz()
+    kolor = kolor_odliczania(pozycja)
+
+    elementy = [ft.Row([
+        ft.Icon(ikona_z_mapy(IKONY_ODLICZAN, pozycja.get("ikona"), ft.Icons.EVENT), size=16, color=kolor),
+        ft.Text(tytul_odliczania(pozycja, j), size=FS["body_strong"], weight="bold", expand=True,
+                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+        ft.Text(data_odliczania(pozycja), size=FS["body"], weight="bold", color=kolor, no_wrap=True),
+    ], spacing=6)]
+
+    if pozycja.get("udzial") is not None:
+        elementy.append(scena.wskaznik(ft.ProgressBar(
+            value=pozycja["udzial"], color=kolor, bgcolor=tlo_toru(page),
+            height=6, border_radius=3,
+        )))
+
+    elementy.append(ft.Row([
+        ft.Icon(ikona_z_mapy(IKONY_STATUSU_ODLICZANIA, pozycja.get("status"), ft.Icons.EVENT),
+                size=12, color=kolor),
+        ft.Text(opis_odliczania(pozycja, j), size=FS["caption"], color=kolor, expand=True),
+    ], spacing=4))
+
+    dopisek = podpis_odliczania(pozycja, j)
+    if dopisek:
+        elementy.append(podpis(dopisek))
+    return ft.Column(elementy, spacing=SPACING["xs"])
+
+
+def wiersz_odliczania_kafla(page: ft.Page, pozycja, j=None, scena=None):
+    """Jedna pozycja na kafelku kokpitu: nazwa, ile zostało i cienki pasek.
+    Bez daty i bez podpisu — kafelek ma odpowiedzieć „co najpierw”, a szczegóły
+    są jedno dotknięcie dalej."""
+    scena = scena or ScenaWejscia(wlaczona=False)
+    kolor = kolor_odliczania(pozycja)
+    elementy = [ft.Row([
+        ft.Text(tytul_odliczania(pozycja, j), size=FS["caption"], expand=True,
+                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+        ft.Text(krotki_opis_odliczania(pozycja, j), size=FS["caption"], color=kolor, no_wrap=True),
+    ], spacing=6)]
+    if pozycja.get("udzial") is not None:
+        elementy.append(scena.wskaznik(ft.ProgressBar(
+            value=pozycja["udzial"], color=kolor, bgcolor=tlo_toru(page),
+            height=4, border_radius=2,
+        )))
+    return ft.Column(elementy, spacing=3)
+
+
 def dialog_odczytu_przebiegu(page: ft.Page, auto_id, odczyt=None, po_zapisie=None):
     """Okno „stan licznika”: data, przebieg i notatka. `odczyt` None znaczy nowy
     wpis, słownik z pobierz_pelna_historie_przebiegu — edycję WŁASNEGO odczytu
@@ -536,12 +618,16 @@ def baner_nieswiezego_licznika(page: ft.Page, auto_id, swiezosc, po_zapisie=None
 
 
 __all__ = [
+    "IKONY_ODLICZAN",
+    "IKONY_STATUSU_ODLICZANIA",
     "IKONY_STATUSU_TERMINU",
     "IKONY_TERMINOW",
+    "KOLORY_STATUSU_ODLICZANIA",
     "KOLORY_STATUSU_TERMINU",
     "baner_nieswiezego_licznika",
     "dialog_odczytu_przebiegu",
     "ikona_nadwozia",
+    "kolor_odliczania",
     "odznaka_pojazdu",
     "opis_dni_terminu",
     "pasek_terminu",
@@ -549,5 +635,7 @@ __all__ = [
     "sprzedaj_auto",
     "tablica_rejestracyjna",
     "usun_auto",
+    "wiersz_odliczania",
+    "wiersz_odliczania_kafla",
     "wskaznik_kondycji",
 ]

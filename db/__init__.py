@@ -38,6 +38,7 @@ from .usuwanie import *
 from .rozliczenia import *
 from .kosz import *
 from .nawigacja import *
+from .odliczania import *
 from .kokpit import *
 from .wyszukiwanie import *
 from .os_czasu import *
@@ -74,6 +75,7 @@ from . import (
     rozliczenia,
     kosz,
     nawigacja,
+    odliczania,
     kokpit,
     wyszukiwanie,
     os_czasu,

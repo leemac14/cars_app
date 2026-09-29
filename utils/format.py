@@ -253,6 +253,126 @@ def opis_licznika_na_karte(licznik):
     return formatuj_okres(zostalo), f"do {licznik['data'].strftime('%d.%m.%Y')}"
 
 
+# ---------------------------------------------------------------------------
+#  „Ile zostało do…” słowami (liczby liczy db.odliczania_pojazdu)
+# ---------------------------------------------------------------------------
+
+def _odleglosc_w_czasie(dni):
+    """„12 dni” do dwóch miesięcy, dalej „~5 mies.”, od dwóch lat „~3 lata” —
+    „~40 mies.” przy gwarancji trzeba by znowu przeliczać w głowie."""
+    dni = abs(int(dni))
+    if round(dni / db.DNI_W_MIESIACU_INTERWALU) < 24:
+        return formatuj_okres(dni)
+    lata = round(dni / 365.25)
+    return f"~{formatuj_liczba(lata, 0)} {_odmiana_liczby(lata, 'rok', 'lata', 'lat')}"
+
+
+def tytul_odliczania(pozycja, j=None):
+    """Nazwa wiersza. Dokument i podzespół mają ją z bazy; limit gwarancji
+    i okrągły przebieg zależą od jednostki z Ustawień, więc składa je ekran."""
+    if pozycja.get("tytul"):
+        return str(pozycja["tytul"])
+    j = db.jednostka_dystansu(j)
+    if pozycja.get("rodzaj") == "przebieg":
+        return f"{formatuj_dystans(pozycja['cel_km'], 0, j)} na liczniku"
+    return f"Gwarancja — limit {db.slowo_dystansu('dopelniacz', j)}"
+
+
+def opis_odliczania(pozycja, j=None):
+    """Główne zdanie wiersza: ile zostało. Termin w dniach („za 143 dni
+    (~5 mies.)”, „5 dni po terminie”) albo licznik w kilometrach z prognozą
+    dni, gdy jest średni przebieg („zostało 3 200 km (ok. 40 dni)”)."""
+    dni = pozycja.get("dni")
+    zostalo_km = pozycja.get("zostalo_km")
+    if zostalo_km is not None:
+        j = db.jednostka_dystansu(j)
+        if zostalo_km < 0:
+            return f"przekroczono o {formatuj_dystans(-zostalo_km, 0, j)}"
+        # Czasownik zgadza się z liczbą NA EKRANIE (w milach inna niż w km).
+        tekst = _zostalo(round(db.dystans_z_km(zostalo_km, j)), formatuj_dystans(zostalo_km, 0, j))
+        tekst = tekst[:1].lower() + tekst[1:]
+        if dni is None:
+            return tekst
+        if dni <= 1:
+            return f"{tekst} ({_opis_prognozy_dni(dni)})"
+        if dni <= 60:
+            return f"{tekst} (ok. {formatuj_dni(dni)})"
+        return f"{tekst} ({_odleglosc_w_czasie(dni)})"
+    if dni is None:
+        return ""
+    if dni < 0:
+        return f"{formatuj_dni(-dni)} po terminie"
+    if dni == 0:
+        return "dzisiaj"
+    if dni == 1:
+        return "jutro"
+    if dni <= 60:
+        return f"za {formatuj_dni(dni)}"
+    return f"za {formatuj_dni(dni)} ({_odleglosc_w_czasie(dni)})"
+
+
+def krotki_opis_odliczania(pozycja, j=None):
+    """To samo w kilku znakach — na kafelek kokpitu: „za 12 dni”, „za ~5 mies.”,
+    „3 dni po terminie”, a przy kilometrach bez prognozy — sam dystans."""
+    dni = pozycja.get("dni")
+    zostalo_km = pozycja.get("zostalo_km")
+    if dni is not None:
+        if dni < 0:
+            return f"{_odleglosc_w_czasie(dni)} po terminie"
+        if dni == 0:
+            return "dziś"
+        if dni == 1:
+            return "jutro"
+        if pozycja.get("prognoza") and dni <= 60:
+            return f"za ok. {formatuj_dni(dni)}"
+        return f"za {_odleglosc_w_czasie(dni)}"
+    if zostalo_km is not None:
+        if zostalo_km < 0:
+            return "ponad limit"
+        return formatuj_dystans(zostalo_km, 0, db.jednostka_dystansu(j))
+    return ""
+
+
+def data_odliczania(pozycja):
+    """Data końca na prawą stronę wiersza; prognoza z przedrostkiem „ok.”."""
+    dzien = pozycja.get("data")
+    if not dzien:
+        return ""
+    tekst = dzien.strftime("%d.%m.%Y")
+    return f"ok. {tekst}" if pozycja.get("prognoza") else tekst
+
+
+def podpis_odliczania(pozycja, j=None):
+    """Druga linijka wiersza albo None: drugi licznik podzespołu, brak prognozy
+    daty albo to, od kiedy liczy się gwarancja."""
+    rodzaj = pozycja.get("rodzaj")
+    if rodzaj == "podzespol" and pozycja.get("drugi"):
+        return _zdanie_drugiego_licznika(pozycja["drugi"])
+    zostalo_km = pozycja.get("zostalo_km")
+    if zostalo_km is not None and zostalo_km >= 0 and pozycja.get("dni") is None:
+        return "Bez średniego przebiegu nie ma prognozy daty"
+    if rodzaj == "dokument" and pozycja.get("ikona") == "gwarancja":
+        if pozycja.get("poczatek") is None:
+            return "Bez daty pierwszej rejestracji ani zakupu pasek nie ma początku"
+        skad = ("od pierwszej rejestracji" if pozycja.get("poczatek_z") == db.POCZATEK_REJESTRACJA
+                else "od zakupu")
+        return f"Liczona {skad}: {pozycja['poczatek'].strftime('%d.%m.%Y')}"
+    return None
+
+
+def stan_odliczan(pozycje):
+    """„1 pozycja po terminie · 2 pozycje blisko terminu” albo None, gdy nic
+    nie goni. „Blisko” znaczy to samo, co w dzwonku: w progu powiadomienia."""
+    po_terminie = sum(1 for p in pozycje if p.get("status") == "po_terminie")
+    blisko = sum(1 for p in pozycje if p.get("status") == "blisko")
+    czesci = []
+    if po_terminie:
+        czesci.append(f"{db.liczba_z_odmiana(po_terminie, 'pozycja', 'pozycje', 'pozycji')} po terminie")
+    if blisko:
+        czesci.append(f"{db.liczba_z_odmiana(blisko, 'pozycja', 'pozycje', 'pozycji')} blisko terminu")
+    return " · ".join(czesci) or None
+
+
 def kolor_i_tekst_terminu(termin_str):
     if not termin_str:
         return KOLOR_STATUS["neutral"], ""
@@ -342,6 +462,7 @@ __all__ = [
     "_MAPA_OGONKOW",
     "_odmiana_liczby",
     "bez_ogonkow",
+    "data_odliczania",
     "formatuj_date_pl",
     "formatuj_dni",
     "formatuj_dni_dopelniacz",
@@ -352,14 +473,19 @@ __all__ = [
     "formatuj_spalanie",
     "jednostka_dystansu",
     "kolor_i_tekst_terminu",
+    "krotki_opis_odliczania",
     "linie_opisu_interwalu",
     "linie_opisu_odczytu",
     "oblicz_prognoze_terminu",
     "opis_licznika_na_karte",
     "opis_nietypowej_ceny",
+    "opis_odliczania",
     "opis_przerwanego_ciagu",
     "parsuj_float",
     "parsuj_int",
+    "podpis_odliczania",
     "polacz_linie_opisu",
+    "stan_odliczan",
     "symbol_waluty",
+    "tytul_odliczania",
 ]

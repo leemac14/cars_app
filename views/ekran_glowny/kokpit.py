@@ -294,6 +294,37 @@ class MiksinKokpitu:
                 content=tresc,
             )
 
+        def widget_ile_zostalo():
+            """Trzy najbliższe odliczania z paskami i skrót do „Ile zostało do…”.
+            Kafelek „Termin” mówi o tym, co już weszło w próg powiadomienia; ten —
+            o tym, co przyjdzie, zanim cokolwiek zacznie przypominać."""
+            pozycje = metryka("odliczania")
+
+            def otworz(e):
+                utils.przejdz(self._page, "/ile-zostalo")
+
+            if not pozycje:
+                return kafel_pusty(
+                    ft.Icons.HOURGLASS_BOTTOM, ft.Colors.BLUE_GREY_700, "Ile zostało do…",
+                    "Brak terminów", otworz,
+                )
+            widoczne = pozycje[:3]
+            dodatek = f"  (+{len(pozycje) - len(widoczne)})" if len(pozycje) > len(widoczne) else ""
+            stan_kafla = {"po_terminie": "critical", "blisko": "warning"}.get(pozycje[0]["status"])
+            return ft.Container(
+                width=SZER_KAFLA + 100, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=stan_kafla),
+                ink=True, on_click=otworz,
+                tooltip="Wszystkie odliczania: dokumenty, gwarancja, podzespoły i okrągły przebieg",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.HOURGLASS_BOTTOM, size=15, color=ft.Colors.PRIMARY),
+                        utils.etykieta(f"Ile zostało do…{dodatek}", expand=True),
+                    ], spacing=6),
+                ] + [utils.wiersz_odliczania_kafla(self._page, p, j, scena=scena) for p in widoczne],
+                    spacing=6),
+            )
+
         def widget_wykres():
             dane_mc = metryka("koszty_miesieczne")
             maks_mc = max((s for _, _, s in dane_mc), default=0)
@@ -972,6 +1003,7 @@ class MiksinKokpitu:
         self._kokpit_budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
+            "ile_zostalo": widget_ile_zostalo,
             "wykres": widget_wykres,
             "skumulowany": widget_skumulowany,
             "koszt_1000km": widget_koszt_1000km,

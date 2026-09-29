@@ -37,6 +37,7 @@ from views.kosz_view import KoszView
 from views.archiwum_view import ArchiwumView
 from views.budzet_view import BudzetView
 from views.pojazd_view import PojazdView
+from views.odliczania_view import OdliczaniaView
 from views.rok_view import RokWPigulceView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
@@ -690,6 +691,8 @@ def main(page: ft.Page):
             page.views.append(ImportCSVView(page, app_state))
         elif segmenty[0] == "pojazd":
             page.views.append(PojazdView(page, app_state))
+        elif segmenty[0] == "ile-zostalo":
+            page.views.append(OdliczaniaView(page, app_state))
         elif segmenty[0] == "budzet":
             page.views.append(BudzetView(page, app_state))
         elif segmenty[0] == "rok":
