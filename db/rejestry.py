@@ -1,6 +1,7 @@
 """Warsztaty, wydatki cykliczne, szablony tras, własne pakiety serwisowe
 i domyślne podzespoły zależne od napędu."""
 
+from collections import Counter
 from date import na_iso, parsuj_date
 from datetime import datetime, timedelta
 from typing import Any
@@ -12,7 +13,9 @@ from .stale import (
 )
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_moje_imie
-from .synchronizacja import zarejestruj_nagrobek
+from .synchronizacja import (
+    ROLA_PODGLAD, ROLA_WSPOLAUTOR, czy_moge_zmieniac_wpis, rola_pojazdu, zarejestruj_nagrobek,
+)
 from .magazyn import przelacz_zestaw_sezonowy
 from .nazwy import klucz_nazwy, normalizuj_nazwe
 
@@ -49,6 +52,157 @@ def dodaj_warsztat(auto_id, nazwa, telefon=None, adres=None, notatki=None):
             (auto_id, nazwa, telefon or None, adres or None, notatki or None)
         )
         return c.lastrowid
+
+
+# Formularze wizyty i wpisu serwisowego zapisują „Warsztat”, gdy nikt nie
+# wybrał wykonawcy — to nie nazwa, tylko jej brak. Karta pod tą nazwą zebrałaby
+# wszystkie wizyty „bez warsztatu” naraz, więc karty takiej nie ma i nie wolno
+# jej nadać tej nazwy.
+WARSZTAT_BEZ_NAZWY = "Warsztat"
+
+
+def _wpisy_z_warsztatem(c, auto_id):
+    """Wiersze wizyt i historii serwisowej pojazdu z wpisanym wykonawcą:
+    (tabela, id, wykonawca, data, data_iso, wizyta_id, dodane_przez).
+    Historia nie ma auto_id — jedzie przez podzespół."""
+    c.execute("SELECT id, wykonawca, data, data_iso, dodane_przez FROM wizyty "
+              "WHERE auto_id=? AND TRIM(COALESCE(wykonawca, '')) <> ''", (auto_id,))
+    wynik = [("wizyty", r[0], r[1], r[2], r[3], None, r[4]) for r in c.fetchall()]
+    c.execute("SELECT h.id, h.wykonawca, h.data, h.data_iso, h.wizyta_id, h.dodane_przez "
+              "FROM historia h JOIN zadania z ON z.id = h.zadanie_id "
+              "WHERE z.auto_id=? AND TRIM(COALESCE(h.wykonawca, '')) <> ''", (auto_id,))
+    wynik += [("historia", r[0], r[1], r[2], r[3], r[4], r[5]) for r in c.fetchall()]
+    return wynik
+
+
+def pobierz_karty_warsztatow(auto_id) -> list[dict[str, Any]]:
+    """Karty ekranu „Warsztaty”: rejestr warsztatów pojazdu plus nazwy, które
+    stoją na wizytach i wpisach serwisowych, a karty nie mają (wpisane, zanim
+    powstał rejestr, albo z usuniętą kartą) — te z `id` None.
+
+    Warsztat jest w bazie NAZWĄ, nie kluczem obcym: wizyty i historia trzymają
+    tekst. Dopasowanie idzie więc po `klucz_nazwy`, jak przy scalaniu duplikatów.
+
+    Klucze: id, nazwa, klucz, telefon, adres, notatki, wizyt (wizyty zbiorcze
+    i wpisy serwisowe poza wizytą — pozycja wizyty to ta sama wizyta),
+    wizyt_zbiorczych, nazwa_na_wizytach (pisownia z listy wizyt — wartość jej
+    filtra „Warsztat”), ostatnia (data ostatniej wizyty, zapis jak w bazie).
+    Od ostatnio odwiedzonego; bez wizyt na końcu, alfabetycznie."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, nazwa, telefon, adres, notatki FROM warsztaty WHERE auto_id=?", (auto_id,))
+        rejestr = c.fetchall()
+        wpisy = _wpisy_z_warsztatem(c, auto_id)
+
+    pomijany = klucz_nazwy(WARSZTAT_BEZ_NAZWY)
+    statystyki = {}
+    for tabela, _id, wykonawca, data, data_iso, wizyta_id, _autor in wpisy:
+        klucz = klucz_nazwy(wykonawca)
+        if not klucz or klucz == pomijany or (tabela == "historia" and wizyta_id):
+            continue
+        s = statystyki.setdefault(klucz, {"wizyt": 0, "wizyt_zbiorczych": 0, "iso": "", "data": None,
+                                           "pisownie": Counter(), "pisownie_wizyt": Counter()})
+        s["wizyt"] += 1
+        s["pisownie"][normalizuj_nazwe(wykonawca)] += 1
+        if tabela == "wizyty":
+            s["wizyt_zbiorczych"] += 1
+            s["pisownie_wizyt"][wykonawca] += 1
+        iso = data_iso or na_iso(data) or ""
+        if iso > s["iso"]:
+            s["iso"], s["data"] = iso, data
+
+    def karta(w_id, nazwa, klucz, telefon, adres, notatki, s):
+        s = s or {}
+        pisownie_wizyt = s.get("pisownie_wizyt")
+        return {
+            "id": w_id, "nazwa": nazwa, "klucz": klucz,
+            "telefon": telefon or None, "adres": adres or None, "notatki": notatki or None,
+            "wizyt": s.get("wizyt", 0), "wizyt_zbiorczych": s.get("wizyt_zbiorczych", 0),
+            "nazwa_na_wizytach": pisownie_wizyt.most_common(1)[0][0] if pisownie_wizyt else None,
+            "ostatnia": s.get("data"), "_iso": s.get("iso", ""),
+        }
+
+    karty, z_karta = [], set()
+    for w_id, nazwa, telefon, adres, notatki in rejestr:
+        klucz = klucz_nazwy(nazwa)
+        # Dwa wpisy rejestru o jednej nazwie (z dwóch telefonów naraz) — wizyty
+        # liczymy raz; drugi wpis czeka na scalenie duplikatów w Ustawieniach.
+        karty.append(karta(w_id, nazwa, klucz, telefon, adres, notatki,
+                           None if klucz in z_karta else statystyki.get(klucz)))
+        z_karta.add(klucz)
+    for klucz, s in statystyki.items():
+        if klucz not in z_karta:
+            karty.append(karta(None, s["pisownie"].most_common(1)[0][0], klucz, None, None, None, s))
+
+    karty.sort(key=lambda k: k["klucz"])
+    karty.sort(key=lambda k: k["_iso"], reverse=True)  # sortowanie stabilne: remis zostaje alfabetyczny
+    for k in karty:
+        del k["_iso"]
+    return karty
+
+
+def zapisz_warsztat(auto_id, warsztat_id, nazwa, telefon=None, adres=None, notatki=None) -> str | None:
+    """Nowa karta (`warsztat_id` None) albo poprawka istniejącej. Zwraca None po
+    zapisie, a przy odmowie — zdanie dla użytkownika (formularz pokazuje je pod
+    nazwą).
+
+    Zmiana nazwy przepisuje ją też na wizytach i wpisach serwisowych, tak jak
+    scalanie duplikatów: warsztat żyje tam jako tekst, więc bez tego karta
+    zgubiłaby własną historię. Przepisujemy po kluczu nazwy, czyli dokładnie
+    to, co karta liczy jako swoje wizyty. Współautor zmienia tylko swoje wpisy —
+    gdy nazwę noszą też cudze, zmiana nazwy przepisałaby je u niego, a chmura
+    by ich nie przyjęła; odmawiamy wtedy w całości."""
+    nazwa = normalizuj_nazwe(nazwa)
+    klucz = klucz_nazwy(nazwa)
+    if not klucz:
+        return "Podaj nazwę warsztatu"
+    if klucz == klucz_nazwy(WARSZTAT_BEZ_NAZWY):
+        return f"„{WARSZTAT_BEZ_NAZWY}” to wpis bez wybranego warsztatu — nadaj własną nazwę"
+    if not auto_id:
+        return "Najpierw wybierz pojazd"
+    rola = rola_pojazdu(auto_id)
+    if rola == ROLA_PODGLAD:
+        return "Ten pojazd masz w trybie tylko do odczytu — możesz go oglądać, ale nie zmieniać."
+
+    telefon = " ".join(str(telefon or "").split()) or None
+    adres = " ".join(str(adres or "").split()) or None
+    notatki = str(notatki or "").strip() or None
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, nazwa FROM warsztaty WHERE auto_id=?", (auto_id,))
+        rejestr = c.fetchall()
+        stara = next((n for i, n in rejestr if i == warsztat_id), None)
+        if warsztat_id is not None and stara is None:
+            return "Tego warsztatu już nie ma — mógł zniknąć przy synchronizacji."
+        zajety = next((n for i, n in rejestr if i != warsztat_id and klucz_nazwy(n) == klucz), None)
+        if zajety:
+            return f"Na liście jest już „{zajety}” — dwie karty scalisz w Ustawieniach (duplikaty nazw)."
+        do_przepisania = []
+        if stara is not None and stara != nazwa:
+            stary_klucz = klucz_nazwy(stara)
+            do_przepisania = [(t, i, autor) for t, i, wyk, _d, _di, _w, autor in _wpisy_z_warsztatem(c, auto_id)
+                              if klucz_nazwy(wyk) == stary_klucz and wyk != nazwa]
+
+    if do_przepisania and rola == ROLA_WSPOLAUTOR:
+        autorzy = {autor for _t, _i, autor in do_przepisania}
+        if not all(czy_moge_zmieniac_wpis(auto_id, autor) for autor in autorzy):
+            return ("Tę nazwę noszą też wizyty innych osób, a współautor zmienia tylko swoje "
+                    "wpisy. Telefon, adres i notatkę zapiszesz bez zmiany nazwy.")
+
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        if warsztat_id is None:
+            c.execute("INSERT INTO warsztaty (auto_id, nazwa, telefon, adres, notatki) VALUES (?,?,?,?,?)",
+                      (auto_id, nazwa, telefon, adres, notatki))
+            return None
+        c.execute("UPDATE warsztaty SET nazwa=?, telefon=?, adres=?, notatki=? WHERE id=?",
+                  (nazwa, telefon, adres, notatki, warsztat_id))
+        for tabela, rekord_id, _autor in do_przepisania:
+            c.execute(f"UPDATE {tabela} SET wykonawca=? WHERE id=?", (nazwa, rekord_id))
+    return None
 
 
 # ==================== WYDATKI CYKLICZNE ====================
@@ -414,6 +568,7 @@ def pakiety_dla_pojazdu(auto_id) -> list[tuple[str, list[str]]]:
 
 
 __all__ = [
+    "WARSZTAT_BEZ_NAZWY",
     "_czy_o_oponach",
     "_poprawny_typ",
     "aktualizuj_pakiet_wlasny",
@@ -428,6 +583,7 @@ __all__ = [
     "oznacz_zaplacony_wydatek_cykliczny",
     "pakiety_dla_pojazdu",
     "pobierz_pakiety_wlasne",
+    "pobierz_karty_warsztatow",
     "pobierz_przypomnienia_o_oponach",
     "pobierz_trasy_szablony",
     "pobierz_warsztaty",
@@ -438,4 +594,5 @@ __all__ = [
     "usun_wydatek_cykliczny",
     "wykonaj_sezonowa_zmiane_opon",
     "zapisz_trase_szablon",
+    "zapisz_warsztat",
 ]

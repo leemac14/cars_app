@@ -429,7 +429,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
                 grupuj=utils.czy_po_dacie(self.state, "wizyty"),
             )
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=215)
             self.update()
 
         self.pole_wyszukiwarki = ft.TextField(
@@ -445,7 +445,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         self.uzyj_wirtualizacji = True
         self.wszystkie_karty = []
         self.miesiace = utils.GrupyMiesiecy(
-            self._page, self.lista_kart, wysokosc_pozycji=190
+            self._page, self.lista_kart, wysokosc_pozycji=215
         )
         # ---------------------------------------------
 
@@ -506,6 +506,11 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         else:
             mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
             j = utils.jednostka_dystansu()  # raz na całą listę
+            # Telefon i adres warsztatu z rejestru — raz na listę, po kluczu nazwy,
+            # bo wizyta trzyma warsztat jako tekst. „Warsztat” to wizyta bez
+            # wybranego wykonawcy, więc wiersza nie dostaje.
+            kontakty = {db.klucz_nazwy(n): (t, a) for _i, n, t, a, _nt in db.pobierz_warsztaty(self.state.auto_id)}
+            bez_nazwy = db.klucz_nazwy(db.WARSZTAT_BEZ_NAZWY)
             for w in wizyty_lista:
                 (w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez,
                  zmodyfikowane_przez, data_modyfikacji, notatka_wizyty, _robocizna, _podzial) = w
@@ -526,6 +531,10 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     ], spacing=4),
                     ft.Text(f"Części: {czesci}", size=13, color=ft.Colors.PRIMARY),
                 ]
+                klucz_wyk = db.klucz_nazwy(wyk or "")
+                if klucz_wyk and klucz_wyk != bez_nazwy:
+                    tresc_karty.insert(2, utils.wiersz_warsztatu_wizyty(
+                        self._page, self.state, wyk, kontakty.get(klucz_wyk)))
                 dopisek_rozbicia = utils.dopisek_rozbicia(rozbicia[w_id])
                 if dopisek_rozbicia:
                     tresc_karty.append(dopisek_rozbicia)
@@ -582,7 +591,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             )
             # Lista dokładana TYLKO gdy są wizyty — pusty ListView ma stałą wysokość
             # i zostawiał pod komunikatem „Brak wizyt…” pół ekranu pustki.
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
+            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=215)
             elementy.append(self.miesiace.kontrolka)
             elementy.append(self.lista_kart)
 

@@ -34,6 +34,7 @@ from .pojazd import *
 from .start import *
 from .system import *
 from .komponenty import *
+from .warsztaty import *
 from .powiadomienia import *
 from .nawigacja import *
 from .zaznaczanie import *
@@ -62,6 +63,7 @@ from . import (
     start,
     system,
     komponenty,
+    warsztaty,
     powiadomienia,
     nawigacja,
     zaznaczanie,

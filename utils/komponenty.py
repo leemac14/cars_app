@@ -3,7 +3,6 @@
 import asyncio
 import db
 import flet as ft
-import urllib.parse
 
 from .stale import (
     FS, IKONY_OBSERWACJI, KOLORY_TONU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING,
@@ -14,7 +13,7 @@ from .wyglad import pasek_zawijany, powierzchnia, tlo_karty
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
 from .formularze import styl_dropdown, styl_pola
-from .system import kopiuj_do_schowka, zadzwon
+from .system import kopiuj_do_schowka, pokaz_na_mapie, zadzwon
 
 
 def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
@@ -425,17 +424,13 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
     wiersz_glowne = ft.Row([e_dropdown, e_recznie, btn_zmien_tryb], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
 
     btn_dzwon = ft.OutlinedButton("Zadzwoń", icon=ft.Icons.PHONE, visible=False)
-    btn_nawiguj = ft.OutlinedButton("Nawiguj", icon=ft.Icons.NAVIGATION, visible=False)
-    wiersz_akcji = ft.Row([btn_dzwon, btn_nawiguj], spacing=8, visible=False)
+    btn_nawiguj = ft.OutlinedButton("Pokaż na mapie", icon=ft.Icons.MAP, visible=False)
+    wiersz_akcji = ft.Row([btn_dzwon, btn_nawiguj], spacing=8, wrap=True, visible=False)
 
-    async def zadzwon(e):
-        if stan["telefon"]: await page.launch_url(f"tel:{stan['telefon']}")
-
-    async def nawiguj(e):
-        if stan["adres"]: await page.launch_url(f"geo:0,0?q={urllib.parse.quote(stan['adres'])}")
-
-    btn_dzwon.on_click = zadzwon
-    btn_nawiguj.on_click = nawiguj
+    # Te same drogi co na karcie warsztatu (utils/warsztaty.py): numer bez spacji
+    # i nawiasów, mapy zależne od systemu, schowek, gdy nic się nie otworzy.
+    btn_dzwon.on_click = lambda e: zadzwon(page, stan["telefon"])
+    btn_nawiguj.on_click = lambda e: pokaz_na_mapie(page, stan["adres"])
 
     def odswiez_akcje():
         btn_dzwon.visible = bool(stan["telefon"] and e_dropdown.visible)
@@ -492,7 +487,7 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
 
     # ft.Dropdown reaguje na `on_select`, nie na `on_change` (Flet 0.86) — bez tego
     # wybór warsztatu z listy nie podstawiał jego telefonu ani adresu, więc przyciski
-    # „Zadzwoń” i „Nawiguj” nigdy się nie pojawiały.
+    # „Zadzwoń” i „Pokaż na mapie” nigdy się nie pojawiały.
     e_dropdown.on_select = po_zmianie
 
     if pasujacy_start and not pokaz_reczne:

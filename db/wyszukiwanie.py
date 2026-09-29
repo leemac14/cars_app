@@ -723,7 +723,7 @@ def _wszystkie_wpisy(auto_id):
         for r in c.fetchall():
             opis = str(r["adres"] or "") + (f" • {r['telefon']}" if r["telefon"] else "")
             wpisy.append(_wpis("Warsztat", r["nazwa"], opis or "Brak telefonu / adresu", "",
-                               "/wizyty", warsztat=r["nazwa"], notatka=r["notatki"],
+                               "/warsztaty", warsztat=r["nazwa"], notatka=r["notatki"],
                                tekst_dodatkowy=f"{r['telefon'] or ''} {r['adres'] or ''}"))
 
         c.execute("SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt "

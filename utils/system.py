@@ -1,7 +1,8 @@
-"""Wyjście poza aplikację: schowek i dzwonienie."""
+"""Wyjście poza aplikację: schowek, dzwonienie i mapy."""
 
 import flet as ft
 import inspect
+import urllib.parse
 
 from .stale import KOLOR_STATUS
 from .dialogi import pokaz_komunikat
@@ -67,7 +68,45 @@ def zadzwon(page: ft.Page, numer):
         kopiuj_do_schowka(page, numer, "Numer skopiowany do schowka")
 
 
+def link_mapy(adres, platforma=None):
+    """Adres zamieniony na link do map. Na Androidzie `geo:` — system sam
+    proponuje aplikacje map (Mapy Google, Waze, OsmAnd) albo otwiera domyślną.
+    Gdzie indziej (Windows, iOS, przeglądarka) `geo:` nie ma kto obsłużyć, więc
+    idzie wyszukiwanie w Google Maps, które otworzy każda przeglądarka."""
+    tekst = " ".join(str(adres or "").split())
+    if not tekst:
+        return ""
+    zapytanie = urllib.parse.quote(tekst)
+    if str(getattr(platforma, "value", platforma) or "").lower() == "android":
+        return f"geo:0,0?q={zapytanie}"
+    return f"https://www.google.com/maps/search/?api=1&query={zapytanie}"
+
+
+def pokaz_na_mapie(page: ft.Page, adres):
+    """Otwarcie adresu w mapach — do warsztatu się jedzie, a przepisywanie
+    ulicy z jednej aplikacji do drugiej to ten sam kłopot, co cyfry numeru przy
+    zadzwon(). Gdy mapy się nie otworzą, adres ląduje w schowku."""
+    link = link_mapy(adres, getattr(page, "platform", None))
+    if not link:
+        return
+
+    async def _zadanie():
+        try:
+            wynik = page.launch_url(link)
+            if inspect.isawaitable(wynik):
+                await wynik
+        except Exception:
+            kopiuj_do_schowka(page, adres, "Nie udało się otworzyć map — adres w schowku")
+
+    try:
+        page.run_task(_zadanie)
+    except Exception:
+        kopiuj_do_schowka(page, adres, "Adres skopiowany do schowka")
+
+
 __all__ = [
     "kopiuj_do_schowka",
+    "link_mapy",
+    "pokaz_na_mapie",
     "zadzwon",
 ]

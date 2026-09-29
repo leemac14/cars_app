@@ -55,6 +55,7 @@ WYWOLANIA = {
     "pobierz_dane_timeline": lambda k: (k["id"]["auto_id"],),
     "pobierz_historie_przebiegu": lambda k: (k["id"]["auto_id"],),
     "pobierz_historie_zuzycia": lambda k: (k["id"]["magazyn"],),
+    "pobierz_karty_warsztatow": lambda k: (k["id"]["auto_id"],),
     "pobierz_kolejke_sync": lambda k: (),
     "pobierz_kosz": lambda k: (),
     "pobierz_koszty_innych_wg_kategorii": lambda k: (k["id"]["auto_id"],),

@@ -81,6 +81,13 @@ EKRANY = [
     {"id": "wizyty", "tytul": "Wizyty w warsztacie", "opis": "Zbiorcze naprawy i przeglądy",
      "ikona": ft.Icons.HOME_REPAIR_SERVICE, "grupa": "serwis", "trasa": "/wizyty",
      "slowa": ["warsztat", "mechanik", "naprawa", "przegląd", "wizyta"]},
+    # Karta warsztatu stoi przy wizytach: dzwoni się i jedzie tam, gdzie auto się
+    # naprawia. Opis i słowa bez „oc”, „olej” i „koszt” — wyszukiwarka ma dla
+    # nich swoje ekrany (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "warsztaty", "tytul": "Warsztaty", "opis": "Telefon, adres i mapa dojazdu do mechanika",
+     "ikona": ft.Icons.CAR_REPAIR, "grupa": "serwis", "trasa": "/warsztaty",
+     "slowa": ["mechanik", "wykonawca", "telefon", "zadzwoń", "adres", "mapa", "dojazd",
+               "nawigacja", "kontakt"]},
     {"id": "do-zrobienia", "tytul": "Do zrobienia", "opis": "Lista rzeczy do załatwienia w aucie",
      "ikona": ft.Icons.CHECKLIST_RTL, "grupa": "serwis", "trasa": "/do-zrobienia",
      "stan": {"do_zrobienia_podzakladka": 0},

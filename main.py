@@ -38,6 +38,7 @@ from views.archiwum_view import ArchiwumView
 from views.budzet_view import BudzetView
 from views.pojazd_view import PojazdView
 from views.odliczania_view import OdliczaniaView
+from views.warsztaty_view import WarsztatyView
 from views.rok_view import RokWPigulceView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
@@ -693,6 +694,8 @@ def main(page: ft.Page):
             page.views.append(PojazdView(page, app_state))
         elif segmenty[0] == "ile-zostalo":
             page.views.append(OdliczaniaView(page, app_state))
+        elif segmenty[0] == "warsztaty":
+            page.views.append(WarsztatyView(page, app_state))
         elif segmenty[0] == "budzet":
             page.views.append(BudzetView(page, app_state))
         elif segmenty[0] == "rok":
