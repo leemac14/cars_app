@@ -171,9 +171,10 @@ EKRANY = [
     {"id": "eksport", "tytul": "Eksport danych (CSV/PDF)", "opis": "Raport z wybranego okresu do wysłania",
      "ikona": ft.Icons.SUMMARIZE, "grupa": "dane", "trasa": "/eksport",
      "slowa": ["csv", "pdf", "raport", "wyślij", "arkusz", "excel"]},
-    {"id": "import", "tytul": "Import z pliku CSV", "opis": "Tankowania, koszty i odczyty z arkusza",
+    {"id": "import", "tytul": "Import z pliku CSV", "opis": "Tankowania, koszty i serwis z arkusza albo innej aplikacji",
      "ikona": ft.Icons.INPUT, "grupa": "dane", "trasa": "/import",
-     "slowa": ["wczytaj csv", "arkusz", "excel", "migracja", "przenieś dane"]},
+     "slowa": ["wczytaj csv", "arkusz", "excel", "migracja", "przenieś dane", "fuelio", "drivvo", "acar",
+               "simply auto"]},
 
     {"id": "cykliczne", "tytul": "Wydatki cykliczne", "opis": "Raty, abonamenty, powtarzalne czynności",
      "ikona": ft.Icons.AUTORENEW, "grupa": "aplikacja", "akcja": "cykliczne",

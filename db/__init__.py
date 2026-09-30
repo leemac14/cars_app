@@ -46,6 +46,7 @@ from .os_czasu import *
 from .eksport import *
 from .raporty import *
 from .import_csv import *
+from .presety_importu import *
 from .migracje import *
 
 from . import (
@@ -84,6 +85,7 @@ from . import (
     eksport,
     raporty,
     import_csv,
+    presety_importu,
     migracje,
 )
 

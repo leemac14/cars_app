@@ -91,6 +91,7 @@ WYWOLANIA = {
     "przelicz_zuzycie": lambda k: (7.5,),
     "sprawdz_kopie_przed_wczytaniem": lambda k: (db.BAZA_DANYCH,),
     "stan_budzetow": lambda k: (k["id"]["auto_id"],),
+    "tabela_z_wierszy": lambda k: (db.wczytaj_wiersze_csv(str(k["csv"])),),
     "utworz_wizyte_z_do_zrobienia": lambda k: (k["id"]["auto_id"], [k["id"]["do_zrobienia"]]),
     "warunek_zakresu_dat": lambda k: ("data_iso", date(2026, 1, 1), date(2026, 3, 31)),
     "wczytaj_plik_csv": lambda k: (str(k["csv"]),),
