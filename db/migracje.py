@@ -21,6 +21,15 @@ from .kosz import posprzataj_kosz
 # — patrz wersja_schematu_aplikacji() na dole pliku.
 WERSJA_SCHEMATU = None
 
+# Tabele z `data_iso` na stan wersji 44 — ZAMROŻONE. Wypełnienie wstecz tej
+# wersji chodzi po nich, zanim późniejsze migracje dołożą następne (szkice
+# paragonów, wersja 46): stara baza migrowana od zera nie ma ich jeszcze
+# w tym miejscu drabinki, a nowa tabela zaczyna pusta, więc nie ma czego liczyć.
+_TABELE_DATY_ISO_WERSJI_44 = (
+    "tankowania", "inne_koszty", "wizyty", "historia",
+    "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
+)
+
 
 def init_db():
     """Foldery i schemat bazy — wyłącznie to, bez czego nie da się narysować
@@ -688,6 +697,17 @@ def init_db():
             ALTER TABLE historia ADD COLUMN gwarancja_przebieg INTEGER;
             ALTER TABLE wizyty ADD COLUMN gwarancja_data TEXT;
             ALTER TABLE wizyty ADD COLUMN gwarancja_przebieg INTEGER;
+            """,
+            # Wersja 46: kolejka „do wpisania” (M-08). Zdjęcie paragonu przy
+            # dystrybutorze, wpis wieczorem. Szkic to OSOBNA tabela, a nie flaga
+            # przy tankowaniach i kosztach: wpis bez kwoty i litrów rozjechałby
+            # każdą statystykę, eksport i synchronizację, które ufają, że
+            # tankowanie ma liczby. `rodzaj`, `przebieg` (km) i `opis` są
+            # opcjonalne — dopisuje się je zaraz po migawce albo wcale.
+            # Tabela jest lokalna: zdjęcia nie jadą do chmury (N-06).
+            """
+            CREATE TABLE IF NOT EXISTS szkice_wpisow (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, data_iso TEXT, godzina TEXT, zalacznik TEXT, rodzaj TEXT, przebieg INTEGER, opis TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_szkice_wpisow_auto_data_iso ON szkice_wpisow(auto_id, data_iso);
             """
         ]
 
@@ -789,7 +809,7 @@ def init_db():
             # Datę, której aplikacja nie umie odczytać, zostawiamy z NULL-em:
             # lista (parsuj_date) też nie widzi w niej daty.
             if i == 43:
-                przelicz_daty_iso(conn)
+                przelicz_daty_iso(conn, tabele=_TABELE_DATY_ISO_WERSJI_44)
 
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")

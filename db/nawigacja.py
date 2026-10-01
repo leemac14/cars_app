@@ -221,6 +221,12 @@ def _policz_liczniki_nawigacji(auto_id):
             n = (c.fetchone() or [0])[0]
             if n:
                 wynik["magazyn"] = n
+
+            # Paragony sfotografowane na później — odznaka mówi „tyle czeka”.
+            c.execute("SELECT COUNT(*) FROM szkice_wpisow WHERE auto_id=?", (auto_id,))
+            n = (c.fetchone() or [0])[0]
+            if n:
+                wynik["do-wpisania"] = n
     except Exception:
         pass
 

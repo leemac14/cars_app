@@ -968,6 +968,13 @@ class MiksinKokpitu:
                                lambda e: utils.przejdz(self._page, "/tankowanie/nowe"),
                                "Nowy wpis tankowania")
 
+        def widget_akcja_paragon():
+            """Kolejka „do wpisania” (M-08): przy dystrybutorze jedno dotknięcie
+            do aparatu, formularz wieczorem. Na komputerze — wybór zdjęć z dysku."""
+            return kafel_akcji(ft.Icons.PHOTO_CAMERA, "Paragon",
+                               lambda e: utils.otworz_migawke(self._page, self.state),
+                               "Zdjęcie paragonu teraz, wpis wieczorem")
+
         def widget_akcja_licznik():
             """Jedyna akcja, której nie ma pod FAB-em — i jedyna, która nie
             wymaga zmiany ekranu: okno z jednym polem zapisuje odczyt i wraca
@@ -1023,6 +1030,7 @@ class MiksinKokpitu:
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
             "akcja_tankowanie": widget_akcja_tankowanie,
+            "akcja_paragon": widget_akcja_paragon,
             "akcja_licznik": widget_akcja_licznik,
             "akcja_inny_koszt": widget_akcja_inny_koszt,
             "akcja_wizyta": widget_akcja_wizyta,
@@ -1389,6 +1397,13 @@ class MiksinKokpitu:
             )
         )
         self.elementy.append(ft.Row(naglowek, vertical_alignment=ft.CrossAxisAlignment.CENTER))
+
+        # Paragony sfotografowane na później — nad kafelkami, bo to jedyna rzecz
+        # na kokpicie, która czeka na ruch użytkownika, a nie na upływ czasu.
+        szkice = db.podsumowanie_szkicow(self.state.auto_id)
+        if szkice["liczba"]:
+            self.elementy.append(utils.baner_szkicow(
+                self._page, szkice, lambda e: utils.przejdz(self._page, "/do-wpisania")))
 
         self.elementy.append(self._buduj_kokpit())
 

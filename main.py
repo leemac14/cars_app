@@ -39,6 +39,8 @@ from views.budzet_view import BudzetView
 from views.pojazd_view import PojazdView
 from views.odliczania_view import OdliczaniaView
 from views.warsztaty_view import WarsztatyView
+from views.do_wpisania_view import DoWpisaniaView
+from views.migawka_view import MigawkaView
 from views.rok_view import RokWPigulceView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
@@ -70,7 +72,8 @@ def _cel_trasy(segmenty):
     trzeci = segmenty[2] if len(segmenty) > 2 else ""
 
     # Import CSV i kosz zapisują do bazy, choć nie są formularzem wpisu.
-    if glowa in ("import", "kosz"):
+    # Aparat i kolejka paragonów zakładają szkice, z których powstają wpisy.
+    if glowa in ("import", "kosz", "paragon", "do-wpisania"):
         return True, True, None, None
 
     # /auto/nowy zakłada NOWY, własny pojazd — to wolno zawsze, niezależnie od
@@ -619,17 +622,25 @@ def main(page: ft.Page):
         elif segmenty[0] == "historia" and len(segmenty) >= 2:
             page.views.append(HistoriaView(page, app_state, utils.parsuj_int(segmenty[1], None)))
         elif segmenty[0] == "wizyty":
-            page.views.append(WizytyZbiorczeView(page, app_state))
+            # Wizyta ze szkicu paragonu wraca do kolejki, nie na listę wizyt.
+            szkic_id = utils.szkic_z_trasy(segmenty)
+            page.views.append(DoWpisaniaView(page, app_state) if szkic_id else WizytyZbiorczeView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowa":
-                page.views.append(FormularzWizytyView(page, app_state, None))
+                page.views.append(FormularzWizytyView(page, app_state, None, szkic_id=szkic_id))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 page.views.append(FormularzWizytyView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "tankowanie" and len(segmenty) >= 2 and segmenty[1] == "nowe":
-            page.views.append(FormularzTankowanieView(page, app_state, None))
+            szkic_id = utils.szkic_z_trasy(segmenty)
+            if szkic_id:
+                page.views.append(DoWpisaniaView(page, app_state))
+            page.views.append(FormularzTankowanieView(page, app_state, None, szkic_id=szkic_id))
         elif segmenty[0] == "tankowanie" and len(segmenty) >= 3 and segmenty[1] == "edytuj":
             page.views.append(FormularzTankowanieView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "inne" and len(segmenty) >= 2 and segmenty[1] == "nowy":
-            page.views.append(FormularzInneView(page, app_state, None))
+            szkic_id = utils.szkic_z_trasy(segmenty)
+            if szkic_id:
+                page.views.append(DoWpisaniaView(page, app_state))
+            page.views.append(FormularzInneView(page, app_state, None, szkic_id=szkic_id))
         elif segmenty[0] == "inne" and len(segmenty) >= 3 and segmenty[1] == "edytuj":
             page.views.append(FormularzInneView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "wpis":
@@ -694,6 +705,10 @@ def main(page: ft.Page):
             page.views.append(PojazdView(page, app_state))
         elif segmenty[0] == "ile-zostalo":
             page.views.append(OdliczaniaView(page, app_state))
+        elif segmenty[0] == "do-wpisania":
+            page.views.append(DoWpisaniaView(page, app_state))
+        elif segmenty[0] == "paragon":
+            page.views.append(MigawkaView(page, app_state))
         elif segmenty[0] == "warsztaty":
             page.views.append(WarsztatyView(page, app_state))
         elif segmenty[0] == "budzet":

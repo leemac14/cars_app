@@ -1,3 +1,10 @@
+[tool.flet]
+# Aparat w aplikacji (flet-camera, kolejka paragonów „do wpisania”). Gotowy
+# zestaw Fleta: uprawnienie CAMERA na Androidzie, opis dla iOS i aparat jako
+# sprzęt NIEWYMAGANY — telefon bez aparatu nadal zainstaluje aplikację
+# (paragon doda wtedy z galerii).
+permissions = ["camera"]
+
 [tool.flet.app]
 # Co NIE ma trafić do paczki. Ścieżki dopasowują się dokładnie (bez masek),
 # katalogi rekurencyjnie. `build/` Flet wyklucza sam.

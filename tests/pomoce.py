@@ -7,6 +7,7 @@ co musi wyglądać tak samo w kilku testach naraz.
 import hashlib
 import os
 import sqlite3
+from datetime import date
 
 import db
 
@@ -249,6 +250,17 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                    '[{"od": "Ola", "do": "Kamil", "kwota": 5000}]', "Przelew", f"rozl-{nazwa}",
                    "Kamil", "2026-01-01 20:00:00", "rozl-1"))
         zid["rozliczenie"] = c.lastrowid
+
+        # Szkic z kolejki „do wpisania” — lokalny (bez zdalne_id), ze zdjęciem
+        # paragonu, licznikiem i opisem dopisanymi po migawce. Z DZISIAJ: szkic
+        # sprzed trzech dni to już przypomnienie w dzwonku i kaflu „Termin”,
+        # a scenariusze mają być spokojne tam, gdzie dane są spokojne.
+        c.execute("INSERT INTO szkice_wpisow (auto_id, data, godzina, zalacznik, rodzaj, przebieg, opis) "
+                  "VALUES (?,?,?,?,?,?,?)",
+                  (auto, date.today().strftime("%d.%m.%Y"), "17:45",
+                   plik(f"{nazwa}_szkic.jpg", b"SZKIC") if z_zalacznikami else None,
+                   "tankowanie", 101400, "Orlen przy A2"))
+        zid["szkic"] = c.lastrowid
 
         # Tabela spoza kosza — świadomie, żeby testy widziały różnicę.
         c.execute("INSERT INTO wyciszone_powiadomienia (auto_id, klucz, do_dnia, tytul) VALUES (?,?,?,?)",

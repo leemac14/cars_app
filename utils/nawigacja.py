@@ -111,6 +111,12 @@ EKRANY = [
      "stan": {"magazyn_zakladka": 0},
      "slowa": ["opony", "koła", "zimowe", "letnie", "bieżnik", "felgi", "sezon", "wymiana opon"]},
 
+    # Skrzynka paragonów sfotografowanych na później (M-08). Opis i słowa bez
+    # „koszt” i „oc” — wyszukiwarka ma dla nich swoje ekrany.
+    {"id": "do-wpisania", "tytul": "Do wpisania", "opis": "Paragony sfotografowane na później — wpisz je w wolnej chwili",
+     "ikona": ft.Icons.PENDING_ACTIONS, "grupa": "koszty", "trasa": "/do-wpisania",
+     "slowa": ["paragon", "paragony", "zdjęcie paragonu", "szkic", "szkice", "kolejka", "na później",
+               "aparat", "migawka", "faktura", "rachunek", "galeria"]},
     {"id": "paliwo", "tytul": "Tankowania", "opis": "Paliwo, prąd i spalanie",
      "ikona": ft.Icons.LOCAL_GAS_STATION, "grupa": "koszty", "zakladka": 2, "podzakladka": 0,
      "slowa": ["paliwo", "benzyna", "diesel", "lpg", "prąd", "ładowanie", "stacja", "spalanie", "litry"]},

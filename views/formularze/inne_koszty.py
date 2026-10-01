@@ -8,13 +8,17 @@ from datetime import datetime
 
 
 class FormularzInneView(ft.View):
-    def __init__(self, page: ft.Page, state, i_id=None):
+    def __init__(self, page: ft.Page, state, i_id=None, szkic_id=None):
         self._page = page
         self.state = state
         self.i_id = i_id
 
         duplikuj_id = getattr(state, "duplikuj_zrodlo_koszt", None) if not i_id else None
         state.duplikuj_zrodlo_koszt = None  # zużywamy jednorazowo
+        # Szkic z kolejki „do wpisania” (utils/szkice.py) — nowy wpis z paragonu.
+        self.szkic = utils.szkic_do_formularza(state, szkic_id, i_id)
+        if self.szkic:
+            duplikuj_id = None
         zrodlo_id = i_id or duplikuj_id
 
         d_val, op_val, kw_val, tagi_val = datetime.now().strftime("%d.%m.%Y"), "", "", ""
@@ -39,6 +43,13 @@ class FormularzInneView(ft.View):
                     if duplikuj_id:
                         d_val = datetime.now().strftime("%d.%m.%Y")
                         self.zalacznik_val = None
+
+        if self.szkic:
+            # Krótki opis z migawki („myjnia”, „A4 bramki”) to przy koszcie
+            # właśnie jego nazwa — pole wymagane, więc oszczędza pisania.
+            d_val = self.szkic["data"]
+            op_val = self.szkic["opis"] or ""
+            self.zalacznik_val = self.szkic["zalacznik"]
 
         # Kategoria opisuje RODZAJ wydatku (winieta, myjnia, polisa), tagi —
         # cokolwiek innego, co użytkownik chce po sobie znaleźć. To dwie różne
@@ -67,7 +78,9 @@ class FormularzInneView(ft.View):
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 
         self._stan_poczatkowy = self._migawka_formularza()
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja kosztu" if i_id else "Nowy koszt", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+        # Formularz ze szkicu wraca do kolejki — i przy anulowaniu, i po zapisie.
+        self.powrot = "/do-wpisania" if self.szkic else "/"
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja kosztu" if i_id else "Nowy koszt", self.powrot, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         k1 = utils.karta_formularza(
             [self.e_d, self.e_kat, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi, self.e_o, self.e_kw],
             "Szczegóły wydatku", ft.Icons.RECEIPT_LONG, domyslnie_otwarte=True, page=page
@@ -75,10 +88,14 @@ class FormularzInneView(ft.View):
         k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
         k3 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
                                     domyslnie_otwarte=bool(notatka_val))
-        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz koszt", self.zapisz, "/")]
+        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz koszt", self.zapisz, self.powrot)]
+        if self.szkic:
+            elementy.insert(0, utils.pasek_szkicu(page, self.szkic))
 
         super().__init__(
-            route=f"/inne/edytuj/{i_id}" if i_id else "/inne/nowy",
+            route=(f"/inne/edytuj/{i_id}" if i_id
+                   else utils.trasa_uzupelnienia("koszt", self.szkic["id"]) if self.szkic
+                   else "/inne/nowy"),
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
 
@@ -117,12 +134,19 @@ class FormularzInneView(ft.View):
                     (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), kategoria, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie())
                 )
                 rekord_id = kursor.lastrowid
+                # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
+                if self.szkic:
+                    db.zamknij_szkic(self.szkic["id"], conn=conn)
 
         utils.zapisz_notatke_z_formularza("inne_koszty", rekord_id, self.k_notatka.value, self.notatka_bazowa)
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "inny koszt")
 
+        if self.szkic:
+            utils.przejdz(self._page, utils.trasa_po_zapisie_szkicu(self.state.auto_id, "/"))
+            utils.pokaz_komunikat(self._page, f"Zapisano koszt • {kategoria}.{utils.dopisek_kolejki(self.state.auto_id)}")
+            return
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, f"Zapisano koszt • {kategoria}")
 

@@ -201,6 +201,7 @@ IKONY_KOKPITU = {
     "do_zrobienia": ft.Icons.CHECKLIST_RTL,
     "magazyn": ft.Icons.INVENTORY_2,
     "akcja_tankowanie": ft.Icons.LOCAL_GAS_STATION,
+    "akcja_paragon": ft.Icons.PHOTO_CAMERA,
     "akcja_licznik": ft.Icons.SPEED,
     "akcja_inny_koszt": ft.Icons.RECEIPT_LONG,
     "akcja_wizyta": ft.Icons.HOME_REPAIR_SERVICE,

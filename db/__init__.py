@@ -22,6 +22,7 @@ from .synchronizacja import *
 from .energia import *
 from .notatki import *
 from .zalaczniki import *
+from .szkice import *
 from .magazyn import *
 from .checklisty import *
 from .przebieg import *
@@ -61,6 +62,7 @@ from . import (
     energia,
     notatki,
     zalaczniki,
+    szkice,
     magazyn,
     checklisty,
     przebieg,

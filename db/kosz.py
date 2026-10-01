@@ -41,7 +41,7 @@ KOSZ_TABELE_POTOMNE = [
     "trasy_szablony", "checklisty",
     "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
     "checklisty_pozycje",
-    "budzety", "rozliczenia",
+    "budzety", "rozliczenia", "szkice_wpisow",
 ]
 
 
@@ -99,6 +99,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
 KOSZ_TABELE_LICZONE = [
     "tankowania", "historia", "wizyty", "inne_koszty", "zestawy_opon",
     "magazyn_czesci", "zdjecia_karoserii", "odczyty_przebiegu", "do_zrobienia",
+    "szkice_wpisow",
 ]
 
 

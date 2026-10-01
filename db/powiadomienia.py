@@ -9,7 +9,7 @@ from typing import Any
 from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, STATUS_POJAZDU_SPRZEDANY, TERMINY_DOKUMENTOW
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
-from .pomocnicze import opis_terminu_dni
+from .pomocnicze import liczba_z_odmiana, opis_terminu_dni
 from .ustawienia import (
     _klucz_widzianych_powiadomien, pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km,
     pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie,
@@ -18,6 +18,7 @@ from .jednostki import slowo_dystansu, tekst_dystansu
 from .synchronizacja import czy_moge_dodawac
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, swiezosc_licznika
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, linie_przypomnienia_gwarancji
+from .szkice import DNI_PRZYPOMNIENIA_SZKICU, podsumowanie_szkicow
 
 
 # ============================================================================
@@ -343,6 +344,10 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
     przypomnienie = _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg, sredni_dzienny_przebieg)
     if przypomnienie:
         wyniki.append(przypomnienie)
+    # Paragony do wpisania — też o danych, nie o aucie, więc na samym końcu.
+    szkice = _powiadomienie_o_szkicach(auto_id)
+    if szkice:
+        wyniki.append(szkice)
 
     kolejnosc = {"przeterminowane": 0, "pilne": 1}
 
@@ -396,6 +401,35 @@ def _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg=None, sredni_dzie
         "opis": utils.polacz_linie_opisu(linie), "linie_opisu": linie,
         "status": "pilne", "trasa": "/przebieg",
         "klucz": klucz, "klucz_drzemki": klucz_cyklu,
+    }
+
+
+# ============================================================================
+#  PARAGONY DO WPISANIA (kolejka szkiców, db/szkice.py)
+# ============================================================================
+# Kokpit pokazuje baner od pierwszego szkicu; dzwonek odzywa się dopiero, gdy
+# najstarszy leży DNI_PRZYPOMNIENIA_SZKICU dni. Klucz to id najstarszego
+# szkicu: nowy paragon w kolejce nie zapala odznaki drugi raz, a wpisanie
+# najstarszego (gdy następny też jest stary) zapala ją dla następnego.
+# Drzemka trzyma się tego samego szkicu.
+
+# Powiadomienia o DANYCH, nie o aucie — porównanie pojazdów ich nie liczy.
+TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice")
+
+
+def _powiadomienie_o_szkicach(auto_id):
+    if not czy_moge_dodawac(auto_id):
+        return None
+    stan = podsumowanie_szkicow(auto_id)
+    if not stan["liczba"] or stan["dni"] < DNI_PRZYPOMNIENIA_SZKICU:
+        return None
+    import utils
+    ile = liczba_z_odmiana(stan["liczba"], "paragon", "paragony", "paragonów")
+    return {
+        "typ": "szkice", "tytul": "Paragony do wpisania",
+        "opis": f"{ile} w kolejce, najstarszy sprzed {utils.formatuj_dni_dopelniacz(stan['dni'])}",
+        "status": "pilne", "trasa": "/do-wpisania",
+        "klucz": f"szkice:{stan['najstarszy_id']}",
     }
 
 
@@ -612,6 +646,7 @@ def pobierz_odlozone_powiadomienia(auto_id) -> list[dict[str, Any]]:
 __all__ = [
     "DNI_ODLOZENIA_OPCJE",
     "DNI_W_MIESIACU_INTERWALU",
+    "TYPY_POWIADOMIEN_O_DANYCH",
     "WAGA_STATUSU_POWIADOMIENIA",
     "_posprzataj_wygasle_wyciszenia",
     "klucz_drzemki",

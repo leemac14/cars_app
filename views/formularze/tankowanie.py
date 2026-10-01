@@ -55,7 +55,7 @@ def _baner_ostrzezenia(page, ikona):
 
 
 class FormularzTankowanieView(ft.View):
-    def __init__(self, page: ft.Page, state, t_id=None):
+    def __init__(self, page: ft.Page, state, t_id=None, szkic_id=None):
         self._page = page
         self.state = state
         self.t_id = t_id
@@ -72,6 +72,10 @@ class FormularzTankowanieView(ft.View):
 
         duplikuj_id = getattr(state, "duplikuj_zrodlo_tankowanie", None) if not t_id else None
         state.duplikuj_zrodlo_tankowanie = None  # zużywamy jednorazowo
+        # Szkic z kolejki „do wpisania” (utils/szkice.py) — nowy wpis z paragonu.
+        self.szkic = utils.szkic_do_formularza(state, szkic_id, t_id)
+        if self.szkic:
+            duplikuj_id = None
         zrodlo_id = t_id or duplikuj_id
 
         d_val = datetime.now().strftime("%d.%m.%Y")
@@ -124,8 +128,28 @@ class FormularzTankowanieView(ft.View):
                 if duplikuj_id:
                     d_val = datetime.now().strftime("%d.%m.%Y")
                     self.zalacznik_val = None
+        if self.szkic:
+            # Data migawki, zdjęcie paragonu jako załącznik (bez kopiowania pliku),
+            # licznik i opis wpisane zaraz po zdjęciu.
+            d_val = self.szkic["data"]
+            self.zalacznik_val = self.szkic["zalacznik"]
+            notatka_val = self.szkic["opis"] or ""
+            if self.szkic["przebieg"]:
+                self.prz_przy_otwarciu = self.szkic["przebieg"]
+                p_val = db.wartosc_pola_dystansu(self.szkic["przebieg"], self.j)
+                # Poprzedni licznik jak przy edycji — najwyższy PONIŻEJ licznika
+                # z paragonu, bo późniejsze tankowania mogły wejść do bazy wcześniej.
+                with db.polacz_baze() as conn:
+                    w_prz = conn.execute(
+                        "SELECT MAX(przebieg) FROM tankowania WHERE auto_id=? AND przebieg < ?",
+                        (self.state.auto_id, self.szkic["przebieg"]),
+                    ).fetchone()
+                self.ostatni_prz = int(w_prz[0]) if w_prz and w_prz[0] else 0
+
         # Poprzedni licznik tak, jak stoi w polu — całe km albo całe mile.
         self.ostatni_prz_pola = round(db.dystans_z_km(self.ostatni_prz, self.j))
+        if self.szkic and p_val and 0 < self.ostatni_prz_pola <= utils.parsuj_int(p_val, 0):
+            dys_val = str(utils.parsuj_int(p_val, 0) - self.ostatni_prz_pola)
 
         def on_przebieg_changed(e):
             if self._blokada_sync:
@@ -272,7 +296,9 @@ class FormularzTankowanieView(ft.View):
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 
         self._stan_poczatkowy = self._migawka_formularza()
-        appbar = utils.zbuduj_pasek_z_powrotem(page, f"Edycja: {self.etykiety['zdarzenie']}" if t_id else f"Nowe {self.etykiety['zdarzenie']}", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+        # Formularz ze szkicu wraca do kolejki — i przy anulowaniu, i po zapisie.
+        self.powrot = "/do-wpisania" if self.szkic else "/"
+        appbar = utils.zbuduj_pasek_z_powrotem(page, f"Edycja: {self.etykiety['zdarzenie']}" if t_id else f"Nowe {self.etykiety['zdarzenie']}", self.powrot, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         wiersz_przebiegu = ft.Row([
             ft.Container(self.e_p, expand=True),
@@ -302,10 +328,14 @@ class FormularzTankowanieView(ft.View):
         k4 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
                                     domyslnie_otwarte=bool(notatka_val))
 
-        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, f"Zapisz {self.etykiety['zdarzenie']}", self.zapisz, "/")]
+        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, f"Zapisz {self.etykiety['zdarzenie']}", self.zapisz, self.powrot)]
+        if self.szkic:
+            elementy.insert(0, utils.pasek_szkicu(page, self.szkic))
 
         super().__init__(
-            route=f"/tankowanie/edytuj/{t_id}" if t_id else "/tankowanie/nowe",
+            route=(f"/tankowanie/edytuj/{t_id}" if t_id
+                   else utils.trasa_uzupelnienia("tankowanie", self.szkic["id"]) if self.szkic
+                   else "/tankowanie/nowe"),
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
 
@@ -534,6 +564,9 @@ class FormularzTankowanieView(ft.View):
                 kursor = conn.execute("INSERT INTO tankowania (auto_id, data, data_iso, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
                              (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie()))
                 rekord_id = kursor.lastrowid
+                # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
+                if self.szkic:
+                    db.zamknij_szkic(self.szkic["id"], conn=conn)
         # Notatkę zapisujemy osobno i TYLKO gdy treść się zmieniła — inaczej
         # poprawka ceny przestemplowałaby cudzy podpis pod notatką na swój.
         utils.zapisz_notatke_z_formularza("tankowania", rekord_id, self.k_notatka.value, self.notatka_bazowa)
@@ -541,6 +574,10 @@ class FormularzTankowanieView(ft.View):
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "tankowanie")
 
+        if self.szkic:
+            utils.przejdz(self._page, utils.trasa_po_zapisie_szkicu(self.state.auto_id, "/"))
+            utils.pokaz_komunikat(self._page, f"Zapisano {self.etykiety['zdarzenie']}!{utils.dopisek_kolejki(self.state.auto_id)}")
+            return
         utils.przejdz(self._page, "/")
         utils.pokaz_komunikat(self._page, f"Zapisano {self.etykiety['zdarzenie']}!")
 

@@ -333,6 +333,7 @@ KOKPIT_WIDGETY = {
     # w rogu ekranu, plus stan licznika, którego FAB nie ma. Kokpit odpowiadał
     # dotąd wyłącznie na pytanie „co się dzieje”, nigdy „zrób”.
     "akcja_tankowanie": "Akcja: dodaj tankowanie",
+    "akcja_paragon": "Akcja: paragon na później",
     "akcja_licznik": "Akcja: zapisz stan licznika",
     "akcja_inny_koszt": "Akcja: dodaj inny koszt",
     "akcja_wizyta": "Akcja: wizyta w warsztacie",
@@ -342,7 +343,7 @@ KOKPIT_WIDGETY = {
 
 # Kafelki akcji wchodzą tylko do układu DOMYŚLNEGO — pojazd z własnym układem
 # (albo ze wspólnym, który ktoś już ułożył) nie zmienia się sam po aktualizacji.
-KOKPIT_WIDGETY_DOMYSLNE = ["akcja_tankowanie", "akcja_licznik", "koszt_miesiac", "termin", "wykres"]
+KOKPIT_WIDGETY_DOMYSLNE = ["akcja_tankowanie", "akcja_licznik", "akcja_paragon", "koszt_miesiac", "termin", "wykres"]
 
 
 # Kokpit ustawia się osobno dla każdego pojazdu — auto służbowe i prywatne

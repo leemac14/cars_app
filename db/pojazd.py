@@ -11,7 +11,7 @@ from .pomocnicze import _liczba_lub_none, parsuj_int_bezpiecznie
 from .ustawienia import pobierz_okno_kroczace, pobierz_prog_dni_dokumentu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .koszty import DNI_W_MIESIACU, koszty_w_okresie
-from .powiadomienia import pobierz_powiadomienia
+from .powiadomienia import TYPY_POWIADOMIEN_O_DANYCH, pobierz_powiadomienia
 from .statystyki import koszt_na_1000km, oblicz_kondycje_pojazdu, pobierz_statystyki_energii
 
 
@@ -396,7 +396,7 @@ def pobierz_dane_do_porownania(auto_id):
 
     # Przypomnienie o liczniku mówi o danych, nie o aucie — w porównaniu
     # liczyłoby się jako termin, którego samochód wcale nie ma.
-    powiadomienia = [p for p in pobierz_powiadomienia(auto_id) if p.get("typ") != "licznik"]
+    powiadomienia = [p for p in pobierz_powiadomienia(auto_id) if p.get("typ") not in TYPY_POWIADOMIEN_O_DANYCH]
     dane["przeterminowane"] = sum(1 for p in powiadomienia if p["status"] == "przeterminowane")
     dane["pilne"] = sum(1 for p in powiadomienia if p["status"] == "pilne")
 

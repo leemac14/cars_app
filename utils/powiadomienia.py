@@ -424,6 +424,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                     # dotrzymania, tylko ostatnia chwila na reklamację za darmo.
                     if p["typ"] == "gwarancja":
                         ikona = ft.Icons.GPP_MAYBE
+                    elif p["typ"] == "szkice":
+                        ikona = ft.Icons.PENDING_ACTIONS
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=tytul_pozycji(p),

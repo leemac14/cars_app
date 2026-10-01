@@ -411,6 +411,7 @@ class MainView(
     def _buduj_fab_szybkich_akcji(self):
         akcje = [
             (ft.Icons.LOCAL_GAS_STATION, "Tankowanie", lambda e: utils.przejdz(self._page, "/tankowanie/nowe")),
+            (ft.Icons.PHOTO_CAMERA, "Paragon na później", lambda e: utils.otworz_migawke(self._page, self.state)),
             (ft.Icons.RECEIPT_LONG, "Inny koszt", lambda e: utils.przejdz(self._page, "/inne/nowy")),
             (ft.Icons.HANDYMAN, "Podzespół", lambda e: utils.przejdz(self._page, "/zadanie/nowy")),
             (ft.Icons.HOME_REPAIR_SERVICE, "Wizyta w warsztacie", lambda e: utils.przejdz(self._page, "/wizyty/nowa")),

@@ -8,7 +8,7 @@ from datetime import datetime
 
 
 class FormularzWizytyView(ft.View):
-    def __init__(self, page: ft.Page, state, w_id=None):
+    def __init__(self, page: ft.Page, state, w_id=None, szkic_id=None):
         self._page = page
         self.state = state
         self.w_id = w_id
@@ -31,6 +31,10 @@ class FormularzWizytyView(ft.View):
         # wizyty po raz drugi.
         duplikuj_id = getattr(state, "duplikuj_zrodlo_wizyta", None) if not w_id else None
         state.duplikuj_zrodlo_wizyta = None
+        # Szkic z kolejki „do wpisania” (utils/szkice.py) — faktura z warsztatu.
+        self.szkic = utils.szkic_do_formularza(state, szkic_id, w_id)
+        if self.szkic:
+            duplikuj_id = None
         zrodlo_id = w_id or duplikuj_id
 
         if zrodlo_id:
@@ -68,6 +72,15 @@ class FormularzWizytyView(ft.View):
             self.zalacznik_val = None
             # Gwarancja duplikatu: ten sam OKRES od dzisiejszej wizyty, nie stara data.
             gwarancja = db.przesun_gwarancje(*gwarancja_zrodla, w[0] if w else None, p_zrodla, d_val, self.p_km)
+
+        if self.szkic:
+            # Data migawki, zdjęcie jako załącznik, licznik (jeśli wpisany po
+            # zdjęciu — inaczej zostaje bieżący) i opis jako notatka wizyty.
+            d_val = self.szkic["data"]
+            self.zalacznik_val = self.szkic["zalacznik"]
+            not_val = self.szkic["opis"] or ""
+            if self.szkic["przebieg"]:
+                self.p_km = self.szkic["przebieg"]
 
         # Części z magazynu doliczają się do kosztu wizyty, więc w polach kosztu
         # stoi sam rachunek warsztatu: od zapisanego kosztu odejmujemy to, co
@@ -136,7 +149,9 @@ class FormularzWizytyView(ft.View):
         )
 
         self._stan_poczatkowy = self._migawka_formularza()
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", "/wizyty", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+        # Formularz ze szkicu wraca do kolejki — i przy anulowaniu, i po zapisie.
+        self.powrot = "/do-wpisania" if self.szkic else "/wizyty"
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", self.powrot, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza(
             [self.e_d, self.e_p, self.k_wykonawca, *self.koszt.kontrolki(), self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
@@ -150,6 +165,8 @@ class FormularzWizytyView(ft.View):
             domyslnie_otwarte=bool(gwarancja["koniec"] or gwarancja["limit_km"]), page=page,
         )
         elementy = [k1, k1b, k2, k_gwarancja]
+        if self.szkic:
+            elementy.insert(0, utils.pasek_szkicu(page, self.szkic))
 
         if duplikuj_id:
             # Bez tego nie wiadomo, czemu lista części jest już odklikana, a pole
@@ -173,10 +190,12 @@ class FormularzWizytyView(ft.View):
         if k3:
             elementy.append(k3)
 
-        elementy.append(utils.przyciski_akcji(page, "Zapisz wizytę", self.zapisz, "/wizyty"))
+        elementy.append(utils.przyciski_akcji(page, "Zapisz wizytę", self.zapisz, self.powrot))
 
         super().__init__(
-            route=f"/wizyty/edytuj/{w_id}" if w_id else "/wizyty/nowa",
+            route=(f"/wizyty/edytuj/{w_id}" if w_id
+                   else utils.trasa_uzupelnienia("wizyta", self.szkic["id"]) if self.szkic
+                   else "/wizyty/nowa"),
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
 
@@ -625,6 +644,9 @@ class FormularzWizytyView(ft.View):
                 nowa_gwarancja = db.klucz_gwarancji(gw_koniec, gw_limit)
                 cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, zalacznik, tagi, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, *nowa_gwarancja, osoba_wizyty))
                 wizyta_id = cur.lastrowid
+                # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
+                if self.szkic:
+                    db.zamknij_szkic(self.szkic["id"], conn=conn)
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
                     cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, osoba_wizyty))
@@ -642,11 +664,12 @@ class FormularzWizytyView(ft.View):
 
         db.przelicz_wszystkie_zadania(self.state.auto_id)
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "wizyta")
-        utils.przejdz(self._page, "/wizyty")
+        utils.przejdz(self._page, utils.trasa_po_zapisie_szkicu(self.state.auto_id, "/wizyty") if self.szkic else "/wizyty")
+        dopisek = utils.dopisek_kolejki(self.state.auto_id) if self.szkic else ""
         if koszt_czesci > 0:
-            utils.pokaz_komunikat(self._page, f"Zapisano wizytę! Doliczono części z magazynu: {utils.formatuj_liczba(koszt_czesci)} {utils.symbol_waluty()}.")
+            utils.pokaz_komunikat(self._page, f"Zapisano wizytę! Doliczono części z magazynu: {utils.formatuj_liczba(koszt_czesci)} {utils.symbol_waluty()}.{dopisek}")
         else:
-            utils.pokaz_komunikat(self._page, "Zapisano wizytę!")
+            utils.pokaz_komunikat(self._page, f"Zapisano wizytę!{dopisek}")
 
 
 __all__ = [

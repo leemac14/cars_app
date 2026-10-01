@@ -1,5 +1,6 @@
 flet==0.86.5
 flet-charts==0.86.5
+flet-camera==0.86.5
 Pillow
 fpdf2
 supabase

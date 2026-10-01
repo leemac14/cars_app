@@ -155,6 +155,7 @@ METRYKI_KAFELKOW = {
     "do_zrobienia": ("do_zrobienia",),
     "magazyn": ("magazyn",),
     "akcja_tankowanie": ("tylko_podglad",),
+    "akcja_paragon": ("tylko_podglad",),
     "akcja_licznik": ("tylko_podglad",),
     "akcja_inny_koszt": ("tylko_podglad",),
     "akcja_wizyta": ("tylko_podglad",),
