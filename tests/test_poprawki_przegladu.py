@@ -11,6 +11,7 @@ import pytest
 
 import db
 import utils
+from date import na_iso
 
 
 def dni_temu(dni):
@@ -30,11 +31,14 @@ def auto(nazwa="Przegląd", typ_paliwa="Benzyna", **pola):
 
 def tankowanie(auto_id, dni, przebieg, litry=40.0, kwota=240.0, pelny=1, rodzaj=db.ENERGIA_PALIWO,
                stacja=None):
+    # `data_iso` jak przy zapisie z formularza — zakresy dat (rok w pigułce)
+    # tnie SQL właśnie po niej.
     with db.polacz_baze() as conn:
         return conn.execute(
-            "INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, "
-            "rodzaj_energii) VALUES (?,?,?,?,?,?,?,?,?)",
-            (auto_id, dni_temu(dni), przebieg, 0, litry, kwota, pelny, stacja, rodzaj)).lastrowid
+            "INSERT INTO tankowania (auto_id, data, data_iso, przebieg, dystans, litry, kwota, do_pelna, "
+            "stacja, rodzaj_energii) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (auto_id, dni_temu(dni), na_iso(dni_temu(dni)), przebieg, 0, litry, kwota, pelny, stacja,
+             rodzaj)).lastrowid
 
 
 def odczyt(auto_id, dni, przebieg):
@@ -236,6 +240,7 @@ def test_rok_w_toku_porownuje_sie_z_tym_samym_okresem(baza):
         for d, kwota in ((teraz, 300.0), (rok_temu, 300.0), (date(dzis.year - 1, 12, 31), 5000.0)):
             conn.execute("INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota) VALUES (?,?,?,?,?)",
                          (a, d.strftime("%d.%m.%Y"), db.KATEGORIA_INNE_DOMYSLNA, "Koszt", kwota))
+        db.przelicz_daty_iso(conn)
     rok = db.podsumowanie_roku(a, dzis.year)
     if dzis.month == 12 and dzis.day == 31:
         pytest.skip("31 grudnia oba okresy są pełnymi latami")

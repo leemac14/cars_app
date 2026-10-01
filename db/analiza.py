@@ -1,5 +1,6 @@
 """Budżety, prognozy, trendy, podsumowanie roku i obserwacje."""
 
+import calendar
 import sqlite3
 from date import parsuj_date
 from datetime import date as date_cls, datetime, timedelta
@@ -8,6 +9,7 @@ from typing import Any
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, parsuj_int_bezpiecznie
+from .daty import warunek_zakresu_dat
 from .ustawienia import pobierz_okno_kroczace, pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
 from .synchronizacja import zarejestruj_nagrobek
@@ -700,25 +702,172 @@ def _zmiana_1000km(koszt, km, koszt_poprzedni, km_poprzedni):
     return ((teraz - wczesniej) / wczesniej * 100) if wczesniej > 0 else None
 
 
-def _km_w_roku(historia_prz, rok, granica=None):
-    """Kilometry przejechane w danym roku, z historii odczytów licznika.
+def _km_w_okresie(historia_prz, od, do):
+    """Kilometry przejechane w okresie [od, do], z historii odczytów licznika.
+    Ta sama miara dla roku i miesiąca w pigułce.
 
-    Punkt startowy to ostatni odczyt SPRZED roku, jeśli istnieje — inaczej
-    styczniowy stan licznika policzyłby się jako „przejechane od zera”."""
-    poczatek = date_cls(rok, 1, 1)
-    kres = granica or date_cls(rok, 12, 31)
-    przed_rokiem, w_roku = None, []
+    Punkt startowy to ostatni odczyt SPRZED okresu, jeśli istnieje — inaczej
+    pierwszy stan licznika w okresie policzyłby się jako „przejechane od zera”."""
+    przed_okresem, w_okresie = None, []
     for data_str, prz in historia_prz:
         d = parsuj_date(data_str)
         if d == datetime.min.date():
             continue
-        if d < poczatek:
-            przed_rokiem = prz
-        elif d <= kres:
-            w_roku.append(prz)
-    start = przed_rokiem if przed_rokiem is not None else (min(w_roku) if w_roku else None)
-    koniec = max(w_roku) if w_roku else None
+        if d < od:
+            przed_okresem = prz
+        elif d <= do:
+            w_okresie.append(prz)
+    start = przed_okresem if przed_okresem is not None else (min(w_okresie) if w_okresie else None)
+    koniec = max(w_okresie) if w_okresie else None
     return (koniec - start) if (start is not None and koniec is not None and koniec > start) else 0
+
+
+def _wpisy_okresu(conn, auto_id, od, do):
+    """Wpisy kosztowe pojazdu z przedziału [od, do], obie granice włącznie —
+    zakres tnie SQL po `data_iso`, nie pętla po `parsuj_date`.
+
+    Reguła wizyty zbiorczej jak w `_wiersze_kosztow`: wizyta wchodzi w CAŁOŚCI,
+    a jej pozycje historii są pomijane. Każdy wiersz dostaje `dzien` (date) —
+    z niego biorą się słupki miesięcy w roku i dni w miesiącu."""
+    warunek, parametry = warunek_zakresu_dat("data_iso", od, do)
+    warunek_h, parametry_h = warunek_zakresu_dat("h.data_iso", od, do)
+    c = conn.cursor()
+    c.row_factory = sqlite3.Row
+
+    def wiersze(sql, argumenty):
+        c.execute(sql, argumenty)
+        lista = [dict(r) for r in c.fetchall()]
+        for w in lista:
+            w["dzien"] = date_cls.fromisoformat(w["data_iso"])
+        return lista
+
+    return {
+        "tankowania": wiersze(
+            "SELECT data, data_iso, przebieg, litry, kwota, stacja, do_pelna, rodzaj_energii "
+            f"FROM tankowania WHERE auto_id=?{warunek} ORDER BY data_iso, id", [auto_id, *parametry]),
+        "inne": wiersze(
+            f"SELECT data, data_iso, nazwa, kwota FROM inne_koszty WHERE auto_id=?{warunek} "
+            "ORDER BY data_iso, id", [auto_id, *parametry]),
+        "serwis": wiersze(
+            "SELECT h.data, h.data_iso, h.cena, z.nazwa FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
+            f"WHERE z.auto_id=? AND h.wizyta_id IS NULL{warunek_h} ORDER BY h.data_iso, h.id",
+            [auto_id, *parametry_h]),
+        "wizyty": wiersze(
+            f"SELECT data, data_iso, koszt_calkowity, wykonawca FROM wizyty WHERE auto_id=?{warunek} "
+            "ORDER BY data_iso, id", [auto_id, *parametry]),
+    }
+
+
+def _koszty_wpisow(wpisy):
+    """(dzień, kwota, kategoria budżetu) każdego wpisu z `_wpisy_okresu`."""
+    return (
+        [(w["dzien"], float(w["kwota"] or 0.0), "paliwo") for w in wpisy["tankowania"]]
+        + [(w["dzien"], float(w["cena"] or 0.0), "serwis") for w in wpisy["serwis"]]
+        + [(w["dzien"], float(w["koszt_calkowity"] or 0.0), "serwis") for w in wpisy["wizyty"]]
+        + [(w["dzien"], float(w["kwota"] or 0.0), "inne") for w in wpisy["inne"]]
+    )
+
+
+def _suma_kosztow_okresu(auto_id, od, do):
+    """Wydatki razem w [od, do] — druga strona porównania roku albo miesiąca,
+    liczona tą samą regułą, co strona pierwsza."""
+    with polacz_baze() as conn:
+        wpisy = _wpisy_okresu(conn, auto_id, od, do)
+    return sum(kwota for _dzien, kwota, _kat in _koszty_wpisow(wpisy))
+
+
+def _ulubiona_stacja(tankowania):
+    """Stacja z największą liczbą tankowań (remis: większa kwota), podpisana
+    pisownią, która w grupie powtarza się najczęściej."""
+    grupy = {}
+    for t in tankowania:
+        nazwa = " ".join(str(t.get("stacja") or "").split())
+        klucz = klucz_stacji(nazwa)
+        if not klucz:
+            continue
+        grupa = grupy.setdefault(klucz, {"ile": 0, "kwota": 0.0, "warianty": {}})
+        grupa["ile"] += 1
+        grupa["kwota"] += float(t.get("kwota") or 0)
+        grupa["warianty"][nazwa] = grupa["warianty"].get(nazwa, 0) + 1
+    if not grupy:
+        return None
+    _klucz, top = max(grupy.items(), key=lambda kv: (kv[1]["ile"], kv[1]["kwota"]))
+    return {
+        "nazwa": max(top["warianty"].items(), key=lambda kv: (kv[1], kv[0]))[0],
+        "liczba": top["ile"],
+        "kwota": top["kwota"],
+    }
+
+
+def _najwiekszy_wydatek(wpisy):
+    """Najdroższy pojedynczy wpis okresu — z opisem, bo sama kwota nie mówi,
+    po co się na ten wiersz patrzy."""
+    kandydaci = (
+        [(w["data"], float(w["kwota"] or 0), str(w["nazwa"] or "Inny koszt")) for w in wpisy["inne"]]
+        + [(w["data"], float(w["cena"] or 0), str(w["nazwa"] or "Serwis")) for w in wpisy["serwis"]]
+        + [(w["data"], float(w["koszt_calkowity"] or 0), f"Wizyta: {w['wykonawca'] or 'warsztat'}")
+           for w in wpisy["wizyty"]]
+        + [(w["data"], float(w["kwota"] or 0), f"Tankowanie: {w['stacja'] or 'stacja nieznana'}")
+           for w in wpisy["tankowania"]]
+    )
+    kandydaci = [k for k in kandydaci if k[1] > 0]
+    if not kandydaci:
+        return None
+    data, kwota, opis = max(kandydaci, key=lambda k: k[1])
+    return {"data": data, "kwota": kwota, "opis": opis}
+
+
+def _rachunek_okresu(auto_id, od, do, historia_prz):
+    """Część wspólna „Roku w pigułce” i „Miesiąca w pigułce” — wszystko, co
+    liczy się tak samo bez względu na długość okresu: koszty w rozbiciu,
+    kilometry, tankowania, ulubiona stacja, średnie zużycie, największy
+    wydatek. Rok i miesiąc dokładają tylko własny podział (słupki miesięcy albo
+    dni) i własne porównania. `wpisy_kosztow` to (dzień, kwota, kategoria)
+    do tego podziału — wołający zdejmuje je z wyniku.
+
+    None, gdy w okresie nie ma ani jednego wpisu kosztowego."""
+    with polacz_baze() as conn:
+        wpisy = _wpisy_okresu(conn, auto_id, od, do)
+    koszty = _koszty_wpisow(wpisy)
+    if not koszty:
+        return None
+
+    kategorie = {k: 0.0 for k in KATEGORIE_BUDZETU}
+    for _dzien, kwota, kategoria in koszty:
+        kategorie[kategoria] += kwota
+        kategorie["razem"] += kwota
+
+    km = _km_w_okresie(historia_prz, od, do)
+    tankowania = wpisy["tankowania"]
+    litry = sum(float(t["litry"] or 0) for t in tankowania
+                if (t["rodzaj_energii"] or ENERGIA_PALIWO) == ENERGIA_PALIWO)
+    kwh = sum(float(t["litry"] or 0) for t in tankowania if t["rodzaj_energii"] == ENERGIA_PRAD)
+
+    # Średnie zużycie okresu: odcinki zamknięte W TYM okresie.
+    rodzaj_zuzycia = domyslny_rodzaj_energii(auto_id)
+    zuzycie = [w for data_str, w in pobierz_serie_spalania(auto_id, limit=None, rodzaj=rodzaj_zuzycia)
+               if od <= parsuj_date(data_str) <= do]
+
+    razem = kategorie["razem"]
+    return {
+        "wpisy_kosztow": koszty,
+        "km": km,
+        "koszty": kategorie,
+        "koszt_km": (razem / km) if km > 0 else None,
+        "koszt_1000km": (razem / km * 1000) if km > 0 else None,
+        "liczba_tankowan": len(tankowania),
+        "litry": litry,
+        "kwh": kwh,
+        "ulubiona_stacja": _ulubiona_stacja(tankowania),
+        "srednie_zuzycie": (sum(zuzycie) / len(zuzycie)) if zuzycie else None,
+        # W jakiej jednostce jest `srednie_zuzycie` — grafika roku pisała
+        # zużycie elektryka w l/100km, bo o źródle nic nie wiedziała.
+        "zuzycie_elektryczne": rodzaj_zuzycia == ENERGIA_PRAD,
+        "liczba_wizyt": len(wpisy["wizyty"]),
+        "liczba_wpisow_serwisu": len(wpisy["serwis"]),
+        "najwiekszy_wydatek": _najwiekszy_wydatek(wpisy),
+        "porownanie_dystansu": _porownanie_dystansu(km),
+    }
 
 
 def podsumowanie_roku(auto_id, rok=None):
@@ -726,6 +875,7 @@ def podsumowanie_roku(auto_id, rok=None):
     kilometry, koszty w rozbiciu, najdroższy i najtańszy miesiąc, ulubiona
     stacja, największy pojedynczy wydatek, średnie zużycie i porównanie z rokiem
     poprzednim. Podstawa ekranu „Rok w pigułce” i generowanej z niego grafiki.
+    Część wspólną z „Miesiącem w pigułce” liczy `_rachunek_okresu`.
 
     Zwraca None dla roku bez ani jednego wpisu — pusty ekran z sześcioma zerami
     nie jest podsumowaniem."""
@@ -740,156 +890,47 @@ def podsumowanie_roku(auto_id, rok=None):
     # wychodził „taniej o 30%”, bo brakowało mu jeszcze jesieni.
     granica_poprzedniego = _przesun_o_lata(granica, 1)
 
-    with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        wiersze_kosztow = _wiersze_kosztow(conn, auto_id)
-        c.execute(
-            "SELECT data, przebieg, litry, kwota, stacja, do_pelna, rodzaj_energii "
-            "FROM tankowania WHERE auto_id=?", (auto_id,)
-        )
-        tankowania = [dict(r) for r in c.fetchall()]
-        c.execute("SELECT data, nazwa, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
-        inne = [dict(r) for r in c.fetchall()]
-        c.execute(
-            "SELECT h.data, h.cena, z.nazwa FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
-        )
-        serwis_wpisy = [dict(r) for r in c.fetchall()]
-        c.execute("SELECT data, koszt_calkowity, wykonawca FROM wizyty WHERE auto_id=?", (auto_id,))
-        wizyty_wpisy = [dict(r) for r in c.fetchall()]
-
-    # --- koszty roku i rozkład na miesiące ---
-    kategorie = {k: 0.0 for k in KATEGORIE_BUDZETU}
-    miesiace = {m: 0.0 for m in range(1, 13)}
-    miesiace_z_danymi = set()
-    for data_str, kwota, kategoria in wiersze_kosztow:
-        d = parsuj_date(data_str)
-        if d == datetime.min.date() or d.year != rok or d > granica:
-            continue
-        wartosc = float(kwota or 0.0)
-        kategorie[kategoria] += wartosc
-        kategorie["razem"] += wartosc
-        miesiace[d.month] += wartosc
-        miesiace_z_danymi.add(d.month)
-
-    if not miesiace_z_danymi:
+    historia_prz = pobierz_historie_przebiegu(auto_id)
+    okres = _rachunek_okresu(auto_id, date_cls(rok, 1, 1), granica, historia_prz)
+    if okres is None:
         return None
 
+    # --- rozkład na miesiące ---
+    miesiace = {m: 0.0 for m in range(1, 13)}
+    miesiace_z_danymi = set()
+    for dzien, kwota, _kat in okres.pop("wpisy_kosztow"):
+        miesiace[dzien.month] += kwota
+        miesiace_z_danymi.add(dzien.month)
     aktywne = {m: miesiace[m] for m in sorted(miesiace_z_danymi)}
     najdrozszy = max(aktywne.items(), key=lambda kv: kv[1])
     najtanszy = min(aktywne.items(), key=lambda kv: kv[1])
 
-    # --- kilometry ---
-    historia_prz = pobierz_historie_przebiegu(auto_id)
-    km = _km_w_roku(historia_prz, rok, granica)
     # Rok poprzedni liczymy tą samą miarą — bez niego „koszt na 1000 km” nie ma
     # z czym się porównać, a sama kwota nie mówi, czy auto drożeje.
-    km_poprzedni = _km_w_roku(historia_prz, rok - 1, granica_poprzedniego)
+    od_poprzedniego = date_cls(rok - 1, 1, 1)
+    km_poprzedni = _km_w_okresie(historia_prz, od_poprzedniego, granica_poprzedniego)
+    poprzedni = _suma_kosztow_okresu(auto_id, od_poprzedniego, granica_poprzedniego)
 
-    # --- tankowania roku ---
-    tank_roku = []
-    for t in tankowania:
-        d = parsuj_date(t.get("data"))
-        if d != datetime.min.date() and d.year == rok and d <= granica:
-            tank_roku.append(t)
-
-    litry = sum(float(t.get("litry") or 0) for t in tank_roku
-                if (t.get("rodzaj_energii") or ENERGIA_PALIWO) == ENERGIA_PALIWO)
-    kwh = sum(float(t.get("litry") or 0) for t in tank_roku
-              if t.get("rodzaj_energii") == ENERGIA_PRAD)
-
-    # Ulubiona stacja — po liczbie tankowań, z kanoniczną pisownią z grupy.
-    grupy_stacji = {}
-    for t in tank_roku:
-        nazwa = " ".join(str(t.get("stacja") or "").split())
-        klucz = klucz_stacji(nazwa)
-        if not klucz:
-            continue
-        grupa = grupy_stacji.setdefault(klucz, {"ile": 0, "kwota": 0.0, "warianty": {}})
-        grupa["ile"] += 1
-        grupa["kwota"] += float(t.get("kwota") or 0)
-        grupa["warianty"][nazwa] = grupa["warianty"].get(nazwa, 0) + 1
-    ulubiona = None
-    if grupy_stacji:
-        klucz_top = max(grupy_stacji.items(), key=lambda kv: (kv[1]["ile"], kv[1]["kwota"]))
-        ulubiona = {
-            "nazwa": max(klucz_top[1]["warianty"].items(), key=lambda kv: (kv[1], kv[0]))[0],
-            "liczba": klucz_top[1]["ile"],
-            "kwota": klucz_top[1]["kwota"],
-        }
-
-    # --- średnie zużycie roku: odcinki zamknięte W TYM roku ---
-    rodzaj_zuzycia = domyslny_rodzaj_energii(auto_id)
-    seria = pobierz_serie_spalania(auto_id, limit=None, rodzaj=rodzaj_zuzycia)
-    zuzycie_roku = [w for data_str, w in seria
-                    if parsuj_date(data_str) != datetime.min.date()
-                    and parsuj_date(data_str).year == rok]
-    srednie_zuzycie = (sum(zuzycie_roku) / len(zuzycie_roku)) if zuzycie_roku else None
-
-    # --- największy pojedynczy wydatek ---
-    kandydaci = []
-    for w in inne:
-        kandydaci.append((w.get("data"), float(w.get("kwota") or 0), str(w.get("nazwa") or "Inny koszt")))
-    for w in serwis_wpisy:
-        kandydaci.append((w.get("data"), float(w.get("cena") or 0), str(w.get("nazwa") or "Serwis")))
-    for w in wizyty_wpisy:
-        kandydaci.append((w.get("data"), float(w.get("koszt_calkowity") or 0),
-                          f"Wizyta: {w.get('wykonawca') or 'warsztat'}"))
-    for t in tank_roku:
-        kandydaci.append((t.get("data"), float(t.get("kwota") or 0),
-                          f"Tankowanie: {t.get('stacja') or 'stacja nieznana'}"))
-    kandydaci = [k for k in kandydaci
-                 if parsuj_date(k[0]) != datetime.min.date()
-                 and parsuj_date(k[0]).year == rok and parsuj_date(k[0]) <= granica and k[1] > 0]
-    najwiekszy = max(kandydaci, key=lambda k: k[1]) if kandydaci else None
-
-    # --- porównanie z poprzednim rokiem (ten sam okres, patrz wyżej) ---
-    poprzedni = 0.0
-    for data_str, kwota, _kat in wiersze_kosztow:
-        d = parsuj_date(data_str)
-        if d != datetime.min.date() and d.year == rok - 1 and d <= granica_poprzedniego:
-            poprzedni += float(kwota or 0.0)
-
+    km, razem = okres["km"], okres["koszty"]["razem"]
     return {
+        **okres,
         "rok": rok,
         "niepelny": rok == dzis.year,
-        "km": km,
-        "koszty": kategorie,
-        "koszt_km": (kategorie["razem"] / km) if km > 0 else None,
-        "koszt_1000km": (kategorie["razem"] / km * 1000) if km > 0 else None,
         "km_poprzedni": km_poprzedni or None,
         "koszt_1000km_poprzedni": ((poprzedni / km_poprzedni * 1000)
                                    if (poprzedni > 0 and km_poprzedni > 0) else None),
         "miesiace": miesiace,
         "najdrozszy_miesiac": {"miesiac": najdrozszy[0], "kwota": najdrozszy[1]},
         "najtanszy_miesiac": {"miesiac": najtanszy[0], "kwota": najtanszy[1]},
-        "liczba_tankowan": len(tank_roku),
-        "litry": litry,
-        "kwh": kwh,
-        "ulubiona_stacja": ulubiona,
-        "srednie_zuzycie": srednie_zuzycie,
-        # W jakiej jednostce jest `srednie_zuzycie` — grafika roku pisała
-        # zużycie elektryka w l/100km, bo o źródle nic nie wiedziała.
-        "zuzycie_elektryczne": rodzaj_zuzycia == ENERGIA_PRAD,
-        "liczba_wizyt": len([w for w in wizyty_wpisy
-                             if parsuj_date(w.get("data")) != datetime.min.date()
-                             and parsuj_date(w.get("data")).year == rok]),
-        "liczba_wpisow_serwisu": len([w for w in serwis_wpisy
-                                      if parsuj_date(w.get("data")) != datetime.min.date()
-                                      and parsuj_date(w.get("data")).year == rok]),
-        "najwiekszy_wydatek": ({"data": najwiekszy[0], "kwota": najwiekszy[1], "opis": najwiekszy[2]}
-                               if najwiekszy else None),
         "poprzedni_rok": poprzedni if poprzedni > 0 else None,
         # Do którego dnia liczy się `poprzedni_rok` — przy roku w toku to ten
         # sam dzień rok wcześniej, przy zamkniętym 31 grudnia.
         "poprzedni_do": granica_poprzedniego.strftime("%d.%m.%Y"),
-        "zmiana_rdr": ((kategorie["razem"] - poprzedni) / poprzedni * 100) if poprzedni > 0 else None,
+        "zmiana_rdr": ((razem - poprzedni) / poprzedni * 100) if poprzedni > 0 else None,
         # Zmiana kwoty rok do roku rośnie także wtedy, gdy po prostu jeździsz
         # więcej. Ta druga liczba dzieli przez dystans, więc mówi o CENIE jazdy.
-        "zmiana_1000km": _zmiana_1000km(kategorie["razem"], km, poprzedni, km_poprzedni),
-        "porownanie_dystansu": _porownanie_dystansu(km),
-        "sredni_koszt_miesiaca": (kategorie["razem"] / len(miesiace_z_danymi)) if miesiace_z_danymi else 0.0,
+        "zmiana_1000km": _zmiana_1000km(razem, km, poprzedni, km_poprzedni),
+        "sredni_koszt_miesiaca": razem / len(miesiace_z_danymi),
     }
 
 
@@ -906,6 +947,126 @@ def lata_z_danymi(auto_id) -> list[int]:
         if d != datetime.min.date():
             lata.add(d.year)
     return sorted(lata, reverse=True)
+
+
+# -------------------- MIESIĄC W PIGUŁCE --------------------
+
+# „Względem sierpnia” — porównania miesiąca na ekranie i na grafice.
+_MIESIACE_DOPELNIACZ = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
+                        "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
+
+def podsumowanie_miesiaca(auto_id, rok=None, miesiac=None):
+    """„Rok w pigułce” dla jednego miesiąca. Koszty w rozbiciu, kilometry,
+    tankowania, średnie zużycie, ulubioną stację i największy wydatek liczy ten
+    sam `_rachunek_okresu`, co w roku; miesiąc dokłada słupki dni i dwa
+    porównania: z poprzednim miesiącem i z tym samym miesiącem rok wcześniej.
+    Ten drugi omija sezon — styczeń zawsze wyjdzie drożej od września, bo zimą
+    auto więcej pali.
+
+    Miesiąc w toku porównuje się z TYMI SAMYMI dniami tamtych miesięcy (1.–15.
+    z 1.–15.) — z tego samego powodu, co rok w toku: niepełny okres zawsze
+    wychodziłby „taniej”. Dnia, którego tamten miesiąc nie ma (31 → luty),
+    nie przeskakujemy: liczy się do ostatniego dnia tamtego miesiąca.
+
+    Zwraca None dla miesiąca bez ani jednego wpisu."""
+    if not auto_id:
+        return None
+    dzis = datetime.now().date()
+    rok = int(rok or dzis.year)
+    miesiac = int(miesiac or dzis.month)
+    if not 1 <= miesiac <= 12:
+        return None
+    koniec = date_cls(rok, miesiac, calendar.monthrange(rok, miesiac)[1])
+    niepelny = (rok, miesiac) == (dzis.year, dzis.month)
+    granica = min(koniec, dzis) if niepelny else koniec
+
+    okres = _rachunek_okresu(auto_id, date_cls(rok, miesiac, 1), granica,
+                             pobierz_historie_przebiegu(auto_id))
+    if okres is None:
+        return None
+
+    # --- rozkład na dni ---
+    dni = {d: 0.0 for d in range(1, koniec.day + 1)}
+    dni_z_wpisami = set()
+    for dzien, kwota, _kat in okres.pop("wpisy_kosztow"):
+        dni[dzien.day] += kwota
+        dni_z_wpisami.add(dzien.day)
+    najdrozszy = max(((d, dni[d]) for d in sorted(dni_z_wpisami)), key=lambda kv: kv[1])
+    razem = okres["koszty"]["razem"]
+
+    def porownanie(r, m):
+        ostatni = calendar.monthrange(r, m)[1]
+        do = date_cls(r, m, min(granica.day, ostatni) if niepelny else ostatni)
+        kwota = _suma_kosztow_okresu(auto_id, date_cls(r, m, 1), do)
+        return {
+            "rok": r, "miesiac": m,
+            "kwota": kwota if kwota > 0 else None,
+            "do": do.strftime("%d.%m.%Y"),
+            "zmiana": ((razem - kwota) / kwota * 100) if kwota > 0 else None,
+        }
+
+    return {
+        **okres,
+        "rok": rok,
+        "miesiac": miesiac,
+        "niepelny": niepelny,
+        # Do którego dnia liczony jest miesiąc — przy miesiącu w toku dzisiaj.
+        "do": granica.strftime("%d.%m.%Y"),
+        "dni": dni,
+        "najdrozszy_dzien": {"dzien": najdrozszy[0], "kwota": najdrozszy[1]},
+        "dni_z_wpisami": len(dni_z_wpisami),
+        # Średnia na dzień KALENDARZOWY okresu, nie na dzień z wydatkiem —
+        # „dziennie” ma znaczyć tyle, ile kosztuje samo posiadanie auta.
+        "sredni_koszt_dnia": razem / granica.day,
+        "poprzedni_miesiac": porownanie(*((rok, miesiac - 1) if miesiac > 1 else (rok - 1, 12))),
+        "rok_temu": porownanie(rok - 1, miesiac),
+    }
+
+
+def opis_porownania_miesiaca(porownanie, rok, niepelny) -> str:
+    """„Względem sierpnia”, „Względem grudnia 2025” (gdy tamten miesiąc leży
+    w innym roku niż podsumowany), a przy miesiącu w toku z dopiskiem
+    „(do 15.08)” — kwota po drugiej stronie obejmuje wtedy tylko te same dni.
+    `porownanie` to `poprzedni_miesiac` albo `rok_temu` z podsumowania."""
+    nazwa = _MIESIACE_DOPELNIACZ[porownanie["miesiac"] - 1]
+    if porownanie["rok"] != rok:
+        nazwa += f" {porownanie['rok']}"
+    return f"Względem {nazwa}" + (f" (do {porownanie['do'][:5]})" if niepelny else "")
+
+
+def miesiace_z_danymi(auto_id) -> list[tuple[int, int]]:
+    """(rok, miesiąc) z jakimkolwiek wpisem kosztowym — od najnowszego. Strzałki
+    „Miesiąca w pigułce” chodzą tylko po nich: pusty miesiąc nie ma czego
+    podsumować. Ta sama reguła wpisów, co w `_wpisy_okresu`."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        wiersze = conn.execute(
+            "SELECT DISTINCT substr(data_iso, 1, 7) FROM ("
+            " SELECT data_iso FROM tankowania WHERE auto_id=?"
+            " UNION ALL SELECT h.data_iso FROM historia h JOIN zadania z ON h.zadanie_id=z.id"
+            "  WHERE z.auto_id=? AND h.wizyta_id IS NULL"
+            " UNION ALL SELECT data_iso FROM wizyty WHERE auto_id=?"
+            " UNION ALL SELECT data_iso FROM inne_koszty WHERE auto_id=?"
+            ") WHERE data_iso IS NOT NULL ORDER BY 1 DESC",
+            (auto_id, auto_id, auto_id, auto_id),
+        ).fetchall()
+    return [(int(m[:4]), int(m[5:7])) for (m,) in wiersze if m and len(m) >= 7]
+
+
+def wybierz_miesiac_pigulki(miesiace, rok=None, miesiac=None, dzis=None) -> tuple[int, int] | None:
+    """Który miesiąc pokazać. Ten z adresu, jeśli ma wpisy; inaczej ostatni
+    PEŁNY miesiąc z wpisami — grafikę robi się zwykle po zamknięciu miesiąca,
+    a 1 października bieżący miesiąc jest jeszcze prawie pusty. Bieżący
+    (albo późniejszy) wybieramy dopiero wtedy, gdy wcześniejszych nie ma.
+    `miesiace` to lista z `miesiace_z_danymi`."""
+    if not miesiace:
+        return None
+    if rok and miesiac and (int(rok), int(miesiac)) in miesiace:
+        return int(rok), int(miesiac)
+    dzis = dzis or datetime.now().date()
+    pelne = [m for m in miesiace if m < (dzis.year, dzis.month)]
+    return max(pelne) if pelne else min(miesiace)
 
 
 # -------------------- KOSZT SKUMULOWANY --------------------
@@ -1615,9 +1776,16 @@ __all__ = [
     "TOLERANCJA_SEZONU_DNI",
     "WIELKOSCI_RDR",
     "_DYSTANSE_ODNIESIENIA",
+    "_MIESIACE_DOPELNIACZ",
     "_granice_okresu",
     "_km_miesiecznie_w_roku",
-    "_km_w_roku",
+    "_km_w_okresie",
+    "_koszty_wpisow",
+    "_najwiekszy_wydatek",
+    "_rachunek_okresu",
+    "_suma_kosztow_okresu",
+    "_ulubiona_stacja",
+    "_wpisy_okresu",
     "_kwota_txt",
     "_obserwacja",
     "_porownanie_dystansu",
@@ -1634,14 +1802,18 @@ __all__ = [
     "koszty_rok_do_roku",
     "koszt_trendu_rocznie",
     "lata_z_danymi",
+    "miesiace_z_danymi",
     "obserwacje_analityczne",
+    "opis_porownania_miesiaca",
     "opis_sezonowosci_trendu",
     "OKRESY_RUCHOME",
     "pobierz_budzety",
     "pobierz_zasieg_na_baku",
+    "podsumowanie_miesiaca",
     "podsumowanie_roku",
     "prognoza_kosztow",
     "stan_budzetow",
     "zapisz_budzet",
+    "wybierz_miesiac_pigulki",
     "etykiety_wielkosci_rdr",
 ]

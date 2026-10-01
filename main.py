@@ -42,6 +42,7 @@ from views.warsztaty_view import WarsztatyView
 from views.do_wpisania_view import DoWpisaniaView
 from views.migawka_view import MigawkaView
 from views.rok_view import RokWPigulceView
+from views.miesiac_view import MiesiacWPigulceView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
 # Router jest jedynym miejscem, przez które przechodzi KAŻDE otwarcie formularza,
@@ -716,9 +717,20 @@ def main(page: ft.Page):
         elif segmenty[0] == "rok":
             # /rok albo /rok/2025 — rok w adresie, żeby powrót z podglądu wracał
             # do tego samego podsumowania, a nie zawsze do bieżącego roku.
-            page.views.append(RokWPigulceView(
+            rok_trasy = utils.parsuj_int(segmenty[1], None) if len(segmenty) >= 2 else None
+            page.views.append(RokWPigulceView(page, app_state, rok_trasy))
+            # /rok/2025/7 — miesiąc otwarty dotknięciem słupka leży NA roku, więc
+            # strzałka w pasku i systemowe „wstecz” wracają do roku.
+            if len(segmenty) >= 3:
+                page.views.append(MiesiacWPigulceView(
+                    page, app_state, rok_trasy, utils.parsuj_int(segmenty[2], None), z_roku=True
+                ))
+        elif segmenty[0] == "miesiac":
+            # /miesiac albo /miesiac/2026/9 — z szuflady i wyszukiwarki.
+            page.views.append(MiesiacWPigulceView(
                 page, app_state,
-                utils.parsuj_int(segmenty[1], None) if len(segmenty) >= 2 else None
+                utils.parsuj_int(segmenty[1], None) if len(segmenty) >= 2 else None,
+                utils.parsuj_int(segmenty[2], None) if len(segmenty) >= 3 else None,
             ))
         elif segmenty[0] == "kalkulator":
             page.views.append(KalkulatorTrasyView(page, app_state))

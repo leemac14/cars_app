@@ -44,6 +44,7 @@ WYWOLANIA = {
     "globalne_wyszukiwanie": lambda k: (k["id"]["auto_id"], "olej"),
     "gwarancje_pojazdu": lambda k: (k["id"]["auto_id"],),
     "klucz_gwarancji": lambda k: ("2027-05-12", 180000),
+    "miesiace_z_danymi": lambda k: (k["id"]["auto_id"],),
     "napraw_sciezki_zalacznikow": lambda k: (),
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
     "odliczania_pojazdu": lambda k: (k["id"]["auto_id"],),
@@ -95,6 +96,7 @@ WYWOLANIA = {
     "utworz_wizyte_z_do_zrobienia": lambda k: (k["id"]["auto_id"], [k["id"]["do_zrobienia"]]),
     "warunek_zakresu_dat": lambda k: ("data_iso", date(2026, 1, 1), date(2026, 3, 31)),
     "wczytaj_plik_csv": lambda k: (str(k["csv"]),),
+    "wybierz_miesiac_pigulki": lambda k: (db.miesiace_z_danymi(k["id"]["auto_id"]),),
     "wycen_zuzycie": lambda k: ([(k["id"]["magazyn"], 1.0)], {k["id"]["magazyn"]: 39.0}),
     "znajdz_duplikaty_nazw": lambda k: (k["id"]["auto_id"],),
 }

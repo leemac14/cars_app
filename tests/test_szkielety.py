@@ -224,7 +224,7 @@ def test_przycisk_dodawania_dostawia_sie_po_zbudowaniu_zakladki(baza, z_petla):
 
 
 @pytest.mark.parametrize("nazwa", [
-    "RokWPigulceView", "TimelineView", "OdczytyPrzebieguView", "MagazynView",
+    "RokWPigulceView", "MiesiacWPigulceView", "TimelineView", "OdczytyPrzebieguView", "MagazynView",
 ])
 def test_ciezkie_ekrany_pokazuja_zarys(baza, z_petla, nazwa):
     stan, _ = pomoce.przygotuj_scenariusz("pojazd_z_historia")

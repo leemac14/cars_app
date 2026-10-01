@@ -68,6 +68,10 @@ def _historia(auto_id, plan, przebieg_startowy=100000):
     for i, (km, kwota) in enumerate(plan):
         przebieg += km
         _tankowanie(auto_id, _miesiac_wstecz(ile - 1 - i), przebieg, kwota)
+    # Wpisy idą surowym SQL bez `data_iso`, a podsumowanie roku tnie zakres
+    # w SQL właśnie po niej — bez przeliczenia rok wyszedłby pusty.
+    with db.polacz_baze() as conn:
+        db.przelicz_daty_iso(conn)
     return przebieg
 
 
