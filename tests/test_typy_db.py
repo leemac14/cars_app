@@ -44,6 +44,9 @@ WYWOLANIA = {
     "globalne_wyszukiwanie": lambda k: (k["id"]["auto_id"], "olej"),
     "gwarancje_pojazdu": lambda k: (k["id"]["auto_id"],),
     "klucz_gwarancji": lambda k: ("2027-05-12", 180000),
+    # Prawdziwa kopia w folderze domyślnym (katalog testu) — inaczej lista
+    # byłaby pusta i sprawdzałaby tylko to, że pusta lista jest listą.
+    "lista_kopii": lambda k: (db.wykonaj_kopie(wymus=True)["folder"],),
     "miesiace_z_danymi": lambda k: (k["id"]["auto_id"],),
     "napraw_sciezki_zalacznikow": lambda k: (),
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
@@ -90,6 +93,8 @@ WYWOLANIA = {
     "porownaj_czesci_wlasne": lambda k: (k["id"]["auto_id"],),
     "porzadki_startowe": lambda k: (),
     "przelicz_zuzycie": lambda k: (7.5,),
+    "sprawdz_archiwum_kopii": lambda k: (db.wykonaj_kopie(wymus=True)["sciezka"],),
+    "sprawdz_folder_kopii": lambda k: (str(k["tmp"] / "kopie"),),
     "sprawdz_kopie_przed_wczytaniem": lambda k: (db.BAZA_DANYCH,),
     "stan_budzetow": lambda k: (k["id"]["auto_id"],),
     "tabela_z_wierszy": lambda k: (db.wczytaj_wiersze_csv(str(k["csv"])),),

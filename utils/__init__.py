@@ -37,6 +37,7 @@ from .system import *
 from .komponenty import *
 from .warsztaty import *
 from .szkice import *
+from .kopie import *
 from .powiadomienia import *
 from .nawigacja import *
 from .zaznaczanie import *
@@ -68,6 +69,7 @@ from . import (
     komponenty,
     warsztaty,
     szkice,
+    kopie,
     powiadomienia,
     nawigacja,
     zaznaczanie,

@@ -189,6 +189,8 @@ build/
 flota_zadania.db
 flota_zadania.db.bak
 kopia_baza.zip
+# Automatyczne kopie zapasowe na komputerze (folder domyślny obok bazy).
+kopie/
 
 # Log błędów wraz z plikami z rotacji. `*.log` wyżej łapie tylko flota.log —
 # flota.log.1 i flota.log.2 nie kończą się na .log.

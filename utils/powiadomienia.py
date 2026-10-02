@@ -14,6 +14,7 @@ from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, potwierdz, prze
 from .formularze import pole_daty, styl_dropdown, styl_pola
 from .pojazd import dialog_odczytu_przebiegu
 from .komponenty import znacznik_wykonania
+from .kopie import zrob_kopie_teraz
 
 
 def opis_dzwonka(liczba, nowych):
@@ -207,6 +208,29 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                     log.polkniety("ptaszek po odczycie licznika w panelu powiadomień")
 
             dialog_odczytu_przebiegu(page, state.auto_id, po_zapisie=po_zapisie)
+        return handler
+
+    def zrob_kopie_z_panelu(kafelek):
+        """Kopia zapasowa wprost z panelu. Udana zamienia przycisk w ptaszka
+        i dopiero potem przypomnienie znika — jak po odczycie licznika.
+        Nieudana zostawia wiersz z nowym powodem, a okno mówi, co poszło nie tak."""
+        def handler(e):
+            def po_kopii(wynik):
+                if not wynik["ok"]:
+                    odswiez()
+                    return
+
+                def dokoncz():
+                    odswiez()
+                    przejdz(page, page.route)
+
+                kafelek.trailing = znacznik_wykonania(page, "Zapisano", po_zakonczeniu=dokoncz)
+                try:
+                    page.update()
+                except Exception:
+                    log.polkniety("ptaszek po kopii zapasowej w panelu powiadomień")
+
+            zrob_kopie_teraz(page, po_zakonczeniu=po_kopii)
         return handler
 
     def odloz(powiadomienie, dni):
@@ -414,6 +438,22 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                     )
                     akcje = [ft.TextButton("Wpisz stan", icon=ft.Icons.EDIT,
                                            on_click=wpisz_stan_licznika(kafelek))]
+                    drzemka = przycisk_odlozenia(p)
+                    if drzemka:
+                        akcje.append(drzemka)
+                    kafelek.trailing = ft.Row(akcje, spacing=0, tight=True)
+                    pozycje.append(kafelek)
+                elif p["typ"] == "kopia":
+                    # Wiersz prowadzi do Ustawień (folder, rytm, lista kopii),
+                    # a samą kopię robi przycisk, bez schodzenia z panelu.
+                    kafelek = ft.ListTile(
+                        leading=ft.Icon(ft.Icons.BACKUP, color=kolor),
+                        title=tytul_pozycji(p),
+                        subtitle=podtytul_pozycji(p, kolor),
+                        on_click=idz_do(p["trasa"]),
+                    )
+                    akcje = [ft.TextButton("Zrób teraz", icon=ft.Icons.BACKUP,
+                                           on_click=zrob_kopie_z_panelu(kafelek))]
                     drzemka = przycisk_odlozenia(p)
                     if drzemka:
                         akcje.append(drzemka)

@@ -1398,6 +1398,13 @@ class MiksinKokpitu:
         )
         self.elementy.append(ft.Row(naglowek, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
+        # Kopia zapasowa — tylko zaległa, czyli gdy kopia automatyczna się nie
+        # udała albo jest wyłączona. Działająca nie zajmuje na kokpicie ani linijki.
+        kopia = db.stan_kopii_zapasowej()
+        if kopia["zalegla"]:
+            self.elementy.append(utils.baner_kopii(
+                self._page, kopia, po_kopii=lambda wynik: utils.odswiez_ekran(self._page)))
+
         # Paragony sfotografowane na później — nad kafelkami, bo to jedyna rzecz
         # na kokpicie, która czeka na ruch użytkownika, a nie na upływ czasu.
         szkice = db.podsumowanie_szkicow(self.state.auto_id)

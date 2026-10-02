@@ -1,3 +1,5 @@
+import asyncio
+
 import flet as ft
 import db
 import log
@@ -487,11 +489,210 @@ class UstawieniaView(ft.View):
             domyslnie_otwarte=bool(dane_logu["bledy"]), page=page
         )
 
-        elementy = [k1, k2, k3, k_kokpit, k_kosz, k_duplikaty, k_log, info, utils.przyciski_akcji(page, "Zapisz ustawienia", self.zapisz, "/")]
+        k_kopia, kopia_wymaga_uwagi = self._karta_kopii()
+        karty = [k1, k2, k3, k_kokpit, k_kopia, k_kosz, k_duplikaty, k_log]
+        if kopia_wymaga_uwagi:
+            # Baner zaległej kopii na kokpicie prowadzi tutaj — karta z problemem
+            # staje na górze, zamiast czekać pod czterema rozwiniętymi kartami.
+            karty.remove(k_kopia)
+            karty.insert(0, k_kopia)
+
+        elementy = karty + [info, utils.przyciski_akcji(page, "Zapisz ustawienia", self.zapisz, "/")]
 
         super().__init__(
             route="/ustawienia",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
+        )
+
+    # ================= KOPIA ZAPASOWA =================
+
+    def _karta_kopii(self):
+        """Karta „Kopia zapasowa”: rytm i folder kopii automatycznej, stan
+        ostatniej kopii, „Zrób kopię teraz” i lista kopii w folderze z „Wczytaj”.
+        Zwraca (karta, czy_wymaga_uwagi).
+
+        Zapisuje się od razu, bez „Zapisz ustawienia” — jak przełączniki
+        wyglądu: „Zrób kopię teraz” i lista mają działać na tym, co widać."""
+        stan = db.stan_kopii_zapasowej()
+
+        self.e_kopia_auto = ft.Switch(
+            label="Automatyczna kopia przy starcie",
+            value=stan["wlaczona"],
+            on_change=self._przelacz_kopie_automatyczna,
+        )
+        self.e_kopia_co_dni = ft.Dropdown(
+            label="Co ile dni",
+            options=[ft.DropdownOption(key=str(d), text=utils.formatuj_dni(d)) for d in db.KOPIA_CO_DNI_OPCJE],
+            value=str(stan["co_dni"]),
+            on_select=self._zmien_rytm_kopii,
+            **utils.styl_dropdown()
+        )
+        self.e_kopia_ile = ft.Dropdown(
+            label="Ile kopii trzymać",
+            options=[ft.DropdownOption(key=str(n), text=db.liczba_z_odmiana(n, "kopia", "kopie", "kopii"))
+                     for n in db.KOPIA_ILE_OPCJE],
+            value=str(stan["ile"]),
+            on_select=self._zmien_rytm_kopii,
+            **utils.styl_dropdown()
+        )
+        self.kopia_folder = ft.Text(size=utils.FS["label"], selectable=True)
+        self.btn_kopia_domyslny = ft.TextButton(
+            "Domyślny", icon=ft.Icons.RESTART_ALT, on_click=self._domyslny_folder_kopii,
+        )
+        self.kopia_stan = ft.Column(spacing=2, tight=True)
+        self.kopia_lista = ft.Column(spacing=utils.SPACING["xs"], tight=True)
+        self._odswiez_karte_kopii(stan, aktualizuj=False)
+
+        zawartosc = [
+            self.e_kopia_auto,
+            ft.Row([ft.Container(self.e_kopia_co_dni, expand=True), ft.Container(self.e_kopia_ile, expand=True)],
+                   spacing=utils.SPACING["sm"]),
+            ft.Text(
+                "Przy starcie aplikacji i po jej powrocie z tła, gdy od ostatniej kopii minęło tyle "
+                "dni, aplikacja po cichu zapisuje ZIP z bazą, zdjęciami i koszem do folderu niżej "
+                "i zostawia tylko ostatnie kopie. Starsze kasuje dopiero wtedy, gdy nowa przejdzie "
+                "sprawdzenie. Przy wyłączonej kopii automatycznej ten sam rytm mówi, po ilu dniach "
+                "bez kopii kokpit zacznie przypominać. Kopia zapisana ręcznie („Kopia zapasowa bazy” "
+                "w szufladzie) też się liczy.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+            ft.Divider(height=1),
+            ft.Row([
+                ft.Icon(ft.Icons.FOLDER_OUTLINED, size=18, color=ft.Colors.PRIMARY),
+                ft.Column([utils.etykieta("Folder kopii"), self.kopia_folder], spacing=0, tight=True, expand=True),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.START),
+            ft.Row([
+                ft.OutlinedButton("Zmień folder", icon=ft.Icons.FOLDER_OPEN, on_click=self._wybierz_folder_kopii),
+                self.btn_kopia_domyslny,
+            ], wrap=True, spacing=8, run_spacing=8),
+            ft.Text(
+                "Na telefonie wybieraj folder w Dokumentach albo Pobranych — tam Android pozwala "
+                "aplikacji zapisywać, a kopie zostają nawet po jej odinstalowaniu. Przed utratą "
+                "samego telefonu chroni dopiero kopia przeniesiona gdzie indziej, np. udostępniona "
+                "na Dysk z „Kopii zapasowej bazy”.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+            ft.Divider(height=1),
+            self.kopia_stan,
+            ft.FilledTonalButton("Zrób kopię teraz", icon=ft.Icons.BACKUP, on_click=self._zrob_kopie_teraz),
+            self.kopia_lista,
+        ]
+        wymaga_uwagi = bool(stan["zalegla"] or stan["blad"])
+        karta = utils.karta_formularza(
+            zawartosc, "Kopia zapasowa", ft.Icons.BACKUP, domyslnie_otwarte=wymaga_uwagi, page=self._page
+        )
+        return karta, wymaga_uwagi
+
+    def _odswiez_karte_kopii(self, stan=None, aktualizuj=True):
+        """Stan, folder i lista kopii od nowa — po każdej zmianie w karcie
+        i po „Zrób kopię teraz”."""
+        stan = stan or db.stan_kopii_zapasowej()
+        self.kopia_folder.value = stan["folder"]
+        self.btn_kopia_domyslny.visible = not stan["folder_domyslny"]
+
+        if stan["ostatnia"] is None:
+            ikona, kolor = ft.Icons.WARNING_AMBER, utils.KOLOR_STATUS["warning"]
+            linia = "Nie ma jeszcze żadnej kopii"
+        else:
+            zalegla = stan["zalegla"]
+            ikona = ft.Icons.WARNING_AMBER if zalegla else ft.Icons.CHECK_CIRCLE_OUTLINE
+            kolor = utils.KOLOR_STATUS["warning"] if zalegla else utils.KOLOR_STATUS["ok"]
+            linia = f"Ostatnia kopia: {utils.moment_kopii(stan['ostatnia'])} ({stan['rodzaj_ostatniej']})"
+        self.kopia_stan.controls = [ft.Row([
+            ft.Icon(ikona, size=18, color=kolor),
+            ft.Text(linia, size=12, expand=True),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+        if stan["blad"]:
+            self.kopia_stan.controls.append(ft.Text(
+                f"Ostatnia próba kopii nie wyszła: {stan['blad']}",
+                size=11, italic=True, color=utils.KOLOR_STATUS["warning"],
+            ))
+
+        kopie = db.lista_kopii(stan["folder"])
+        if not kopie:
+            self.kopia_lista.controls = [utils.podpis("W tym folderze nie ma jeszcze kopii automatycznych.")]
+        else:
+            wiersze = [utils.etykieta(f"Kopie w folderze ({len(kopie)}), od najnowszej")]
+            for kopia in kopie:
+                wiersze.append(ft.Row([
+                    ft.Column([
+                        utils.wartosc(utils.moment_kopii(kopia["data"]), size=utils.FS["body"]),
+                        utils.podpis(utils.formatuj_rozmiar(kopia["rozmiar"])),
+                    ], spacing=0, tight=True, expand=True),
+                    ft.TextButton("Wczytaj", icon=ft.Icons.SETTINGS_BACKUP_RESTORE,
+                                  on_click=lambda e, k=kopia: self._wczytaj_kopie(k)),
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER))
+            self.kopia_lista.controls = wiersze
+
+        if aktualizuj:
+            try:
+                self._page.update()
+            except Exception:
+                log.polkniety("odświeżenie karty kopii zapasowej")
+
+    def _przelacz_kopie_automatyczna(self, e=None):
+        db.zapisz_kopie_automatyczna(bool(self.e_kopia_auto.value))
+        self._odswiez_karte_kopii()
+
+    def _zmien_rytm_kopii(self, e=None):
+        # Mniejsza liczba kopii nie kasuje niczego od razu — nadmiar zabierze
+        # rotacja przy następnej kopii, gdy nowa już będzie w folderze.
+        db.zapisz_kopie_co_dni(self.e_kopia_co_dni.value)
+        db.zapisz_ile_kopii(self.e_kopia_ile.value)
+        self._odswiez_karte_kopii()
+
+    def _domyslny_folder_kopii(self, e=None):
+        db.zapisz_folder_kopii(None)
+        self._odswiez_karte_kopii()
+
+    def _wybierz_folder_kopii(self, e=None):
+        async def wybierz():
+            wybieracz = getattr(self._page, "zalacznik_picker", None)
+            if wybieracz is None:
+                utils.pokaz_komunikat(self._page, "Wybór folderu jest niedostępny w tej wersji aplikacji.",
+                                      utils.KOLOR_STATUS["error"])
+                return
+            try:
+                folder = await wybieracz.get_directory_path(
+                    dialog_title="Folder kopii zapasowych", initial_directory=db.pobierz_folder_kopii())
+            except Exception as ex:
+                utils.pokaz_komunikat(self._page, f"Nie udało się otworzyć wyboru folderu: {ex}",
+                                      utils.KOLOR_STATUS["error"])
+                return
+            if not folder:
+                return
+            # Plik próbny, zanim folder trafi do ustawień: na Androidzie o tym,
+            # czy wolno pisać, decyduje miejsce, a wybór folderu tego nie sprawdza.
+            wolno, powod = await asyncio.to_thread(db.sprawdz_folder_kopii, folder)
+            if not wolno:
+                utils.pokaz_ostrzezenie(self._page, "Tu kopia się nie zapisze",
+                                        f"{powod[:1].upper()}{powod[1:]}.\n\nFolder: {folder}")
+                return
+            db.zapisz_folder_kopii(folder)
+            self._odswiez_karte_kopii()
+            utils.pokaz_komunikat(self._page, "Kopie będą trafiać do wybranego folderu.")
+
+        self._page.run_task(wybierz)
+
+    def _zrob_kopie_teraz(self, e=None):
+        utils.zrob_kopie_teraz(self._page, po_zakonczeniu=lambda wynik: self._odswiez_karte_kopii())
+
+    def _wczytaj_kopie(self, kopia):
+        wczytaj = getattr(self._page, "wczytaj_kopie", None)
+        if wczytaj is None:
+            utils.pokaz_komunikat(self._page, "Wczytywanie kopii jest niedostępne w tej wersji aplikacji.",
+                                  utils.KOLOR_STATUS["error"])
+            return
+
+        async def wykonaj_async():
+            await wczytaj(kopia["sciezka"])
+
+        utils.potwierdz(
+            self._page, "Wczytać tę kopię?",
+            f"Kopia z {utils.moment_kopii(kopia['data'])} zastąpi WSZYSTKIE dane w aplikacji. "
+            "Obecna baza zostanie odłożona jako .bak, a ustawienia kopii zapasowej (folder, rytm) "
+            "zostaną bez zmian.",
+            lambda: self._page.run_task(wykonaj_async), tekst_potwierdzenia="Wczytaj",
         )
 
     # ================= DZIENNIK BŁĘDÓW =================

@@ -141,6 +141,17 @@ def formatuj_dni_dopelniacz(n):
     return f"{formatuj_liczba(n, 0)} {'dnia' if abs(n) == 1 else 'dni'}"
 
 
+def formatuj_rozmiar(bajty):
+    """„850 kB”, „12,4 MB”, „1,2 GB” — rozmiar pliku do pokazania na ekranie.
+    Jednostki binarne (1 MB = 1024 kB), jak w menedżerach plików na telefonie."""
+    bajty = max(0, int(bajty or 0))
+    if bajty < 1024 ** 2:
+        return f"{formatuj_liczba(math.ceil(bajty / 1024), 0)} kB"
+    if bajty < 1024 ** 3:
+        return f"{formatuj_liczba(bajty / 1024 ** 2, 1)} MB"
+    return f"{formatuj_liczba(bajty / 1024 ** 3, 1)} GB"
+
+
 def formatuj_okres(dni):
     """Odległość w czasie do pokazania na karcie: dni do dwóch miesięcy, dalej
     miesiące. „143 dni” trzeba przeliczać w głowie, „~5 mies.” już nie."""
@@ -474,6 +485,7 @@ __all__ = [
     "formatuj_na_dystans",
     "formatuj_okres",
     "formatuj_prognoze_km",
+    "formatuj_rozmiar",
     "formatuj_spalanie",
     "jednostka_dystansu",
     "kolor_i_tekst_terminu",

@@ -5,7 +5,6 @@ import inspect
 import dataclasses
 import zipfile
 import tempfile
-import io
 import asyncio
 import db
 import log
@@ -201,49 +200,31 @@ def main(page: ft.Page):
     ostatnia_pozycja_zapisana = {"auto_id": None, "zakladka": None}
 
     # ---- EKSPORT / IMPORT (Z poziomu głównego modułu) ----
-    def _skopiuj_baze(sciezka_zrodlowa, sciezka_docelowa):
-        import sqlite3
-        zrodlo = sqlite3.connect(sciezka_zrodlowa)
-        cel = sqlite3.connect(sciezka_docelowa)
-        try:
-            zrodlo.backup(cel)
-        finally:
-            cel.close()
-            zrodlo.close()
+    # Archiwum kopii buduje db/kopie.py — jedno dla kopii ręcznej i automatycznej,
+    # więc „Wczytaj kopię bazy” przyjmuje obie tak samo.
+    _skopiuj_baze = db.skopiuj_baze
+    _przygotuj_zip_eksportu = db.przygotuj_zip_kopii
 
-    # Foldery pakowane do kopii zapasowej. FOLDER_KOSZ jest tu obowiązkowo: baza
-    # niesie migawki pojazdów z kosza, więc bez jego zdjęć import odtworzyłby
-    # kosz z pustymi odsyłaczami do plików.
+    # Foldery rozpakowywane z kopii (te same, które pakuje db/kopie.py). FOLDER_KOSZ
+    # jest tu obowiązkowo: baza niesie migawki pojazdów z kosza, więc bez jego
+    # zdjęć import odtworzyłby kosz z pustymi odsyłaczami do plików.
     FOLDERY_KOPII = (db.FOLDER_ZALACZNIKI, db.FOLDER_KOSZ)
 
-    def _przygotuj_zip_eksportu():
-        """Buduje archiwum ZIP w pamięci: spójna kopia bazy (przez SQLite backup)
-        + folder załączników + folder kosza."""
-        bufor = io.BytesIO()
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_baza = os.path.join(tmp, os.path.basename(db.BAZA_DANYCH))
-            if os.path.exists(db.BAZA_DANYCH):
-                _skopiuj_baze(db.BAZA_DANYCH, tmp_baza)
-            with zipfile.ZipFile(bufor, "w", zipfile.ZIP_DEFLATED) as zf:
-                if os.path.exists(tmp_baza):
-                    zf.write(tmp_baza, arcname=os.path.basename(db.BAZA_DANYCH))
-                for folder in FOLDERY_KOPII:
-                    if not os.path.isdir(folder):
-                        continue
-                    nazwa_folderu = os.path.basename(folder)
-                    for korzen, _, pliki in os.walk(folder):
-                        for nazwa_pliku in pliki:
-                            pelna_sciezka = os.path.join(korzen, nazwa_pliku)
-                            arcname = os.path.join(nazwa_folderu, os.path.relpath(pelna_sciezka, folder))
-                            zf.write(pelna_sciezka, arcname=arcname)
-        bufor.seek(0)
-        return bufor.read()
-
     def _zapisz_tymczasowy_zip():
+        # Wprost do pliku, bez drugiej kopii archiwum w pamięci — na telefonie
+        # zdjęcia potrafią ważyć dziesiątki megabajtów.
         sciezka = os.path.join(tempfile.gettempdir(), "kopia_baza.zip")
-        with open(sciezka, "wb") as f:
-            f.write(_przygotuj_zip_eksportu())
+        db.zapisz_archiwum_kopii(sciezka)
         return sciezka
+
+    def _zanotuj_kopie_reczna():
+        """Zapisana albo udostępniona kopia ręczna gasi baner zaległej kopii
+        i przypomnienie w dzwonku — ekran główny pokazuje to od razu, a nie
+        dopiero przy następnym wejściu."""
+        byla_zalegla = db.stan_kopii_zapasowej()["zalegla"]
+        db.zanotuj_kopie_reczna()
+        if byla_zalegla and (page.route or "/") == "/":
+            utils.odswiez_ekran(page)
 
     def _wczytaj_zip_importu(sciezka_zip):
         """Rozpakowuje archiwum kopii zapasowej: bazę danych oraz folder załączników."""
@@ -308,6 +289,12 @@ def main(page: ft.Page):
                 utils.pokaz_ostrzezenie(page, "Kopia z nowszej wersji aplikacji", powod)
                 return
 
+            # Folder, rytm i daty kopii zapasowych należą do TEGO urządzenia, nie
+            # do danych: kopia z komputera nie może przynieść telefonowi folderu
+            # E:\…, a kopia sprzed miesiąca — przekonania, że od miesiąca nic nie
+            # zapisano (patrz db/kopie.py).
+            ustawienia_kopii = db.ustawienia_kopii_urzadzenia()
+
             if os.path.exists(db.BAZA_DANYCH):
                 shutil.copyfile(db.BAZA_DANYCH, baza_bak)
             for folder in FOLDERY_KOPII:
@@ -324,6 +311,7 @@ def main(page: ft.Page):
                 _skopiuj_baze(sciezka_zrodlowa, db.BAZA_DANYCH)
 
             db.init_db()
+            db.przywroc_ustawienia_kopii_urzadzenia(ustawienia_kopii)
 
             # Kopia zrobiona na telefonie trzyma ścieżki załączników w formacie
             # Androida (/data/user/0/<pakiet>/files/data/zalaczniki/...). Pliki
@@ -376,13 +364,16 @@ def main(page: ft.Page):
                 await asyncio.to_thread(wykonaj_import, e.files[0].path)
             elif getattr(e, "path", None):
                 try:
-                    if _pending_export["bajty"] is not None:
+                    kopia_bazy = _pending_export["bajty"] is None
+                    if not kopia_bazy:
                         dane_zapisu = _pending_export["bajty"]
                         _pending_export["bajty"] = None
                     else:
                         dane_zapisu = await asyncio.to_thread(_przygotuj_zip_eksportu)
                     with open(e.path, "wb") as f:
                         f.write(dane_zapisu)
+                    if kopia_bazy:
+                        _zanotuj_kopie_reczna()
                     utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
                 except Exception as ex:
                     utils.pokaz_komunikat(page, f"Błąd zapisu: {ex}", utils.KOLOR_STATUS["error"])
@@ -427,11 +418,15 @@ def main(page: ft.Page):
                     sciezka_zip = await asyncio.to_thread(_zapisz_tymczasowy_zip)
                     _schowaj_ladowanie()
                     if hasattr(share_service, "share_files_async"):
-                        await share_service.share_files_async([sciezka_zip])
+                        res = await share_service.share_files_async([sciezka_zip])
                     else:
                         res = share_service.share_files([sciezka_zip])
                         if inspect.iscoroutine(res):
-                            await res
+                            res = await res
+                    # Liczy się tylko arkusz, w którym wybrano aplikację (Dysk,
+                    # Gmail, Pliki) — zamknięty bez wyboru niczego nie zapisał.
+                    if utils.czy_udostepniono(res):
+                        _zanotuj_kopie_reczna()
                     return
                 except Exception:
                     log.polkniety("udostępnianie kopii zapasowej przez system")
@@ -446,6 +441,7 @@ def main(page: ft.Page):
                     res = await file_picker.save_file(file_name="kopia_baza.zip", src_bytes=zip_bytes)
 
                 if res:
+                    _zanotuj_kopie_reczna()
                     utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
             else:
                 # Starsza ścieżka (on_result): bufor po przerwanym eksporcie
@@ -530,6 +526,22 @@ def main(page: ft.Page):
         finally:
             if po_zakonczeniu:
                 po_zakonczeniu()
+
+    async def wczytaj_kopie_z_folderu(sciezka):
+        """„Wczytaj” z listy kopii w Ustawieniach — ta sama droga co plik wybrany
+        ręcznie: sprawdzenie wersji schematu, kopia bezpieczeństwa (.bak)
+        i przywrócenie poprzedniej bazy, gdy coś pójdzie nie tak."""
+        if db.kopia_w_toku():
+            utils.pokaz_komunikat(page, "Właśnie zapisuje się kopia zapasowa — spróbuj za chwilę.",
+                                  utils.KOLOR_STATUS["warning"])
+            return
+        dlg = utils.pokaz_ladowanie(page, "Wczytywanie kopii zapasowej...")
+        try:
+            await asyncio.to_thread(wykonaj_import, sciezka)
+        finally:
+            utils.ukryj_ladowanie(page, dlg)
+
+    page.wczytaj_kopie = wczytaj_kopie_z_folderu
 
     async def importuj_baze(e=None):
         try:
@@ -797,6 +809,28 @@ def main(page: ft.Page):
             log.polkniety("ciche dociąganie zmian przy starcie")
     page.run_task(_nadgon_kolejke_sync)
 
+    async def _kopia_w_tle():
+        """Automatyczna kopia zapasowa, jeśli od ostatniej minęło N dni
+        (db/kopie.py). Cała w wątku w tle, po pierwszym renderze — przy zdjęciach
+        archiwum to sekundy, a na nie nikt nie ma czekać.
+
+        Kokpit odświeża się tylko wtedy, gdy zmienił się baner zaległej kopii:
+        kopia się nie udała (baner wchodzi) albo udała się po wcześniejszym
+        błędzie (baner schodzi). Udana kopia po udanej nie rusza ekranu wcale."""
+        try:
+            przed = await asyncio.to_thread(db.stan_kopii_zapasowej)
+            if not przed["nalezna"]:
+                return
+            with log.zmierz("kopia zapasowa"):
+                wynik = await asyncio.to_thread(db.wykonaj_kopie)
+            if wynik["pominieta"] or wynik["w_toku"]:
+                return
+            po = await asyncio.to_thread(db.stan_kopii_zapasowej)
+            if po["zalegla"] != przed["zalegla"] and (page.route or "/") == "/":
+                utils.odswiez_ekran(page)
+        except Exception:
+            log.polkniety("automatyczna kopia zapasowa")
+
     async def _porzadki_po_starcie():
         """Sprzątanie przeniesione z init_db(): kosz, odroczone załączniki
         i jednorazowa naprawa ścieżek.
@@ -810,13 +844,17 @@ def main(page: ft.Page):
                 naprawione, brakujace = await asyncio.to_thread(db.porzadki_startowe)
         except Exception:
             log.polkniety("porządki po starcie")
-            return
+            naprawione = brakujace = 0
 
         # Naprawa ścieżek idzie raz w życiu instalacji, ale gdy coś dopasuje,
         # pierwszy render zdążył już narysować zdjęcia jako brakujące.
         if naprawione:
             log.zapisz(f"Naprawa ścieżek: dopasowano {naprawione} załączników, brakuje {brakujace}")
             utils.przejdz(page, page.route)
+
+        # Kopia PO porządkach, nie obok nich: sprzątanie kosza kasuje pliki,
+        # które kopia właśnie pakuje.
+        await _kopia_w_tle()
 
     page.run_task(_porzadki_po_starcie)
 
@@ -825,6 +863,26 @@ def main(page: ft.Page):
         utils.uruchom_auto_synchronizacje(page, app_state)
     except Exception:
         log.polkniety("uruchomienie automatycznej synchronizacji")
+
+    # Powrót z tła też jest „startem” dla kopii zapasowej: Android rzadko
+    # naprawdę zamyka aplikację, więc telefon, który tygodniami tylko ją chowa
+    # i przywraca, nie doczekałby się kopii. Obsługa synchronizacji zostaje —
+    # nasza idzie po niej.
+    obsluga_stanu_aplikacji = getattr(page, "on_app_lifecycle_state_change", None)
+
+    def _po_zmianie_stanu_aplikacji(e):
+        if callable(obsluga_stanu_aplikacji):
+            obsluga_stanu_aplikacji(e)
+        try:
+            if str(getattr(e, "state", "")).upper().endswith("RESUME"):
+                page.run_task(_kopia_w_tle)
+        except Exception:
+            log.polkniety("kopia zapasowa po powrocie z tła")
+
+    try:
+        page.on_app_lifecycle_state_change = _po_zmianie_stanu_aplikacji
+    except Exception:
+        log.polkniety("podpięcie kopii zapasowej pod powrót z tła")
 
     with log.zmierz("pierwszy ekran"):
         utils.przejdz(page, page.route or "/")

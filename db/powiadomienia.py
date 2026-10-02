@@ -19,6 +19,7 @@ from .synchronizacja import czy_moge_dodawac
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, swiezosc_licznika
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, linie_przypomnienia_gwarancji
 from .szkice import DNI_PRZYPOMNIENIA_SZKICU, podsumowanie_szkicow
+from .kopie import stan_kopii_zapasowej
 
 
 # ============================================================================
@@ -348,6 +349,10 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
     szkice = _powiadomienie_o_szkicach(auto_id)
     if szkice:
         wyniki.append(szkice)
+    # Kopia zapasowa — o urządzeniu, nie o aucie ani o danych pojazdu.
+    kopia = _powiadomienie_o_kopii(auto_id)
+    if kopia:
+        wyniki.append(kopia)
 
     kolejnosc = {"przeterminowane": 0, "pilne": 1}
 
@@ -414,7 +419,7 @@ def _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg=None, sredni_dzie
 # Drzemka trzyma się tego samego szkicu.
 
 # Powiadomienia o DANYCH, nie o aucie — porównanie pojazdów ich nie liczy.
-TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice")
+TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice", "kopia")
 
 
 def _powiadomienie_o_szkicach(auto_id):
@@ -430,6 +435,45 @@ def _powiadomienie_o_szkicach(auto_id):
         "opis": f"{ile} w kolejce, najstarszy sprzed {utils.formatuj_dni_dopelniacz(stan['dni'])}",
         "status": "pilne", "trasa": "/do-wpisania",
         "klucz": f"szkice:{stan['najstarszy_id']}",
+    }
+
+
+# ============================================================================
+#  KOPIA ZAPASOWA (db/kopie.py)
+# ============================================================================
+# Odzywa się razem z banerem na kokpicie: gdy od kopii minęło N dni, a kopia
+# automatyczna się nie udała albo jest wyłączona. Dotyczy urządzenia, nie auta,
+# więc stoi w dzwonku każdego pojazdu — i odłożona w jednym milknie we
+# wszystkich, inaczej przy dwóch autach trzeba by ją odkładać dwa razy. Klucz
+# to dzień ostatniej kopii: nowa kopia zaczyna nowy cykl bez starej drzemki.
+
+
+def _odlozone_w_innym_pojezdzie(klucz, auto_id):
+    with polacz_baze() as conn:
+        try:
+            return bool(conn.execute(
+                "SELECT EXISTS(SELECT 1 FROM wyciszone_powiadomienia "
+                "WHERE klucz=? AND auto_id<>? AND do_dnia > ?)",
+                (klucz, auto_id, datetime.now().date().strftime("%Y-%m-%d")),
+            ).fetchone()[0])
+        except sqlite3.OperationalError:
+            return False
+
+
+def _powiadomienie_o_kopii(auto_id):
+    stan = stan_kopii_zapasowej()
+    if not stan["zalegla"]:
+        return None
+    klucz = f"kopia:{stan['ostatnia'].date().isoformat() if stan['ostatnia'] else 'brak'}"
+    if _odlozone_w_innym_pojezdzie(klucz, auto_id):
+        return None
+    import utils
+    linie = utils.linie_stanu_kopii(stan)
+    return {
+        "typ": "kopia", "tytul": "Kopia zapasowa",
+        "opis": utils.polacz_linie_opisu(linie), "linie_opisu": linie,
+        "status": "pilne", "trasa": "/ustawienia",
+        "klucz": klucz,
     }
 
 

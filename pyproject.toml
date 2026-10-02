@@ -13,6 +13,9 @@ exclude = [
     "tests", "pytest.ini",
     "zalaczniki", "zalaczniki_bak", "zalaczniki_odroczone", "kosz_zalaczniki",
     "flota_zadania.db", "flota_zadania.db.bak", "kopia_baza.zip",
+    # Automatyczne kopie zapasowe z komputera — dziesiątki MB, które nie mają
+    # prawa pojechać do APK.
+    "kopie",
     # Log rotuje się na trzy pliki, a maski tu nie działają — stąd wypisane co do jednego.
     "flota.log", "flota.log.1", "flota.log.2",
     "supabase",

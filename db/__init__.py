@@ -23,6 +23,7 @@ from .energia import *
 from .notatki import *
 from .zalaczniki import *
 from .szkice import *
+from .kopie import *
 from .magazyn import *
 from .checklisty import *
 from .przebieg import *
@@ -63,6 +64,7 @@ from . import (
     notatki,
     zalaczniki,
     szkice,
+    kopie,
     magazyn,
     checklisty,
     przebieg,
