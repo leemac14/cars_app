@@ -2,7 +2,8 @@
 
 Pakiet powstał z rozbicia jednego pliku db.py. Moduły są ułożone od najmniej
 zależnych do najbardziej: `stale`, `pamiec` i `polaczenie` nie zależą od
-niczego poza sobą, `migracje` (init_db) na końcu, bo dotyka wszystkiego. Cały
+niczego poza sobą, `migracje` (init_db) prawie na końcu, bo dotyka wszystkiego;
+za nią `manifest_kopii` (manifest i podgląd kopii), która czyta kosz i wersję schematu. Cały
 interfejs jest re-eksportowany tutaj, więc `import db` i `db.cokolwiek(...)`
 działa jak dawniej.
 """
@@ -50,6 +51,7 @@ from .raporty import *
 from .import_csv import *
 from .presety_importu import *
 from .migracje import *
+from .manifest_kopii import *
 
 from . import (
     stale,
@@ -91,6 +93,7 @@ from . import (
     import_csv,
     presety_importu,
     migracje,
+    manifest_kopii,
 )
 
 # Widok eksportu pyta wprost `db.FPDF is not None`, żeby wiedzieć, czy

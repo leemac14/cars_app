@@ -355,13 +355,23 @@ def main(page: ft.Page):
                 utils.przejdz(page, "/")
             utils.pokaz_komunikat(page, f"Błąd importu: {ex}. Przywrócono poprzednią bazę.", utils.KOLOR_STATUS["error"])
 
+    def zapytaj_o_import(sciezka):
+        """Podgląd kopii i pytanie „wczytać?” — dopiero po „Wczytaj” rusza
+        wykonaj_import, który nadpisuje bazę (utils/kopie.py). Tą drogą idą
+        oba wybierania pliku; „Wczytaj” z listy kopii w Ustawieniach pyta tak
+        samo (views/settings_view.py)."""
+        async def _wczytaj():
+            await asyncio.to_thread(wykonaj_import, sciezka)
+
+        utils.zapytaj_o_wczytanie_kopii(page, sciezka, lambda: page.run_task(_wczytaj))
+
     file_picker = ft.FilePicker()
     _pending_export = {"bajty": None}  # bufor na dane, gdy plik zapisu pochodzi z eksportu innego niż kopia bazy
 
     def on_file_result(e):
         async def _obsluz():
             if getattr(e, "files", None) and len(e.files) > 0:
-                await asyncio.to_thread(wykonaj_import, e.files[0].path)
+                zapytaj_o_import(e.files[0].path)
             elif getattr(e, "path", None):
                 try:
                     kopia_bazy = _pending_export["bajty"] is None
@@ -552,7 +562,7 @@ def main(page: ft.Page):
                     files = await file_picker.pick_files(file_type=ft.FilePickerFileType.ANY)
 
                 if files and len(files) > 0:
-                    await asyncio.to_thread(wykonaj_import, files[0].path)  
+                    zapytaj_o_import(files[0].path)
             else:
                 file_picker.pick_files()
         except Exception as ex:

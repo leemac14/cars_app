@@ -687,12 +687,10 @@ class UstawieniaView(ft.View):
         async def wykonaj_async():
             await wczytaj(kopia["sciezka"])
 
-        utils.potwierdz(
-            self._page, "Wczytać tę kopię?",
-            f"Kopia z {utils.moment_kopii(kopia['data'])} zastąpi WSZYSTKIE dane w aplikacji. "
-            "Obecna baza zostanie odłożona jako .bak, a ustawienia kopii zapasowej (folder, rytm) "
-            "zostaną bez zmian.",
-            lambda: self._page.run_task(wykonaj_async), tekst_potwierdzenia="Wczytaj",
+        # Podgląd zamiast ogólnego pytania: widać, z którego dnia jest kopia, ile
+        # w niej wpisów i czy zgadza się z manifestem — zanim cokolwiek zniknie.
+        utils.zapytaj_o_wczytanie_kopii(
+            self._page, kopia["sciezka"], lambda: self._page.run_task(wykonaj_async),
         )
 
     # ================= DZIENNIK BŁĘDÓW =================

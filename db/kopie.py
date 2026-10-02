@@ -242,7 +242,9 @@ def zapisz_archiwum_kopii(cel, sprawdz_spojnosc=False):
     plikowego `cel`. Format wczytuje „Wczytaj kopię bazy” (main.wykonaj_import).
 
     `sprawdz_spojnosc=True` puszcza na migawce bazy `PRAGMA quick_check`
-    i przerywa, zanim cokolwiek trafi do archiwum."""
+    i przerywa, zanim cokolwiek trafi do archiwum. Na końcu archiwum dostaje
+    `manifest.json` (wersja schematu, liczba wpisów, suma kontrolna bazy,
+    bilans załączników), który import pokazuje przed nadpisaniem bazy."""
     nazwa_bazy = os.path.basename(BAZA_DANYCH)
     with tempfile.TemporaryDirectory() as tmp:
         migawka = os.path.join(tmp, nazwa_bazy)
@@ -270,6 +272,13 @@ def zapisz_archiwum_kopii(cel, sprawdz_spojnosc=False):
                             # kosza albo usunięcie załącznika w tej samej chwili.
                             # Archiwum bez niego zgadza się z tym, co baza zaraz opisze.
                             log.polkniety(f"plik zniknął w trakcie kopii: {arcname}")
+            if os.path.exists(migawka):
+                # Manifest na końcu: bilans załączników liczy się z tego, co
+                # faktycznie spakowano. Import dopiero tu — manifest liczy wpisy
+                # tabelami z kosza i czyta schemat z migracji, a oba moduły leżą
+                # w pakiecie PÓŹNIEJ niż ten (patrz db/manifest_kopii.py).
+                from .manifest_kopii import dopisz_manifest_kopii
+                dopisz_manifest_kopii(zf, migawka)
 
 
 def przygotuj_zip_kopii():
