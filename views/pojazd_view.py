@@ -57,7 +57,18 @@ class PojazdView(ft.View):
         self.metryki = db.pobierz_metryki_pojazdu(self.state.auto_id, self.dane) or {}
         self.terminy = db.terminy_pojazdu(self.state.auto_id, self.dane)
         self.wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+        # Podgląd czyta notatkę o ofercie OC/AC, ale nie ma jak jej zmienić.
+        self.podglad = db.czy_tylko_podglad(self.state.auto_id)
+        self.oferta = db.oferta_oc_ac_pojazdu(self.dane)
 
+        super().__init__(
+            route="/pojazd", padding=15, spacing=15, appbar=appbar,
+            controls=self._elementy(),
+            scroll=ft.ScrollMode.AUTO,
+        )
+        self.scena.uruchom(page)
+
+    def _elementy(self):
         elementy = [
             self._hero(),
             self._metryki(),
@@ -71,13 +82,19 @@ class PojazdView(ft.View):
             self._akcje(),
             utils.dol_bezpieczny(10),
         ]
+        return [e for e in elementy if e is not None]
 
-        super().__init__(
-            route="/pojazd", padding=15, spacing=15, appbar=appbar,
-            controls=[e for e in elementy if e is not None],
-            scroll=ft.ScrollMode.AUTO,
-        )
-        self.scena.uruchom(page)
+    def odswiez_w_miejscu(self):
+        """Przelicza kartę po zmianie, którą zrobiono bez wychodzenia z ekranu
+        (dziś: notatka „najlepsza oferta OC/AC” z okienka). Ten sam widok, więc
+        pozycja przewijania zostaje; paski nie grają od nowa, bo to nie jest
+        wejście na ekran."""
+        self.dane = db.pobierz_dane_pojazdu(self.state.auto_id) or {}
+        self.oferta = db.oferta_oc_ac_pojazdu(self.dane)
+        self.terminy = db.terminy_pojazdu(self.state.auto_id, self.dane)
+        self.scena = utils.ScenaWejscia(wlaczona=False, kaskada=True)
+        self.controls = self._elementy()
+        self.update()
 
     # ================= HERO =================
 
@@ -213,19 +230,36 @@ class PojazdView(ft.View):
 
     def _terminy(self):
         if not self.terminy:
-            return utils.karta_analizy(
-                self._page, "Terminy i dokumenty", ft.Icons.SHIELD,
-                [ft.Text("Nie masz jeszcze wpisanych żadnych dat — OC, przeglądu, AC ani "
-                         "assistance. To one napędzają powiadomienia i kondycję pojazdu.",
-                         size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
-                 ft.FilledTonalButton("Uzupełnij daty", icon=ft.Icons.EVENT,
-                                      on_click=lambda e: utils.przejdz(
-                                          self._page, f"/auto/edytuj/{self.state.auto_id}"))],
-            )
+            zawartosc = [
+                ft.Text("Nie masz jeszcze wpisanych żadnych dat — OC, przeglądu, AC ani "
+                        "assistance. To one napędzają powiadomienia i kondycję pojazdu.",
+                        size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.FilledTonalButton("Uzupełnij daty", icon=ft.Icons.EVENT,
+                                     on_click=lambda e: utils.przejdz(
+                                         self._page, f"/auto/edytuj/{self.state.auto_id}")),
+            ]
+            # Zapisana wcześniej notatka nie znika razem z datami polis.
+            wiersz_oferty = self._wiersz_oferty(jest_polisa=False)
+            if wiersz_oferty is not None:
+                zawartosc.append(wiersz_oferty)
+            return utils.karta_analizy(self._page, "Terminy i dokumenty", ft.Icons.SHIELD, zawartosc)
 
         wiersze = []
+        oferta_postawiona = False
         for t in self.terminy:
             wiersze.append(utils.pasek_terminu(self._page, t, scena=self.scena))
+            # Notatka „najlepsza oferta OC/AC” stoi tuż pod pierwszym terminem
+            # polisy (OC albo AC — którego dotyczy bliższa data), nie na końcu
+            # karty: ma być widać razem z terminem, przy którym się ją czyta.
+            if not oferta_postawiona and t["klucz"] in db.KLUCZE_TERMINOW_Z_OFERTA:
+                oferta_postawiona = True
+                wiersz_oferty = self._wiersz_oferty(jest_polisa=True)
+                if wiersz_oferty is not None:
+                    wiersze.append(wiersz_oferty)
+        if not oferta_postawiona:
+            wiersz_oferty = self._wiersz_oferty(jest_polisa=False)
+            if wiersz_oferty is not None:
+                wiersze.append(wiersz_oferty)
         gw_km = self.dane.get("gwarancja_przebieg")
         if gw_km:
             zostalo = int(gw_km) - (self.metryki.get("przebieg") or 0)
@@ -241,6 +275,77 @@ class PojazdView(ft.View):
             ], spacing=6))
 
         return utils.karta_analizy(self._page, "Terminy i dokumenty", ft.Icons.SHIELD, wiersze)
+
+    # ================= NAJLEPSZA OFERTA OC/AC =================
+
+    def _wiersz_oferty(self, jest_polisa):
+        """Notatka „najlepsza oferta OC/AC” albo None, gdy nie ma czego pokazać.
+
+        Z notatką: zwykły wiersz danych (z kopiowaniem i datą zapisu) i ołówek
+        do zmiany w okienku, bez wchodzenia do formularza auta. Bez notatki
+        zachęta do jej dopisania pojawia się tylko tam, gdzie jest polisa, której
+        termin kiedyś przyjdzie — i tylko komuś, kto może ją zapisać."""
+        mozna_zmieniac = not self.podglad
+        if self.oferta:
+            wiersz = utils.wiersz_danych(
+                self._page, ft.Icons.REQUEST_QUOTE, db.ETYKIETA_OFERTY_OC_AC, self.oferta["tekst"],
+                kopiowalne=True,
+                podpowiedz=f"Zapisano {self.oferta['data']}" if self.oferta["data"] else None)
+            if mozna_zmieniac:
+                wiersz.controls.append(ft.IconButton(
+                    ft.Icons.EDIT, icon_size=16, icon_color=ft.Colors.ON_SURFACE_VARIANT,
+                    tooltip="Zmień notatkę", on_click=self._edytuj_oferte,
+                    style=ft.ButtonStyle(padding=0), width=34, height=34))
+            return wiersz
+        if mozna_zmieniac and jest_polisa:
+            return ft.Container(
+                ink=True, on_click=self._edytuj_oferte, border_radius=utils.RADIUS["sm"],
+                tooltip="Zapisz cenę i towarzystwo najlepszej oferty",
+                padding=ft.Padding.symmetric(vertical=utils.SPACING["xs"]),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.REQUEST_QUOTE, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+                    utils.etykieta("Zapisz najlepszą ofertę OC/AC", expand=True),
+                    ft.Icon(ft.Icons.ADD, size=16, color=ft.Colors.ON_SURFACE_VARIANT),
+                ], spacing=utils.SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            )
+        return None
+
+    def _edytuj_oferte(self, e=None):
+        """Okienko do zmiany notatki. Zapis idzie przez db.zapisz_oferte_oc_ac
+        (data zapisu zmienia się tylko razem z tekstem), potem cicho do chmury,
+        jeśli auto jest współdzielone — druga osoba nie czeka na ręczną
+        synchronizację — i odświeżenie karty w miejscu."""
+        pole = ft.TextField(
+            label=db.ETYKIETA_OFERTY_OC_AC, value=self.oferta["tekst"] if self.oferta else "",
+            hint_text="np. Warta — 1 240 zł (OC + AC)", multiline=True, min_lines=2, max_lines=5,
+            max_length=db.MAKS_DLUGOSC_OFERTY_OC_AC, autofocus=True, **utils.styl_pola(page=self._page))
+
+        def zapisz(e2):
+            zmieniono = db.zapisz_oferte_oc_ac(self.state.auto_id, pole.value)
+            utils.zamknij_dialog(self._page, dlg)
+            if not zmieniono:
+                return
+            utils.wypchnij_w_tle(self._page, self.state.auto_id, "oferta")
+            utils.odswiez_ekran(self._page)
+            utils.pokaz_komunikat(self._page, "Zapisano notatkę o ofercie OC/AC")
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.REQUEST_QUOTE, color=ft.Colors.PRIMARY),
+                ft.Text(db.ETYKIETA_OFERTY_OC_AC, weight="bold", size=16, expand=True),
+            ], spacing=8),
+            content=ft.Column([
+                utils.etykieta("Cena i towarzystwo najlepszej oferty, jaką udało się znaleźć. "
+                               "Zostaje po odnowieniu polisy — za rok będzie punktem wyjścia."),
+                pole,
+            ], tight=True, spacing=10),
+            actions=[
+                ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
+                ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+            ],
+        )
+        utils.otworz_dialog(self._page, dlg)
 
     # ================= GWARANCJE NAPRAW =================
 

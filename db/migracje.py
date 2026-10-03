@@ -708,6 +708,18 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS szkice_wpisow (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, data_iso TEXT, godzina TEXT, zalacznik TEXT, rodzaj TEXT, przebieg INTEGER, opis TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_szkice_wpisow_auto_data_iso ON szkice_wpisow(auto_id, data_iso);
+            """,
+            # Wersja 47: notatka „najlepsza oferta OC/AC”. Ubezpieczenie kupuje się
+            # raz w roku i za każdym razem porównanie zaczynało od zera, bo
+            # zeszłoroczne nigdzie nie zostało. Jedno pole tekstowe pojazdu
+            # (cena i towarzystwo) plus data, kiedy tekst ostatnio się zmienił —
+            # za rok widać, czy to porównanie z tego sezonu, czy z poprzedniego.
+            # Kolumny pojazdu, bo to jego dane: jadą do drugiej osoby tą samą
+            # drogą co ubezpieczyciel i składka (KOLUMNY_POJAZDU). Data w formacie
+            # dd.mm.rrrr, jak inne daty pojazdu. Puste (NULL) = brak notatki.
+            """
+            ALTER TABLE samochody ADD COLUMN oferta_oc_ac TEXT;
+            ALTER TABLE samochody ADD COLUMN oferta_oc_ac_data TEXT;
             """
         ]
 

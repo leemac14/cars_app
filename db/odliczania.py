@@ -32,14 +32,14 @@ from typing import Any
 
 from date import parsuj_date
 
-from .stale import KM_W_MILI, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
+from .stale import KLUCZE_TERMINOW_Z_OFERTA, KM_W_MILI, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km
 from .jednostki import dystans_z_km, jednostka_dystansu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu
 from .powiadomienia import oblicz_stan_interwalu
-from .pojazd import pobierz_dane_pojazdu, terminy_pojazdu
+from .pojazd import oferta_oc_ac_pojazdu, pobierz_dane_pojazdu, terminy_pojazdu
 
 
 # Okrągły przebieg: co ile jednostek z Ustawień (km albo mil). 150 000 mil jest
@@ -122,7 +122,7 @@ def _pozycja(**pola):
         "dni": None, "dni_sortowania": None, "data": None, "prognoza": False,
         "zostalo_km": None, "cel_km": None, "od_km": None, "udzial": None,
         "poczatek": None, "poczatek_z": None, "drugi": None, "gwarancja": None,
-        "status": "ok", "trasa": None,
+        "status": "ok", "trasa": None, "opis_oferty": None,
     }
     pozycja.update(pola)
     if pozycja["dni_sortowania"] is None:
@@ -132,6 +132,9 @@ def _pozycja(**pola):
 
 def _dokumenty(auto_id, dane, dzis):
     wynik = []
+    # Notatka „najlepsza oferta OC/AC” stoi przy OC i przy AC — tam, gdzie za
+    # miesiąc trzeba będzie coś kupić — i nigdzie indziej.
+    oferta = oferta_oc_ac_pojazdu(dane)
     for termin in terminy_pojazdu(auto_id, dane, dzis=dzis):
         koniec = termin["data_obj"]
         if termin["klucz"] == "gwarancja":
@@ -147,6 +150,7 @@ def _dokumenty(auto_id, dane, dzis):
             tytul=termin["etykieta"], dni=termin["dni"], data=koniec,
             udzial=udzial, poczatek=poczatek, poczatek_z=skad,
             status=termin["status"], trasa=f"/auto/edytuj/{auto_id}",
+            opis_oferty=oferta["zdanie"] if oferta and termin["klucz"] in KLUCZE_TERMINOW_Z_OFERTA else None,
         ))
     return wynik
 
@@ -284,7 +288,9 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
       poczatek i poczatek_z — skąd pasek dokumentu liczy okres;
     * drugi — drugi licznik podzespołu (z db.oblicz_stan_interwalu) albo None;
     * gwarancja — pełny stan gwarancji naprawy (z db.gwarancje_pojazdu) albo None;
-    * status — "po_terminie" / "blisko" / "ok" / "info" (okrągły przebieg).
+    * status — "po_terminie" / "blisko" / "ok" / "info" (okrągły przebieg);
+    * opis_oferty — zdanie z notatki „najlepsza oferta OC/AC” przy OC i AC;
+      gdzie indziej i bez notatki None.
 
     Sprzedane auto nie ma już czego odliczać — lista jest pusta."""
     if not auto_id:

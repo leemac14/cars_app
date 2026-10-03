@@ -46,7 +46,21 @@ KOLUMNY_POJAZDU = [
     # Sprzedaż auta musi dojść do drugiej strony: inaczej u współdzielącego
     # pojazd dalej stałby w garażu, choć fizycznie już go nie ma.
     "status", "data_sprzedazy", "cena_sprzedazy",
+    # Notatka „najlepsza oferta OC/AC” (wersja 47) z datą ostatniej zmiany tekstu:
+    # ubezpieczenie kupuje się wspólnie, więc porównanie ma być widać po obu stronach.
+    "oferta_oc_ac", "oferta_oc_ac_data",
 ]
+
+# Kolumny pojazdu dołożone do synchronizacji, kiedy w chmurze były już rekordy
+# `info_pojazdu` — odpowiednik `dopisane` z KONFIGURACJA_SYNC dla karty pojazdu.
+# Dopóki są puste, karta liczy się tak, jakby ich nie było: hash zapamiętany przed
+# aktualizacją powstał bez tych kluczy. Bez tej tolerancji telefon po aktualizacji
+# widziałby w KAŻDYM współdzielonym aucie „zmianę lokalną” i wysłałby swoją kartę
+# nad tą, którą druga osoba zdążyła zmienić (status, daty) — albo nad notatką
+# wpisaną na jej telefonie, zaktualizowanym wcześniej. Nowa kolumna dokładana do
+# KOLUMNY_POJAZDU po wdrożeniu synchronizacji trafia też tutaj, tak samo jak
+# `dopisane` przy tabelach.
+KOLUMNY_POJAZDU_DOPISANE = ["oferta_oc_ac", "oferta_oc_ac_data"]
 
 
 # Notatka wpisu jedzie do chmury razem z resztą jego pól (kolumny 'notatka',
@@ -167,6 +181,7 @@ __all__ = [
     "ETYKIETY_TABEL_SYNC",
     "KOLUMNA_ZNACZNIKA",
     "KOLUMNY_POJAZDU",
+    "KOLUMNY_POJAZDU_DOPISANE",
     "KONFIGURACJA_SYNC",
     "SUPABASE_ANON_KEY",
     "SUPABASE_URL",

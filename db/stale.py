@@ -196,6 +196,15 @@ TERMINY_DOKUMENTOW = [
 
 KLUCZE_TERMINOW = {k for k, _, _ in TERMINY_DOKUMENTOW}
 
+# Notatka „najlepsza oferta OC/AC”: jedno pole tekstowe pojazdu (kolumna
+# `oferta_oc_ac`, a obok `oferta_oc_ac_data` — kiedy tekst ostatnio się zmienił).
+# Wspólna dla OC i AC, bo ubezpieczenie porównuje się zwykle za jednym razem;
+# pokazują ją te terminy, których dotyczy. Zostaje po odnowieniu polisy:
+# zeszłoroczne porównanie ma być punktem wyjścia następnego, nie kasować się.
+ETYKIETA_OFERTY_OC_AC = "Najlepsza oferta OC/AC"
+KLUCZE_TERMINOW_Z_OFERTA = ("oc", "ac")
+MAKS_DLUGOSC_OFERTY_OC_AC = 300
+
 PROGI_DNI_DOKUMENTU_OPCJE = [7, 14, 30, 60, 90, 180, 365]
 
 
@@ -391,6 +400,7 @@ __all__ = [
     "DOMYSLNE_ZADANIA",
     "ENERGIA_PALIWO",
     "ENERGIA_PRAD",
+    "ETYKIETA_OFERTY_OC_AC",
     "FOLDER_KOSZ",
     "FOLDER_ODROCZONE",
     "FOLDER_ZALACZNIKI",
@@ -402,11 +412,13 @@ __all__ = [
     "KATEGORIE_INNYCH_KOSZTOW",
     "KATEGORIE_MAGAZYNU",
     "KLUCZE_TERMINOW",
+    "KLUCZE_TERMINOW_Z_OFERTA",
     "KOLEJNOSC_PRIORYTETU",
     "KOLEJNOSC_TRYBOW_MOTYWU",
     "KOLORY_MOTYWU",
     "MAKS_BACKOFF_MINUT_SYNC",
     "MAKS_DLUGOSC_NOTATKI",
+    "MAKS_DLUGOSC_OFERTY_OC_AC",
     "MIESIACE_ZIMOWE",
     "OKRES_ZMIANY_OPON_DNI",
     "OPISY_LADOWANIA",

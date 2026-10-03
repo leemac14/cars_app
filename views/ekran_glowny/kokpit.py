@@ -267,6 +267,14 @@ class MiksinKokpitu:
                         ft.Text(p["opis"], size=utils.FS["caption"], color=kolor_p, no_wrap=True, expand=True),
                     ], spacing=4),
                 ], spacing=4)
+                # Polisa OC/AC z notatką „najlepsza oferta OC/AC”: jedna, ucięta
+                # linia pod terminem. Pełne zdanie z datą zapisu stoi w panelu
+                # powiadomień i na Karcie pojazdu — kafel ma tylko przypomnieć.
+                if p.get("oferta"):
+                    tresc.controls.append(ft.Text(
+                        f"Oferta: {p['oferta']}", size=utils.FS["caption"],
+                        color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True,
+                        overflow=ft.TextOverflow.ELLIPSIS))
 
                 trasa_termin = p.get("trasa")
                 on_klik = (lambda e, t=trasa_termin: utils.przejdz(self._page, t)) if trasa_termin \

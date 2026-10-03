@@ -488,6 +488,10 @@ def wiersz_odliczania(page: ft.Page, pozycja, j=None, scena=None):
     dopisek = podpis_odliczania(pozycja, j)
     if dopisek:
         elementy.append(podpis(dopisek))
+    # Przy OC i AC: co znalazło się przy poprzednim porównaniu ofert — dokładnie
+    # wtedy, gdy polisę trzeba odnowić. Tylko ten wiersz niesie `opis_oferty`.
+    if pozycja.get("opis_oferty"):
+        elementy.append(podpis(pozycja["opis_oferty"]))
     return ft.Column(elementy, spacing=SPACING["xs"])
 
 

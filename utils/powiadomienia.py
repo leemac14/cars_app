@@ -367,13 +367,19 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
 
     def podtytul_pozycji(p, kolor):
         """Opis powiadomienia. Podzespół z dwoma licznikami dostaje dwa wiersze:
-        u góry ten, który przyjdzie pierwszy (w kolorze statusu), pod nim drugi."""
-        linie = p.get("linie_opisu") or [p["opis"]]
+        u góry ten, który przyjdzie pierwszy (w kolorze statusu), pod nim drugi.
+        Polisa OC/AC z notatką o ofercie dostaje pod terminem jeszcze jeden,
+        przygaszony wiersz."""
+        linie = list(p.get("linie_opisu") or [p["opis"]])
+        # Polisa OC/AC dostaje pod terminem notatkę „najlepsza oferta OC/AC”
+        # (z datą zapisu) — jako zwykły drugi plan, bez koloru statusu.
+        if p.get("opis_oferty"):
+            linie.append(p["opis_oferty"])
         if len(linie) == 1:
             return ft.Text(linie[0], color=kolor, size=13)
         return ft.Column([
             ft.Text(linie[0], color=kolor, size=13),
-            podpis(linie[1]),
+            *[podpis(linia) for linia in linie[1:]],
         ], spacing=1, tight=True)
 
     def odswiez():

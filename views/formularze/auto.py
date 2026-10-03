@@ -31,6 +31,11 @@ class FormularzAutoView(ft.View):
         ub_val, pol_val, skl_val, tel_val = "", "", "", ""
         lak_val, opon_val, felg_val, srub_val, mom_val, zlacze_val = "", "", "", "", "", ""
         pierwsza_rej_val = ""
+        # Notatka „najlepsza oferta OC/AC” (wersja 47) i data jej ostatniej zmiany.
+        # Stan z chwili otwarcia pamiętamy osobno: data zapisu odświeża się tylko
+        # wtedy, gdy tekst faktycznie się zmienił (db.ustal_oferte_oc_ac).
+        oferta_val, oferta_data_val = "", ""
+        self.oferta_z_bazy = (None, None)
         self.zg_val = None
         self.kolor_auta_val = None
         # Przebiegi i zasięg w km, jak w bazie; pola pokazują je w jednostce
@@ -50,6 +55,8 @@ class FormularzAutoView(ft.View):
                 if w: 
                     n_val, r_val, v_val, ro_val = str(w["nazwa"] or ""), str(w["nr_rej"] or ""), str(w["vin"] or ""), str(w["rok_produkcji"] or "")
                     oc_val, pt_val = str(w["oc_data"] or ""), str(w["przeglad_data"] or "")
+                    oferta_val, oferta_data_val = str(w["oferta_oc_ac"] or ""), str(w["oferta_oc_ac_data"] or "")
+                    self.oferta_z_bazy = (w["oferta_oc_ac"], w["oferta_oc_ac_data"])
                     poj_val, moc_val = str(w["pojemnosc_silnika"] or ""), str(w["moc_silnika"] or "")
                     pal_val, skrz_val, not_val = str(w["typ_paliwa"] or "Benzyna"), str(w["skrzynia_biegow"] or "Manualna"), str(w["notatki"] or "")
                     nadw_val = str(w["nadwozie"] or "")
@@ -115,6 +122,14 @@ class FormularzAutoView(ft.View):
         )
         self.e_vin.suffix = self.btn_dekoduj_vin
         self.e_oc = utils.pole_daty(page, "Polisa OC", oc_val)
+        # Jedno pole na OC i AC, tuż pod datą OC: ubezpieczenie kupuje się raz
+        # w roku i dopiero ta notatka sprawia, że za rok porównanie nie zaczyna
+        # od zera. Zostaje po zmianie daty polisy — nic jej nie czyści.
+        self.e_oferta = ft.TextField(
+            label=db.ETYKIETA_OFERTY_OC_AC, value=oferta_val, hint_text="np. Warta — 1 240 zł (OC + AC)",
+            multiline=True, min_lines=1, max_lines=4, max_length=db.MAKS_DLUGOSC_OFERTY_OC_AC,
+            **utils.styl_pola(page=page))
+        self.info_oferta = utils.podpis(f"Zapisano {oferta_data_val}", visible=bool(oferta_val and oferta_data_val))
         self.e_pt = utils.pole_daty(page, "Przegląd techniczny", pt_val)
 
         akt_przebieg = db.pobierz_aktualny_przebieg(auto_id) if auto_id else 0
@@ -378,7 +393,7 @@ class FormularzAutoView(ft.View):
              self.e_bateria, self.e_zasieg, self.info_bateria, self.e_zlacze],
             "Specyfikacja techniczna", ft.Icons.SETTINGS
         )
-        k3 = utils.karta_formularza([self.e_pierwsza_rej, self.e_oc, self.e_pt],
+        k3 = utils.karta_formularza([self.e_pierwsza_rej, self.e_oc, self.e_oferta, self.info_oferta, self.e_pt],
                                     "Ważne daty", ft.Icons.CALENDAR_MONTH)
         k5 = utils.karta_formularza(
             [wiersz_wycieraczki, wiersz_cisnienie, wiersz_olej, self.e_akum, wiersz_zarowki,
@@ -555,7 +570,7 @@ class FormularzAutoView(ft.View):
         return (
             self.e_marka.value, self.e_model.value, self.e_generacja.value,
             self.e_rej.value, self.e_rok.value, self.e_vin.value, self.e_przebieg.value,
-            self.e_oc.value, self.e_pt.value, self.e_poj.value, self.e_moc.value,
+            self.e_oc.value, self.e_oferta.value, self.e_pt.value, self.e_poj.value, self.e_moc.value,
             self.e_pal.value, self.e_skrz.value, self.e_nadwozie.value,
             self.e_bateria.value, self.e_zasieg.value, self.e_bak.value, self.e_zlacze.value,
             self.e_pierwsza_rej.value, self.e_data_zakupu.value, self.e_cena_zakupu.value,
@@ -715,6 +730,14 @@ class FormularzAutoView(ft.View):
             "telefon_assistance": (self.e_assistance.value or None),
             "zdjecie_glowne": nowe_zdj, "kolor_motywu": nowy_kolor,
         }
+
+        # Notatka o ofercie OC/AC jedzie do bazy tylko wtedy, gdy ją ruszono:
+        # zapis formularza nie odświeża jej daty ani nie nadpisuje wersji, którą
+        # w międzyczasie zmieniono z Karty pojazdu albo przyniosła synchronizacja.
+        oferta_tekst, oferta_data = db.ustal_oferte_oc_ac(self.e_oferta.value, *self.oferta_z_bazy)
+        if oferta_tekst != ((self.oferta_z_bazy[0] or "").strip() or None):
+            dane_pojazdu["oferta_oc_ac"] = oferta_tekst
+            dane_pojazdu["oferta_oc_ac_data"] = oferta_data
 
         # Skład listy startowej czytamy PRZED zapisem — po przejściu na kokpit
         # formularz już nie istnieje, a chipy są jego stanem.

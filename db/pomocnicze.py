@@ -1,7 +1,10 @@
-"""Drobne funkcje pomocnicze bez zależności — parsowanie i formatowanie liczb."""
+"""Drobne funkcje pomocnicze, zależne tylko od stałych — parsowanie i formatowanie
+liczb oraz zdanie o notatce „najlepsza oferta OC/AC”."""
 
 import math
 import re
+
+from .stale import ETYKIETA_OFERTY_OC_AC
 
 
 # Podzespoły założone przez STARSZE wersje aplikacji mają emoji w nazwie
@@ -146,6 +149,30 @@ def opis_terminu_dni(zostalo):
     return f"{odmien(zostalo, 'Został', 'Zostały', 'Zostało')} {liczba_z_odmiana(zostalo, 'dzień', 'dni', 'dni')}"
 
 
+def oferta_w_jednej_linii(tekst, limit=140):
+    """Notatka o ofercie w jednej linii, do miejsc bez miejsca na kilka wierszy
+    (powiadomienie, wiersz odliczania, kafel): puste linie znikają, kolejne są
+    sklejone „ · ”, nadmiar — ucięty wielokropkiem. Pełny tekst zostaje na
+    Karcie pojazdu i w formularzu."""
+    linie = (" ".join(linia.split()) for linia in str(tekst or "").splitlines())
+    jedna = " · ".join(linia for linia in linie if linia)
+    if limit and len(jedna) > limit:
+        jedna = jedna[:limit - 1].rstrip() + "…"
+    return jedna
+
+
+def zdanie_oferty_oc_ac(tekst, data=None):
+    """„Najlepsza oferta OC/AC: Warta 1 240 zł · zapisano 03.10.2026” albo ""
+    przy pustej notatce. Jedno zdanie dla wszystkich miejsc, które pokazują
+    notatkę obok terminu, żeby żadne nie mówiło jej po swojemu; data zapisu
+    mówi, czy to porównanie z tego roku, czy zeszłoroczne."""
+    jedna = oferta_w_jednej_linii(tekst)
+    if not jedna:
+        return ""
+    zdanie = f"{ETYKIETA_OFERTY_OC_AC}: {jedna}"
+    return f"{zdanie} · zapisano {data}" if data else zdanie
+
+
 def _parsuj_liczbe_csv(tekst):
     """Odporny parser liczby z arkusza: '1 234,56', '1,234.56', '12.5', '12,5',
     '45,20 zł'. Zwraca float albo None. Celowo bez regexpów — pojedyncze przejście
@@ -184,6 +211,8 @@ __all__ = [
     "liczba_na_tekst",
     "liczba_z_odmiana",
     "odmien",
+    "oferta_w_jednej_linii",
     "opis_terminu_dni",
     "parsuj_int_bezpiecznie",
+    "zdanie_oferty_oc_ac",
 ]

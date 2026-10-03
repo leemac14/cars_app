@@ -6,10 +6,12 @@ from date import parsuj_date
 from datetime import datetime, timedelta
 from typing import Any
 
-from .stale import PROG_ILOSC_MAGAZYNU_DOMYSLNY, STATUS_POJAZDU_SPRZEDANY, TERMINY_DOKUMENTOW
+from .stale import (
+    KLUCZE_TERMINOW_Z_OFERTA, PROG_ILOSC_MAGAZYNU_DOMYSLNY, STATUS_POJAZDU_SPRZEDANY, TERMINY_DOKUMENTOW,
+)
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
-from .pomocnicze import liczba_z_odmiana, opis_terminu_dni
+from .pomocnicze import liczba_z_odmiana, oferta_w_jednej_linii, opis_terminu_dni, zdanie_oferty_oc_ac
 from .ustawienia import (
     _klucz_widzianych_powiadomien, pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km,
     pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie,
@@ -225,7 +227,8 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
 
         kolumny_terminow = ", ".join(kol for _, kol, _ in TERMINY_DOKUMENTOW)
         c.execute(
-            f"SELECT {kolumny_terminow}, gwarancja_przebieg, status FROM samochody WHERE id=?",
+            f"SELECT {kolumny_terminow}, gwarancja_przebieg, status, oferta_oc_ac, oferta_oc_ac_data "
+            "FROM samochody WHERE id=?",
             (auto_id,)
         )
         w = c.fetchone()
@@ -246,11 +249,23 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
                 if zost_dni <= prog_terminu:
                     s = "przeterminowane" if zost_dni < 0 else "pilne"
                     opis = opis_terminu_dni(zost_dni)
-                    wyniki.append({
+                    powiadomienie = {
                         "typ": "dokument", "tytul": etykieta, "opis": opis,
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
                         "klucz": f"dokument:{klucz}",
-                    })
+                    }
+                    # Polisa się kończy — właśnie teraz przydaje się to, co
+                    # znalazło się przy poprzednim porównaniu. `oferta` to sam tekst
+                    # w jednej linii (kafel „Termin”), `opis_oferty` — całe zdanie
+                    # z datą zapisu (panel powiadomień). Sygnatura „widziane” liczy
+                    # się ze statusu, więc zmiana notatki nie zapala odznaki.
+                    if klucz in KLUCZE_TERMINOW_Z_OFERTA:
+                        oferta = oferta_w_jednej_linii(w["oferta_oc_ac"])
+                        if oferta:
+                            powiadomienie["oferta"] = oferta
+                            powiadomienie["opis_oferty"] = zdanie_oferty_oc_ac(
+                                w["oferta_oc_ac"], w["oferta_oc_ac_data"])
+                    wyniki.append(powiadomienie)
 
             # Gwarancja ma dwa niezależne limity — datę i przebieg. Kilometry
             # potrafią się skończyć długo przed datą, więc liczymy je osobno.

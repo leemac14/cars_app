@@ -9,9 +9,10 @@ przy błędzie synchronizacji pierwsze pytanie brzmi „w którą stronę".
 import db
 import sqlite3
 
-from .stale import KOLUMNA_ZNACZNIKA, KOLUMNY_POJAZDU, TABELE_POSREDNIE
+from .stale import KOLUMNA_ZNACZNIKA, KOLUMNY_POJAZDU, KOLUMNY_POJAZDU_DOPISANE, TABELE_POSREDNIE
 from .delta import _delta_wlaczona, _wylacz_delte
 from .pomocnicze import _hash_zawartosci, _paczki, _zapytanie_tabeli
+from .wysylanie import _zgodny_z_zapamietanym
 
 
 def _pobierz_rekordy(klient, wspolny_id, tabela, znacznik=None, tylko_id=None):
@@ -220,7 +221,12 @@ def _synchronizuj_info_pojazdu(klient, wspolny_id, auto_id, rola=None):
                 conn.execute("UPDATE samochody SET info_zdalne_id=?, zdalny_hash_info=? WHERE id=?", (info_zdalne_id, hash_teraz, auto_id))
         return 0, 0
 
-    if hash_teraz != hash_ostatnio_zsynchronizowany and not tylko_czytam:
+    # „Czy lokalna karta zmieniła się od ostatniej synchronizacji” — z tolerancją
+    # na puste kolumny z KOLUMNY_POJAZDU_DOPISANE: hash sprzed ich dołożenia
+    # liczył się bez nich, więc samo ich pojawienie się niczego nie zmienia.
+    lokalnie_zmieniona = not _zgodny_z_zapamietanym(
+        dane_lokalne, hash_ostatnio_zsynchronizowany, KOLUMNY_POJAZDU_DOPISANE)
+    if lokalnie_zmieniona and not tylko_czytam:
         klient.rpc("aktualizuj_zdalny_rekord", {"p_id": info_zdalne_id, "p_dane": dane_lokalne}).execute()
         with db.polacz_baze() as conn:
             conn.execute("UPDATE samochody SET info_zdalne_id=?, zdalny_hash_info=? WHERE id=?", (info_zdalne_id, hash_teraz, auto_id))

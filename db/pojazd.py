@@ -5,9 +5,11 @@ from date import parsuj_date
 from datetime import date as date_cls, datetime
 from typing import Any
 
-from .stale import ENERGIA_PALIWO, ROK_MIN, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
+from .stale import (
+    ENERGIA_PALIWO, MAKS_DLUGOSC_OFERTY_OC_AC, ROK_MIN, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY,
+)
 from .polaczenie import polacz_baze
-from .pomocnicze import _liczba_lub_none, parsuj_int_bezpiecznie
+from .pomocnicze import _liczba_lub_none, oferta_w_jednej_linii, parsuj_int_bezpiecznie, zdanie_oferty_oc_ac
 from .ustawienia import pobierz_okno_kroczace, pobierz_prog_dni_dokumentu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .koszty import DNI_W_MIESIACU, koszty_w_okresie
@@ -195,6 +197,67 @@ def najblizszy_termin_pojazdu(auto_id, dane=None):
     To jedna informacja, którą kafel pojazdu musi pokazać bez klikania."""
     terminy = terminy_pojazdu(auto_id, dane)
     return terminy[0] if terminy else None
+
+
+# ==================== NOTATKA „NAJLEPSZA OFERTA OC/AC” ====================
+# Jedno pole tekstowe pojazdu: cena i towarzystwo najlepszej znalezionej oferty.
+# Wspólne dla OC i AC, zostaje po odnowieniu polisy (za rok jest punktem wyjścia
+# porównania) i trzyma obok siebie datę ostatniej zmiany tekstu — bez niej
+# zeszłoroczna oferta wyglądałaby tak samo jak tegoroczna.
+
+
+def ustal_oferte_oc_ac(nowy_tekst, stary_tekst=None, stara_data=None, dzis=None) -> tuple[str | None, str | None]:
+    """Co zapisać w kolumnach oferty po edycji: (tekst, data zapisu).
+
+    Data odświeża się TYLKO wtedy, gdy zmienił się tekst. Formularz pojazdu
+    zapisuje wszystkie pola naraz, więc zapis z poprawioną rejestracją nie może
+    zrobić ze starej oferty „zapisanej dziś”. Pusty tekst kasuje i tekst, i datę.
+    `dzis` (date) podaje test; na co dzień liczy się dzisiejszy dzień."""
+    nowy = str(nowy_tekst or "").strip()[:MAKS_DLUGOSC_OFERTY_OC_AC].strip() or None
+    stary = str(stary_tekst or "").strip() or None
+    if nowy is None:
+        return None, None
+    if nowy == stary:
+        return nowy, stara_data or None
+    return nowy, (dzis or datetime.now().date()).strftime("%d.%m.%Y")
+
+
+def zapisz_oferte_oc_ac(auto_id, tekst, dzis=None) -> bool:
+    """Zapisuje notatkę z Karty pojazdu, bez otwierania formularza. True, gdy coś
+    się zmieniło; ta sama treść nie rusza niczego, także daty zapisu."""
+    if not auto_id:
+        return False
+    with polacz_baze() as conn:
+        w = conn.execute(
+            "SELECT oferta_oc_ac, oferta_oc_ac_data FROM samochody WHERE id=?", (auto_id,)
+        ).fetchone()
+        if w is None:
+            return False
+        stary = str(w[0] or "").strip() or None
+        nowy, data = ustal_oferte_oc_ac(tekst, w[0], w[1], dzis)
+        if (nowy, data) == (stary, w[1] or None):
+            return False
+        conn.execute(
+            "UPDATE samochody SET oferta_oc_ac=?, oferta_oc_ac_data=? WHERE id=?",
+            (nowy, data, auto_id),
+        )
+    return True
+
+
+def oferta_oc_ac_pojazdu(dane) -> dict[str, Any] | None:
+    """Notatka z danych pojazdu (słownik z `pobierz_dane_pojazdu`) albo None, gdy
+    jej nie ma. `tekst` — pełny, z podziałem na linie (Karta pojazdu i formularz),
+    `linia` — w jednej linii (powiadomienie, kafel), `data` — kiedy tekst ostatnio
+    się zmienił (None, gdy nieznana), `zdanie` — gotowe „Najlepsza oferta OC/AC: …”."""
+    dane = dane or {}
+    tekst = str(dane.get("oferta_oc_ac") or "").strip()
+    if not tekst:
+        return None
+    data = dane.get("oferta_oc_ac_data") or None
+    return {
+        "tekst": tekst, "linia": oferta_w_jednej_linii(tekst), "data": data,
+        "zdanie": zdanie_oferty_oc_ac(tekst, data),
+    }
 
 
 def pobierz_metryki_pojazdu(auto_id, dane=None):
@@ -417,6 +480,7 @@ __all__ = [
     "WARUNEK_AKTYWNE",
     "czy_pojazd_sprzedany",
     "najblizszy_termin_pojazdu",
+    "oferta_oc_ac_pojazdu",
     "oznacz_pojazd_sprzedany",
     "pobierz_dane_do_porownania",
     "pobierz_dane_pojazdu",
@@ -425,4 +489,6 @@ __all__ = [
     "pobierz_sprzedane_pojazdy",
     "przywroc_pojazd_do_garazu",
     "terminy_pojazdu",
+    "ustal_oferte_oc_ac",
+    "zapisz_oferte_oc_ac",
 ]
