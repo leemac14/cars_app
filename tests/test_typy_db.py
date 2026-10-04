@@ -43,6 +43,7 @@ WYWOLANIA = {
     "generuj_eksport_csv": lambda k: (db.pobierz_dane_eksportu(k["id"]["auto_id"], list(db.KATEGORIE_EKSPORTU)),),
     "globalne_wyszukiwanie": lambda k: (k["id"]["auto_id"], "olej"),
     "gwarancje_pojazdu": lambda k: (k["id"]["auto_id"],),
+    "historia_cen_czesci": lambda k: (k["id"]["auto_id"], "Filtr oleju"),
     "klucz_gwarancji": lambda k: ("2027-05-12", 180000),
     # Prawdziwa kopia w folderze domyślnym (katalog testu) — inaczej lista
     # byłaby pusta i sprawdzałaby tylko to, że pusta lista jest listą.
@@ -90,7 +91,11 @@ WYWOLANIA = {
     "pobierz_uzyte_czesci_wpisu": lambda k: (k["id"]["historia"],),
     "pobierz_warsztaty": lambda k: (k["id"]["auto_id"],),
     "pobierz_wydatki_cykliczne": lambda k: (k["id"]["auto_id"],),
+    # Podwyżka liczona od zakupu z 12.01.2025 (15 zł) do bieżącej ceny pozycji
+    # (19,50 zł) — próg zero, żeby wynik nie był pustą listą.
+    "podwyzki_cen_czesci": lambda k: (k["id"]["auto_id"], 0),
     "pola_historii_pojazdu": lambda k: (db.pobierz_dane_pojazdu(k["id"]["auto_id"]),),
+    "poprzednie_zakupy": lambda k: (db.historia_cen_czesci(k["id"]["auto_id"], "Filtr oleju"), k["id"]["magazyn"]),
     "porownaj_czesci_wlasne": lambda k: (k["id"]["auto_id"],),
     "porzadki_startowe": lambda k: (),
     "przelicz_zuzycie": lambda k: (7.5,),

@@ -720,6 +720,25 @@ def init_db():
             """
             ALTER TABLE samochody ADD COLUMN oferta_oc_ac TEXT;
             ALTER TABLE samochody ADD COLUMN oferta_oc_ac_data TEXT;
+            """,
+            # Wersja 48: historia cen części (M-15). Pozycja magazynu pamiętała
+            # tylko BIEŻĄCY zakup, więc to, że filtr oleju podrożał o połowę
+            # w dwa lata, ginęło przy pierwszej zmianie ceny. `ceny_czesci` to
+            # dziennik zakupów pojazdu: jeden wiersz na zakup części (nazwa, data,
+            # cena za jednostkę, ile kupiono, sklep), grupowany po klucz_nazwy —
+            # bez klucza obcego do pozycji, bo historia ma przeżyć zużytą
+            # i usuniętą pozycję. `data` pusta = zakup bez daty (stara cena
+            # pozycji, która daty nie miała). Dzisiejsze ceny z magazynu NIE są
+            # przepisywane: liczą się jako punkty w locie (db/ceny_czesci.py),
+            # inaczej dwa telefony współdzielące auto wpisałyby po aktualizacji
+            # te same zakupy dwa razy i wysłały je sobie nawzajem.
+            # Sklep i link do produktu należą do pozycji — to tam się po nie sięga.
+            """
+            ALTER TABLE magazyn_czesci ADD COLUMN sklep TEXT;
+            ALTER TABLE magazyn_czesci ADD COLUMN link TEXT;
+            CREATE TABLE IF NOT EXISTS ceny_czesci (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, data TEXT NOT NULL DEFAULT '', data_iso TEXT, cena_jednostkowa REAL NOT NULL, jednostka TEXT DEFAULT 'szt', ilosc REAL, sklep TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_ceny_czesci_auto_data_iso ON ceny_czesci(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_ceny_czesci_auto_zdalne ON ceny_czesci(auto_id, zdalne_id);
             """
         ]
 

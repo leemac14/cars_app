@@ -36,6 +36,7 @@ from .start import *
 from .system import *
 from .komponenty import *
 from .warsztaty import *
+from .ceny_czesci import *
 from .szkice import *
 from .kopie import *
 from .powiadomienia import *
@@ -68,6 +69,7 @@ from . import (
     system,
     komponenty,
     warsztaty,
+    ceny_czesci,
     szkice,
     kopie,
     powiadomienia,

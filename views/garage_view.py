@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import flet as ft
 import db
 import log
@@ -451,8 +453,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa "
-                "FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa",
+                "SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa, "
+                "sklep, link FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa",
                 (self.state.auto_id,)
             )
             czesci = c.fetchall()
@@ -464,6 +466,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         # Zużycie całego magazynu jednym zapytaniem — karta pozycji nie pyta
         # bazy sama za siebie.
         self._zuzycie_czesci = db.pobierz_podsumowanie_zuzycia(self.state.auto_id)
+        # Historia cen całego magazynu też jednym zapytaniem (M-15).
+        self._historia_cen = db.historia_cen_pojazdu(self.state.auto_id)
         wartosc = db.pobierz_wartosc_magazynu(self.state.auto_id)
         # Bez ani jednej wycenionej pozycji na stanie karta nie ma nic do
         # powiedzenia poza „0,00” — a to czyta się jak pusty magazyn.
@@ -493,7 +497,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         elementy.append(
             ft.TextField(
-                hint_text="Szukaj części (nazwa, kategoria)...",
+                hint_text="Szukaj części (nazwa, kategoria, sklep)...",
                 prefix_icon=ft.Icons.SEARCH,
                 on_change=utils.z_opoznieniem(self._page, filtruj_czesci),
                 **utils.styl_pola()
@@ -509,8 +513,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         for cz in czesci:
             karta = self._karta_czesci(cz)
-            c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn = cz
-            tekst_szukaj = f"{nazwa} {kategoria} {notatki}".lower()
+            c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn, sklep, link = cz
+            tekst_szukaj = f"{nazwa} {kategoria} {notatki} {sklep or ''}".lower()
             self.wszystkie_karty_czesci.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_czesci.controls.append(karta)
 
@@ -539,7 +543,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         )
 
     def _karta_czesci(self, cz):
-        c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn = cz
+        c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn, sklep, link = cz
         ikona = IKONY_KATEGORII_MAGAZYNU.get(kategoria, ft.Icons.BUILD)
         waluta = utils.symbol_waluty()
 
@@ -603,17 +607,35 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             ], spacing=6),
             ft.Text(str(kategoria) if kategoria else "Bez kategorii", size=13, color=ft.Colors.ON_SURFACE_VARIANT),
         ]
-        if stopka_bits:
+        # Sklep obok daty zakupu; z linkiem dotknięcie otwiera stronę produktu.
+        chip_sklepu = utils.chip_sklepu(self._page, sklep, link)
+        if stopka_bits and chip_sklepu:
+            tresc.append(ft.Row([
+                ft.Text("  |  ".join(stopka_bits), size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                chip_sklepu,
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        elif stopka_bits:
             tresc.append(ft.Text("  |  ".join(stopka_bits), size=12, color=ft.Colors.ON_SURFACE_VARIANT))
+        elif chip_sklepu:
+            tresc.append(chip_sklepu)
         if tekst_zuzycia:
             tresc.append(ft.Text(tekst_zuzycia, size=12, color=ft.Colors.ON_SURFACE_VARIANT))
+        # Ile ta część kosztowała przy poprzednich zakupach (M-15).
+        punkty_cen = db.historia_cen_czesci(self.state.auto_id, nazwa, getattr(self, "_historia_cen", None) or {})
+        wiersz_cen = utils.wiersz_cen_na_karcie(punkty_cen, c_id, jednostka)
+        if wiersz_cen:
+            tresc.append(wiersz_cen)
 
         karta, kontener = utils.karta_listy(
             ft.Column(tresc, spacing=4), kolor_paska=kolor_stan, page=self._page
         )
 
         self.karty_ref[c_id] = kontener
-        self.podepnij_zdarzenia_grupowe(kontener, c_id, lambda cid=c_id, cn=nazwa, czal=zalacznik, cj=jednostka, uz=bool(zuzycie): self._pokaz_menu_czesci(cid, cn, czal, cj, uz), "magazyn_czesci")
+        self.podepnij_zdarzenia_grupowe(
+            kontener, c_id,
+            lambda cid=c_id, cn=nazwa, czal=zalacznik, cj=jednostka, uz=bool(zuzycie), sk=sklep, ln=link:
+                self._pokaz_menu_czesci(cid, cn, czal, cj, uz, sk, ln),
+            "magazyn_czesci")
 
         return karta
 
@@ -671,7 +693,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         bs.content.content = ft.Column(zawartosc, tight=True, spacing=8)
         utils.otworz_dno(self._page, bs)
 
-    def _pokaz_menu_czesci(self, cid, nazwa, zalacznik=None, jednostka="szt", uzyta=False):
+    def _pokaz_menu_czesci(self, cid, nazwa, zalacznik=None, jednostka="szt", uzyta=False, sklep=None, link=None):
         def usun_czesc():
             def wykonaj():
                 wynik = db.usun_czesc_magazynu_z_cofnieciem(cid)   # było: db.usun_z_cofnieciem("magazyn_czesci", cid)
@@ -690,6 +712,18 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         else:
             pozycje_menu.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/część)", "akcja": dodaj_zmien_zdj})
 
+        # Historia cen i kolejny zakup (M-15). „Kupiłem ponownie” zmienia stan,
+        # więc przy podglądzie znika; historię i link wolno tylko oglądać.
+        czesc = {"id": cid, "nazwa": nazwa, "jednostka": jednostka, "sklep": sklep, "link": link}
+
+        def odswiez():
+            utils.przejdz(self._page, "/magazyn")
+
+        pozycje_menu.append({"ikona": ft.Icons.ADD_SHOPPING_CART, "tekst": "Kupiłem ponownie",
+                             "akcja": lambda: utils.dialog_kupilem_ponownie(self._page, self.state.auto_id, czesc, odswiez)})
+        pozycje_menu.append({"ikona": ft.Icons.SHOW_CHART, "tekst": "Historia cen", "czyta": True,
+                             "akcja": lambda: utils.pokaz_historie_cen(self._page, self.state.auto_id, czesc, odswiez)})
+        pozycje_menu.extend(utils.akcje_linku(self._page, link))
         if uzyta:
             pozycje_menu.append({"ikona": ft.Icons.HISTORY, "tekst": "Historia zużycia", "czyta": True,
                                  "akcja": lambda: self._pokaz_historie_zuzycia(cid, nazwa, jednostka)})
@@ -886,16 +920,19 @@ class FormularzCzesciView(ft.View):
         self.czesc_id = czesc_id
 
         nazwa_val, kat_val, il_val, jedn_val = "", db.KATEGORIE_MAGAZYNU[0], "1", "szt"
-        cena_val, cena_jedn_val, data_val, not_val = "", "", "", ""
+        # Nowa pozycja to zwykle zakup sprzed chwili — data zakupu domyślnie
+        # dzisiejsza, bo bez daty cena nie ma swojego miejsca w historii cen.
+        cena_val, cena_jedn_val, data_val, not_val = "", "", datetime.now().strftime("%d.%m.%Y"), ""
         prog_val = "1"
+        sklep_val, link_val = "", ""
         self.zalacznik_val = None
 
         if czesc_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
                 c.execute(
-                    "SELECT nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa "
-                    "FROM magazyn_czesci WHERE id=?", (czesc_id,)
+                    "SELECT nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa, "
+                    "sklep, link FROM magazyn_czesci WHERE id=?", (czesc_id,)
                 )
                 w = c.fetchone()
                 if w:
@@ -909,6 +946,7 @@ class FormularzCzesciView(ft.View):
                     self.zalacznik_val = w[7] if len(w) > 7 else None
                     prog_val = str(w[8]) if len(w) > 8 and w[8] is not None else "1"
                     cena_jedn_val = utils.liczba_do_pola(w[9]) if len(w) > 9 else ""
+                    sklep_val, link_val = str(w[10] or ""), str(w[11] or "")
 
         self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
         self.e_nazwa = ft.TextField(label="Nazwa*", value=nazwa_val, hint_text="np. Olej 5W-30, żarówka H7", **utils.styl_pola())
@@ -931,6 +969,18 @@ class FormularzCzesciView(ft.View):
         self.e_cena_jedn = ft.TextField(label=self._etykieta_ceny_jedn(jedn_val), value=cena_jedn_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_data = utils.pole_daty(page, "Data zakupu", data_val)
         self.e_not = ft.TextField(label="Notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
+        # Sklep z podpowiedziami i link do produktu (M-15).
+        self.sklep = utils.PoleSklepu(page, db.sklepy_czesci(state.auto_id), sklep_val)
+        self.e_sklep = self.sklep.pole
+        self.e_link = ft.TextField(label="Link do produktu (opcjonalnie)", value=link_val,
+                                   hint_text="np. allegro.pl/oferta/…", keyboard_type=ft.KeyboardType.URL,
+                                   prefix_icon=ft.Icons.LINK, **utils.styl_pola())
+        # Przy nazwie: ile ta część kosztowała ostatnio. Historia czytana raz —
+        # przez czas otwarcia formularza się nie zmienia.
+        self._historia_cen = db.historia_cen_pojazdu(state.auto_id)
+        self.t_poprzednio = utils.podpis("", visible=False)
+        self._pokaz_poprzednie_ceny()
+        self.e_nazwa.on_change = utils.z_opoznieniem(page, lambda e: self._pokaz_poprzednie_ceny(odswiez=True))
 
         # Koszt zakupu i cena za jednostkę liczą się nawzajem przez ilość:
         # wpisujesz to, co wiesz (zwykle kwotę z paragonu), a drugie pole
@@ -948,12 +998,15 @@ class FormularzCzesciView(ft.View):
 
         wiersz_ilosc = ft.Row([ft.Container(self.e_ilosc, expand=True), ft.Container(self.e_jedn, expand=True)], spacing=10)
 
-        k1 = utils.karta_formularza([self.e_nazwa, self.e_kat], "Co to jest", ft.Icons.INVENTORY_2, domyslnie_otwarte=True)
+        k1 = utils.karta_formularza([self.e_nazwa, self.t_poprzednio, self.e_kat], "Co to jest", ft.Icons.INVENTORY_2, domyslnie_otwarte=True)
         k2 = utils.karta_formularza([wiersz_ilosc, self.e_prog], "Stan magazynowy", ft.Icons.NUMBERS)
         k3 = utils.karta_formularza([
             self.e_cena, self.e_cena_jedn,
             utils.podpis("Cena za jednostkę dolicza się do kosztu wpisu albo wizyty, gdy użyjesz tej części z magazynu."),
-            self.e_data, self.e_not,
+            self.e_data,
+            utils.podpis("Inna data zakupu niż dotąd to nowy zakup — poprzednia cena zostaje w historii cen. "
+                         "Ta sama data poprawia cenę tego zakupu.") if czesc_id else ft.Container(),
+            self.sklep.kontrolka, self.e_link, self.e_not,
         ], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
         k4 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
 
@@ -966,7 +1019,19 @@ class FormularzCzesciView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_nazwa.value, self.e_kat.value, self.e_ilosc.value, self.e_jedn.value,
-                self.e_prog.value, self.e_cena.value, self.e_cena_jedn.value, self.e_data.value, self.e_not.value)
+                self.e_prog.value, self.e_cena.value, self.e_cena_jedn.value, self.e_data.value, self.e_not.value,
+                self.e_sklep.value, self.e_link.value)
+
+    def _pokaz_poprzednie_ceny(self, odswiez=False):
+        """Linijka pod nazwą: ostatnia cena tej części (i najtańsza, jeśli była
+        niższa) — przy nowej pozycji wszystkie dotychczasowe zakupy tej nazwy,
+        przy edycji te sprzed bieżącego zakupu pozycji."""
+        punkty = db.historia_cen_czesci(self.state.auto_id, self.e_nazwa.value, self._historia_cen)
+        tekst = utils.podpowiedz_ceny(punkty, self.czesc_id)
+        self.t_poprzednio.value = tekst
+        self.t_poprzednio.visible = bool(tekst)
+        if odswiez:
+            self._odswiez()
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -1008,7 +1073,7 @@ class FormularzCzesciView(ft.View):
             log.polkniety("odświeżenie formularza pozycji magazynu")
 
     def zapisz(self, e):
-        for pole in (self.e_nazwa, self.e_ilosc, self.e_cena, self.e_cena_jedn, self.e_prog):
+        for pole in (self.e_nazwa, self.e_ilosc, self.e_cena, self.e_cena_jedn, self.e_prog, self.e_link):
             utils.ustaw_blad(pole)
 
         # Wpisanie innego wariantu zapisu ("filtr Oleju ") nie zakłada nowej
@@ -1045,24 +1110,51 @@ class FormularzCzesciView(ft.View):
         if prog < 0:
             bledy.append((self.e_prog, "Próg nie może być ujemny"))
 
+        blad_linku = db.blad_linku(self.e_link.value)
+        if blad_linku:
+            bledy.append((self.e_link, blad_linku))
+
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
+
+        # „inter cars” zapisuje się jako istniejące „Inter Cars” — jak stacje paliw.
+        sklep = db.dopasuj_sklep(self.state.auto_id, self.e_sklep.value)
+        link = db.normalizuj_link(self.e_link.value)
 
         przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
         nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
 
         with db.polacz_baze() as conn:
+            # Pozycja sprzed zapisu — z bazy, nie z chwili otwarcia formularza:
+            # druga osoba mogła ją w międzyczasie zmienić (historia cen porównuje
+            # datę zakupu przed i po).
+            przed = None
             if self.czesc_id:
+                kolumny = ("id", "nazwa", "ilosc", "jednostka", "cena_jednostkowa", "data_zakupu", "sklep")
+                wiersz = conn.execute(
+                    f"SELECT {', '.join(kolumny)} FROM magazyn_czesci WHERE id=?", (self.czesc_id,)
+                ).fetchone()
+                przed = dict(zip(kolumny, wiersz)) if wiersz else None
                 conn.execute(
-                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, ilosc=?, jednostka=?, cena=?, cena_jednostkowa=?, data_zakupu=?, notatki=?, zalacznik=?, prog_ostrzezenia=? WHERE id=?",
-                    (nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog, self.czesc_id)
+                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, ilosc=?, jednostka=?, cena=?, cena_jednostkowa=?, data_zakupu=?, notatki=?, zalacznik=?, prog_ostrzezenia=?, "
+                    "sklep=?, link=? WHERE id=?",
+                    (nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog,
+                     sklep, link, self.czesc_id)
                 )
+                czesc_id = self.czesc_id
             else:
-                conn.execute(
-                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu, notatki, zalacznik, prog_ostrzezenia) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog)
+                kursor = conn.execute(
+                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu, notatki, zalacznik, prog_ostrzezenia, sklep, link) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog,
+                     sklep, link)
                 )
+                czesc_id = kursor.lastrowid
+            # Historia cen (M-15): nowa data zakupu = nowy zakup, ta sama = poprawka.
+            db.zanotuj_zakup_czesci(conn, self.state.auto_id, przed, {
+                "id": czesc_id, "nazwa": nazwa, "ilosc": ilosc, "jednostka": self.e_jedn.value,
+                "cena_jednostkowa": cena_jedn, "data_zakupu": self.e_data.value, "sklep": sklep,
+            })
 
         db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 

@@ -729,7 +729,9 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         # pozostałe. W CSV, gdzie szerokość nie ogranicza niczego, notatki są.
         # Wizyty nazywają tę kolumnę „Notatki” — dopóki miały siedem kolumn,
         # przeciskała się niezauważona; przy robociźnie i częściach już nie.
-        for kolumna_notatek in ("Notatka", "Notatki"):
+        # Link do produktu w magazynie (M-15) — z tego samego powodu: ucięty
+        # adres nikogo nigdzie nie zaprowadzi, a na papierze i tak nie kliknie.
+        for kolumna_notatek in ("Notatka", "Notatki", "Link"):
             if kolumna_notatek in naglowki:
                 i_not = naglowki.index(kolumna_notatek)
                 naglowki = [h for j, h in enumerate(naglowki) if j != i_not]

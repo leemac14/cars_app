@@ -295,7 +295,7 @@ TABELE_Z_ZALACZNIKIEM = {"tankowania", "wizyty", "inne_koszty", "zdjecia_karoser
 TABELE_Z_DATA_ISO = (
     "tankowania", "inne_koszty", "wizyty", "historia",
     "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
-    "szkice_wpisow",
+    "szkice_wpisow", "ceny_czesci",
 )
 
 

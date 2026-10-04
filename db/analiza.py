@@ -13,6 +13,7 @@ from .daty import warunek_zakresu_dat
 from .ustawienia import pobierz_okno_kroczace, pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
 from .synchronizacja import zarejestruj_nagrobek
+from .ceny_czesci import odstep_zakupow, podwyzki_cen_czesci, tekst_ceny_zakupu
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu
 from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_rozbicie_napraw, pobierz_trend_cen_paliwa, porownaj_czesci_wlasne
@@ -1755,6 +1756,24 @@ def obserwacje_analityczne(auto_id, limit=None):
                 40, f"/historia/{p['zadanie_id']}",
             ))
         break
+
+    # 11. Części drożeją — historia cen magazynu (M-15). Jedna obserwacja:
+    #     część z największą podwyżką od pierwszego zapisanego zakupu, a dwie
+    #     następne ponad próg jednym dopiskiem. Liczy się cena za jednostkę
+    #     w tej samej jednostce; część, której w magazynie już nie ma, milczy.
+    podwyzki = podwyzki_cen_czesci(auto_id)
+    if podwyzki:
+        waluta = pobierz_walute()
+        p = podwyzki[0]
+        tekst = (f"„{p['nazwa']}”: ostatnio {tekst_ceny_zakupu(p['do'], waluta)} — "
+                 f"o {formatuj_liczba_eksport(p['proc'], 0)}% więcej niż przy zakupie {p['od']['data']} "
+                 f"({tekst_ceny_zakupu(p['od'], waluta)}), {odstep_zakupow(p['od'], p['do'], dzis)}.")
+        if len(podwyzki) > 1:
+            tekst += " Podrożały też: " + ", ".join(
+                f"„{q['nazwa']}” (+{formatuj_liczba_eksport(q['proc'], 0)}%)" for q in podwyzki[1:3]) + "."
+        obserwacje.append(_obserwacja(
+            "czesci_drozeja", "neutralny", "czesci", "Części drożeją", tekst, 35, "/magazyn",
+        ))
 
     obserwacje.sort(key=lambda o: -o["waga"])
     return obserwacje[:limit] if limit else obserwacje

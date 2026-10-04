@@ -127,6 +127,7 @@ _SKROTY_MIESIECY = {"sty", "lut", "mar", "kwi", "cze", "lip", "sie", "wrz", "paz
 # „rozmiar:225” bez obsługi zostaje zwykłym tekstem zamiast szukać pustki.
 POLA_WYSZUKIWANIA = {
     "stacja": "stacja", "stacje": "stacja", "stacji": "stacja",
+    "sklep": "sklep", "sklepy": "sklep", "sklepu": "sklep",
     "tag": "tag", "tagi": "tag", "tagu": "tag",
     "kategoria": "kategoria", "kategorie": "kategoria", "kategorii": "kategoria", "kat": "kategoria",
     "warsztat": "warsztat", "warsztaty": "warsztat", "wykonawca": "warsztat", "mechanik": "warsztat",
@@ -699,15 +700,18 @@ def _wszystkie_wpisy(auto_id):
                                skrot_notatki(r["notatka"]), r["data"], "/przebieg",
                                notatka=r["notatka"], nazwa=""))
 
-        c.execute("SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki "
+        c.execute("SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, sklep "
                   "FROM magazyn_czesci WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             opis = f"{formatuj_liczba_eksport(r['ilosc'], 2)} {r['jednostka'] or 'szt'}"
             if r["kategoria"]:
                 opis += f" • {r['kategoria']}"
+            if r["sklep"]:
+                opis += f" • {r['sklep']}"
+            # Sklep jest polem (`sklep:inter cars`) i trafia do szukania tekstowego.
             wpisy.append(_wpis("Magazyn", r["nazwa"], opis, r["data_zakupu"], "/magazyn",
                                kwota=r["cena"], kategoria=r["kategoria"],
-                               jednostka=r["jednostka"], notatka=r["notatki"]))
+                               jednostka=r["jednostka"], notatka=r["notatki"], sklep=r["sklep"]))
 
         c.execute("SELECT id, sezon, rozmiar, marka_model, numer_dot, cena, data_zakupu, notatki "
                   "FROM zestawy_opon WHERE auto_id=?", (auto_id,))

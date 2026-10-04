@@ -165,10 +165,19 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                    plik(f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "10.01.2028", 130000, "wiz-1"))
         zid["wizyta"] = c.lastrowid
 
-        c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, zalacznik, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, zalacznik, "
+                  "sklep, link, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                   (auto, "Filtr oleju", "Filtry", 2.0, "szt", 39.0, 19.5,
-                   plik(f"{nazwa}_czesc.jpg", b"CZESC") if z_zalacznikami else None, "mag-1"))
+                   plik(f"{nazwa}_czesc.jpg", b"CZESC") if z_zalacznikami else None,
+                   "Inter Cars", "https://example.com/filtr-oleju", "mag-1"))
         zid["magazyn"] = c.lastrowid
+
+        # Wcześniejszy zakup tej samej części — historia cen ma z czym porównać
+        # bieżącą cenę pozycji (19,50 zł teraz, 15,00 zł rok wcześniej).
+        c.execute("INSERT INTO ceny_czesci (auto_id, nazwa, data, data_iso, cena_jednostkowa, jednostka, ilosc, sklep, zdalne_id) "
+                  "VALUES (?,?,?,?,?,?,?,?,?)",
+                  (auto, "Filtr oleju", "12.01.2025", "2025-01-12", 15.0, "szt", 2.0, "Allegro", "cena-1"))
+        zid["cena_czesci"] = c.lastrowid
 
         c.execute("INSERT INTO tagi (auto_id, nazwa, kolor, zdalne_id) VALUES (?,?,?,?)", (auto, "Trasa", "#FF0000", "tag-1"))
         zid["tag"] = c.lastrowid

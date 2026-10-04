@@ -1,7 +1,7 @@
 """Adres projektu Supabase, mapa tabel i etykiety — bez ani jednej instrukcji.
 
 Ten moduł jest na samym dole pakietu, bo `KONFIGURACJA_SYNC` jest jedynym
-opisem tego, CO w ogóle jedzie do chmury: dwadzieścia tabel, ich klucze
+opisem tego, CO w ogóle jedzie do chmury: dwadzieścia jeden tabel, ich klucze
 i kolumny. Dołożenie tabeli do synchronizacji to wpis tutaj, a nie łatka
 w pięciu miejscach — i dlatego `tests/test_schemat.py` porównuje ten słownik
 wprost z `PRAGMA table_info`.
@@ -84,7 +84,14 @@ KONFIGURACJA_SYNC = [
     # Koszt zużycia jedzie razem z ilością: to on mówi drugiej osobie, ile
     # z kosztu wizyty przyszło z magazynu — bez niego jej edycja tej wizyty
     # doliczyłaby części drugi raz.
-    {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "cena_jednostkowa", "data_zakupu", "notatki", "prog_ostrzezenia"], "fk": {}},
+    # Sklep i link do produktu (wersja 48) dołożone, kiedy pozycje magazynu
+    # leżały już w chmurze — stąd `dopisane`.
+    {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "cena_jednostkowa", "data_zakupu", "notatki", "prog_ostrzezenia", "sklep", "link"], "fk": {},
+     "dopisane": ["sklep", "link"]},
+    # Historia cen części jest cechą AUTA: filtr kupiony przez drugą osobę
+    # podnosi albo obniża tę samą krzywą. Bez klucza obcego do pozycji —
+    # zakup ma przeżyć zużytą i usuniętą pozycję; łączy je nazwa (klucz_nazwy).
+    {"tabela": "ceny_czesci", "kolumny": ["nazwa", "data", "cena_jednostkowa", "jednostka", "ilosc", "sklep"], "fk": {}},
     {"tabela": "wizyta_czesci_magazynu", "kolumny": ["ilosc_uzyta", "koszt"], "fk": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "historia_czesci_magazynu", "kolumny": ["ilosc_uzyta", "koszt"], "fk": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
@@ -158,6 +165,7 @@ ETYKIETY_TABEL_SYNC = {
     "wizyty": "Wizyta w warsztacie",
     "zadania": "Podzespół",
     "magazyn_czesci": "Pozycja magazynu",
+    "ceny_czesci": "Cena części",
     "wizyta_czesci_magazynu": "Zużycie części",
     "historia_czesci_magazynu": "Zużycie części przy wpisie",
     "zestawy_opon": "Zestaw opon",

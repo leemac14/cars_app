@@ -1,5 +1,5 @@
 """Drobne funkcje pomocnicze, zależne tylko od stałych — parsowanie i formatowanie
-liczb oraz zdanie o notatce „najlepsza oferta OC/AC”."""
+liczb, klucz porównawczy nazw oraz zdanie o notatce „najlepsza oferta OC/AC”."""
 
 import math
 import re
@@ -20,6 +20,26 @@ def bez_emoji(tekst):
     """Nazwa oczyszczona z emoji i nadmiarowych spacji — do PORÓWNYWANIA nazw,
     nigdy do zapisu (nie przepisujemy użytkownikowi jego własnych wpisów)."""
     return re.sub(r"\s+", " ", _WZORZEC_EMOJI.sub("", str(tekst or ""))).strip()
+
+
+# Ten sam mechanizm, co klucz_stacji dla stacji paliw, tylko zastosowany szerzej:
+# „Filtr oleju”, „filtr Oleju” i „filtr oleju ” to jedna nazwa, a nie trzy
+# osobne pozycje w magazynie, w tagach, wśród warsztatów i podzespołów.
+# Klucz służy WYŁĄCZNIE do porównywania — w bazie zostaje pisownia użytkownika.
+# Mieszka tutaj, a nie w `nazwy` (scalanie duplikatów), bo grupuje też historię
+# cen części, którą czyta analiza — a ta ładuje się przed `nazwy`.
+def klucz_nazwy(tekst):
+    """Klucz porównawczy nazwy: bez emoji, bez wielkości liter, ze scalonymi
+    białymi znakami i bez interpunkcji na brzegach."""
+    czysty = bez_emoji(tekst)
+    return " ".join(czysty.split()).lower().strip(" .,;:-_/")
+
+
+def normalizuj_nazwe(tekst):
+    """Pisownia gotowa do ZAPISU: scalone spacje i obcięte brzegi. Nie zmienia
+    wielkości liter ani treści — użytkownik ma prawo do swojej pisowni, chodzi
+    tylko o to, żeby „filtr oleju ” i „filtr  oleju” nie były różnymi wpisami."""
+    return " ".join(str(tekst or "").split()).strip()
 
 
 def _liczba_lub_none(tekst):
@@ -208,8 +228,10 @@ __all__ = [
     "bez_emoji",
     "formatuj_liczba_eksport",
     "formatuj_rozmiar",
+    "klucz_nazwy",
     "liczba_na_tekst",
     "liczba_z_odmiana",
+    "normalizuj_nazwe",
     "odmien",
     "oferta_w_jednej_linii",
     "opis_terminu_dni",

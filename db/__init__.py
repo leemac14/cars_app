@@ -25,6 +25,7 @@ from .notatki import *
 from .zalaczniki import *
 from .szkice import *
 from .kopie import *
+from .ceny_czesci import *
 from .magazyn import *
 from .checklisty import *
 from .przebieg import *
@@ -67,6 +68,7 @@ from . import (
     zalaczniki,
     szkice,
     kopie,
+    ceny_czesci,
     magazyn,
     checklisty,
     przebieg,

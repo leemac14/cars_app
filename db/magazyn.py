@@ -12,6 +12,7 @@ from .stale import MIESIACE_ZIMOWE, PROG_ILOSC_MAGAZYNU_DOMYSLNY, SEZONY_PRZELAC
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
+from .ceny_czesci import zachowaj_zakup_pozycji
 from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
 
 
@@ -394,6 +395,10 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
             sciezka_tymczasowa = None
 
     with polacz_baze() as conn:
+        # Historia cen przeżywa pozycję: jej ostatni zakup zostaje w dzienniku
+        # (db/ceny_czesci.py). Cofnięcie przywraca pozycję, a ta znowu przykrywa
+        # ten sam zakup jako cenę bieżącą — bez drugiego punktu na krzywej.
+        zachowaj_zakup_pozycji(conn, dane_czesc.get("auto_id"), dane_czesc)
         conn.execute("DELETE FROM magazyn_czesci WHERE id=?", (czesc_id,))
 
     zdalny_id_czesci = dane_czesc.get("zdalne_id")

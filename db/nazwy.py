@@ -3,8 +3,9 @@
 from typing import Any
 
 from .polaczenie import polacz_baze
-from .pomocnicze import bez_emoji
+from .pomocnicze import klucz_nazwy, normalizuj_nazwe
 from .synchronizacja import zarejestruj_nagrobek
+from .ceny_czesci import zachowaj_zakup_pozycji
 from .magazyn import srednia_cena_jednostkowa
 from .przebieg import przelicz_wszystkie_zadania
 
@@ -12,27 +13,10 @@ from .przebieg import przelicz_wszystkie_zadania
 # ============================================================================
 #  NORMALIZACJA NAZW
 # ============================================================================
-# Ten sam mechanizm, co klucz_stacji dla stacji paliw, tylko zastosowany szerzej:
-# „Filtr oleju”, „filtr Oleju” i „filtr oleju ” to jedna nazwa, a nie trzy
-# osobne pozycje w magazynie, w tagach, wśród warsztatów i podzespołów.
-# Klucz służy WYŁĄCZNIE do porównywania — w bazie zostaje pisownia użytkownika.
-
-# Nazwy porównujemy po zdjęciu emoji: podzespoły założone starszymi wersjami
-# aplikacji mają je w nazwie („🛢️ Olej silnikowy i filtr”), a te same wpisy
-# dodane dziś już nie.
-def klucz_nazwy(tekst):
-    """Klucz porównawczy nazwy: bez emoji, bez wielkości liter, ze scalonymi
-    białymi znakami i bez interpunkcji na brzegach."""
-    czysty = bez_emoji(tekst)
-    return " ".join(czysty.split()).lower().strip(" .,;:-_/")
-
-
-def normalizuj_nazwe(tekst):
-    """Pisownia gotowa do ZAPISU: scalone spacje i obcięte brzegi. Nie zmienia
-    wielkości liter ani treści — użytkownik ma prawo do swojej pisowni, chodzi
-    tylko o to, żeby „filtr oleju ” i „filtr  oleju” nie były różnymi wpisami."""
-    return " ".join(str(tekst or "").split()).strip()
-
+# Klucz porównawczy (`klucz_nazwy`) i pisownia do zapisu (`normalizuj_nazwe`)
+# mieszkają w `pomocnicze` — tu jest to, co z nich korzysta: dopasowanie
+# wpisanej nazwy do istniejącej i scalanie duplikatów. Klucz służy WYŁĄCZNIE
+# do porównywania — w bazie zostaje pisownia użytkownika.
 
 # Gdzie normalizacja obowiązuje: tabela -> (kolumna z nazwą, etykieta dla UI).
 # Kolejność steruje kolejnością sekcji w narzędziu scalania duplikatów.
@@ -165,6 +149,22 @@ def scal_duplikaty_nazw(auto_id, tabela, id_docelowy, ids_zrodlowe):
         zdalne_do_nagrobka = [r[2] for r in znikajace if r[2]]
 
         if tabela == "magazyn_czesci":
+            # Historia cen przeżywa scalenie: zakup każdej zsypanej pozycji — i ten,
+            # którego cenę pozycja docelowa zaraz zamieni na średnią — zostaje
+            # w dzienniku zakupów (db/ceny_czesci.py). Sklep i link docelowa
+            # przejmuje od duplikatu tylko wtedy, gdy sama ich nie ma.
+            c.execute(f"SELECT * FROM magazyn_czesci WHERE id=? OR id IN ({placeholders}) ORDER BY id<>?",
+                      (id_docelowy, *ids_zrodlowe, id_docelowy))
+            kolumny = [opis[0] for opis in c.description]
+            scalane = [dict(zip(kolumny, wiersz)) for wiersz in c.fetchall()]
+            for pozycja in scalane:
+                zachowaj_zakup_pozycji(conn, auto_id, pozycja)
+            for pole in ("sklep", "link"):
+                if not str(scalane[0].get(pole) or "").strip():
+                    zastepca = next((p[pole] for p in scalane[1:] if str(p.get(pole) or "").strip()), None)
+                    if zastepca:
+                        c.execute(f"UPDATE magazyn_czesci SET {pole}=? WHERE id=?", (zastepca, id_docelowy))
+
             # Cena za jednostkę idzie za sztukami: zsypane pozycje dostają średnią
             # ważoną stanem. Bez tego wartość magazynu i koszt kolejnego zużycia
             # liczyłyby się po cenie tej pisowni, która akurat wygrała scalanie.
@@ -269,8 +269,6 @@ __all__ = [
     "PRZEPIECIA_PRZY_SCALANIU",
     "TABELE_Z_TAGAMI",
     "dopasuj_istniejaca_nazwe",
-    "klucz_nazwy",
-    "normalizuj_nazwe",
     "przepisz_tag_we_wpisach",
     "scal_duplikaty_nazw",
     "znajdz_duplikaty_nazw",

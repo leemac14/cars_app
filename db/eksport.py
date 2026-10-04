@@ -178,11 +178,11 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
 
         if "magazyn_czesci" in kategorie:
             c.execute(
-                "SELECT nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu "
+                "SELECT nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu, sklep, link "
                 "FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa", (auto_id,)
             )
             wiersze = []
-            for nazwa, kat, ilosc, jedn, cena, cena_jedn, dz in c.fetchall():
+            for nazwa, kat, ilosc, jedn, cena, cena_jedn, dz, sklep, link in c.fetchall():
                 # Dwie ceny, bo znaczą co innego: koszt zakupu to paragon, cena za
                 # jednostkę — to, co dolicza się do serwisu przy zużyciu. Groszowe
                 # ceny (mililitr, gram) z czterema miejscami, inaczej znikają.
@@ -191,10 +191,11 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
                 wiersze.append([
                     nazwa, kat or "", formatuj_liczba_eksport(ilosc, 2), jedn or "szt",
                     formatuj_liczba_eksport(cena), formatuj_liczba_eksport(cena_jedn, miejsca),
-                    formatuj_liczba_eksport(wartosc), dz or "",
+                    formatuj_liczba_eksport(wartosc), dz or "", sklep or "", link or "",
                 ])
             wynik["magazyn_czesci"] = (
-                ["Nazwa", "Kategoria", "Ilość", "Jednostka", "Koszt zakupu", "Cena za jednostkę", "Wartość na stanie", "Data zakupu"],
+                ["Nazwa", "Kategoria", "Ilość", "Jednostka", "Koszt zakupu", "Cena za jednostkę", "Wartość na stanie", "Data zakupu",
+                 "Sklep", "Link"],
                 wiersze,
             )
 
