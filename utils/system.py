@@ -1,4 +1,4 @@
-"""Wyjście poza aplikację: schowek, dzwonienie i mapy."""
+"""Wyjście poza aplikację: schowek, dzwonienie, mapy i strony w przeglądarce."""
 
 import flet as ft
 import inspect
@@ -104,9 +104,32 @@ def pokaz_na_mapie(page: ft.Page, adres):
         kopiuj_do_schowka(page, adres, "Adres skopiowany do schowka")
 
 
+def otworz_strone(page: ft.Page, adres):
+    """Strona w przeglądarce jako OSOBNEJ aplikacji. Domyślny tryb otwiera ją
+    na Androidzie w karcie nad aplikacją — a z takiej karty nie da się wrócić
+    tutaj po kolejną rzecz do skopiowania bez zamknięcia jej razem z tym, co
+    już wpisano w formularz. Między osobnymi aplikacjami przełącza się tam
+    i z powrotem bez strat. Gdy przeglądarka się nie otworzy, adres ląduje
+    w schowku."""
+    if not adres:
+        return
+
+    async def _zadanie():
+        try:
+            await ft.UrlLauncher().launch_url(adres, mode=ft.LaunchMode.EXTERNAL_APPLICATION)
+        except Exception:
+            kopiuj_do_schowka(page, adres, "Nie udało się otworzyć przeglądarki — adres w schowku")
+
+    try:
+        page.run_task(_zadanie)
+    except Exception:
+        kopiuj_do_schowka(page, adres, "Adres skopiowany do schowka")
+
+
 __all__ = [
     "kopiuj_do_schowka",
     "link_mapy",
+    "otworz_strone",
     "pokaz_na_mapie",
     "zadzwon",
 ]

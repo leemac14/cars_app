@@ -90,6 +90,7 @@ WYWOLANIA = {
     "pobierz_uzyte_czesci_wpisu": lambda k: (k["id"]["historia"],),
     "pobierz_warsztaty": lambda k: (k["id"]["auto_id"],),
     "pobierz_wydatki_cykliczne": lambda k: (k["id"]["auto_id"],),
+    "pola_historii_pojazdu": lambda k: (db.pobierz_dane_pojazdu(k["id"]["auto_id"]),),
     "porownaj_czesci_wlasne": lambda k: (k["id"]["auto_id"],),
     "porzadki_startowe": lambda k: (),
     "przelicz_zuzycie": lambda k: (7.5,),

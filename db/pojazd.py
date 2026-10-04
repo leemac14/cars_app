@@ -260,6 +260,33 @@ def oferta_oc_ac_pojazdu(dane) -> dict[str, Any] | None:
     }
 
 
+# Rządowa „Historia Pojazdu” (dane z CEPiK) znajduje auto po trzech danych
+# z dowodu rejestracyjnego. Wartości nie da się jej podać w adresie, więc
+# aplikacja podsuwa je do schowka po kolei — w kolejności pól formularza.
+ADRES_HISTORII_POJAZDU = "https://historiapojazdu.gov.pl/"
+
+
+def pola_historii_pojazdu(dane) -> list[dict[str, str]]:
+    """Trzy dane, o które prosi Historia Pojazdu, w kolejności jej formularza:
+    numer rejestracyjny, VIN, data pierwszej rejestracji (`klucz`, `etykieta`,
+    `wartosc`). Każda w postaci do wklejenia bez poprawek: numer i VIN bez
+    odstępów, wielkimi literami — przerwa na tablicy oddziela tylko wyróżnik
+    powiatu, a wklejony odstęp łatwo przeoczyć w polu formularza; data jako
+    DD.MM.RRRR, jak w polu B dowodu. Data, której nie da się odczytać, zostaje
+    tak, jak ją wpisano. Brak danej to pusty napis."""
+    dane = dane or {}
+    surowa_data = str(dane.get("data_pierwszej_rejestracji") or "").strip()
+    data = parsuj_date(surowa_data)
+    return [
+        {"klucz": "nr_rej", "etykieta": "Numer rejestracyjny",
+         "wartosc": "".join(str(dane.get("nr_rej") or "").split()).upper()},
+        {"klucz": "vin", "etykieta": "VIN",
+         "wartosc": "".join(str(dane.get("vin") or "").split()).upper()},
+        {"klucz": "data_pierwszej_rejestracji", "etykieta": "Data pierwszej rejestracji",
+         "wartosc": data.strftime("%d.%m.%Y") if data != date_cls.min else surowa_data},
+    ]
+
+
 def pobierz_metryki_pojazdu(auto_id, dane=None):
     """Liczby opisujące pojazd jako całość: wiek, tempo jazdy, koszt posiadania.
 
@@ -475,6 +502,7 @@ def pobierz_dane_do_porownania(auto_id):
 
 
 __all__ = [
+    "ADRES_HISTORII_POJAZDU",
     "NORMA_PRZEBIEGU_ROCZNEGO",
     "TERMINY_POJAZDU",
     "WARUNEK_AKTYWNE",
@@ -487,6 +515,7 @@ __all__ = [
     "pobierz_metryki_pojazdu",
     "pobierz_pojazdy",
     "pobierz_sprzedane_pojazdy",
+    "pola_historii_pojazdu",
     "przywroc_pojazd_do_garazu",
     "terminy_pojazdu",
     "ustal_oferte_oc_ac",
