@@ -17,6 +17,7 @@ from .synchronizacja import (
     ROLA_PODGLAD, ROLA_WSPOLAUTOR, czy_moge_zmieniac_wpis, rola_pojazdu, zarejestruj_nagrobek,
 )
 from .magazyn import przelacz_zestaw_sezonowy
+from .raty import czy_rata, zaplac_rate
 from .nazwy import klucz_nazwy, normalizuj_nazwe
 
 
@@ -227,7 +228,9 @@ def pobierz_wydatki_cykliczne(auto_id) -> list[tuple[int, str, float, int, str, 
             (auto_id,)
         )
         wpisy = [(w[0], w[1], w[2], w[3], w[4], w[5], _poprawny_typ(w[6])) for w in c.fetchall()]
-    wpisy.sort(key=lambda w: parsuj_date(w[4]))
+    # Spłacona umowa raty nie ma już terminu (db/raty.py) — stoi na końcu,
+    # a nie na samej górze jako „najdawniejsza”.
+    wpisy.sort(key=lambda w: (not w[4], parsuj_date(w[4])))
     return wpisy
 
 
@@ -281,6 +284,9 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
     Brak drugiego kompletu nie blokuje odhaczenia — termin i tak się przesuwa,
     a wołający dostaje w wyniku powód, żeby móc o tym powiedzieć.
 
+    Rata leasingu albo kredytu nie przesuwa terminu o okres: płaci KOLEJNĄ
+    pozycję swojego harmonogramu i po wykupie się kończy (db.zaplac_rate).
+
     Zwraca słownik opisujący, co się stało (typ wpisu, czy powstał koszt, wynik
     zmiany opon) — interfejs buduje z tego komunikat."""
     with polacz_baze() as conn:
@@ -291,6 +297,11 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
             return None
         nazwa, kwota, okres_dni, czy_koszt, typ = w
         typ = _poprawny_typ(typ)
+        if czy_rata(typ):
+            # Rata leasingu i kredytu ma harmonogram: płaci się KOLEJNĄ ratę
+            # z umowy (jej kwotą i w jej terminie), a po wykupie wpis się kończy,
+            # zamiast przesuwać termin o okres od dzisiaj (db/raty.py).
+            return zaplac_rate(conn, wydatek_id, auto_id)
         dzis = datetime.now()
         if czy_koszt:
             kategoria = "Cykliczne" if typ == TYP_CYKLICZNY_WYDATEK else KATEGORIA_INNE_DOMYSLNA

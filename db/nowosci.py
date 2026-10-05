@@ -48,6 +48,13 @@ from .ustawienia import (
 # wydanie ma 47). Nowym wydaniom niepotrzebny: każdy telefon, który ich
 # doczeka, ma już zapamiętaną wersję.
 NOWOSCI = [
+    {"wersja": "2026.10.5.3", "pozycje": [
+        {"tytul": "Leasing i kredyt", "ikona": "ACCOUNT_BALANCE", "ekran": "raty",
+         "opis": "Rata ma teraz koniec i sumę: ile zostało do spłaty, kiedy ostatnia rata, wykup oraz "
+                 "odsetki zapłacone i do zapłaty — z pełnym harmonogramem. Ratę z wydatków cyklicznych "
+                 "przestawisz opcją „Przestaw na raty”, a „do spłaty” widać też na kokpicie, na Karcie "
+                 "pojazdu, w „Ile zostało do…” i w porównaniu aut."},
+    ]},
     {"wersja": "2026.10.5.2", "pozycje": [
         {"tytul": "Zaproszenie kodem QR", "ikona": "QR_CODE_2", "ekran": "wspoldzielenie",
          "opis": "Przy każdym kodzie zaproszenia jest teraz ikona QR: drugi telefon skanuje go aparatem "

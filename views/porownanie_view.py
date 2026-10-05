@@ -649,10 +649,33 @@ class PorownanieView(ft.View):
                                   ikona=utils.IKONY_KATEGORII_KOSZTOW["serwis"]),
             self._wiersz_tekstowy("Inne", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_inne'], 0)} {utils.symbol_waluty()}",
                                   ikona=utils.IKONY_KATEGORII_KOSZTOW["inne"]),
-        ], spacing=10)
+        ] + self._wiersze_rat(dane_aut), spacing=10)
         
         return utils.karta_formularza([pasek_calkowity, ft.Divider(height=15), pasek_km, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
     
+    def _wiersze_rat(self, dane_aut):
+        """Leasing i kredyt obok kosztów: przeszłość mówi, ile auto kosztowało,
+        a „do spłaty” — ile jeszcze trzeba oddać, zanim da się je zmienić bez
+        długu. Wiersze tylko wtedy, gdy któreś z aut ma trwającą umowę."""
+        if not any(d.get("do_splaty") is not None for d in dane_aut):
+            return []
+        waluta = utils.symbol_waluty()
+
+        def kwota(klucz):
+            def wartosc(d):
+                if d.get("do_splaty") is None:
+                    return "brak umowy"
+                return f"{utils.formatuj_liczba(d[klucz], 0)} {waluta}" if d.get(klucz) is not None else None
+            return wartosc
+
+        return [
+            self._wiersz_tekstowy("Do spłaty", dane_aut, kwota("do_splaty"), ikona=ft.Icons.ACCOUNT_BALANCE),
+            self._wiersz_tekstowy("Odsetki do zapłaty", dane_aut, kwota("odsetki_do_zaplaty"),
+                                  pobierz_kolor=lambda d: (utils.KOLOR_STATUS["cost"] if d.get("odsetki_do_zaplaty")
+                                                           else ft.Colors.ON_SURFACE),
+                                  ikona=ft.Icons.PERCENT),
+        ]
+
     def _sekcja_spalanie(self, dane_aut):
         wartosci = [d["spalanie"] for d in dane_aut if d.get("spalanie")]
         maks = max(wartosci) if wartosci else 0

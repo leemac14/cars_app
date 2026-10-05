@@ -217,7 +217,36 @@ TYP_CYKLICZNY_WYDATEK = "wydatek"
 
 TYP_CYKLICZNY_OPONY = "opony"
 
-TYPY_CYKLICZNE = [TYP_CYKLICZNY_WYDATEK, TYP_CYKLICZNY_OPONY]
+# Rata leasingu albo kredytu (M-22). Do tej pory była zwykłym wydatkiem
+# cyklicznym — bez końca i bez sumy, więc na pytanie „ile jeszcze zostało do
+# spłaty” nie było odpowiedzi. Wpis tego rodzaju niesie UMOWĘ (liczba rat,
+# pierwsza rata, wykup, kwota finansowania — kolumny z migracji 49), a jego
+# „Zapłacone” płaci KOLEJNĄ ratę z harmonogramu i po ostatniej kończy wpis
+# (db/raty.py). Starsza wersja aplikacji nie zna tych rodzajów i traktuje je
+# jak zwykły wydatek (rejestry._poprawny_typ).
+TYP_CYKLICZNY_LEASING = "leasing"
+
+TYP_CYKLICZNY_KREDYT = "kredyt"
+
+TYPY_RAT = (TYP_CYKLICZNY_LEASING, TYP_CYKLICZNY_KREDYT)
+
+# Nowe rodzaje NA KOŃCU — zasiew próbek baz (tests/probki_baz.py) bierze
+# wartości od początku listy, więc odciski starszych migracji się nie zmieniają.
+TYPY_CYKLICZNE = [TYP_CYKLICZNY_WYDATEK, TYP_CYKLICZNY_OPONY, TYP_CYKLICZNY_LEASING, TYP_CYKLICZNY_KREDYT]
+
+# Raty równe (annuitetowe) to leasing i większość kredytów samochodowych:
+# ta sama kwota co miesiąc, a w niej coraz mniej odsetek. Raty malejące mają
+# stałą część kapitałową i odsetki od salda, więc rata spada co miesiąc —
+# tylko przy kredycie i tylko z oprocentowaniem, bo bez niego nie ma z czego
+# policzyć kolejnych kwot.
+RATY_ROWNE = "rowne"
+
+RATY_MALEJACE = "malejace"
+
+RODZAJE_RAT = (RATY_ROWNE, RATY_MALEJACE)
+
+# 50 lat to już nie umowa na samochód, tylko literówka w liczbie rat.
+MAKS_LICZBA_RAT = 600
 
 
 # Sezonowa zmiana opon wypada dwa razy w roku.
@@ -451,9 +480,16 @@ __all__ = [
     "TYPY_PALIWA_DWUZRODLOWE",
     "TYPY_PALIWA_ELEKTRYCZNE",
     "TYPY_CYKLICZNE",
+    "TYPY_RAT",
     "TYPY_ZDJECIA",
+    "TYP_CYKLICZNY_KREDYT",
+    "TYP_CYKLICZNY_LEASING",
     "TYP_CYKLICZNY_OPONY",
     "TYP_CYKLICZNY_WYDATEK",
+    "MAKS_LICZBA_RAT",
+    "RATY_MALEJACE",
+    "RATY_ROWNE",
+    "RODZAJE_RAT",
     "WALUTY",
     "ZRODLA_ODCZYTU",
     "ZRODLA_PRZEBIEGU",

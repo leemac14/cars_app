@@ -358,6 +358,8 @@ ARGUMENTY_IDENTYFIKATOROW = {
     "czesc_id": "magazyn",
     "wpis_id": "karoseria",
     "pozycja_id": "do_zrobienia",
+    # Formularz umowy raty na zwykłym wydatku cyklicznym — przestawienie na raty.
+    "wydatek_id": "cykliczny",
 }
 
 _KLASY_WIDOKOW = None
@@ -591,5 +593,17 @@ def dosyp_dane(auto_id, dni_wstecz=200):
         c.execute("INSERT INTO zestawy_opon (auto_id, sezon, rozmiar, ilosc, zamontowane, os_montazu) "
                   "VALUES (?,?,?,?,?,?)",
                   (auto_id, "Letnie", "205/55 R16", 4, 0, "Wszystkie"))
+
+        # Leasing z harmonogramem (M-22): ekran „Leasing i kredyt”, kafelek „Do
+        # spłaty”, „Ile zostało do…” i Karta pojazdu mają co rysować. Pięć rat
+        # zapłaconych, następna za dwa tygodnie — poza progiem przypomnienia,
+        # więc dzwonek i kafel „Termin” zostają, jakie były.
+        pierwsza = db.dodaj_miesiace(dzis, -5) + timedelta(days=15)
+        c.execute("INSERT INTO wydatki_cykliczne (auto_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ, "
+                  "liczba_rat, zaplacone_platnosci, data_pierwszej_raty, kwota_finansowania, oplata_wstepna, "
+                  "wykup, rodzaj_rat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (auto_id, "Leasing", 1900.0, 30, db.dodaj_miesiace(pierwsza, 5).strftime("%d.%m.%Y"), 1,
+                   db.TYP_CYKLICZNY_LEASING, 36, 5, pierwsza.strftime("%d.%m.%Y"), 110000.0, 11000.0, 40000.0,
+                   db.RATY_ROWNE))
 
         db.przelicz_daty_iso(conn)

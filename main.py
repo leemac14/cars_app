@@ -17,7 +17,7 @@ from views.history_view import HistoriaView, WizytyZbiorczeView
 from views.formularze import (
     FormularzAutoView, FormularzTankowanieView, FormularzInneView,
     FormularzWizytyView, FormularzInterwalView, FormularzZadanieView,
-    FormularzWpisView
+    FormularzWpisView, FormularzRatyView
 )
 from views.settings_view import UstawieniaView
 from views.todo_view import DoZrobieniaView, FormularzDoZrobieniaView
@@ -43,6 +43,7 @@ from views.migawka_view import MigawkaView
 from views.rok_view import RokWPigulceView
 from views.miesiac_view import MiesiacWPigulceView
 from views.co_nowego_view import CoNowegoView
+from views.raty_view import RatyView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
 # Router jest jedynym miejscem, przez które przechodzi KAŻDE otwarcie formularza,
@@ -94,7 +95,9 @@ def _cel_trasy(segmenty):
     if glowa == "interwal":
         return (len(segmenty) >= 2), False, None, None
 
-    if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria"):
+    # Umowa raty (/raty/nowa, /raty/edytuj/<id>) to wpis cykliczny — wspólny
+    # inwentarz pojazdu bez podpisu autora, więc o edycji rozstrzyga sama rola.
+    if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria", "raty"):
         if drugi in AKCJE_DODAWANIA:
             return True, True, None, None
         if drugi == "edytuj":
@@ -764,6 +767,14 @@ def main(page: ft.Page):
             page.views.append(WarsztatyView(page, app_state))
         elif segmenty[0] == "budzet":
             page.views.append(BudzetView(page, app_state))
+        elif segmenty[0] == "raty":
+            # Leasing i kredyt (M-22). Formularz umowy leży NA harmonogramie, więc
+            # strzałka w pasku i systemowe „wstecz” wracają do listy umów.
+            page.views.append(RatyView(page, app_state))
+            if len(segmenty) >= 2 and segmenty[1] == "nowa":
+                page.views.append(FormularzRatyView(page, app_state, None))
+            elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
+                page.views.append(FormularzRatyView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "rok":
             # /rok albo /rok/2025 — rok w adresie, żeby powrót z podglądu wracał
             # do tego samego podsumowania, a nie zawsze do bieżącego roku.

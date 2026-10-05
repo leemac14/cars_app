@@ -38,6 +38,7 @@ from .magazyn import pobierz_stan_magazynu, pobierz_stan_opon
 from .checklisty import podsumowanie_checklist
 from .przebieg import oblicz_sredni_dzienny_przebieg
 from .koszty import pobierz_koszt_miesiaca_do_dnia, pobierz_koszty_miesieczne, suma_kategorii_innych
+from .raty import podsumowanie_rat
 from .powiadomienia import pobierz_powiadomienia
 from .statystyki import (
     koszt_na_1000km, oblicz_kondycje_pojazdu, podsumowanie_do_zrobienia,
@@ -123,6 +124,8 @@ METRYKI_KOKPITU = {
     "opony": lambda auto_id: _opony(auto_id),
     "checklista": lambda auto_id: podsumowanie_checklist(auto_id),
     "oplaty_drogowe": lambda auto_id: _oplaty_drogowe(auto_id),
+    # Leasing i kredyt: wszystkie umowy pojazdu w jednej liczbie (db/raty.py).
+    "raty": lambda auto_id: podsumowanie_rat(auto_id),
     "do_zrobienia": lambda auto_id: podsumowanie_do_zrobienia(auto_id),
     "magazyn": lambda auto_id: pobierz_stan_magazynu(auto_id),
     # Rola przy pojeździe: kafelki akcji znikają przy „podglądzie”.
@@ -152,6 +155,7 @@ METRYKI_KAFELKOW = {
     "opony": ("opony",),
     "checklist": ("checklista",),
     "oplaty_drogowe": ("oplaty_drogowe",),
+    "do_splaty": ("raty",),
     "do_zrobienia": ("do_zrobienia",),
     "magazyn": ("magazyn",),
     "akcja_tankowanie": ("tylko_podglad",),

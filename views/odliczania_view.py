@@ -134,7 +134,8 @@ class OdliczaniaView(ft.View):
             return pozycja["trasa"]
         if pozycja["rodzaj"] in ("dokument", "gwarancja_km"):
             return "/pojazd"
-        if pozycja["rodzaj"] in ("przebieg", "gwarancja_naprawy"):
+        # Harmonogram rat to ekran do oglądania — zapłatę i tak blokuje rola.
+        if pozycja["rodzaj"] in ("przebieg", "gwarancja_naprawy", "rata"):
             return pozycja["trasa"]
         return None
 
@@ -168,7 +169,9 @@ class OdliczaniaView(ft.View):
                     "liczniku; gwarancja naprawy — od dnia (albo licznika) wymiany. Podzespół "
                     "i gwarancja naprawy pokazują licznik, który skończy się pierwszy — ten sam, co "
                     "karta w zakładce Serwis i dzwonek. Okrągły przebieg to najbliższe pełne "
-                    f"{krok}. Daty przy kilometrach to prognoza ze średniego przebiegu dziennego. "
+                    f"{krok}. Leasing i kredyt odliczają do ostatniej raty (wykup płaci się w jej "
+                    "terminie), a ich pasek to część zapłaconych płatności. Daty przy kilometrach "
+                    "to prognoza ze średniego przebiegu dziennego. "
                     "Kolor mówi to samo, co powiadomienia: pomarańczowy — termin w progu "
                     "przypomnienia, czerwony — po terminie.",
                     size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,

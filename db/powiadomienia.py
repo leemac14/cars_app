@@ -21,6 +21,7 @@ from .synchronizacja import czy_moge_dodawac
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, swiezosc_licznika
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, linie_przypomnienia_gwarancji
 from .szkice import DNI_PRZYPOMNIENIA_SZKICU, podsumowanie_szkicow
+from .raty import KOLUMNY_UMOWY, czy_rata, opis_postepu_umowy
 from .kopie import stan_kopii_zapasowej
 
 
@@ -304,7 +305,8 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
         # liczy się jak dla dokumentów, ale akcją jest "Zapłacone", nie przejście
         # do formularza (stąd "trasa": None).
         c.execute(
-            "SELECT id, nazwa, nastepna_data, okres_dni, czy_koszt, typ FROM wydatki_cykliczne WHERE auto_id=?",
+            "SELECT id, nazwa, kwota, nastepna_data, okres_dni, czy_koszt, typ, "
+            f"{', '.join(KOLUMNY_UMOWY)} FROM wydatki_cykliczne WHERE auto_id=?",
             (auto_id,)
         )
         for wc in c.fetchall():
@@ -322,6 +324,10 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
             if zost_dni <= prog_efektywny:
                 s = "przeterminowane" if zost_dni < 0 else "pilne"
                 opis = opis_terminu_dni(zost_dni)
+                if czy_rata(wc["typ"]):
+                    # Rata z umowy mówi, KTÓRA to płatność: „rata 13 z 48”
+                    # albo „wykup” — przy ostatniej to różnica kilkunastu tysięcy.
+                    opis = f"{opis} • {opis_postepu_umowy(dict(wc))}"
                 # "typ_cykliczny" niesie rodzaj wpisu (wydatek / opony), żeby panel
                 # mógł dać sezonowej zmianie opon własną ikonę i własny podpis
                 # przycisku ("Zmieniono") zamiast "Zapłacone".

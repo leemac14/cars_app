@@ -75,6 +75,7 @@ class PojazdView(ft.View):
             self._terminy(),
             self._gwarancje_napraw(),
             self._zakup_i_wartosc(),
+            self._leasing_i_kredyt(),
             self._specyfikacja(),
             self._ubezpieczenie(),
             self._sciagawka(),
@@ -457,6 +458,81 @@ class PojazdView(ft.View):
 
         return utils.karta_analizy(self._page, "Zakup i wartość", ft.Icons.SELL,
                                    wiersze, ft.Colors.AMBER_800)  # paleta: tożsamość — akcent sekcji
+
+    # ================= LEASING I KREDYT =================
+
+    def _leasing_i_kredyt(self):
+        """Umowy rat pojazdu w jednej karcie (db.podsumowanie_rat): ile zostało
+        do spłaty, kapitał, odsetki i ostatnia rata. Wartość dziś minus kapitał
+        do spłaty to połowa odpowiedzi na pytanie „zmieniać auto?” — tyle zostaje
+        po sprzedaży i spłacie umowy. Auto bez umowy tej karty nie ma."""
+        stan = db.podsumowanie_rat(self.state.auto_id)
+        if not stan:
+            return None
+        waluta = utils.symbol_waluty()
+
+        def kwota(wartosc):
+            return f"{utils.formatuj_liczba(wartosc)} {waluta}"
+
+        def wiersz(etykieta, wartosc, kolor=None, sufiks=None):
+            tresc = [
+                ft.Text(etykieta, size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                ft.Text(wartosc, size=utils.FS["body_strong"], weight="bold", color=kolor or ft.Colors.ON_SURFACE),
+            ]
+            if sufiks:
+                tresc.append(ft.Text(sufiks, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+            return ft.Row(tresc, spacing=6)
+
+        def notka(ikona, tekst, kolor=ft.Colors.ON_SURFACE_VARIANT):
+            return ft.Row([
+                ft.Icon(ikona, size=14, color=kolor),
+                ft.Text(tekst, size=utils.FS["caption"], color=kolor, expand=True),
+            ], spacing=6)
+
+        wiersze = []
+        if not stan["trwajace"]:
+            if stan["niekompletne"]:
+                wiersze.append(notka(ft.Icons.EDIT_NOTE, "Umowa czeka na uzupełnienie — bez liczby rat i terminu "
+                                     "pierwszej raty nie ma harmonogramu.", utils.KOLOR_STATUS["warning"]))
+            else:
+                wiersze.append(notka(ft.Icons.TASK_ALT, "Wszystkie raty i wykup zapłacone — auto nie ma już "
+                                     "długu.", utils.KOLOR_STATUS["ok"]))
+        else:
+            zostalo = stan["liczba_rat"] - stan["zaplacone_raty"]
+            wiersze.append(wiersz("Do spłaty", kwota(stan["do_splaty"]), ft.Colors.PRIMARY,
+                                  sufiks=f"{db.liczba_z_odmiana(zostalo, 'rata', 'raty', 'rat')}"
+                                         f"{' i wykup' if self._czy_wykup(stan) else ''}"))
+            if stan["kapital_do_splaty"] is not None:
+                wiersze.append(wiersz("Kapitał do spłaty", kwota(stan["kapital_do_splaty"])))
+                wiersze.append(wiersz("Odsetki do zapłaty", kwota(stan["odsetki_do_zaplaty"]),
+                                      utils.KOLOR_STATUS["cost"]))
+            wiersze.append(wiersz("Ostatnia rata", stan["data_konca"].strftime("%d.%m.%Y")))
+            if stan["po_terminie"]:
+                wiersze.append(notka(ft.Icons.ERROR_OUTLINE,
+                                     f"{db.liczba_z_odmiana(stan['po_terminie'], 'płatność', 'płatności', 'płatności')} "
+                                     "po terminie — odhacz je w harmonogramie.", utils.KOLOR_STATUS["critical"]))
+            wartosc = None if self.metryki.get("zamkniete_na") else self.metryki.get("wartosc_szacowana")
+            if wartosc is not None and stan["kapital_do_splaty"] is not None:
+                po_splacie = wartosc - stan["kapital_do_splaty"]
+                wiersze.append(ft.Divider(height=10))
+                wiersze.append(wiersz("Wartość dziś minus kapitał", kwota(po_splacie),
+                                      utils.KOLOR_STATUS["ok" if po_splacie >= 0 else "critical"]))
+                wiersze.append(notka(ft.Icons.INFO_OUTLINE,
+                                     "Tyle zostaje po sprzedaży auta i spłacie umowy (bez opłat za wcześniejszą "
+                                     "spłatę) — z tym idzie się po następne auto."))
+            elif stan["kapital_do_splaty"] is not None:
+                wiersze.append(notka(ft.Icons.INFO_OUTLINE,
+                                     "Wpisz dzisiejszą wartość auta, a policzę, ile zostanie po sprzedaży "
+                                     "i spłacie umowy."))
+        wiersze.append(ft.TextButton("Harmonogram rat", icon=ft.Icons.TABLE_ROWS,
+                                     on_click=lambda e: utils.przejdz(self._page, "/raty")))
+        return utils.karta_analizy(self._page, "Leasing i kredyt", ft.Icons.ACCOUNT_BALANCE, wiersze)
+
+    @staticmethod
+    def _czy_wykup(stan):
+        """Czy któraś trwająca umowa ma jeszcze niezapłacony wykup."""
+        return any(u["harmonogram"]["wykup"] and not u["harmonogram"]["wykup_zaplacony"]
+                   and not u["harmonogram"]["zakonczona"] for u in stan["umowy"])
 
     # ================= SPECYFIKACJA =================
 

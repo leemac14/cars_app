@@ -32,6 +32,7 @@ from .checklisty import *
 from .przebieg import *
 from .koszty import *
 from .gwarancje import *
+from .raty import *
 from .powiadomienia import *
 from .statystyki import *
 from .pojazd import *
@@ -76,6 +77,7 @@ from . import (
     przebieg,
     koszty,
     gwarancje,
+    raty,
     powiadomienia,
     statystyki,
     pojazd,

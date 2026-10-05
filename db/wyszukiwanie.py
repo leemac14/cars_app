@@ -11,6 +11,7 @@ from .pomocnicze import formatuj_liczba_eksport
 from .jednostki import jednostka_dystansu, tekst_dystansu
 from .ustawienia import (czy_zapamietywac_wyszukiwania, pobierz_ustawienie,
                          pobierz_walute, usun_ustawienie, zapisz_ustawienie)
+from .raty import czy_rata, etykieta_umowy
 
 
 # Zapytanie kwotowe rozpoznajemy WPROST w polu wyszukiwarki — bez dodatkowych
@@ -578,9 +579,14 @@ def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
                   f"szacunek • {r['priorytet'] or 'bez priorytetu'}",
                   r["termin"], f"/do-zrobienia/edytuj/{r['id']}")
 
-        c.execute("SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt FROM wydatki_cykliczne WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ FROM wydatki_cykliczne WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             if not r["czy_koszt"]:
+                continue
+            # Rata leasingu i kredytu prowadzi do swojego harmonogramu.
+            if czy_rata(r["typ"]):
+                dodaj("Wydatek cykliczny", str(r["nazwa"]), r["kwota"],
+                      f"{etykieta_umowy(r['typ'])} • rata co miesiąc", r["nastepna_data"], "/raty")
                 continue
             dodaj("Wydatek cykliczny", str(r["nazwa"]), r["kwota"],
                   f"co {int(r['okres_dni'] or 0)} dni", r["nastepna_data"], "__wydatki_cykliczne__")
@@ -730,16 +736,19 @@ def _wszystkie_wpisy(auto_id):
                                "/warsztaty", warsztat=r["nazwa"], notatka=r["notatki"],
                                tekst_dodatkowy=f"{r['telefon'] or ''} {r['adres'] or ''}"))
 
-        c.execute("SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt "
+        c.execute("SELECT id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ "
                   "FROM wydatki_cykliczne WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
-            if r["czy_koszt"]:
+            trasa = "__wydatki_cykliczne__"
+            if czy_rata(r["typ"]):
+                # Rata leasingu i kredytu prowadzi do swojego harmonogramu.
+                opis, trasa = f"{etykieta_umowy(r['typ'])} • rata co miesiąc", "/raty"
+            elif r["czy_koszt"]:
                 opis = f"co {int(r['okres_dni'] or 0)} dni"
             else:
                 opis = f"Przypomnienie • co {int(r['okres_dni'] or 0)} dni"
             wpisy.append(_wpis("Wydatek cykliczny", r["nazwa"], opis, r["nastepna_data"],
-                               "__wydatki_cykliczne__",
-                               kwota=r["kwota"] if r["czy_koszt"] else None))
+                               trasa, kwota=r["kwota"] if r["czy_koszt"] else None))
 
         c.execute("SELECT id, nazwa, dystans, powrot, osoby, notatki FROM trasy_szablony "
                   "WHERE auto_id=?", (auto_id,))

@@ -198,6 +198,7 @@ IKONY_KOKPITU = {
     "opony": ft.Icons.TIRE_REPAIR,
     "checklist": ft.Icons.FACT_CHECK,
     "oplaty_drogowe": ft.Icons.TOLL,
+    "do_splaty": ft.Icons.ACCOUNT_BALANCE,
     "do_zrobienia": ft.Icons.CHECKLIST_RTL,
     "magazyn": ft.Icons.INVENTORY_2,
     "akcja_tankowanie": ft.Icons.LOCAL_GAS_STATION,
@@ -213,6 +214,15 @@ IKONY_KOKPITU = {
 # Sezony zestawów opon (db.SEZONY_OPON). Ta sama para ikon obsługuje kartę
 # zestawu w magazynie, kafelek kokpitu i komunikat po sezonowej zmianie, więc
 # „Zimowe” wyglądają wszędzie tak samo.
+# Umowy rat (db.TYPY_RAT): leasing to auto „wynajęte” do wykupu, kredyt — bank.
+# Te same ikony stoją w panelu wydatków cyklicznych, w dzwonku, na liście
+# „Ile zostało do…” i na ekranie „Leasing i kredyt”.
+IKONY_UMOW_RAT = {
+    "leasing": ft.Icons.CAR_RENTAL,
+    "kredyt": ft.Icons.ACCOUNT_BALANCE,
+}
+
+
 IKONY_SEZONU_OPON = {
     "Letnie": ft.Icons.WB_SUNNY,
     "Zimowe": ft.Icons.AC_UNIT,
@@ -385,6 +395,7 @@ __all__ = [
     "IKONY_OBSERWACJI",
     "IKONY_PODZRODEL_ODCZYTU",
     "IKONY_SEZONU_OPON",
+    "IKONY_UMOW_RAT",
     "IKONY_ZRODEL_PRZEBIEGU",
     "KOLORY_KATEGORII_INNYCH",
     "KOLORY_SEZONU_OPON",

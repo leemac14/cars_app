@@ -107,7 +107,16 @@ KONFIGURACJA_SYNC = [
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
-    {"tabela": "wydatki_cykliczne", "kolumny": ["nazwa", "kwota", "okres_dni", "nastepna_data", "czy_koszt", "typ"], "fk": {}},
+    # Umowa raty (wersja 49) jedzie razem z wpisem: rata zapłacona na jednym
+    # telefonie przesuwa harmonogram także na drugim, a „ile zostało do spłaty”
+    # ma być jedną liczbą dla obu osób. Kolumny dołożone, kiedy wpisy cykliczne
+    # leżały już w chmurze — stąd `dopisane`.
+    {"tabela": "wydatki_cykliczne", "kolumny": ["nazwa", "kwota", "okres_dni", "nastepna_data", "czy_koszt", "typ",
+                                                "liczba_rat", "zaplacone_platnosci", "data_pierwszej_raty",
+                                                "kwota_finansowania", "oplata_wstepna", "wykup", "oprocentowanie",
+                                                "rodzaj_rat"], "fk": {},
+     "dopisane": ["liczba_rat", "zaplacone_platnosci", "data_pierwszej_raty", "kwota_finansowania",
+                  "oplata_wstepna", "wykup", "oprocentowanie", "rodzaj_rat"]},
     {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "zrodlo", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
     {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},

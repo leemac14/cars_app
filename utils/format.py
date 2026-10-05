@@ -360,6 +360,8 @@ def podpis_odliczania(pozycja, j=None):
     rodzaj = pozycja.get("rodzaj")
     if rodzaj == "podzespol" and pozycja.get("drugi"):
         return _zdanie_drugiego_licznika(pozycja["drugi"])
+    if rodzaj == "rata" and pozycja.get("rata"):
+        return podpis_postepu_raty(pozycja["rata"])
     if rodzaj == "gwarancja_naprawy" and pozycja.get("gwarancja"):
         gwarancja = pozycja["gwarancja"]
         return f"Wymiana {gwarancja['data']} · {db.zakres_gwarancji(gwarancja, j)}"
@@ -373,6 +375,19 @@ def podpis_odliczania(pozycja, j=None):
                 else "od zakupu")
         return f"Liczona {skad}: {pozycja['poczatek'].strftime('%d.%m.%Y')}"
     return None
+
+
+def podpis_postepu_raty(harmonogram):
+    """„Zapłacono 9 z 47 rat · do spłaty 96 200,00 zł · 1 płatność po terminie”
+    — jedna linijka o umowie rat (db.harmonogram_umowy) pod paskiem postępu."""
+    h = harmonogram
+    czesci = [f"Zapłacono {h['zaplacone_raty']} z {h['liczba_rat']} "
+              f"{_odmiana_liczby(h['liczba_rat'], 'raty', 'rat', 'rat')}"]
+    if h.get("do_splaty") is not None:
+        czesci.append(f"do spłaty {formatuj_liczba(h['do_splaty'])} {symbol_waluty()}")
+    if h.get("po_terminie"):
+        czesci.append(f"{db.liczba_z_odmiana(h['po_terminie'], 'płatność', 'płatności', 'płatności')} po terminie")
+    return " · ".join(czesci)
 
 
 def stan_odliczan(pozycje):
@@ -500,6 +515,7 @@ __all__ = [
     "parsuj_float",
     "parsuj_int",
     "podpis_odliczania",
+    "podpis_postepu_raty",
     "polacz_linie_opisu",
     "stan_odliczan",
     "symbol_waluty",

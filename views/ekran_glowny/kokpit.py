@@ -867,6 +867,51 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        def widget_do_splaty():
+            """Leasing i kredyt: ile jeszcze zostało do spłaty, ile rat już
+            poszło i do kiedy — połowa odpowiedzi na pytanie, czy zmieniać auto.
+            Liczy db.podsumowanie_rat (wszystkie trwające umowy pojazdu)."""
+            stan = metryka("raty")
+            ikona = ft.Icons.ACCOUNT_BALANCE
+
+            def idz_do_rat(e):
+                utils.przejdz(self._page, "/raty")
+
+            if not stan:
+                # Auto bez leasingu i kredytu — „nie dotyczy”, więc chowane.
+                return kafel_pusty(ikona, ft.Colors.BLUE_GREY_700, "Do spłaty", "Bez umowy", idz_do_rat)
+            if not stan["trwajace"]:
+                if stan["niekompletne"]:
+                    return kafel_wartosci(ikona, utils.KOLOR_STATUS["warning"], "Do spłaty",
+                                          "Uzupełnij umowę", idz_do_rat)
+                return kafel_wartosci(ikona, utils.KOLOR_STATUS["ok"], "Do spłaty", "Spłacone", idz_do_rat)
+
+            kolor = utils.KOLOR_STATUS["critical"] if stan["po_terminie"] else ft.Colors.PRIMARY
+            stopka = (f"{stan['zaplacone_raty']} z {stan['liczba_rat']} "
+                      f"{db.odmien(stan['liczba_rat'], 'raty', 'rat', 'rat')} • do "
+                      f"{stan['data_konca'].strftime('%m.%Y')}")
+            if stan["po_terminie"]:
+                stopka = f"{db.liczba_z_odmiana(stan['po_terminie'], 'rata', 'raty', 'rat')} po terminie • {stopka}"
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor)),
+                ink=True, on_click=idz_do_rat,
+                tooltip="Leasing i kredyt: raty i wykup, które zostały do zapłaty",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=kolor),
+                        utils.etykieta("Do spłaty", expand=True),
+                    ], spacing=6),
+                    liczba_kafelka(stan["do_splaty"], lambda v: f"{utils.formatuj_liczba(v, 0)} {waluta}"),
+                    scena.wskaznik(ft.ProgressBar(
+                        value=stan["udzial"] or 0, color=kolor, bgcolor=utils.tlo_toru(self._page),
+                        height=6, border_radius=3,
+                    )),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            )
+
         def widget_do_zrobienia():
             stan = metryka("do_zrobienia")
             if not stan or not stan["otwarte"]:
@@ -1035,6 +1080,7 @@ class MiksinKokpitu:
             "opony": widget_opony,
             "checklist": widget_checklist,
             "oplaty_drogowe": widget_oplaty_drogowe,
+            "do_splaty": widget_do_splaty,
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
             "akcja_tankowanie": widget_akcja_tankowanie,

@@ -6,7 +6,9 @@ import flet as ft
 from datetime import datetime
 
 from .animacje import ScenaWejscia
-from .stale import FS, IKONY_NADWOZIA, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
+from .stale import (
+    FS, IKONY_NADWOZIA, IKONY_UMOW_RAT, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy,
+)
 from .format import (
     data_odliczania, formatuj_dni, formatuj_dni_dopelniacz, krotki_opis_odliczania, opis_odliczania,
     parsuj_float, parsuj_int, podpis_odliczania, symbol_waluty, tytul_odliczania,
@@ -432,12 +434,14 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
 
 
 # „Ile zostało do…”: ikony dokumentów jak na Karcie pojazdu, do tego podzespół,
-# gwarancja naprawy i okrągły przebieg (db.odliczania_pojazdu zwraca klucz, nie ikonę).
+# gwarancja naprawy, okrągły przebieg i umowy rat (db.odliczania_pojazdu zwraca
+# klucz, nie ikonę).
 IKONY_ODLICZAN = {
     **IKONY_TERMINOW,
     "podzespol": ft.Icons.HANDYMAN,
     "gwarancja_naprawy": ft.Icons.GPP_GOOD,
     "przebieg": ft.Icons.FLAG,
+    **IKONY_UMOW_RAT,
 }
 
 

@@ -13,6 +13,7 @@ from .pomocnicze import _liczba_lub_none, oferta_w_jednej_linii, parsuj_int_bezp
 from .ustawienia import pobierz_okno_kroczace, pobierz_prog_dni_dokumentu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .koszty import DNI_W_MIESIACU, koszty_w_okresie
+from .raty import podsumowanie_rat
 from .powiadomienia import TYPY_POWIADOMIEN_O_DANYCH, pobierz_powiadomienia
 from .statystyki import koszt_na_1000km, oblicz_kondycje_pojazdu, pobierz_statystyki_energii
 
@@ -497,6 +498,15 @@ def pobierz_dane_do_porownania(auto_id):
     krzywa = koszt_na_1000km(auto_id, pobierz_okno_kroczace(auto_id))
     dane["koszt_1000km_okno"] = krzywa.get("biezacy")
     dane["okno_1000km"] = krzywa.get("okno")
+
+    # Leasing i kredyt: ile jeszcze trzeba oddać, zanim auto będzie można
+    # zmienić bez długu — przeszłość kosztów nie mówi o tym nic. None przy
+    # aucie bez trwającej umowy (spłacona też nic już nie kosztuje).
+    raty = podsumowanie_rat(auto_id)
+    trwa = bool(raty and raty["trwajace"])
+    dane["do_splaty"] = raty["do_splaty"] if trwa else None
+    dane["odsetki_do_zaplaty"] = raty["odsetki_do_zaplaty"] if trwa else None
+    dane["kapital_do_splaty"] = raty["kapital_do_splaty"] if trwa else None
 
     return dane
 

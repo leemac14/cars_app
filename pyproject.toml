@@ -4,7 +4,7 @@
 # Sekcja świadomie bez `name` i `dependencies`: nazwa paczki zostaje z nazwy
 # folderu, a zależności z requirements.txt — dokładnie tak, jak bez tej sekcji.
 [project]
-version = "2026.10.5.2"
+version = "2026.10.5.3"
 
 [tool.flet]
 # Aparat w aplikacji (flet-camera, kolejka paragonów „do wpisania”). Gotowy

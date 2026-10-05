@@ -5,7 +5,7 @@ import flet as ft
 import log
 from datetime import datetime
 
-from .stale import KOLOR_STATUS, RADIUS, formatuj_liczba
+from .stale import IKONY_UMOW_RAT, KOLOR_STATUS, RADIUS, formatuj_liczba
 from .format import _odmiana_liczby, formatuj_dni, kolor_i_tekst_terminu, parsuj_float, parsuj_int, symbol_waluty
 from .typografia import podpis
 from .zgodnosc import ustaw_blad, ustaw_ikone
@@ -51,6 +51,8 @@ def etykieta_wykonania_cyklicznego(typ, czy_koszt):
 def ikona_wpisu_cyklicznego(typ, czy_koszt):
     if typ == db.TYP_CYKLICZNY_OPONY:
         return ft.Icons.TIRE_REPAIR
+    if typ in IKONY_UMOW_RAT:
+        return IKONY_UMOW_RAT[typ]
     return ft.Icons.AUTORENEW if czy_koszt else ft.Icons.NOTIFICATIONS_ACTIVE
 
 
@@ -79,6 +81,8 @@ def komunikat_po_wykonaniu(wynik, czy_koszt=True):
         return "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
 
     czy_koszt = wynik.get("czy_koszt", czy_koszt)
+    if db.czy_rata(wynik.get("typ")):
+        return komunikat_platnosci_raty(wynik)
     if wynik.get("typ") != db.TYP_CYKLICZNY_OPONY:
         return "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
 
@@ -86,6 +90,52 @@ def komunikat_po_wykonaniu(wynik, czy_koszt=True):
     if opony.get("ok"):
         return komunikat_zmiany_opon(opony)
     return "Przesunięto termin. " + komunikat_zmiany_opon(opony)
+
+
+def komunikat_platnosci_raty(wynik):
+    """Zdanie po „Zapłacone” przy racie leasingu albo kredytu (db.zaplac_rate):
+    KTÓRA płatność poszła i ile jeszcze zostało — albo że umowa jest spłacona."""
+    platnosc = wynik.get("platnosc")
+    if not platnosc:
+        if not wynik.get("kompletna", True):
+            return "Uzupełnij umowę — bez liczby rat i pierwszej raty nie ma czego zapłacić."
+        return "Ta umowa jest już spłacona."
+    if platnosc["rodzaj"] == db.PLATNOSC_WYKUP:
+        co = "ratę balonową" if wynik.get("typ") == db.TYP_CYKLICZNY_KREDYT else "wykup"
+    else:
+        co = f"ratę {platnosc['numer']} z {wynik.get('liczba_rat')}"
+    if wynik.get("zakonczona"):
+        return f"Zapisano {co} — umowa spłacona."
+    return f"Zapisano {co} • do spłaty {formatuj_liczba(wynik.get('do_splaty') or 0)} {symbol_waluty()}."
+
+
+def pokaz_komunikat_wykonania(page: ft.Page, wynik, czy_koszt=True, po_cofnieciu=None):
+    """Komunikat po odhaczeniu wpisu cyklicznego. Przy racie z „Cofnij”:
+    płatność przesuwa harmonogram umowy i dopisuje koszt, więc przypadkowe
+    dotknięcie nie może zostać na stałe. `po_cofnieciu` (bez argumentów)
+    przebudowuje to, co pokazywało stan sprzed cofnięcia."""
+    tekst = komunikat_po_wykonaniu(wynik, czy_koszt)
+    cofniecie = wynik.get("cofnij") if isinstance(wynik, dict) else None
+    if not cofniecie:
+        pokaz_komunikat(page, tekst)
+        return
+
+    def cofnij(e):
+        if db.cofnij_platnosc_raty(cofniecie):
+            pokaz_komunikat(page, "Cofnięto płatność — rata znowu czeka na zapłatę.")
+        else:
+            pokaz_komunikat(page, "Nie cofnięto: w międzyczasie umowa się zmieniła.", KOLOR_STATUS["warning"])
+        if po_cofnieciu:
+            po_cofnieciu()
+
+    snack = ft.SnackBar(ft.Text(str(tekst)), bgcolor=KOLOR_STATUS["ok"], action="Cofnij",
+                        on_action=cofnij, duration=6000)
+    if hasattr(page, "open"):
+        page.open(snack)
+    else:
+        page.overlay.append(snack)
+        snack.open = True
+        page.update()
 
 
 def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
@@ -161,10 +211,13 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
     def zaplac_cykliczny(wydatek_id, czy_koszt=True, kafelek=None, typ=None):
         def handler(e):
             wynik = db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
-            komunikat = komunikat_po_wykonaniu(wynik, czy_koszt)
+
+            def po_cofnieciu():
+                odswiez()
+                przejdz(page, page.route)
 
             def dokoncz():
-                pokaz_komunikat(page, komunikat)
+                pokaz_komunikat_wykonania(page, wynik, czy_koszt, po_cofnieciu=po_cofnieciu)
                 # Najpierw lista (zapisuje obejrzenie), potem dzwonek w tle —
                 # w odwrotnej kolejności odznaka zdążyłaby policzyć to, co
                 # użytkownik ma właśnie przed oczami. Panel zostaje otwarty.
@@ -498,6 +551,11 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
     otworz_dno(page, bs)
 
 
+# Pozycja „Rata leasingu / kredytu” w polu „Rodzaj wpisu”: nie rodzaj do
+# zapisania, tylko przejście do formularza umowy (views/formularze/rata.py).
+RODZAJ_RATY_W_PANELU = "__raty__"
+
+
 def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
     """Lekki panel (BottomSheet) do zarządzania wydatkami cyklicznymi pojazdu
     (raty, abonamenty, ubezpieczenia ratalne) ORAZ zwykłymi przypomnieniami
@@ -512,8 +570,17 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         padding=20, bgcolor=ft.Colors.SURFACE, content=lista_pozycji,
     ))
 
+    def idz_do(trasa):
+        def handler(e):
+            zamknij_dno(page, bs)
+            przejdz(page, trasa)
+        return handler
+
     def odswiez():
         wpisy = db.pobierz_wydatki_cykliczne(state.auto_id)
+        # Raty leasingu i kredytu z harmonogramem — podpis mówi, KTÓRA rata
+        # przyjdzie i ile zostało, a dotknięcie prowadzi do harmonogramu.
+        umowy = {u["id"]: u for u in db.pobierz_raty(state.auto_id)}
         pozycje = [
             ft.Row([
                 ft.Icon(ft.Icons.AUTORENEW, color=ft.Colors.PRIMARY),
@@ -532,6 +599,9 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
                 kolor, tekst_daty = kolor_i_tekst_terminu(nastepna_data)
                 czy_koszt = bool(czy_koszt)
                 termin_txt = f"co {okres_dni} dni • {tekst_daty or nastepna_data}"
+                if w_id in umowy:
+                    pozycje.append(wiersz_umowy(umowy[w_id], kolor, tekst_daty))
+                    continue
                 if typ == db.TYP_CYKLICZNY_OPONY:
                     # Przy zmianie opon najważniejsze jest, CO stoi na aucie i co
                     # zostanie zamontowane — sam termin mówi tu najmniej.
@@ -560,6 +630,14 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
                             content=ft.Row([ft.Icon(ft.Icons.EDIT, size=18), ft.Text("Edytuj")]),
                             on_click=lambda e, w=(w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ): formularz(w)
                         ),
+                    ] + ([
+                        # Rata wpisana kiedyś jako zwykły wydatek dostaje harmonogram
+                        # w miejscu — z tą samą nazwą, kwotą i terminem.
+                        ft.PopupMenuItem(
+                            content=ft.Row([ft.Icon(ft.Icons.ACCOUNT_BALANCE, size=18), ft.Text("Przestaw na raty")]),
+                            on_click=idz_do(f"/raty/edytuj/{w_id}"),
+                        ),
+                    ] if czy_koszt and typ == db.TYP_CYKLICZNY_WYDATEK else []) + [
                         ft.PopupMenuItem(
                             content=ft.Row([ft.Icon(ft.Icons.DELETE, color=KOLOR_STATUS["destructive"], size=18), ft.Text("Usuń")]),
                             on_click=lambda e, wid=w_id: usun(wid)
@@ -569,6 +647,8 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
 
         pozycje.append(ft.Divider(height=1))
         pozycje.append(ft.TextButton("Dodaj wydatek / przypomnienie", icon=ft.Icons.ADD, on_click=lambda e: formularz(None)))
+        pozycje.append(ft.TextButton("Dodaj leasing lub kredyt", icon=ft.Icons.ACCOUNT_BALANCE,
+                                     on_click=idz_do("/raty/nowa")))
         if state.auto_id and not any(w[6] == db.TYP_CYKLICZNY_OPONY for w in wpisy):
             # Skrót zamiast pustego pola: sezonowa zmiana opon ma ten sam okres
             # i tę samą nazwę u każdego, więc nie ma czego wpisywać ręcznie.
@@ -597,8 +677,49 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
 
     def zaplac(wydatek_id, czy_koszt=True):
         wynik = db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
-        pokaz_komunikat(page, komunikat_po_wykonaniu(wynik, czy_koszt))
+        pokaz_komunikat_wykonania(page, wynik, czy_koszt, po_cofnieciu=odswiez)
         odswiez()
+
+    def wiersz_umowy(umowa, kolor, tekst_daty):
+        """Rata z harmonogramem: najbliższa płatność, a po spłacie — sam stan."""
+        h = umowa["harmonogram"]
+        w_id = umowa["id"]
+        if not h["kompletna"]:
+            kolor, podtytul = KOLOR_STATUS["warning"], "Umowa do uzupełnienia"
+        elif h["zakonczona"]:
+            kolor = KOLOR_STATUS["neutral"]
+            podtytul = f"Spłacona • ostatnia rata {h['data_ostatniej_raty'].strftime('%d.%m.%Y')}"
+        else:
+            podtytul = (f"{formatuj_liczba(h['nastepna']['kwota'])} {symbol_waluty()} • "
+                        f"{db.opis_postepu_umowy(umowa)} • {tekst_daty or umowa['nastepna_data']}")
+        menu = []
+        if h["kompletna"] and not h["zakonczona"]:
+            menu.append(ft.PopupMenuItem(
+                content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=KOLOR_STATUS["ok"], size=18),
+                                ft.Text(etykieta_wykonania_cyklicznego(umowa["typ"], True))]),
+                on_click=lambda e, wid=w_id: zaplac(wid, True),
+            ))
+        menu += [
+            ft.PopupMenuItem(
+                content=ft.Row([ft.Icon(ft.Icons.TABLE_ROWS, size=18), ft.Text("Harmonogram")]),
+                on_click=idz_do("/raty"),
+            ),
+            ft.PopupMenuItem(
+                content=ft.Row([ft.Icon(ft.Icons.EDIT, size=18), ft.Text("Edytuj umowę")]),
+                on_click=idz_do(f"/raty/edytuj/{w_id}"),
+            ),
+            ft.PopupMenuItem(
+                content=ft.Row([ft.Icon(ft.Icons.DELETE, color=KOLOR_STATUS["destructive"], size=18), ft.Text("Usuń")]),
+                on_click=lambda e, wid=w_id: usun(wid),
+            ),
+        ]
+        return ft.ListTile(
+            leading=ft.Icon(ikona_wpisu_cyklicznego(umowa["typ"], True), color=kolor),
+            title=ft.Text(str(umowa["nazwa"]), weight="bold"),
+            subtitle=ft.Text(podtytul, size=12, color=kolor),
+            trailing=ft.PopupMenuButton(items=menu),
+            on_click=idz_do("/raty"),
+        )
 
     def usun(wydatek_id):
         def wykonaj():
@@ -627,6 +748,9 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
             options=[
                 ft.DropdownOption(key=db.TYP_CYKLICZNY_WYDATEK, text="Wydatek / czynność cykliczna"),
                 ft.DropdownOption(key=db.TYP_CYKLICZNY_OPONY, text="Sezonowa zmiana opon"),
+                # Rata z umową ma własny formularz (liczba rat, wykup, kwota
+                # finansowania) — wybór od razu do niego prowadzi.
+                ft.DropdownOption(key=RODZAJ_RATY_W_PANELU, text="Rata leasingu / kredytu"),
             ],
             value=typ_val if typ_val in db.TYPY_CYKLICZNE else db.TYP_CYKLICZNY_WYDATEK,
             **styl_dropdown()
@@ -654,6 +778,11 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
         e_tylko_przypomnienie.on_change = przelacz_typ
 
         def przelacz_rodzaj(e):
+            if e_rodzaj.value == RODZAJ_RATY_W_PANELU:
+                zamknij_dialog(page, dlg)
+                zamknij_dno(page, bs)
+                przejdz(page, f"/raty/edytuj/{w_id}" if edycja else "/raty/nowa")
+                return
             if e_rodzaj.value == db.TYP_CYKLICZNY_OPONY:
                 # Zmiana opon wypada dwa razy w roku — podstawiamy pół roku,
                 # żeby nie trzeba było tego poprawiać po każdym wyborze rodzaju.
@@ -717,12 +846,15 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
 
 
 __all__ = [
+    "RODZAJ_RATY_W_PANELU",
     "etykieta_wykonania_cyklicznego",
     "ikona_wpisu_cyklicznego",
     "komunikat_zmiany_opon",
+    "komunikat_platnosci_raty",
     "komunikat_po_wykonaniu",
     "opis_dzwonka",
     "pokaz_panel_powiadomien",
+    "pokaz_komunikat_wykonania",
     "pokaz_panel_wydatkow_cyklicznych",
     "przycisk_dzwonka",
     "znacznik_nowego",

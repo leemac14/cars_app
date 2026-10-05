@@ -360,6 +360,7 @@ KOKPIT_WIDGETY = {
     "opony": "Opony na aucie",
     "checklist": "Checklista przed trasą",
     "oplaty_drogowe": "Opłaty drogowe i mandaty",
+    "do_splaty": "Leasing i kredyt: do spłaty",
     "do_zrobienia": "Do zrobienia",
     "magazyn": "Magazyn — niski stan",
     # Kafelki AKCJI: zamiast liczby mają czynność. Te same wpisy, co pod FAB-em

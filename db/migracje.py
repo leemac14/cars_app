@@ -739,6 +739,28 @@ def init_db():
             CREATE TABLE IF NOT EXISTS ceny_czesci (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, data TEXT NOT NULL DEFAULT '', data_iso TEXT, cena_jednostkowa REAL NOT NULL, jednostka TEXT DEFAULT 'szt', ilosc REAL, sklep TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_ceny_czesci_auto_data_iso ON ceny_czesci(auto_id, data_iso);
             CREATE INDEX IF NOT EXISTS idx_ceny_czesci_auto_zdalne ON ceny_czesci(auto_id, zdalne_id);
+            """,
+            # Wersja 49: harmonogram leasingu i kredytu (M-22). Rata była
+            # wydatkiem cyklicznym bez końca i bez sumy — nie dało się
+            # powiedzieć, ile jeszcze zostało do spłaty. Umowa siedzi w TYM
+            # SAMYM wierszu `wydatki_cykliczne` (rodzaj 'leasing' albo 'kredyt'),
+            # bo przypomnienie o racie i „Zapłacone” już tam są, a istniejącą ratę
+            # wystarczy przestawić, bez przepisywania. `zaplacone_platnosci` liczy
+            # zapłacone pozycje harmonogramu: raty, a po nich wykup (przy
+            # kredycie rata balonowa). `oprocentowanie` (roczne, %) jest tylko
+            # przy ratach liczonych z oprocentowania i przy malejących — przy
+            # racie z umowy stopę wylicza się z raty i kwoty finansowania.
+            # Daty w formacie dd.mm.rrrr, jak `nastepna_data`. Wszystko puste
+            # (NULL) w zwykłych wydatkach i przypomnieniach.
+            """
+            ALTER TABLE wydatki_cykliczne ADD COLUMN liczba_rat INTEGER;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN zaplacone_platnosci INTEGER;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN data_pierwszej_raty TEXT;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN kwota_finansowania REAL;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN oplata_wstepna REAL;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN wykup REAL;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN oprocentowanie REAL;
+            ALTER TABLE wydatki_cykliczne ADD COLUMN rodzaj_rat TEXT;
             """
         ]
 

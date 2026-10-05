@@ -130,6 +130,13 @@ EKRANY = [
      "ikona": ft.Icons.CALCULATE, "grupa": "koszty", "trasa": "/podzial",
      "slowa": ["rozliczenie", "rozliczone", "saldo", "wspólne", "składka", "kto płacił",
                "kto komu", "dług", "dzielenie"]},
+    # Harmonogram rat (M-22): ile jeszcze zostało do spłaty, kiedy ostatnia
+    # rata, wykup i odsetki. Opis i słowa bez „oc”, „olej” i „koszt” —
+    # wyszukiwarka ma dla nich swoje ekrany (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "raty", "tytul": "Leasing i kredyt", "opis": "Harmonogram rat, wykup i ile zostało do spłaty",
+     "ikona": ft.Icons.ACCOUNT_BALANCE, "grupa": "koszty", "trasa": "/raty",
+     "slowa": ["leasing", "kredyt", "rata", "raty", "harmonogram", "wykup", "odsetki", "spłata",
+               "do spłaty", "rata balonowa", "finansowanie", "pożyczka", "bank"]},
     {"id": "kalkulator", "tytul": "Kalkulator podróży", "opis": "Policz koszt trasy przed wyjazdem",
      "ikona": ft.Icons.MAP, "grupa": "koszty", "trasa": "/kalkulator",
      "slowa": ["trasa", "wyjazd", "podróż", "ile spali", "koszt przejazdu"]},

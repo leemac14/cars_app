@@ -100,6 +100,8 @@ WYWOLANIA = {
     "pobierz_uzyte_czesci_wpisu": lambda k: (k["id"]["historia"],),
     "pobierz_warsztaty": lambda k: (k["id"]["auto_id"],),
     "pobierz_wydatki_cykliczne": lambda k: (k["id"]["auto_id"],),
+    # Leasing z dosyp_dane — inaczej lista umów byłaby pusta.
+    "pobierz_raty": lambda k: (k["id"]["auto_id"],),
     # Podwyżka liczona od zakupu z 12.01.2025 (15 zł) do bieżącej ceny pozycji
     # (19,50 zł) — próg zero, żeby wynik nie był pustą listą.
     "podwyzki_cen_czesci": lambda k: (k["id"]["auto_id"], 0),

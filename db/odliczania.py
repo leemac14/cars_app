@@ -23,7 +23,10 @@ dziennego. Nowy jest tylko pasek: jaka część okresu już minęła.
   • gwarancja naprawy — od dnia (albo licznika) wymiany; tylko ta, która
     jeszcze trwa — po końcu nie ma już czego odliczać;
   • podzespół — zużycie interwału licznika, który skończy się pierwszy;
-  • okrągły przebieg — od poprzedniej okrągłej liczby.
+  • okrągły przebieg — od poprzedniej okrągłej liczby;
+  • leasing i kredyt — do ostatniej raty (wykup płaci się w jej terminie),
+    a pasek to część zapłaconych płatności umowy, nie czasu: zaległa rata
+    zostaje na nim widoczna (db/raty.py).
 """
 
 import sqlite3
@@ -38,6 +41,7 @@ from .ustawienia import pobierz_prog_dni, pobierz_prog_km
 from .jednostki import dystans_z_km, jednostka_dystansu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu
+from .raty import pobierz_raty, slowo_wykupu
 from .powiadomienia import oblicz_stan_interwalu
 from .pojazd import oferta_oc_ac_pojazdu, pobierz_dane_pojazdu, terminy_pojazdu
 
@@ -122,7 +126,7 @@ def _pozycja(**pola):
         "dni": None, "dni_sortowania": None, "data": None, "prognoza": False,
         "zostalo_km": None, "cel_km": None, "od_km": None, "udzial": None,
         "poczatek": None, "poczatek_z": None, "drugi": None, "gwarancja": None,
-        "status": "ok", "trasa": None, "opis_oferty": None,
+        "status": "ok", "trasa": None, "opis_oferty": None, "rata": None,
     }
     pozycja.update(pola)
     if pozycja["dni_sortowania"] is None:
@@ -237,6 +241,30 @@ def _gwarancje_napraw(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis
     return wynik
 
 
+def _raty(auto_id, prog_dni, dzis):
+    """Jedna pozycja na umowę leasingu albo kredytu, która jeszcze trwa: do
+    ostatniej raty, a gdy zostaje sam wykup — do wykupu (ten sam termin). Pasek
+    to część ZAPŁACONYCH płatności, nie upływ czasu — nieodhaczona rata
+    zostaje na nim widoczna. Pełny harmonogram jedzie obok w `rata`."""
+    wynik = []
+    for umowa in pobierz_raty(auto_id, dzis=dzis):
+        h = umowa["harmonogram"]
+        if not h["kompletna"] or h["zakonczona"]:
+            continue
+        koniec = h["data_ostatniej_raty"]
+        dni = (koniec - dzis).days
+        nazwa = str(umowa["nazwa"] or "").strip()
+        cel = slowo_wykupu(umowa["typ"]) if h["zostalo_rat"] == 0 else "ostatnia rata"
+        wynik.append(_pozycja(
+            klucz=f"rata:{umowa['id']}", rodzaj="rata", ikona=umowa["typ"],
+            tytul=f"{nazwa} — {cel}" if nazwa else cel[:1].upper() + cel[1:],
+            dni=dni, data=koniec, udzial=h["udzial"], rata=h,
+            status="po_terminie" if dni < 0 else ("blisko" if dni <= prog_dni else "ok"),
+            trasa="/raty",
+        ))
+    return wynik
+
+
 def _okragly_przebieg(przebieg, sredni_dzienny, dzis):
     """Najbliższa wielokrotność KROK_OKRAGLEGO_PRZEBIEGU w jednostce z Ustawień.
     Stan dokładnie na okrągłej liczbie celuje już w następną."""
@@ -276,7 +304,7 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
     """Wszystkie odliczania pojazdu od najbliższego. Pozycja to słownik:
 
     * klucz, rodzaj ("dokument" / "gwarancja_km" / "gwarancja_naprawy" /
-      "podzespol" / "przebieg"),
+      "podzespol" / "przebieg" / "rata"),
       ikona (klucz ikony), tytul (None przy pozycjach, których nazwa zależy od
       jednostki dystansu), trasa (dokąd prowadzi dotknięcie wiersza);
     * dni — do końca (ujemne: po terminie; None: nie wiadomo, np. kilometry bez
@@ -290,7 +318,9 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
     * gwarancja — pełny stan gwarancji naprawy (z db.gwarancje_pojazdu) albo None;
     * status — "po_terminie" / "blisko" / "ok" / "info" (okrągły przebieg);
     * opis_oferty — zdanie z notatki „najlepsza oferta OC/AC” przy OC i AC;
-      gdzie indziej i bez notatki None.
+      gdzie indziej i bez notatki None;
+    * rata — harmonogram umowy (db.harmonogram_umowy) przy rodzaju "rata",
+      gdzie indziej None.
 
     Sprzedane auto nie ma już czego odliczać — lista jest pusta."""
     if not auto_id:
@@ -310,6 +340,7 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
         + _limit_gwarancji(auto_id, dane, przebieg, sredni_dzienny, prog_km, dzis)
         + _gwarancje_napraw(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis)
         + _podzespoly(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis)
+        + _raty(auto_id, prog_dni, dzis)
         + _okragly_przebieg(przebieg, sredni_dzienny, dzis)
     )
     wynik.sort(key=_klucz_kolejnosci)
