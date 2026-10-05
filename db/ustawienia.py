@@ -130,6 +130,39 @@ def zapisz_zapamietywanie_wyszukiwan(wlaczone):
     zapisz_ustawienie("historia_wyszukiwan", "1" if wlaczone else "0")
 
 
+# ---- „Co nowego” (listę wydań i całą logikę trzyma db/nowosci.py) ----
+# Oba klucze należą do URZĄDZENIA, nie do danych: kopia z drugiego telefonu nie
+# może przynieść cudzej „widzianej wersji”, bo pokazałaby nowości jeszcze raz
+# albo schowała te, których ten telefon nie widział. Wczytanie kopii odkłada je
+# i przywraca po przedrostku, razem z ustawieniami kopii (patrz db/kopie.py).
+PRZEDROSTEK_USTAWIEN_NOWOSCI = "nowosci_"
+KLUCZ_NOWOSCI_WIDZIANE = "nowosci_widziane"
+KLUCZ_NOWOSCI_PO_AKTUALIZACJI = "nowosci_po_aktualizacji"
+
+
+def pobierz_widziana_wersje():
+    """Najnowsze wydanie, które ten telefon już pokazał (np. „2026.10.5”), albo
+    None, gdy klucza jeszcze nie ma — telefon nie przeszedł startu z ekranem
+    „Co nowego” (start ustawia go zawsze: db.przygotuj_nowosci_po_starcie)."""
+    wersja = str(pobierz_ustawienie(KLUCZ_NOWOSCI_WIDZIANE, "") or "").strip()
+    return wersja or None
+
+
+def zapisz_widziana_wersje(wersja):
+    zapisz_ustawienie(KLUCZ_NOWOSCI_WIDZIANE, str(wersja))
+
+
+def czy_pokazywac_nowosci_po_aktualizacji():
+    """Czy „Co nowego” ma się otworzyć samo przy pierwszym starcie nowej wersji.
+    Domyślnie tak — po to ekran powstał. Wyłączony zostawia odznakę przy
+    „Co nowego” w szufladzie."""
+    return (pobierz_ustawienie(KLUCZ_NOWOSCI_PO_AKTUALIZACJI, "1") or "1") == "1"
+
+
+def zapisz_pokazywanie_nowosci_po_aktualizacji(wlaczone):
+    zapisz_ustawienie(KLUCZ_NOWOSCI_PO_AKTUALIZACJI, "1" if wlaczone else "0")
+
+
 def czy_skumulowany_z_cena_zakupu():
     """Czy krzywa kosztu skumulowanego startuje od ceny zakupu, czy od zera.
 
@@ -630,4 +663,11 @@ __all__ = [
     "zapisz_widgety_kokpitu",
     "pobierz_jednostke_dystansu",
     "zapisz_jednostke_dystansu",
+    "PRZEDROSTEK_USTAWIEN_NOWOSCI",
+    "KLUCZ_NOWOSCI_WIDZIANE",
+    "KLUCZ_NOWOSCI_PO_AKTUALIZACJI",
+    "pobierz_widziana_wersje",
+    "zapisz_widziana_wersje",
+    "czy_pokazywac_nowosci_po_aktualizacji",
+    "zapisz_pokazywanie_nowosci_po_aktualizacji",
 ]

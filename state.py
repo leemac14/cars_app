@@ -47,6 +47,11 @@ class AppState:
         # filtra i po każdej akcji na wpisie — bez tej pamięci lista wracała za
         # każdym razem na samą górę (patrz utils.pozycja).
         self.pozycje_przewijania = {}
+        # „Co nowego”: wersja, od której wydania są w tej sesji „nowe”. Wejście
+        # na ekran zapisuje wszystko jako widziane, a router przebudowuje go przy
+        # byle okazji — bez progu w pamięci plakietki gasłyby w pół czytania.
+        # Ustawia go start (wersja sprzed aktualizacji) albo pierwsze wejście.
+        self.nowosci_od = None
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
         self.do_zrobienia_podzakladka = 0  # 0 = Do zrobienia, 1 = Checklisty
         self.porownanie_wybrane = []

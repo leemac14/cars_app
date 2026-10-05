@@ -18,6 +18,7 @@ from .polaczenie import *
 from .pomocnicze import *
 from .daty import *
 from .ustawienia import *
+from .nowosci import *
 from .jednostki import *
 from .synchronizacja import *
 from .energia import *
@@ -61,6 +62,7 @@ from . import (
     pomocnicze,
     daty,
     ustawienia,
+    nowosci,
     jednostki,
     synchronizacja,
     energia,

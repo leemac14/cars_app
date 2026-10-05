@@ -479,7 +479,7 @@ class UstawieniaView(ft.View):
                                   on_click=self._wyczysc_log),
                 ], wrap=True, spacing=8, run_spacing=8),
                 ft.Text(
-                    "Wysyłany plik ma nagłówek z wersją Fleta, platformą i wersją schematu bazy — "
+                    "Wysyłany plik ma nagłówek z wersją aplikacji i Fleta, platformą i wersją schematu bazy — "
                     "czyli tym, o co przy każdym zgłoszeniu trzeba dopytywać osobno. Nie ma w nim "
                     "VIN-ów, numerów polis, telefonów ani kwot.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
@@ -490,7 +490,7 @@ class UstawieniaView(ft.View):
         )
 
         k_kopia, kopia_wymaga_uwagi = self._karta_kopii()
-        karty = [k1, k2, k3, k_kokpit, k_kopia, k_kosz, k_duplikaty, k_log]
+        karty = [k1, k2, k3, k_kokpit, k_kopia, k_kosz, k_duplikaty, k_log, self._karta_o_aplikacji()]
         if kopia_wymaga_uwagi:
             # Baner zaległej kopii na kokpicie prowadzi tutaj — karta z problemem
             # staje na górze, zamiast czekać pod czterema rozwiniętymi kartami.
@@ -502,6 +502,50 @@ class UstawieniaView(ft.View):
         super().__init__(
             route="/ustawienia",
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
+        )
+
+    # ================= O APLIKACJI =================
+
+    def _karta_o_aplikacji(self):
+        """Wersja (najnowsze wydanie z listy „Co nowego”, db/nowosci.py), wejście
+        na listę zmian i przełącznik otwierania jej samej po aktualizacji.
+        Wersja stoi też w tytule karty — widać ją bez rozwijania."""
+        wersja = db.WERSJA_APLIKACJI
+        dzien = db.data_wydania(wersja)
+
+        # Zapis od razu, jak przy animacjach: przełącznik decyduje o NASTĘPNYM
+        # starcie, więc trzymanie go w „niezapisanych zmianach” nic by nie dało.
+        def przelacz_nowosci(e):
+            db.zapisz_pokazywanie_nowosci_po_aktualizacji(bool(self.e_nowosci.value))
+
+        self.e_nowosci = ft.Switch(
+            label="Pokazuj nowości po aktualizacji",
+            value=db.czy_pokazywac_nowosci_po_aktualizacji(),
+            on_change=przelacz_nowosci,
+        )
+        return utils.karta_formularza(
+            [
+                ft.Row([
+                    ft.Icon(ft.Icons.NEW_RELEASES, size=20, color=ft.Colors.PRIMARY),
+                    ft.Column([
+                        utils.wartosc(f"Wersja {wersja}"),
+                        utils.podpis(f"Wydana {utils.formatuj_date_pl(dzien)}" if dzien else "Bez daty wydania"),
+                    ], spacing=0, tight=True, expand=True),
+                    ft.FilledTonalButton("Co nowego", icon=ft.Icons.ARROW_FORWARD,
+                                         on_click=lambda e: utils.przejdz(self._page, "/co-nowego")),
+                ], spacing=utils.SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Column([
+                    self.e_nowosci,
+                    ft.Text(
+                        "Po aktualizacji aplikacja raz pokazuje, co się zmieniło, a „Pokaż” przy każdej "
+                        "nowości prowadzi prosto do niej. Wyłączone: lista czeka w menu bocznym "
+                        "(Aplikacja › Co nowego) z liczbą nowości przy pozycji. Ta sama wersja stoi "
+                        "w informacjach o aplikacji w Androidzie i w nagłówku wysyłanego logu.",
+                        size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+                    ),
+                ], spacing=4),
+            ],
+            f"O aplikacji · wersja {wersja}", ft.Icons.INFO_OUTLINE, domyslnie_otwarte=False, page=self._page
         )
 
     # ================= KOPIA ZAPASOWA =================
@@ -700,6 +744,7 @@ class UstawieniaView(ft.View):
         to pierwsze dwa pytania przy każdym zgłoszeniu — niech przyjadą razem
         z logiem, zamiast być przedmiotem osobnej wymiany wiadomości."""
         dane = {
+            "Wersja aplikacji": db.WERSJA_APLIKACJI,
             "Flet": utils.wersja_fleta(),
             "Platforma": str(getattr(self._page, "platform", "?")),
         }

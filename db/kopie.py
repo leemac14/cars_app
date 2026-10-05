@@ -45,7 +45,7 @@ import log
 from .stale import BAZA_DANYCH, FOLDER_KOSZ, FOLDER_ZALACZNIKI, STORAGE_PATH
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
-from .ustawienia import pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie
+from .ustawienia import PRZEDROSTEK_USTAWIEN_NOWOSCI, pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie
 
 
 # ============================================================================
@@ -603,22 +603,38 @@ def wykonaj_kopie(wymus=False) -> dict[str, Any]:
 # kopia z komputera przyniosłaby telefonowi folder `E:\…`, a kopia sprzed
 # miesiąca — przekonanie, że od miesiąca nic nie zapisano.
 
+# Ten sam los czeka „Co nowego”: to, które wydania ten telefon już pokazał,
+# opisuje urządzenie, nie dane — kopia z drugiego telefonu pokazałaby nowości
+# jeszcze raz albo schowała te, których tu nikt nie widział (db/nowosci.py).
+PRZEDROSTKI_USTAWIEN_URZADZENIA = (PRZEDROSTEK_USTAWIEN_KOPII, PRZEDROSTEK_USTAWIEN_NOWOSCI)
+
+
+def _warunek_ustawien_urzadzenia():
+    """(warunek WHERE, parametry) na klucze z przedrostkami urządzenia."""
+    warunek = " OR ".join(["klucz LIKE ? ESCAPE '\\'"] * len(PRZEDROSTKI_USTAWIEN_URZADZENIA))
+    return warunek, tuple(p.replace("_", "\\_") + "%" for p in PRZEDROSTKI_USTAWIEN_URZADZENIA)
+
+
 def ustawienia_kopii_urzadzenia():
-    """Klucze `kopia_*` tej bazy — do odłożenia przed wczytaniem kopii. Pusty
-    słownik, gdy bazy nie da się przeczytać (wtedy nie ma czego chronić)."""
+    """Ustawienia urządzenia tej bazy (`kopia_*` i `nowosci_*`) — do odłożenia
+    przed wczytaniem kopii. Pusty słownik, gdy bazy nie da się przeczytać
+    (wtedy nie ma czego chronić)."""
+    warunek, parametry = _warunek_ustawien_urzadzenia()
     try:
-        return _ustawienia_kopii()
+        with polacz_baze() as conn:
+            return dict(conn.execute(
+                f"SELECT klucz, wartosc FROM ustawienia WHERE {warunek}", parametry).fetchall())
     except sqlite3.Error:
         log.polkniety("odczyt ustawień kopii przed wczytaniem kopii")
         return {}
 
 
 def przywroc_ustawienia_kopii_urzadzenia(ustawienia):
-    """Po wczytaniu kopii: klucze `kopia_*` wracają dokładnie do stanu sprzed —
-    także te, których wtedy nie było (wraca wartość domyślna)."""
+    """Po wczytaniu kopii: ustawienia urządzenia wracają dokładnie do stanu
+    sprzed — także te, których wtedy nie było (wraca wartość domyślna)."""
+    warunek, parametry = _warunek_ustawien_urzadzenia()
     with polacz_baze() as conn:
-        conn.execute("DELETE FROM ustawienia WHERE klucz LIKE ? ESCAPE '\\'",
-                     (PRZEDROSTEK_USTAWIEN_KOPII.replace("_", "\\_") + "%",))
+        conn.execute(f"DELETE FROM ustawienia WHERE {warunek}", parametry)
         conn.executemany("INSERT INTO ustawienia (klucz, wartosc) VALUES (?, ?)",
                          list((ustawienia or {}).items()))
 
@@ -640,6 +656,7 @@ __all__ = [
     "NAZWA_FOLDERU_KOPII_ANDROID",
     "PRZEDROSTEK_PLIKU_KOPII",
     "PRZEDROSTEK_USTAWIEN_KOPII",
+    "PRZEDROSTKI_USTAWIEN_URZADZENIA",
     "czy_folder_kopii_domyslny",
     "czy_kopia_automatyczna",
     "domyslny_folder_kopii",

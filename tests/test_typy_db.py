@@ -33,6 +33,13 @@ import db
 import pomoce
 
 
+def _widziane_do(wersja):
+    """Ten telefon pokazał nowości do `wersja` — bez tego lista „Co nowego”
+    byłaby pusta i sprawdzałaby tylko to, że pusta lista jest listą."""
+    db.zapisz_widziana_wersje(wersja)
+    return ()
+
+
 # Argumenty do wywołania każdej funkcji o znanym kształcie wyniku. Nieznana
 # funkcja = błąd testu, a nie ciche pominięcie: nowa adnotacja ma się zgłosić po
 # swoje wywołanie, inaczej dopisywałoby się adnotacje, których nikt nie sprawdza.
@@ -45,12 +52,14 @@ WYWOLANIA = {
     "gwarancje_pojazdu": lambda k: (k["id"]["auto_id"],),
     "historia_cen_czesci": lambda k: (k["id"]["auto_id"], "Filtr oleju"),
     "klucz_gwarancji": lambda k: ("2027-05-12", 180000),
+    "klucz_wersji": lambda k: ("2026.10.5.2",),
     # Prawdziwa kopia w folderze domyślnym (katalog testu) — inaczej lista
     # byłaby pusta i sprawdzałaby tylko to, że pusta lista jest listą.
     "lista_kopii": lambda k: (db.wykonaj_kopie(wymus=True)["folder"],),
     "miesiace_z_danymi": lambda k: (k["id"]["auto_id"],),
     "napraw_sciezki_zalacznikow": lambda k: (),
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
+    "niewidziane_wydania": lambda k: _widziane_do("2026.9.30"),
     "odliczania_pojazdu": lambda k: (k["id"]["auto_id"],),
     "opcje_progow_km": lambda k: ("mi", 1500),
     "pakiety_dla_pojazdu": lambda k: (k["id"]["auto_id"],),
@@ -110,6 +119,7 @@ WYWOLANIA = {
     "wczytaj_plik_csv": lambda k: (str(k["csv"]),),
     "wybierz_miesiac_pigulki": lambda k: (db.miesiace_z_danymi(k["id"]["auto_id"]),),
     "wycen_zuzycie": lambda k: ([(k["id"]["magazyn"], 1.0)], {k["id"]["magazyn"]: 39.0}),
+    "wydania_po": lambda k: ("2026.9.30",),
     "znajdz_duplikaty_nazw": lambda k: (k["id"]["auto_id"],),
 }
 

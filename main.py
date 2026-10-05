@@ -42,6 +42,7 @@ from views.do_wpisania_view import DoWpisaniaView
 from views.migawka_view import MigawkaView
 from views.rok_view import RokWPigulceView
 from views.miesiac_view import MiesiacWPigulceView
+from views.co_nowego_view import CoNowegoView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
 # Router jest jedynym miejscem, przez które przechodzi KAŻDE otwarcie formularza,
@@ -142,7 +143,8 @@ def main(page: ft.Page):
     # zdarzają się w kilku pierwszych linijkach, czyli dokładnie tam, gdzie
     # jeszcze nie ma komu pokazać komunikatu.
     log.wlacz()
-    log.zapisz(f"=== Start aplikacji · Flet {utils.wersja_fleta()} · platforma {page.platform} ===")
+    log.zapisz(f"=== Start aplikacji · wersja {db.WERSJA_APLIKACJI} · Flet {utils.wersja_fleta()} "
+               f"· platforma {page.platform} ===")
 
     page.title = "Flota Mobile"
     page.window.width = 400
@@ -156,12 +158,29 @@ def main(page: ft.Page):
     # wstanie (patrz utils.start).
     ekran_startowy = utils.pokaz_ekran_startowy(page)
 
+    # Schemat bazy SPRZED migracji. „Co nowego” zgaduje z niego, od którego
+    # wydania zacząć na telefonie, który nie zna jeszcze tego ekranu
+    # (db/nowosci.py). Brak pliku albo pusty plik to świeża instalacja — zero.
+    schemat_przed_startem = 0
+    if os.path.exists(db.BAZA_DANYCH) and os.path.getsize(db.BAZA_DANYCH) > 0:
+        schemat_przed_startem = db.wersja_schematu_pliku(db.BAZA_DANYCH)
+
     # Mierzone, bo start to jedyny moment, w którym czas widać gołym okiem —
     # i jedyny, którego nie da się zmierzyć u siebie: na komputerze wszystko
     # jest szybkie. Pomiar jedzie w logu razem z „Wyślij log", więc mówi, ile to
     # trwało NA TYM telefonie i przy TYCH danych.
     with log.zmierz("init_db"):
         db.init_db()
+
+    try:
+        od_wersji = db.przygotuj_nowosci_po_starcie(schemat_przed_startem)
+        # Ślad aktualizacji w logu: „u mnie po aktualizacji nie działa” zaczyna
+        # się od pytania, z której wersji ta aktualizacja przyszła.
+        if schemat_przed_startem and schemat_przed_startem != db.wersja_schematu_aplikacji():
+            log.zapisz(f"Aktualizacja: schemat bazy {schemat_przed_startem} → "
+                       f"{db.wersja_schematu_aplikacji()}, „Co nowego” od wersji {od_wersji}")
+    except Exception:
+        log.polkniety("przygotowanie ekranu „Co nowego”")
 
     kolor_ustawiony = db.pobierz_kolor_motywu()
 
@@ -756,6 +775,13 @@ def main(page: ft.Page):
             ))
         elif segmenty[0] == "kalkulator":
             page.views.append(KalkulatorTrasyView(page, app_state))
+        elif segmenty[0] == "co-nowego":
+            # „Pokaż” przy nowości znika tam, gdzie router i tak by nie wpuścił —
+            # tę samą decyzję podajemy ekranowi wprost, zamiast ją powielać.
+            page.views.append(CoNowegoView(
+                page, app_state,
+                wolno_wejsc=lambda trasa: _wolno_wejsc(app_state.auto_id, [s for s in trasa.split("/") if s])[0],
+            ))
         elif segmenty[0] == "timeline":
             page.views.append(TimelineView(page, app_state))
         elif segmenty[0] == "szukaj":
@@ -894,8 +920,20 @@ def main(page: ft.Page):
     except Exception:
         log.polkniety("podpięcie kopii zapasowej pod powrót z tła")
 
+    # „Co nowego” raz po aktualizacji: pierwszym ekranem jest lista zmian nad
+    # kokpitem, a „wstecz” prowadzi na kokpit. Próg „nowego” idzie do stanu,
+    # bo ekran przy wejściu zapisuje wszystko jako widziane (db/nowosci.py).
+    trasa_startowa = page.route or "/"
+    if trasa_startowa == "/":
+        try:
+            if db.czy_pokazac_nowosci_po_starcie():
+                app_state.nowosci_od = db.pobierz_widziana_wersje()
+                trasa_startowa = "/co-nowego"
+        except Exception:
+            log.polkniety("sprawdzenie nowości po aktualizacji")
+
     with log.zmierz("pierwszy ekran"):
-        utils.przejdz(page, page.route or "/")
+        utils.przejdz(page, trasa_startowa)
 
     log.zapisz(f"=== Start gotowy: {log.podsumowanie_pomiarow()} ===")
 

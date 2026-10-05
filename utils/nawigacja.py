@@ -196,6 +196,13 @@ EKRANY = [
      "ikona": ft.Icons.SETTINGS, "grupa": "aplikacja", "trasa": "/ustawienia", "wymaga_pojazdu": False,
      "slowa": ["konfiguracja", "opcje", "waluta", "progi", "powiadomienia", "preferencje",
                "jednostki", "mile", "kilometry", "mpg", "spalanie"]},
+    # Historia zmian aplikacji; raz po aktualizacji otwiera się sama (db/nowosci.py,
+    # main.py). Opis i słowa bez „oc”, „olej” i „koszt” — wyszukiwarka ma dla
+    # nich swoje ekrany (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "co-nowego", "tytul": "Co nowego", "opis": "Zmiany w kolejnych wersjach aplikacji",
+     "ikona": ft.Icons.NEW_RELEASES, "grupa": "aplikacja", "trasa": "/co-nowego", "wymaga_pojazdu": False,
+     "slowa": ["nowości", "nowe funkcje", "zmiany", "historia zmian", "wersja", "aktualizacja",
+               "changelog"]},
     {"id": "motyw", "tytul": "Motyw aplikacji", "opis": "Jasny, ciemny albo według telefonu",
      "ikona": ft.Icons.BRIGHTNESS_AUTO, "grupa": "aplikacja", "akcja": "motyw", "wymaga_pojazdu": False,
      "slowa": ["ciemny", "jasny", "tryb nocny", "wygląd", "kolory"]},

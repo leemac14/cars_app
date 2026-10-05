@@ -3,9 +3,12 @@
 import sqlite3
 from datetime import datetime
 
+import log
+
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
+from .nowosci import liczba_niewidzianych_wydan
 from .pojazd import terminy_pojazdu
 from .kosz import liczba_w_koszu
 
@@ -248,6 +251,17 @@ def _policz_liczniki_nawigacji(auto_id):
             wynik["kosz"] = n
     except Exception:
         pass
+
+    # Wydania „Co nowego”, których ten telefon jeszcze nie pokazał. Liczą się
+    # dla urządzenia, nie pojazdu, i znikają po otwarciu ekranu — widać je
+    # wtedy, gdy otwieranie samo po aktualizacji jest wyłączone (db/nowosci.py).
+    try:
+        n = liczba_niewidzianych_wydan()
+    except sqlite3.Error:
+        log.polkniety("odznaka „Co nowego” w szufladzie")
+        n = 0
+    if n:
+        wynik["co-nowego"] = n
 
     return wynik
 

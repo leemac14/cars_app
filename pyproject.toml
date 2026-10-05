@@ -1,3 +1,11 @@
+# Wersja, którą Android pokazuje w informacjach o aplikacji — `flet build apk`
+# bierze ją stąd (--build-name). To ZAWSZE najnowsze wydanie z listy „Co nowego”
+# (db/nowosci.py, numer = data wydania); zgodności pilnuje tests/test_co_nowego.py.
+# Sekcja świadomie bez `name` i `dependencies`: nazwa paczki zostaje z nazwy
+# folderu, a zależności z requirements.txt — dokładnie tak, jak bez tej sekcji.
+[project]
+version = "2026.10.5"
+
 [tool.flet]
 # Aparat w aplikacji (flet-camera, kolejka paragonów „do wpisania”). Gotowy
 # zestaw Fleta: uprawnienie CAMERA na Androidzie, opis dla iOS i aparat jako
