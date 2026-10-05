@@ -5,22 +5,23 @@ import sync
 import utils
 
 
-# Kolejność ma znaczenie: od najszerszych uprawnień do najwęższych, żeby
-# rozdający kod czytał listę jak zjazd w dół, a nie losowy zbiór opcji.
-OPIS_KODOW = [
-    ("pelny", db.ROLA_PELNA, ft.Icons.KEY,
-     "Robi wszystko to, co Ty: dodaje, poprawia i kasuje dowolny wpis. Dla drugiego właściciela auta."),
-    ("wspolautor", db.ROLA_WSPOLAUTOR, ft.Icons.EDIT_NOTE,
-     "Dopisuje własne tankowania i wpisy, poprawia to, co sam dodał. Cudzych nie ruszy. Dla kogoś, kto jeździ autem na co dzień."),
-    ("podglad", db.ROLA_PODGLAD, ft.Icons.VISIBILITY,
-     "Widzi całą historię, nie zmienia niczego. Nic z jego telefonu nie trafia do chmury. Dla kupującego, warsztatu, rodzica."),
-]
-
-
 class WspoldzielenieView(ft.View):
-    def __init__(self, page: ft.Page, state):
+    def __init__(self, page: ft.Page, state, kod_zaproszenia=None):
+        """`kod_zaproszenia` — wejście z linku carsapp://app/dolacz/<KOD> (trasa
+        /dolacz/<KOD>, QR zeskanowany aparatem albo link z SMS-a): ekran pokazuje
+        wtedy samo dołączanie z wpisanym kodem. Pusty napis = link bez kodu."""
         self._page = page
         self.state = state
+
+        if kod_zaproszenia is not None:
+            super().__init__(
+                route=f"/{sync.TRASA_DOLACZENIA}" + (f"/{kod_zaproszenia}" if kod_zaproszenia else ""),
+                padding=15, spacing=15,
+                scroll=ft.ScrollMode.AUTO,
+                appbar=utils.zbuduj_pasek_z_powrotem(page, "Dołącz do pojazdu", "/", ikona=ft.Icons.LOGIN),
+                controls=[self._karta_dolaczenia(kod_zaproszenia, z_linku=True), utils.dol_bezpieczny(20)],
+            )
+            return
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Współdzielenie pojazdu", "/", ikona=ft.Icons.GROUPS)
 
@@ -49,23 +50,13 @@ class WspoldzielenieView(ft.View):
                 ),
                 ft.Container(height=4),
                 ft.Text("Po udostępnieniu dostaniesz trzy różne kody:", size=12, weight="bold"),
-            ] + [self._wiersz_opisu_roli(rola, ikona, opis) for _, rola, ikona, opis in OPIS_KODOW] + [
+            ] + [self._wiersz_opisu_roli(rola, ikona, opis) for _, rola, ikona, opis in utils.OPIS_KODOW] + [
                 ft.Container(height=6),
                 ft.ElevatedButton("Udostępnij ten pojazd", on_click=self._udostepnij,
                                   bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ], "Udostępnij", ft.Icons.SHARE, domyslnie_otwarte=True))
 
-        self.e_kod = ft.TextField(label="Kod zaproszenia", hint_text="np. A1B2C3", **utils.styl_pola())
-        elementy.append(utils.karta_formularza([
-            ft.Text(
-                "Masz kod od kogoś innego? Wpisz go tutaj — na liście pojawi się nowy pojazd ze wspólną "
-                "historią. To, co będziesz mógł w nim zrobić, zależy od tego, który kod dostałeś.",
-                size=12, color=ft.Colors.ON_SURFACE_VARIANT
-            ),
-            self.e_kod,
-            ft.ElevatedButton("Dołącz po kodzie", on_click=self._dolacz,
-                              bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
-        ], "Dołącz do cudzego pojazdu", ft.Icons.LOGIN))
+        elementy.append(self._karta_dolaczenia())
 
         elementy.append(utils.dol_bezpieczny(20))
 
@@ -75,6 +66,34 @@ class WspoldzielenieView(ft.View):
         )
 
     # ------------------------------------------------------------ KARTY
+    def _karta_dolaczenia(self, kod="", z_linku=False):
+        """Pole kodu z „Wklej” obok: przyjmie sam kod, link carsapp:// albo całe
+        zaproszenie z SMS-a. Z linku przychodzi otwarta i z wpisanym kodem —
+        dołącza dopiero dotknięcie przycisku, nigdy sam link."""
+        self.e_kod = ft.TextField(label="Kod zaproszenia", hint_text="np. A1B2C3 albo link zaproszenia",
+                                  value=kod, expand=True, **utils.styl_pola())
+        if z_linku and kod:
+            opis = ("Kod z zaproszenia jest już wpisany. Dotknij „Dołącz”, a na liście pojawi się nowy pojazd "
+                    "ze wspólną historią — Twoje auta zostają bez zmian. Co będziesz mógł w nim robić, "
+                    "zależy od kodu; zobaczysz to zaraz po dołączeniu.")
+        elif z_linku:
+            opis = ("W linku nie było kodu zaproszenia. Poproś o kod albo o nowy link — kod możesz też "
+                    "wpisać albo wkleić tutaj.")
+        else:
+            opis = ("Masz kod od kogoś innego? Wpisz go albo wklej link zaproszenia — na liście pojawi się "
+                    "nowy pojazd ze wspólną historią. To, co będziesz mógł w nim zrobić, zależy od tego, "
+                    "który kod dostałeś.")
+        return utils.karta_formularza([
+            ft.Text(opis, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Row([
+                self.e_kod,
+                ft.IconButton(ft.Icons.CONTENT_PASTE, tooltip="Wklej kod albo link ze schowka",
+                              on_click=self._wklej_kod),
+            ], spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Button("Dołącz" if z_linku else "Dołącz po kodzie", icon=ft.Icons.LOGIN, on_click=self._dolacz,
+                      bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+        ], "Dołącz do cudzego pojazdu", ft.Icons.LOGIN, domyslnie_otwarte=z_linku)
+
     def _wiersz_opisu_roli(self, rola, ikona, opis):
         kolor = utils.KOLORY_ROL.get(rola, ft.Colors.PRIMARY)
         return ft.Row([
@@ -134,8 +153,8 @@ class WspoldzielenieView(ft.View):
             size=13, color=ft.Colors.ON_SURFACE_VARIANT
         )]
 
-        for klucz, rola, ikona, opis in OPIS_KODOW:
-            elementy.append(self._wiersz_kodu(kody.get(klucz), rola, ikona, opis))
+        for klucz, rola, ikona, opis in utils.OPIS_KODOW:
+            elementy.append(self._wiersz_kodu(kody, klucz, rola, ikona, opis))
 
         brakuje = not kody.get("wspolautor") or not kody.get("podglad")
         if brakuje:
@@ -163,8 +182,9 @@ class WspoldzielenieView(ft.View):
 
         return utils.karta_formularza(elementy, "Kogo zapraszasz", ft.Icons.QR_CODE_2, domyslnie_otwarte=True)
 
-    def _wiersz_kodu(self, kod, rola, ikona, opis):
+    def _wiersz_kodu(self, kody, klucz, rola, ikona, opis):
         kolor = utils.KOLORY_ROL.get(rola, ft.Colors.PRIMARY)
+        kod = kody.get(klucz)
 
         def _kopiuj(e, k=kod):
             # Przez utils, bo page.set_clipboard istnieje tylko w starszych
@@ -180,6 +200,8 @@ class WspoldzielenieView(ft.View):
         if kod:
             pasek = ft.Row([
                 ft.Text(kod, size=20, weight="bold", color=kolor, selectable=True, expand=True),
+                ft.IconButton(ft.Icons.QR_CODE_2, tooltip="Pokaż kod QR do zeskanowania", icon_color=kolor,
+                              on_click=lambda e, k=klucz: self._pokaz_qr(kody, k)),
                 ft.IconButton(ft.Icons.COPY, tooltip="Kopiuj kod", icon_color=kolor, on_click=_kopiuj),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
         else:
@@ -301,6 +323,15 @@ class WspoldzielenieView(ft.View):
         ], "Niebezpieczna strefa", ft.Icons.WARNING_AMBER_ROUNDED)
 
     # ------------------------------------------------------------ AKCJE
+    def _pokaz_qr(self, kody, klucz):
+        utils.pokaz_kod_qr(self._page, kody, self.state.auto_nazwa, klucz)
+
+    def _wklej_kod(self, e):
+        def _po_wklejeniu(kod):
+            utils.ustaw_blad(self.e_kod)
+
+        utils.wklej_kod_zaproszenia(self._page, self.e_kod, _po_wklejeniu)
+
     def _przelacz_auto(self, e):
         db.zapisz_auto_synchronizacje(bool(e.control.value))
         utils.przejdz(self._page, "/wspoldzielenie")

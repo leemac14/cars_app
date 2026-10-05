@@ -10,13 +10,42 @@ Czytane od góry układa się to zresztą sensownie: najpierw jest przebieg
 synchronizacji, a dopiero potem operacja, która ten przebieg zamawia.
 """
 
+import re
+
 import db
 import log
 
-from .stale import KONFIGURACJA_SYNC, TABELE_POSREDNIE
+from .stale import HOST_LINKU, KONFIGURACJA_SYNC, SCHEMAT_LINKU, TABELE_POSREDNIE, TRASA_DOLACZENIA
 from .polaczenie import _upewnij_sesje
 from .role import _nowy_kod, czy_udostepniony
 from .przebieg import synchronizuj_wszystko
+
+
+# Link w dowolnym miejscu tekstu: wklejone całe zaproszenie z SMS-a też się liczy.
+_WZOR_LINKU = re.compile(
+    rf"{SCHEMAT_LINKU}://[^/\s]*/{TRASA_DOLACZENIA}/([0-9A-Za-z]+)", re.IGNORECASE
+)
+# Sam kod. Dzisiejsze mają 6 znaków (`_nowy_kod`), zapas na dłuższe w przyszłości.
+_WZOR_KODU = re.compile(r"[0-9A-Za-z]{4,16}")
+
+
+def link_zaproszenia(kod):
+    """carsapp://app/dolacz/<KOD> — treść kodu QR i zaproszenia wysłanego dalej.
+    Aparat drugiego telefonu otwiera nim aplikację na ekranie dołączania
+    z wpisanym kodem; dołącza dopiero dotknięcie „Dołącz”."""
+    return f"{SCHEMAT_LINKU}://{HOST_LINKU}/{TRASA_DOLACZENIA}/{(kod or '').strip().upper()}"
+
+
+def kod_z_zaproszenia(tekst):
+    """Kod wyjęty z tego, co ktoś wklei albo co przyjdzie linkiem: z linku
+    (także w środku dłuższej wiadomości) albo z samego kodu, ze spacjami
+    w środku czy bez. Nic rozpoznawalnego → pusty napis, a nie zgadywanie."""
+    tekst = (tekst or "").strip()
+    trafienie = _WZOR_LINKU.search(tekst)
+    if trafienie:
+        return trafienie.group(1).upper()
+    goly = "".join(tekst.split())
+    return goly.upper() if _WZOR_KODU.fullmatch(goly) else ""
 
 
 def utworz_udostepniony_pojazd(auto_id, nazwa):
@@ -149,7 +178,9 @@ def _dolacz_z_rola(klient, kod):
 
 def dolacz_po_kodzie(kod):
     klient, uid = _upewnij_sesje()
-    kod = kod.strip().upper()
+    # Wklejony link zamiast kodu też działa; tekst bez rozpoznawalnego kodu
+    # leci na serwer jak dawniej, a ten odpowie „Nieprawidłowy kod”.
+    kod = kod_z_zaproszenia(kod) or kod.strip().upper()
     wspolny_id, nazwa_zdalna, rola = _dolacz_z_rola(klient, kod)
 
     with db.polacz_baze() as conn:
@@ -206,6 +237,8 @@ __all__ = [
     "_dolacz_z_rola",
     "_unikalna_nazwa_pojazdu",
     "dolacz_po_kodzie",
+    "kod_z_zaproszenia",
+    "link_zaproszenia",
     "odlacz_wspoldzielenie",
     "uniewaznij_kody_rol",
     "utworz_kody_rol",

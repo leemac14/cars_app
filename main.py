@@ -735,6 +735,15 @@ def main(page: ft.Page):
             page.views.append(PorownanieView(page, app_state))
         elif segmenty[0] == "wspoldzielenie":
             page.views.append(WspoldzielenieView(page, app_state))
+        elif segmenty[0] == sync.TRASA_DOLACZENIA:
+            # Link zaproszenia carsapp://app/dolacz/<KOD> — kod QR zeskanowany
+            # aparatem albo link z SMS-a. Flet podaje samą ścieżkę (/dolacz/<KOD>),
+            # na zimnym starcie jako pierwszą trasę. Ekran tylko wpisuje kod:
+            # dołącza dopiero dotknięcie „Dołącz”, nigdy sam link.
+            page.views.append(WspoldzielenieView(
+                page, app_state,
+                kod_zaproszenia=sync.kod_z_zaproszenia(segmenty[1]) if len(segmenty) > 1 else "",
+            ))
         elif segmenty[0] == "podzial":
             page.views.append(PodzialKosztowView(page, app_state))
         elif segmenty[0] == "przebieg":

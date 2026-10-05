@@ -4,7 +4,7 @@
 # Sekcja świadomie bez `name` i `dependencies`: nazwa paczki zostaje z nazwy
 # folderu, a zależności z requirements.txt — dokładnie tak, jak bez tej sekcji.
 [project]
-version = "2026.10.5"
+version = "2026.10.5.2"
 
 [tool.flet]
 # Aparat w aplikacji (flet-camera, kolejka paragonów „do wpisania”). Gotowy
@@ -50,3 +50,14 @@ target_arch = ["arm64-v8a"]
 # Gdybyś kiedyś wystawiał aplikację w Google Play: zbuduj `flet build aab`
 # i USUŃ tę linijkę — tam nowoczesne pakowanie daje mniejsze pobranie.
 legacy_packaging = true
+
+[tool.flet.android.deep_linking]
+# Link zaproszenia carsapp://app/dolacz/<KOD> — kod QR na ekranie
+# Współdzielenia i zaproszenie wysłane SMS-em — otwiera aplikację na ekranie
+# dołączania z wpisanym kodem. Na Androida Flet czyta TYLKO tę sekcję
+# (`[tool.flet.deep_linking]` bez `.android` jest dla innych platform).
+# Muszą się zgadzać z sync/stale.py (SCHEMAT_LINKU, HOST_LINKU) — pilnuje tego
+# tests/test_zaproszenia.py. Małymi literami: Android porównuje je dosłownie.
+# Działa od pierwszego APK zbudowanego z tą sekcją.
+scheme = "carsapp"
+host = "app"

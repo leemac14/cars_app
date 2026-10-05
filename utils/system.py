@@ -1,11 +1,83 @@
-"""Wyjście poza aplikację: schowek, dzwonienie, mapy i strony w przeglądarce."""
+"""Wyjście poza aplikację: schowek, dzwonienie, mapy, strony w przeglądarce,
+systemowe „Udostępnij” i jasność ekranu."""
 
 import flet as ft
 import inspect
 import urllib.parse
 
+import log
+
 from .stale import KOLOR_STATUS
 from .dialogi import pokaz_komunikat
+
+
+def _na_telefonie(page: ft.Page) -> bool:
+    return getattr(page, "platform", None) in (ft.PagePlatform.ANDROID, ft.PagePlatform.IOS)
+
+
+def _usluga(page: ft.Page, atrybut, klasa):
+    """Jedna instancja usługi Fleta na stronę, trzymana na `page`. Usługa bez
+    silnej referencji wypada z rejestru strony, a w połowie wywołania nie ma jej
+    już kto odebrać."""
+    usluga = getattr(page, atrybut, None)
+    if usluga is None:
+        usluga = klasa()
+        if hasattr(page, "services"):
+            page.services.append(usluga)
+        else:
+            page.overlay.append(usluga)
+        setattr(page, atrybut, usluga)
+    return usluga
+
+
+async def odczytaj_schowek(page: ft.Page):
+    """Tekst ze schowka albo pusty napis. Wołać tylko na wyraźne „Wklej”:
+    Android 12+ przy każdym odczycie pokazuje dymek „wklejono ze schowka”."""
+    try:
+        return (await _usluga(page, "_schowek", ft.Clipboard).get()) or ""
+    except Exception:
+        log.polkniety("odczyt schowka")
+        return ""
+
+
+def udostepnij_tekst(page: ft.Page, tekst, temat=None, komunikat_awaryjny="Skopiowano do schowka"):
+    """Systemowe „Udostępnij” na telefonie (SMS, komunikator, e-mail). Na
+    komputerze arkusza nie ma — tam, i gdy się nie otworzy, tekst idzie do
+    schowka z `komunikat_awaryjny`."""
+    if not _na_telefonie(page):
+        kopiuj_do_schowka(page, tekst, komunikat_awaryjny)
+        return
+
+    async def _zadanie():
+        try:
+            usluga = getattr(page, "share_service", None) or _usluga(page, "_udostepnianie", ft.Share)
+            await usluga.share_text(tekst, subject=temat)
+        except Exception:
+            log.polkniety("udostępnienie tekstu przez system")
+            kopiuj_do_schowka(page, tekst, komunikat_awaryjny)
+
+    page.run_task(_zadanie)
+
+
+def ustaw_jasnosc_kodu(page: ft.Page, pelna):
+    """Jasność aplikacji na maksimum na czas pokazywania kodu do zeskanowania
+    (aparat drugiego telefonu łapie go szybciej, także w słońcu); `pelna=False`
+    oddaje ją systemowi. Tylko na telefonie — na komputerze wtyczka
+    przestawiałaby jasność monitora."""
+    if not _na_telefonie(page):
+        return
+
+    async def _zadanie():
+        try:
+            jasnosc = _usluga(page, "_jasnosc", ft.ScreenBrightness)
+            if pelna:
+                await jasnosc.set_application_screen_brightness(1.0)
+            else:
+                await jasnosc.reset_application_screen_brightness()
+        except Exception:
+            log.polkniety("jasność ekranu przy kodzie do zeskanowania")
+
+    page.run_task(_zadanie)
 
 
 def kopiuj_do_schowka(page: ft.Page, wartosc, komunikat="Skopiowano do schowka"):
@@ -129,7 +201,10 @@ def otworz_strone(page: ft.Page, adres):
 __all__ = [
     "kopiuj_do_schowka",
     "link_mapy",
+    "odczytaj_schowek",
     "otworz_strone",
     "pokaz_na_mapie",
+    "udostepnij_tekst",
+    "ustaw_jasnosc_kodu",
     "zadzwon",
 ]

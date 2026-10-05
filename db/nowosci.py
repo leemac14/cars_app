@@ -48,6 +48,12 @@ from .ustawienia import (
 # wydanie ma 47). Nowym wydaniom niepotrzebny: każdy telefon, który ich
 # doczeka, ma już zapamiętaną wersję.
 NOWOSCI = [
+    {"wersja": "2026.10.5.2", "pozycje": [
+        {"tytul": "Zaproszenie kodem QR", "ikona": "QR_CODE_2", "ekran": "wspoldzielenie",
+         "opis": "Przy każdym kodzie zaproszenia jest teraz ikona QR: drugi telefon skanuje go aparatem "
+                 "i otwiera aplikację z wpisanym kodem — wystarczy dotknąć „Dołącz”. Zaproszenie wyślesz "
+                 "też SMS-em, a otrzymany kod albo link wkleisz przyciskiem obok pola."},
+    ]},
     {"wersja": "2026.10.5", "pozycje": [
         {"tytul": "Co nowego po aktualizacji", "ikona": "NEW_RELEASES", "ekran": "ustawienia",
          "opis": "Po każdej aktualizacji aplikacja raz pokazuje tę listę, a „Pokaż” prowadzi prosto "

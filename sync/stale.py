@@ -21,6 +21,16 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 # ----------------------------------------------------------------------------------
 
 
+# Link zaproszenia carsapp://app/dolacz/<KOD> — w kodzie QR i w zaproszeniu
+# wysłanym SMS-em. Schemat i host MUSZĄ być takie same jak w pyproject.toml
+# ([tool.flet.android.deep_linking]) — inaczej Android nie skieruje linku do
+# aplikacji. Oba małymi literami: Android porównuje je z rozróżnianiem wielkości.
+# Flet podaje aplikacji samą ścieżkę, więc link trafia na trasę /dolacz/<KOD>.
+SCHEMAT_LINKU = "carsapp"
+HOST_LINKU = "app"
+TRASA_DOLACZENIA = "dolacz"
+
+
 class SynchronizacjaWToku(Exception):
     """Inna synchronizacja tego urządzenia właśnie trwa. Rzucane wyłącznie
     przy wywołaniu z `czekaj=False` — nie jest błędem, tylko informacją,
@@ -187,12 +197,15 @@ ETYKIETY_TABEL_SYNC = {
 
 __all__ = [
     "ETYKIETY_TABEL_SYNC",
+    "HOST_LINKU",
     "KOLUMNA_ZNACZNIKA",
     "KOLUMNY_POJAZDU",
     "KOLUMNY_POJAZDU_DOPISANE",
     "KONFIGURACJA_SYNC",
+    "SCHEMAT_LINKU",
     "SUPABASE_ANON_KEY",
     "SUPABASE_URL",
     "SynchronizacjaWToku",
     "TABELE_POSREDNIE",
+    "TRASA_DOLACZENIA",
 ]

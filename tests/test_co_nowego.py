@@ -31,6 +31,12 @@ import utils
 KORZEN = pathlib.Path(__file__).resolve().parent.parent
 WERSJA = db.WERSJA_APLIKACJI
 
+# Oczekiwania niżej opisują listę wydań z 5 października 2026 (najnowsze:
+# 2026.10.5). Każda kolejna funkcja dokłada wydanie NA GÓRZE listy, więc te
+# dopisane później stoją przed nimi — bez tego każde nowe wydanie oblewało
+# sześć testów, które nie mówią nic o nim samym.
+NOWSZE = [w["wersja"] for w in db.NOWOSCI if db.klucz_wersji(w["wersja"]) > db.klucz_wersji("2026.10.5")]
+
 # Ten sam wzorzec, co w test_jednostka_dystansu.py: ekran w milach nie może
 # pokazać samotnego „km”, a historia zmian jest tekstem jak każdy inny.
 SAMOTNE_KM = re.compile(r"(?<![\w/])km(?![\w/])")
@@ -144,9 +150,9 @@ def test_klucz_wersji_porownuje_liczby_a_nie_napisy():
 def test_wydania_po_wersji():
     assert _wersje(db.wydania_po(WERSJA)) == []
     assert _wersje(db.wydania_po(None)) == _wersje(db.NOWOSCI)
-    assert _wersje(db.wydania_po("2026.10.3")) == ["2026.10.5", "2026.10.4"]
+    assert _wersje(db.wydania_po("2026.10.3")) == NOWSZE + ["2026.10.5", "2026.10.4"]
     # Wersja, której nie ma na liście (np. wydanie skasowane), też działa jak próg.
-    assert _wersje(db.wydania_po("2026.10.2")) == ["2026.10.5", "2026.10.4", "2026.10.3"]
+    assert _wersje(db.wydania_po("2026.10.2")) == NOWSZE + ["2026.10.5", "2026.10.4", "2026.10.3"]
 
 
 # ======================================================= odgadnięcie startu
@@ -172,8 +178,8 @@ def test_przygotowanie_po_starcie(baza):
 
     db.usun_ustawienie(db.KLUCZ_NOWOSCI_WIDZIANE)
     assert db.przygotuj_nowosci_po_starcie(46) == "2026.9.30"
-    assert _wersje(db.niewidziane_wydania()) == ["2026.10.5", "2026.10.4", "2026.10.3", "2026.10.1"]
-    assert db.liczba_niewidzianych_wydan() == 4 and db.czy_pokazac_nowosci_po_starcie()
+    assert _wersje(db.niewidziane_wydania()) == NOWSZE + ["2026.10.5", "2026.10.4", "2026.10.3", "2026.10.1"]
+    assert db.liczba_niewidzianych_wydan() == len(NOWSZE) + 4 and db.czy_pokazac_nowosci_po_starcie()
 
     # Bazy nie dało się przeczytać przed migracjami — lepiej wszystko niż nic.
     db.usun_ustawienie(db.KLUCZ_NOWOSCI_WIDZIANE)
@@ -208,7 +214,7 @@ def test_przelacznik_wylacza_tylko_otwieranie_samo(baza):
     db.zapisz_pokazywanie_nowosci_po_aktualizacji(False)
     assert not db.czy_pokazywac_nowosci_po_aktualizacji()
     assert not db.czy_pokazac_nowosci_po_starcie()
-    assert db.liczba_niewidzianych_wydan() == 2, "odznaka w menu zostaje"
+    assert db.liczba_niewidzianych_wydan() == len(NOWSZE) + 2, "odznaka w menu zostaje"
 
 
 # ======================================================= start aplikacji (main.py)
@@ -244,12 +250,12 @@ def test_start_po_aktualizacji_otwiera_co_nowego_raz(baza, uruchom):
     assert _stos(strona.page) == ["MainView", "CoNowegoView"]
     assert strona.page.route == "/co-nowego"
     widok = strona.page.views[-1]
-    assert widok.nowe == {"2026.10.5", "2026.10.4"}
+    assert widok.nowe == {"2026.10.5", "2026.10.4", *NOWSZE}
     assert db.pobierz_widziana_wersje() == WERSJA, "otwarcie = widziane"
 
     # Przebudowa ekranu przez router nie gasi plakietek w pół czytania.
     utils.przejdz(strona.page, "/co-nowego")
-    assert strona.page.views[-1].nowe == {"2026.10.5", "2026.10.4"}
+    assert strona.page.views[-1].nowe == {"2026.10.5", "2026.10.4", *NOWSZE}
 
     assert _stos(uruchom().page) == ["MainView"], "drugi start — już nic"
 
@@ -300,7 +306,7 @@ def test_ekran_podswietla_nowe_i_zapisuje_widziane(baza):
     _, widok = _widok(stan)
     teksty = _teksty(widok)
     assert "Co się zmieniło od Twojej poprzedniej wersji" in teksty
-    assert teksty.count("Nowe") == 2
+    assert teksty.count("Nowe") == len(NOWSZE) + 2
     assert teksty.count("Wcześniej — to ten telefon już widział") == 1
     ile = sum(len(w["pozycje"]) for w in db.wydania_po("2026.10.3"))
     assert any(t.startswith(f"{ile} nowości · teraz wersja {WERSJA}") for t in teksty), teksty
@@ -308,7 +314,7 @@ def test_ekran_podswietla_nowe_i_zapisuje_widziane(baza):
 
     # Ten sam stan (ta sama sesja) — dalej te same plakietki.
     _, widok = _widok(stan)
-    assert _teksty(widok).count("Nowe") == 2
+    assert _teksty(widok).count("Nowe") == len(NOWSZE) + 2
 
     # Nowa sesja: wszystko widziane, zostaje historia zmian.
     _, widok = _widok(pomoce.stan_aplikacji())
@@ -369,7 +375,7 @@ def test_gotowe_wraca_na_kokpit_tylko_po_aktualizacji(baza):
 def test_odznaka_w_menu_do_otwarcia_ekranu(baza):
     dane = pomoce.utworz_pojazd("Z odznaką")
     db.zapisz_widziana_wersje("2026.10.3")
-    assert db.liczniki_nawigacji(dane["auto_id"]).get("co-nowego") == 2
+    assert db.liczniki_nawigacji(dane["auto_id"]).get("co-nowego") == len(NOWSZE) + 2
 
     _widok(pomoce.stan_aplikacji(dane["auto_id"], "Z odznaką"))
     assert "co-nowego" not in db.liczniki_nawigacji(dane["auto_id"])

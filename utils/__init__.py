@@ -13,6 +13,7 @@ i `utils.cokolwiek(...)` działa jak dawniej.
 
 from .stale import *
 from .format import *
+from .kod_qr import *
 from .typografia import *
 from .animacje import *
 from .wyglad import *
@@ -39,6 +40,7 @@ from .warsztaty import *
 from .ceny_czesci import *
 from .szkice import *
 from .kopie import *
+from .zaproszenia import *
 from .powiadomienia import *
 from .nawigacja import *
 from .zaznaczanie import *
@@ -46,6 +48,7 @@ from .zaznaczanie import *
 from . import (
     stale,
     format,
+    kod_qr,
     typografia,
     animacje,
     wyglad,
@@ -72,6 +75,7 @@ from . import (
     ceny_czesci,
     szkice,
     kopie,
+    zaproszenia,
     powiadomienia,
     nawigacja,
     zaznaczanie,
