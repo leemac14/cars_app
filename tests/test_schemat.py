@@ -88,6 +88,7 @@ POZA_SYNC_SWIADOMIE = {
     ("rozliczenia", "data_iso"),
     ("zadania", "data_iso"),
     ("ceny_czesci", "data_iso"),
+    ("przejazdy", "data_iso"),
 }
 
 

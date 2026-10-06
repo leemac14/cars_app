@@ -217,9 +217,18 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (auto, "Mój przegląd", "Olej silnikowy i filtr", "pakiet-1"))
         zid["pakiet"] = c.lastrowid
 
-        c.execute("INSERT INTO trasy_szablony (auto_id, nazwa, dystans, powrot, osoby, oplaty, zdalne_id) VALUES (?,?,?,?,?,?,?)",
-                  (auto, "Do teściów", 180.0, 1, 2, 45.0, "trasa-1"))
+        c.execute("INSERT INTO trasy_szablony (auto_id, nazwa, dystans, powrot, osoby, oplaty, skad, dokad, cel, sluzbowy, "
+                  "zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                  (auto, "Do teściów", 180.0, 1, 2, 45.0, "Dom", "Teściowie", "Wizyta rodzinna", 0, "trasa-1"))
         zid["trasa"] = c.lastrowid
+
+        # Przejazd z ewidencji — służbowy, ze stanem licznika po przejeździe
+        # (kolejne źródło historii licznika) i notatką z podpisem.
+        c.execute("INSERT INTO przejazdy (auto_id, data, skad, dokad, cel, km, powrot, sluzbowy, kierowca, licznik, "
+                  "notatka, notatka_autor, notatka_data, dodane_przez, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (auto, "05.02.2026", "Dom", "Biuro klienta", "Spotkanie handlowe", 84.0, 1, 1, "Kamil", 100700,
+                   "Parking 12 zł", "Kamil", "05.02.2026 18:00", "Kamil", "przejazd-1"))
+        zid["przejazd"] = c.lastrowid
 
         c.execute("INSERT INTO checklisty (auto_id, nazwa, opis, zdalne_id) VALUES (?,?,?,?)",
                   (auto, "Przed dłuższą trasą", "Obchód auta", "check-1"))
@@ -360,6 +369,7 @@ ARGUMENTY_IDENTYFIKATOROW = {
     "pozycja_id": "do_zrobienia",
     # Formularz umowy raty na zwykłym wydatku cyklicznym — przestawienie na raty.
     "wydatek_id": "cykliczny",
+    "przejazd_id": "przejazd",
 }
 
 _KLASY_WIDOKOW = None

@@ -19,6 +19,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         "tankowanie": "tankowania",
         "wizyta": "wizyty",
         "serwis": "historia",
+        "przejazd": "przejazdy",
     }
 
     def __init__(self, page: ft.Page, state):

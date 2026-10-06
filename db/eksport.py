@@ -18,6 +18,7 @@ from .ustawienia import pobierz_prog_dni, pobierz_prog_km, pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, slowo_dystansu
 from .energia import domyslny_rodzaj_energii
 from .koszty import rozbicie_kosztu
+from .ewidencja import miejsca_km
 
 
 # ==================== EKSPORT DANYCH (CSV / PDF) ====================
@@ -37,6 +38,7 @@ KATEGORIE_EKSPORTU = {
     "do_zrobienia": "Lista Do zrobienia",
     "warsztaty": "Baza warsztatów",
     "odczyty_przebiegu": "Odczyty licznika",
+    "przejazdy": "Ewidencja przebiegu (przejazdy)",
     "tagi": "Tagi",
 }
 
@@ -86,7 +88,7 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     Magazyn, zestawy opon, lista Do zrobienia, definicje podzespołów (zadania),
     wydatki cykliczne, warsztaty i tagi to "stany aktualne" — eksportują się zawsze
     w całości, niezależnie od zakresu dat. Zakresowi podlegają tylko tankowania,
-    historia, wizyty, inne koszty i odczyty przebiegu.
+    historia, wizyty, inne koszty, odczyty przebiegu i przejazdy z ewidencji.
     """
     wynik = {}
     if not auto_id or not kategorie:
@@ -272,6 +274,26 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             )
             wiersze = [[data, licznik(prz), notatka or ""] for data, prz, notatka in c.fetchall()]
             wynik["odczyty_przebiegu"] = (["Data", f"Przebieg ({j})", "Notatka"], wiersze)
+
+        # Przejazdy z ewidencji: dystans CAŁEGO przejazdu (przy „tam i z powrotem”
+        # już podwojony) — suma kolumny to kilometry okresu, jak w raporcie.
+        if "przejazdy" in kategorie:
+            warunek, parametry = warunek_zakresu_dat("data_iso", od_data, do_data)
+            c.execute(
+                "SELECT data, skad, dokad, cel, km, powrot, sluzbowy, kierowca, licznik, notatka FROM przejazdy "
+                f"WHERE auto_id=?{warunek} ORDER BY data_iso, id", (auto_id, *parametry)
+            )
+            wiersze = [
+                [data, skad or "", dokad or "", cel or "",
+                 formatuj_liczba_eksport(dystans_z_km(km or 0, j), miejsca_km(km, j)),
+                 "Tak" if powrot else "Nie", "Służbowy" if sluzbowy else "Prywatny", kierowca or "",
+                 licznik(lic) if lic else "", notatka or ""]
+                for data, skad, dokad, cel, km, powrot, sluzbowy, kierowca, lic, notatka in c.fetchall()
+            ]
+            wynik["przejazdy"] = (
+                ["Data", "Skąd", "Dokąd", "Cel", f"Dystans ({j})", "Tam i z powrotem", "Rodzaj", "Kierowca",
+                 f"Licznik po ({j})", "Notatka"], wiersze
+            )
 
         if "tagi" in kategorie:
             c.execute("SELECT nazwa, kolor FROM tagi WHERE auto_id=? ORDER BY nazwa", (auto_id,))

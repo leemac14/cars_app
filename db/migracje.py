@@ -761,6 +761,29 @@ def init_db():
             ALTER TABLE wydatki_cykliczne ADD COLUMN wykup REAL;
             ALTER TABLE wydatki_cykliczne ADD COLUMN oprocentowanie REAL;
             ALTER TABLE wydatki_cykliczne ADD COLUMN rodzaj_rat TEXT;
+            """,
+            # Wersja 50: ewidencja przebiegu (N-01). Aplikacja znała stan
+            # licznika z kilku źródeł, ale nie wiedziała, PO CO były kilometry —
+            # a od tego zależy rozliczenie z pracodawcą, kilometrówka i 100% VAT
+            # przy aucie firmowym. Przejazd: data, skąd, dokąd, cel, kilometry
+            # (CAŁY przejazd — przy „tam i z powrotem” już podwojone, więc suma
+            # miesiąca to zwykła suma kolumny), służbowy/prywatny i kierowca
+            # (tekst, jak podpis autora). `licznik` (km, opcjonalny) to stan po
+            # przejeździe — wpisany staje się kolejnym źródłem w historii
+            # licznika. Notatka z podpisem jak przy tankowaniu.
+            #
+            # Zapisana trasa kalkulatora dostaje to, czego brakowało jej do
+            # wzoru przejazdu: skąd, dokąd, cel i rodzaj. NULL w starych trasach
+            # znaczy „nie dotyczy” — trasa „do teściów” z samym dystansem dalej
+            # działa w kalkulatorze jak dotąd.
+            """
+            CREATE TABLE IF NOT EXISTS przejazdy (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, data_iso TEXT, skad TEXT, dokad TEXT, cel TEXT, km REAL NOT NULL DEFAULT 0, powrot INTEGER NOT NULL DEFAULT 0, sluzbowy INTEGER NOT NULL DEFAULT 1, kierowca TEXT, licznik INTEGER, notatka TEXT, notatka_autor TEXT, notatka_data TEXT, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_przejazdy_auto_data_iso ON przejazdy(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_przejazdy_auto_zdalne ON przejazdy(auto_id, zdalne_id);
+            ALTER TABLE trasy_szablony ADD COLUMN skad TEXT;
+            ALTER TABLE trasy_szablony ADD COLUMN dokad TEXT;
+            ALTER TABLE trasy_szablony ADD COLUMN cel TEXT;
+            ALTER TABLE trasy_szablony ADD COLUMN sluzbowy INTEGER;
             """
         ]
 

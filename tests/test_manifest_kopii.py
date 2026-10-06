@@ -622,7 +622,7 @@ def test_okno_podgladu_pokazuje_zawartosc_i_czeka_na_decyzje(baza, tmp_path, okn
     assert _wpisy(2 * WPISOW_NA_POJAZD) in teksty
     assert ("2 tankowania · 2 wpisy serwisowe · 2 wizyty w warsztacie · 2 inne koszty · 2 komplety opon · "
             "2 części w magazynie · 2 zdjęcia karoserii · 2 odczyty licznika · 2 zadania do zrobienia · "
-            "2 szkice do wpisania") in teksty
+            "2 szkice do wpisania · 2 przejazdy w ewidencji") in teksty
     assert "Octavia" in teksty and "Berlingo" in teksty
     assert teksty.count(_wpisy(WPISOW_NA_POJAZD)) == 2
     assert utils.formatuj_date_pl(date(2099, 9, 15)) in teksty

@@ -48,6 +48,15 @@ from .ustawienia import (
 # wydanie ma 47). Nowym wydaniom niepotrzebny: każdy telefon, który ich
 # doczeka, ma już zapamiętaną wersję.
 NOWOSCI = [
+    {"wersja": "2026.10.6", "pozycje": [
+        {"tytul": "Ewidencja przebiegu", "ikona": "ALT_ROUTE", "ekran": "ewidencja",
+         "opis": "Przejazdy z datą, trasą, celem i kierowcą, oznaczone jako służbowe albo prywatne — wpisane "
+                 "ręcznie, z zapisanej trasy albo prosto z kalkulatora podróży. Miesiąc pokazuje podział kosztów, "
+                 "kilometrówkę i nieopisane kilometry, a raport PDF zapiszesz w układzie do VAT albo do "
+                 "rozliczenia z pracodawcą."},
+        {"tytul": "Ewidencja z arkusza", "ikona": "UPLOAD_FILE", "ekran": "import",
+         "opis": "Ewidencję prowadzoną dotąd w arkuszu wczytasz importem CSV — wybierz typ „Przejazdy”."},
+    ]},
     {"wersja": "2026.10.5.3", "pozycje": [
         {"tytul": "Leasing i kredyt", "ikona": "ACCOUNT_BALANCE", "ekran": "raty",
          "opis": "Rata ma teraz koniec i sumę: ile zostało do spłaty, kiedy ostatnia rata, wykup oraz "

@@ -56,6 +56,7 @@ WYWOLANIA = {
     # Prawdziwa kopia w folderze domyślnym (katalog testu) — inaczej lista
     # byłaby pusta i sprawdzałaby tylko to, że pusta lista jest listą.
     "lista_kopii": lambda k: (db.wykonaj_kopie(wymus=True)["folder"],),
+    "miesiace_ewidencji": lambda k: (k["id"]["auto_id"],),
     "miesiace_z_danymi": lambda k: (k["id"]["auto_id"],),
     "napraw_sciezki_zalacznikow": lambda k: (),
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
@@ -87,6 +88,7 @@ WYWOLANIA = {
     "pobierz_powiadomienia": lambda k: (k["id"]["auto_id"],),
     "pobierz_pozycje_wizyty": lambda k: (k["id"]["wizyta"],),
     "pobierz_przebieg_miesieczny": lambda k: (k["id"]["auto_id"],),
+    "pobierz_przejazdy": lambda k: (k["id"]["auto_id"],),
     "pobierz_przypomnienia_o_oponach": lambda k: (k["id"]["auto_id"],),
     "pobierz_rozliczenia": lambda k: (k["id"]["auto_id"],),
     "pobierz_serie_dziennego_przebiegu": lambda k: (k["id"]["auto_id"],),
@@ -109,6 +111,7 @@ WYWOLANIA = {
     "poprzednie_zakupy": lambda k: (db.historia_cen_czesci(k["id"]["auto_id"], "Filtr oleju"), k["id"]["magazyn"]),
     "porownaj_czesci_wlasne": lambda k: (k["id"]["auto_id"],),
     "porzadki_startowe": lambda k: (),
+    "przejazdy_miesiaca": lambda k: (k["id"]["auto_id"], 2026, 2),
     "przelicz_zuzycie": lambda k: (7.5,),
     "sprawdz_archiwum_kopii": lambda k: (db.wykonaj_kopie(wymus=True)["sciezka"],),
     "sprawdz_folder_kopii": lambda k: (str(k["tmp"] / "kopie"),),
@@ -122,6 +125,8 @@ WYWOLANIA = {
     "wybierz_miesiac_pigulki": lambda k: (db.miesiace_z_danymi(k["id"]["auto_id"]),),
     "wycen_zuzycie": lambda k: ([(k["id"]["magazyn"], 1.0)], {k["id"]["magazyn"]: 39.0}),
     "wydania_po": lambda k: ("2026.9.30",),
+    # Luty 2026 z utworz_pojazd (przejazd służbowy z licznikiem) w układzie VAT.
+    "zdania_ewidencji": lambda k: (db.podsumowanie_ewidencji(k["id"]["auto_id"], 2026, 2), "vat"),
     "znajdz_duplikaty_nazw": lambda k: (k["id"]["auto_id"],),
 }
 

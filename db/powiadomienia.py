@@ -23,6 +23,7 @@ from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, linie_przypom
 from .szkice import DNI_PRZYPOMNIENIA_SZKICU, podsumowanie_szkicow
 from .raty import KOLUMNY_UMOWY, czy_rata, opis_postepu_umowy
 from .kopie import stan_kopii_zapasowej
+from .ewidencja import nazwa_miesiaca, przypomnienie_ewidencji, tekst_km_przejazdu
 
 
 # ============================================================================
@@ -370,6 +371,11 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
     szkice = _powiadomienie_o_szkicach(auto_id)
     if szkice:
         wyniki.append(szkice)
+    # Ewidencja przebiegu za poprzedni miesiąc czeka na stan licznika z jego
+    # ostatniego dnia — o danych, więc obok paragonów.
+    ewidencja = _powiadomienie_o_ewidencji(auto_id, dzis)
+    if ewidencja:
+        wyniki.append(ewidencja)
     # Kopia zapasowa — o urządzeniu, nie o aucie ani o danych pojazdu.
     kopia = _powiadomienie_o_kopii(auto_id)
     if kopia:
@@ -440,7 +446,7 @@ def _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg=None, sredni_dzie
 # Drzemka trzyma się tego samego szkicu.
 
 # Powiadomienia o DANYCH, nie o aucie — porównanie pojazdów ich nie liczy.
-TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice", "kopia")
+TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice", "kopia", "ewidencja")
 
 
 def _powiadomienie_o_szkicach(auto_id):
@@ -456,6 +462,30 @@ def _powiadomienie_o_szkicach(auto_id):
         "opis": f"{ile} w kolejce, najstarszy sprzed {utils.formatuj_dni_dopelniacz(stan['dni'])}",
         "status": "pilne", "trasa": "/do-wpisania",
         "klucz": f"szkice:{stan['najstarszy_id']}",
+    }
+
+
+# ============================================================================
+#  EWIDENCJA PRZEBIEGU (db/ewidencja.py)
+# ============================================================================
+# W pierwszych dniach miesiąca rozlicza się poprzedni: kilometrówkę
+# z pracodawcą, potwierdzenie ewidencji do VAT. Przypomnienie stoi, dopóki
+# poprzedni miesiąc z przejazdami nie ma stanu licznika z ostatniego dnia
+# („Zamknij miesiąc” albo zwykły odczyt, tankowanie czy przejazd z licznikiem
+# tego dnia). Klucz to miesiąc — drzemka trzyma się jednego miesiąca.
+
+
+def _powiadomienie_o_ewidencji(auto_id, dzis):
+    stan = przypomnienie_ewidencji(auto_id, dzis=dzis)
+    if not stan:
+        return None
+    ile = liczba_z_odmiana(stan["liczba"], "przejazd", "przejazdy", "przejazdów")
+    return {
+        "typ": "ewidencja", "tytul": f"Ewidencja: {nazwa_miesiaca(stan['rok'], stan['miesiac'])}",
+        "opis": (f"{ile}, {tekst_km_przejazdu(stan['km'])} — wpisz stan licznika na "
+                 f"{stan['koniec'].strftime('%d.%m.%Y')} i zapisz raport miesiąca"),
+        "status": "pilne", "trasa": f"/ewidencja/{stan['rok']}/{stan['miesiac']}",
+        "klucz": stan["klucz"],
     }
 
 

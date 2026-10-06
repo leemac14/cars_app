@@ -324,18 +324,21 @@ TABELE_Z_ZALACZNIKIEM = {"tankowania", "wizyty", "inne_koszty", "zdjecia_karoser
 TABELE_Z_DATA_ISO = (
     "tankowania", "inne_koszty", "wizyty", "historia",
     "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
-    "szkice_wpisow", "ceny_czesci",
+    "szkice_wpisow", "ceny_czesci", "przejazdy",
 )
 
 
-# Stan licznika zapisuje się w aplikacji na cztery sposoby. Trzy z nich są
+# Stan licznika zapisuje się w aplikacji na pięć sposobów. Cztery z nich są
 # „przy okazji” — nikt nie dodaje tankowania po to, żeby zanotować przebieg —
 # ale dla historii licznika są tak samo wiarygodne jak odczyt wpisany wprost.
+# Przejazd z ewidencji niesie licznik tylko wtedy, gdy ktoś go wpisał
+# (przejazdy.licznik — stan PO przejeździe).
 ZRODLA_PRZEBIEGU = {
     "odczyt": "Odczyt licznika",
     "tankowanie": "Tankowanie",
     "wizyta": "Wizyta w warsztacie",
     "serwis": "Wpis serwisowy",
+    "przejazd": "Przejazd z ewidencji",
 }
 
 
@@ -346,6 +349,9 @@ ZRODLA_ODCZYTU = {
     "kokpit": "Szybka aktualizacja",
     "pojazd": "Korekta w danych pojazdu",
     "import": "Import z pliku",
+    # Stan na ostatni dzień miesiąca zapisany przy „Zamknij miesiąc”
+    # w ewidencji przebiegu — tego wymaga ewidencja do VAT.
+    "ewidencja": "Koniec miesiąca w ewidencji",
 }
 
 ZRODLO_ODCZYTU_DOMYSLNE = "reczny"
@@ -366,13 +372,14 @@ POLA_NOTATKI = {
     "magazyn_czesci": "notatki",
     "zestawy_opon": "notatki",
     "warsztaty": "notatki",
+    "przejazdy": "notatka",
 }
 
 
 # Tabele, w których notatka ma WŁASNY podpis (notatka_autor + notatka_data).
 # Przy współdzielonym pojeździe uwagę dopisuje zwykle ktoś inny niż autor wpisu
 # i długo po jego dodaniu, więc dodane_przez/zmodyfikowane_przez tego nie oddaje.
-TABELE_NOTATKI_Z_PODPISEM = {"tankowania", "historia", "inne_koszty", "odczyty_przebiegu"}
+TABELE_NOTATKI_Z_PODPISEM = {"tankowania", "historia", "inne_koszty", "odczyty_przebiegu", "przejazdy"}
 
 
 # Notatka ma być KRÓTKA — jedno zdanie kontekstu, nie dziennik. Limit trzyma
@@ -418,7 +425,23 @@ STATUS_POJAZDU_SPRZEDANY = "sprzedany"
 KOLEJNOSC_TRYBOW_MOTYWU = ["jasny", "ciemny", "system"]
 
 
+# Ewidencja przebiegu (N-01): PO CO ktoś ją prowadzi. Od tego zależy, co ekran
+# pokazuje najpierw i który układ raportu proponuje — rachunek przejazdów jest
+# jeden. Ustawienie należy do pojazdu NA TYM telefonie (db/ustawienia.py,
+# _klucz_ewidencji): kilometrówkę liczy się według stawki własnego pracodawcy,
+# a druga osoba przy tym samym aucie może rozliczać się inaczej.
+TRYBY_EWIDENCJI = {
+    "podzial": "Podział prywatne / służbowe",
+    "kilometrowka": "Kilometrówka — auto prywatne w pracy",
+    "vat": "Auto firmowe — odliczenie 100% VAT",
+}
+
+TRYB_EWIDENCJI_DOMYSLNY = "podzial"
+
+
 __all__ = [
+    "TRYBY_EWIDENCJI",
+    "TRYB_EWIDENCJI_DOMYSLNY",
     "BAZA_DANYCH",
     "CHECKLISTA_PRZEDWYJAZDOWA",
     "DNI_KOSZA_DOMYSLNIE",

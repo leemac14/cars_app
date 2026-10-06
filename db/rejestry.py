@@ -374,14 +374,19 @@ def pobierz_trasy_szablony(auto_id) -> list[dict[str, Any]]:
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT id, nazwa, dystans, powrot, osoby, oplaty, notatki "
+            "SELECT id, nazwa, dystans, powrot, osoby, oplaty, notatki, skad, dokad, cel, sluzbowy "
             "FROM trasy_szablony WHERE auto_id=? ORDER BY nazwa COLLATE NOCASE",
             (auto_id,)
         )
+        # Skąd, dokąd, cel i rodzaj (wersja 50) robią z trasy wzór przejazdu
+        # w ewidencji; w trasie zapisanej tylko w kalkulatorze są puste,
+        # a `sluzbowy` None znaczy „rodzaj nieustalony”.
         return [
             {"id": r[0], "nazwa": str(r[1] or ""), "dystans": float(r[2] or 0),
              "powrot": bool(r[3]), "osoby": max(1, int(r[4] or 1)),
-             "oplaty": float(r[5] or 0), "notatki": str(r[6] or "")}
+             "oplaty": float(r[5] or 0), "notatki": str(r[6] or ""),
+             "skad": str(r[7] or ""), "dokad": str(r[8] or ""), "cel": str(r[9] or ""),
+             "sluzbowy": None if r[10] is None else bool(r[10])}
             for r in c.fetchall()
         ]
 
@@ -414,6 +419,40 @@ def zapisz_trase_szablon(auto_id, nazwa, dystans, powrot=False, osoby=1, oplaty=
             "INSERT INTO trasy_szablony (auto_id, nazwa, dystans, powrot, osoby, oplaty, notatki) VALUES (?,?,?,?,?,?,?)",
             (auto_id,) + dane
         )
+        return c.lastrowid
+
+
+def zapisz_szablon_przejazdu(auto_id, nazwa, skad="", dokad="", cel="", sluzbowy=None, dystans=0.0,
+                             powrot=False, trasa_id=None):
+    """Wzór przejazdu z formularza ewidencji — ta sama tabela, co trasy
+    kalkulatora, więc trasa zapisana tu jest też chipem w kalkulatorze,
+    a trasa z kalkulatora uzupełnia formularz przejazdu.
+
+    Bez `trasa_id` kluczem jest nazwa (jak w `zapisz_trase_szablon`). Nadpisanie
+    istniejącej trasy zmienia tylko to, co formularz przejazdu zna — dystans,
+    powrót, skąd, dokąd, cel i rodzaj; liczba osób i opłaty z kalkulatora
+    zostają. Zwraca id trasy albo None (brak nazwy)."""
+    nazwa = normalizuj_nazwe(nazwa)
+    if not auto_id or not nazwa:
+        return None
+    pola = (nazwa, float(dystans or 0), int(bool(powrot)), normalizuj_nazwe(skad) or None,
+            normalizuj_nazwe(dokad) or None, normalizuj_nazwe(cel) or None,
+            None if sluzbowy is None else int(bool(sluzbowy)))
+    with polacz_baze() as conn:
+        c = conn.cursor()
+        if trasa_id is None:
+            klucz = klucz_nazwy(nazwa)
+            c.execute("SELECT id, nazwa FROM trasy_szablony WHERE auto_id=?", (auto_id,))
+            for t_id, istniejaca in c.fetchall():
+                if klucz_nazwy(istniejaca) == klucz:
+                    trasa_id = t_id
+                    break
+        if trasa_id is not None:
+            c.execute("UPDATE trasy_szablony SET nazwa=?, dystans=?, powrot=?, skad=?, dokad=?, cel=?, sluzbowy=? "
+                      "WHERE id=?", pola + (trasa_id,))
+            return trasa_id
+        c.execute("INSERT INTO trasy_szablony (auto_id, nazwa, dystans, powrot, skad, dokad, cel, sluzbowy) "
+                  "VALUES (?,?,?,?,?,?,?,?)", (auto_id,) + pola)
         return c.lastrowid
 
 
@@ -604,6 +643,7 @@ __all__ = [
     "usun_trase_szablon",
     "usun_wydatek_cykliczny",
     "wykonaj_sezonowa_zmiane_opon",
+    "zapisz_szablon_przejazdu",
     "zapisz_trase_szablon",
     "zapisz_warsztat",
 ]

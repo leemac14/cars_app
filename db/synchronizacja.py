@@ -37,7 +37,9 @@ OPISY_ROL = {
 # (podzespoły, tagi, warsztaty, magazyn), gdzie własność pojedynczego wiersza
 # nic nie znaczy. Rozliczenie też ma autora: współautor cofa tylko to, które
 # sam zapisał — cudze „Rozliczone” potwierdza pieniądze, które ktoś dostał.
-TABELE_Z_AUTOREM = ("tankowania", "wizyty", "historia", "inne_koszty", "rozliczenia")
+# Przejazd w ewidencji też: współautor poprawia swoje trasy, cudzych nie rusza
+# (kierowca to osobne pole — wpisać można też przejazd kogoś innego).
+TABELE_Z_AUTOREM = ("tankowania", "wizyty", "historia", "inne_koszty", "rozliczenia", "przejazdy")
 
 
 def rola_pojazdu(auto_id):

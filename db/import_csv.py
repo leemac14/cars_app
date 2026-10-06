@@ -18,6 +18,7 @@ from .energia import ETYKIETY_RODZAJU, domyslny_rodzaj_energii
 from .notatki import przytnij_notatke
 from .nazwy import klucz_nazwy, normalizuj_nazwe
 from .rejestry import WARSZTAT_BEZ_NAZWY
+from .ewidencja import opis_trasy, tekst_km_przejazdu
 
 
 # ==================== IMPORT CSV (TANKOWANIA) ====================
@@ -701,6 +702,151 @@ def zaimportuj_wizyty(auto_id, gotowe):
     return len(gotowe)
 
 
+# ==================== IMPORT CSV — PRZEJAZDY (EWIDENCJA PRZEBIEGU) ====================
+# Ewidencja prowadzona dotąd w arkuszu: data, skąd, dokąd (albo jedna kolumna
+# „opis trasy”), cel, kilometry, rodzaj i kierowca. Kilometry z pliku to CAŁY
+# przejazd — tak liczy go ewidencja w aplikacji.
+
+# Kolejność ma znaczenie przy zgadywaniu kolumn: „Opis trasy (skąd – dokąd)”
+# musi zająć swoją kolumnę, zanim „Skąd” dopasuje się do niej częściowo.
+POLA_IMPORTU_PRZEJAZDOW = {
+    "data": ("Data", True),
+    "km": ("Dystans (km)", True),
+    # Jedna kolumna „Warszawa – Łódź” zamiast dwóch; „A – B – A” to powrót.
+    "trasa": ("Opis trasy (skąd – dokąd)", False),
+    "skad": ("Skąd", False),
+    "dokad": ("Dokąd", False),
+    "cel": ("Cel wyjazdu", False),
+    "rodzaj": ("Rodzaj (służbowy / prywatny)", False),
+    "kierowca": ("Kierowca", False),
+    "licznik": ("Licznik po przejeździe (km)", False),
+    "notatka": ("Notatka", False),
+}
+
+_ALIASY_IMPORTU_PRZEJAZDOW = {
+    "data": ["data", "date", "dzien", "dzień", "datum", "data wyjazdu", "data przejazdu"],
+    "km": ["km", "kilometry", "liczba km", "dystans", "distance", "przejechane km", "liczba kilometrow",
+           "liczba kilometrów", "liczba przejechanych km", "dystans (km)", "dystans (mi)", "mileage", "trip"],
+    "skad": ["skad", "skąd", "miejsce wyjazdu", "wyjazd z", "from", "origin", "start"],
+    "dokad": ["dokad", "dokąd", "miejsce docelowe", "destination"],
+    "trasa": ["trasa", "opis trasy", "opis trasy (skad - dokad)", "opis trasy (skąd - dokąd)", "route"],
+    "cel": ["cel", "cel wyjazdu", "cel podrozy", "cel podróży", "purpose", "powod", "powód", "opis"],
+    "rodzaj": ["rodzaj", "rodzaj przejazdu", "typ", "type", "sluzbowy/prywatny", "służbowy/prywatny",
+               "business/private", "kategoria"],
+    "kierowca": ["kierowca", "driver", "kierujacy", "kierujący", "imie i nazwisko", "imię i nazwisko", "osoba"],
+    "licznik": ["licznik", "stan licznika", "licznik po", "stan licznika po", "odometer", "przebieg"],
+    "notatka": _ALIASY_NOTATKI,
+}
+
+_ROZDZIEL_TRASE = re.compile(r"\s*(?:->|→|—|–|>)\s*|\s+-\s+")
+
+
+def dopasuj_kolumny_przejazdow(naglowki):
+    return _dopasuj_kolumny(naglowki, POLA_IMPORTU_PRZEJAZDOW, _ALIASY_IMPORTU_PRZEJAZDOW)
+
+
+def _trasa_csv(tekst):
+    """„Warszawa – Łódź” → (Warszawa, Łódź, False); „A – B – A” → (A, B, True)."""
+    czesci = [normalizuj_nazwe(c) for c in _ROZDZIEL_TRASE.split(str(tekst or "")) if normalizuj_nazwe(c)]
+    if not czesci:
+        return "", "", False
+    if len(czesci) == 1:
+        return "", czesci[0], False
+    powrot = len(czesci) >= 3 and klucz_nazwy(czesci[0]) == klucz_nazwy(czesci[-1])
+    return czesci[0], czesci[-2] if powrot else czesci[-1], powrot
+
+
+def _rodzaj_przejazdu_csv(tekst):
+    """True — służbowy, False — prywatny, None — nie wiadomo (wtedy służbowy:
+    arkusz ewidencji prowadzi się zwykle dla jazd służbowych)."""
+    t = _bez_ogonkow(_normalizuj_naglowek(tekst))
+    if not t:
+        return None
+    if any(s in t for s in ("pryw", "private", "personal", "osobist")) or t in ("p", "nie", "no", "0"):
+        return False
+    if any(s in t for s in ("sluzb", "business", "firm", "work", "delegac")) or t in ("s", "tak", "yes", "1"):
+        return True
+    return None
+
+
+def przygotuj_import_przejazdow(auto_id, naglowki, wiersze, mapowanie, jednostka_pliku="km", numery_wierszy=None):
+    """Przejazdy z arkusza. Duplikatem jest ten sam dzień, ta sama trasa
+    (bez wielkości liter i spacji) i te same kilometry. Kilometry i licznik
+    w `jednostka_pliku` trafiają do bazy w km."""
+    gotowe, bledy = [], []
+    duplikaty = 0
+
+    with polacz_baze() as conn:
+        istniejace = {
+            (str(d or ""), klucz_nazwy(s), klucz_nazwy(k), round(float(km or 0), 1))
+            for d, s, k, km in conn.execute(
+                "SELECT data, skad, dokad, km FROM przejazdy WHERE auto_id=?", (auto_id,)).fetchall()
+        }
+
+    kolejnosc = _kolejnosc_dat(wiersze, mapowanie)
+    dziesietny = _konwencja_liczb(wiersze, mapowanie, ("km", "licznik"))
+
+    for nr, wiersz in zip(_numery(numery_wierszy, wiersze), wiersze):
+        data_txt = _parsuj_date_csv(_wartosc_z_wiersza(wiersz, mapowanie, "data"), kolejnosc)
+        if not data_txt:
+            bledy.append((nr, "nieczytelna albo pusta data"))
+            continue
+
+        km = _liczba_csv(_wartosc_z_wiersza(wiersz, mapowanie, "km"), dziesietny)
+        if km is None or km <= 0:
+            bledy.append((nr, "brak lub zerowy dystans"))
+            continue
+        km = round(dystans_na_km(km, jednostka_pliku), 2)
+
+        skad = normalizuj_nazwe(_wartosc_z_wiersza(wiersz, mapowanie, "skad"))
+        dokad = normalizuj_nazwe(_wartosc_z_wiersza(wiersz, mapowanie, "dokad"))
+        powrot = False
+        if not skad and not dokad:
+            skad, dokad, powrot = _trasa_csv(_wartosc_z_wiersza(wiersz, mapowanie, "trasa"))
+        cel = normalizuj_nazwe(_wartosc_z_wiersza(wiersz, mapowanie, "cel"))
+        if not (skad or dokad or cel):
+            bledy.append((nr, "brak trasy i celu przejazdu"))
+            continue
+
+        licznik = _liczba_csv(_wartosc_z_wiersza(wiersz, mapowanie, "licznik"), dziesietny)
+        licznik_km = dystans_na_km(licznik, jednostka_pliku, calkowity=True) if licznik and licznik > 0 else None
+
+        klucz = (data_txt, klucz_nazwy(skad), klucz_nazwy(dokad), round(km, 1))
+        if klucz in istniejace:
+            duplikaty += 1
+            continue
+        istniejace.add(klucz)
+
+        sluzbowy = _rodzaj_przejazdu_csv(_wartosc_z_wiersza(wiersz, mapowanie, "rodzaj"))
+        gotowe.append({
+            "data": data_txt, "skad": skad, "dokad": dokad, "powrot": powrot, "cel": cel, "km": km,
+            "sluzbowy": True if sluzbowy is None else sluzbowy,
+            "kierowca": normalizuj_nazwe(_wartosc_z_wiersza(wiersz, mapowanie, "kierowca")),
+            "licznik": licznik_km,
+            "notatka": przytnij_notatke(_wartosc_z_wiersza(wiersz, mapowanie, "notatka")) or "",
+        })
+
+    gotowe.sort(key=lambda g: parsuj_date(g["data"]))
+    return {"gotowe": gotowe, "duplikaty": duplikaty, "bledy": bledy}
+
+
+def zaimportuj_przejazdy(auto_id, gotowe):
+    if not auto_id or not gotowe:
+        return 0
+    kto = pobierz_moje_imie()
+    with polacz_baze() as conn:
+        for g in gotowe:
+            notatka, autor, data_notatki = _notatka_z_podpisem(g, kto)
+            conn.execute(
+                "INSERT INTO przejazdy (auto_id, data, data_iso, skad, dokad, cel, km, powrot, sluzbowy, kierowca, "
+                "licznik, notatka, notatka_autor, notatka_data, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (auto_id, g["data"], na_iso(g["data"]), g["skad"] or None, g["dokad"] or None, g["cel"] or None,
+                 g["km"], 1 if g["powrot"] else 0, 1 if g["sluzbowy"] else 0, g["kierowca"] or None,
+                 g["licznik"], notatka, autor, data_notatki, kto)
+            )
+    return len(gotowe)
+
+
 # ==================== KATEGORIE Z NAZW ====================
 # Inne aplikacje mają własne słowniki kosztów (Fuelio: Parking, Wash, Tolls…;
 # Drivvo i aCar: typy wydatków). Tu zamieniamy je na kategorie „Innych
@@ -856,18 +1002,36 @@ TYPY_IMPORTU = {
         "z_dystansem": True,
         "podglad": lambda g, jednostka: f"{g['data']} • {tekst_dystansu(g['przebieg'])}",
     },
+    "przejazdy": {
+        "etykieta": "Przejazdy (ewidencja przebiegu)",
+        "opis": "Ewidencja z arkusza — data, skąd, dokąd albo opis trasy, cel, kilometry, rodzaj i kierowca.",
+        "pola": POLA_IMPORTU_PRZEJAZDOW,
+        "dopasuj": dopasuj_kolumny_przejazdow,
+        "przygotuj": przygotuj_import_przejazdow,
+        "zapisz": zaimportuj_przejazdy,
+        "z_dystansem": True,
+        "podglad": lambda g, jednostka: " • ".join(
+            [g["data"]]
+            + ([opis_trasy(g["skad"], g["dokad"], g["powrot"])] if g["skad"] or g["dokad"] else [])
+            + ([g["cel"]] if g.get("cel") else [])
+            + [tekst_km_przejazdu(g["km"]), "służbowy" if g["sluzbowy"] else "prywatny"]
+            + ([g["kierowca"]] if g.get("kierowca") else [])
+        ),
+    },
 }
 
 
 __all__ = [
     "POLA_IMPORTU_INNYCH_KOSZTOW",
     "POLA_IMPORTU_ODCZYTOW",
+    "POLA_IMPORTU_PRZEJAZDOW",
     "POLA_IMPORTU_TANKOWAN",
     "POLA_IMPORTU_WIZYT",
     "TYPY_IMPORTU",
     "_ALIASY_IMPORTU",
     "_ALIASY_IMPORTU_INNYCH",
     "_ALIASY_IMPORTU_ODCZYTOW",
+    "_ALIASY_IMPORTU_PRZEJAZDOW",
     "_ALIASY_IMPORTU_WIZYT",
     "_ALIASY_NOTATKI",
     "_bez_ogonkow",
@@ -882,11 +1046,13 @@ __all__ = [
     "czy_nazwa_serwisowa",
     "dopasuj_kolumny_innych_kosztow",
     "dopasuj_kolumny_odczytow",
+    "dopasuj_kolumny_przejazdow",
     "dopasuj_kolumny_tankowan",
     "dopasuj_kolumny_wizyt",
     "kategoria_z_nazwy",
     "przygotuj_import_innych_kosztow",
     "przygotuj_import_odczytow",
+    "przygotuj_import_przejazdow",
     "przygotuj_import_tankowan",
     "przygotuj_import_wizyt",
     "rozpoznaj_jednostke_pliku",
@@ -897,6 +1063,7 @@ __all__ = [
     "wczytaj_wiersze_csv",
     "zaimportuj_inne_koszty",
     "zaimportuj_odczyty",
+    "zaimportuj_przejazdy",
     "zaimportuj_tankowania",
     "zaimportuj_wizyty",
 ]

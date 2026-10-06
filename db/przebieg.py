@@ -35,6 +35,10 @@ def pobierz_aktualny_przebieg(auto_id):
         c.execute("SELECT przebieg, data, 2 FROM odczyty_przebiegu WHERE auto_id = ?", (auto_id,))
         wpisy.extend(c.fetchall())
 
+        # Przejazd z ewidencji ze stanem licznika po przejeździe (opcjonalny).
+        c.execute("SELECT licznik, data, 1 FROM przejazdy WHERE auto_id = ? AND licznik IS NOT NULL", (auto_id,))
+        wpisy.extend(c.fetchall())
+
     parsed = []
     for prz, d_str, priorytet in wpisy:
         try:
@@ -56,9 +60,10 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
     w czasie wpisów tego auta: jest niższy niż najwyższy wpis z tej samej albo
     wcześniejszej daty (np. brakująca cyfra), wyższy niż wpis z datą późniejszą,
     albo oznaczałby nierealnie duży dzienny przebieg względem poprzedzającego
-    go wpisu (np. dodatkowa cyfra). Sprawdza tankowania, wizyty, odczyty oraz
-    pojedyncze wpisy w historii (niepowiązane z wizytą zbiorczą — te powiązane
-    odzwierciedla już przebieg samej wizyty).
+    go wpisu (np. dodatkowa cyfra). Sprawdza tankowania, wizyty, odczyty,
+    przejazdy z ewidencji ze stanem licznika oraz pojedyncze wpisy w historii
+    (niepowiązane z wizytą zbiorczą — te powiązane odzwierciedla już przebieg
+    samej wizyty).
 
     Porównujemy z sąsiadami W CZASIE, a nie z całą historią: paragon sprzed
     miesiąca dopisany dziś ma legalnie niższy przebieg niż wczorajsze
@@ -93,6 +98,11 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
         wyklucz_sql = " AND id != ?" if (tabela == "odczyty_przebiegu" and wyklucz_id) else ""
         params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
         c.execute(f"SELECT przebieg, data FROM odczyty_przebiegu WHERE auto_id=?{wyklucz_sql}", params)
+        wpisy += c.fetchall()
+
+        wyklucz_sql = " AND id != ?" if (tabela == "przejazdy" and wyklucz_id) else ""
+        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
+        c.execute(f"SELECT licznik, data FROM przejazdy WHERE auto_id=? AND licznik IS NOT NULL{wyklucz_sql}", params)
         wpisy += c.fetchall()
 
     nowa_data = parsuj_date(nowa_data_str) if nowa_data_str else datetime.now().date()
@@ -246,7 +256,8 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7, punkty=None):
 
 def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
     """Chronologiczna historia stanu licznika złożona ze wszystkich źródeł
-    (tankowania, wizyty, historia bez wizyty, ręczne odczyty) — do wykresu
+    (tankowania, wizyty, historia bez wizyty, ręczne odczyty, przejazdy
+    z ewidencji ze stanem licznika) — do wykresu
     przebiegu w paszporcie pojazdu. Dla każdej daty zostaje zapisany najwyższy
     zanotowany tego dnia przebieg; wynik jest posortowany chronologicznie.
     Zwraca listę krotek (data_str, przebieg_int)."""
@@ -266,6 +277,8 @@ def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
         )
         wpisy += c.fetchall()
         c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
+        wpisy += c.fetchall()
+        c.execute("SELECT data, licznik FROM przejazdy WHERE auto_id=? AND licznik IS NOT NULL", (auto_id,))
         wpisy += c.fetchall()
 
     wg_daty = {}
@@ -413,6 +426,23 @@ def pobierz_pelna_historie_przebiegu(auto_id) -> list[dict[str, Any]]:
                 "trasa": f"/wpis/edytuj/{r['id']}", "edytowalny": False,
             })
 
+        # Przejazd z ewidencji niesie licznik tylko wtedy, gdy ktoś go wpisał.
+        # Poprawia się go w formularzu przejazdu — stąd, jak tankowanie, nie.
+        c.execute(
+            "SELECT id, data, licznik, skad, dokad, cel, notatka, notatka_autor, notatka_data "
+            "FROM przejazdy WHERE auto_id=? AND licznik IS NOT NULL", (auto_id,)
+        )
+        for r in c.fetchall():
+            trasa_przejazdu = " – ".join(x for x in (r["skad"], r["dokad"]) if x)
+            wpisy.append({
+                "zrodlo": "przejazd", "podzrodlo": None,
+                "id": r["id"], "data": r["data"], "przebieg": int(r["licznik"] or 0),
+                "opis": trasa_przejazdu or r["cel"] or "Przejazd",
+                "notatka": r["notatka"], "notatka_autor": r["notatka_autor"],
+                "notatka_data": r["notatka_data"],
+                "trasa": f"/ewidencja/edytuj/{r['id']}", "edytowalny": False,
+            })
+
     # Wpisy bez sensownego przebiegu (0 albo brak) nie mówią nic o liczniku —
     # w historii licznika byłyby wyłącznie szumem.
     wpisy = [w for w in wpisy if w["przebieg"] > 0]
@@ -495,7 +525,7 @@ def swiezosc_licznika(auto_id, dzis=None, aktualny_przebieg=None, sredni_dzienny
     kilometrowe — interwały podzespołów, zasięg na baku, zużycie opon.
 
     `dni` — ile dni minęło od ostatniego wpisu niosącego przebieg. To ten sam
-    wpis, który „Historia licznika” pokazuje jako ostatni (te same cztery źródła
+    wpis, który „Historia licznika” pokazuje jako ostatni (te same źródła
     i te same filtry), więc dzwonek i tamten ekran nie powiedzą dwóch różnych
     liczb. None = auto nie ma ani jednego przebiegu.
 

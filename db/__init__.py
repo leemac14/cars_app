@@ -33,6 +33,7 @@ from .przebieg import *
 from .koszty import *
 from .gwarancje import *
 from .raty import *
+from .ewidencja import *
 from .powiadomienia import *
 from .statystyki import *
 from .pojazd import *
@@ -78,6 +79,7 @@ from . import (
     koszty,
     gwarancje,
     raty,
+    ewidencja,
     powiadomienia,
     statystyki,
     pojazd,

@@ -12,6 +12,7 @@ from .jednostki import jednostka_dystansu, tekst_dystansu
 from .ustawienia import (czy_zapamietywac_wyszukiwania, pobierz_ustawienie,
                          pobierz_walute, usun_ustawienie, zapisz_ustawienie)
 from .raty import czy_rata, etykieta_umowy
+from .ewidencja import opis_trasy, tekst_km_przejazdu
 
 
 # Zapytanie kwotowe rozpoznajemy WPROST w polu wyszukiwarki — bez dodatkowych
@@ -705,6 +706,23 @@ def _wszystkie_wpisy(auto_id):
                                tekst_dystansu(r['przebieg'] or 0, 0, j),
                                skrot_notatki(r["notatka"]), r["data"], "/przebieg",
                                notatka=r["notatka"], nazwa=""))
+
+        # Przejazd z ewidencji: trasa jako nazwa, cel jako opis, rodzaj jako
+        # kategoria („kategoria:służbowy”), kierowca tylko do szukania tekstem.
+        c.execute("SELECT id, data, skad, dokad, cel, km, powrot, sluzbowy, kierowca, notatka "
+                  "FROM przejazdy WHERE auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            trasa = opis_trasy(r["skad"], r["dokad"], r["powrot"])
+            rodzaj = "służbowy" if r["sluzbowy"] else "prywatny"
+            czesci = [r["cel"]] if r["cel"] and trasa else []
+            czesci += [tekst_km_przejazdu(r["km"], j), rodzaj]
+            if r["kierowca"]:
+                czesci.append(r["kierowca"])
+            if r["notatka"]:
+                czesci.append(skrot_notatki(r["notatka"]))
+            wpisy.append(_wpis("Przejazd", trasa or r["cel"] or "Przejazd", " • ".join(czesci), r["data"],
+                               f"/ewidencja/edytuj/{r['id']}", nazwa=trasa, opis=r["cel"],
+                               kategoria=rodzaj, notatka=r["notatka"], tekst_dodatkowy=r["kierowca"]))
 
         c.execute("SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, sklep "
                   "FROM magazyn_czesci WHERE auto_id=?", (auto_id,))

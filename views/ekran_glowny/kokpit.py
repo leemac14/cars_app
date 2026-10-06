@@ -912,6 +912,51 @@ class MiksinKokpitu:
                 ], spacing=6),
             )
 
+        def widget_ewidencja():
+            """Ewidencja przebiegu (N-01): kilometry służbowe bieżącego miesiąca,
+            udział w całości i — zależnie od trybu — kwota kilometrówki albo
+            nieopisane kilometry. Liczy db.kafel_ewidencji; auto bez żadnego
+            przejazdu to „nie dotyczy”, więc kafelek się chowa."""
+            stan = metryka("ewidencja")
+            ikona = ft.Icons.ALT_ROUTE
+
+            def idz_do_ewidencji(e):
+                utils.przejdz(self._page, "/ewidencja")
+
+            if not stan:
+                return kafel_pusty(ikona, ft.Colors.BLUE_GREY_700, "Ewidencja", "Bez przejazdów", idz_do_ewidencji)
+            kolor_sl = utils.KOLORY_RODZAJU_PRZEJAZDU[db.RODZAJ_SLUZBOWY]
+            udzial = stan["udzial_sluzbowy"]
+            if stan["tryb"] == "kilometrowka" and stan["kwota"] is not None:
+                stopka = f"Kilometrówka {utils.formatuj_liczba(stan['kwota'])} {waluta}"
+            elif stan["tryb"] != "kilometrowka" and stan["nieopisane_km"] is not None and stan["nieopisane_km"] >= 1:
+                stopka = f"Nieopisane {db.tekst_km_przejazdu(stan['nieopisane_km'], j)}"
+            elif udzial is not None:
+                stopka = (f"{utils.formatuj_liczba(udzial * 100, 0)}% z "
+                          f"{db.tekst_km_przejazdu(stan['km'], j)}")
+            else:
+                stopka = "Brak przejazdów w tym miesiącu"
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
+                ink=True, on_click=idz_do_ewidencji,
+                tooltip="Ewidencja przebiegu: przejazdy służbowe i prywatne w tym miesiącu",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=kolor_sl),
+                        utils.etykieta(f"Służbowo w {db.MIESIACE_EWIDENCJI_MIEJSCOWNIK[stan['miesiac'] - 1]}",
+                                       expand=True),
+                    ], spacing=6),
+                    liczba_kafelka(stan["km_sluzbowe"], lambda v: db.tekst_km_przejazdu(v, j)),
+                    scena.wskaznik(ft.ProgressBar(
+                        value=udzial or 0, color=kolor_sl, bgcolor=utils.tlo_toru(self._page),
+                        height=6, border_radius=3,
+                    )),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            )
+
         def widget_do_zrobienia():
             stan = metryka("do_zrobienia")
             if not stan or not stan["otwarte"]:
@@ -1081,6 +1126,7 @@ class MiksinKokpitu:
             "checklist": widget_checklist,
             "oplaty_drogowe": widget_oplaty_drogowe,
             "do_splaty": widget_do_splaty,
+            "ewidencja": widget_ewidencja,
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
             "akcja_tankowanie": widget_akcja_tankowanie,

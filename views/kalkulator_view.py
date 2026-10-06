@@ -11,6 +11,7 @@ class KalkulatorTrasyView(ft.View):
         # do rachunku idą kilometry. Zapisane trasy trzymają km, jak baza.
         self.j = utils.jednostka_dystansu()
         self._dystans_wczytany_km = None
+        self._trasa_wczytana = None  # id zapisanej trasy — przechodzi do ewidencji (skąd, dokąd, cel)
 
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Kalkulator podróży", "/", ikona=ft.Icons.MAP)
 
@@ -135,7 +136,16 @@ class KalkulatorTrasyView(ft.View):
             ], spacing=10)
         )
 
-        elementy = [self.karta_tras, k1, k2, k3, utils.dol_bezpieczny(30)]
+        elementy = [self.karta_tras, k1, k2, k3]
+        # Policzona trasa jednym dotknięciem trafia do ewidencji przebiegu
+        # (N-01): formularz przejazdu dostaje kilometry, powrót i — gdy trasa
+        # była wczytana z zapisanych — jej skąd, dokąd, cel i rodzaj.
+        if db.czy_moge_dodawac(self.state.auto_id):
+            elementy.append(ft.OutlinedButton(
+                "Dodaj do ewidencji przebiegu", icon=ft.Icons.ALT_ROUTE, width=10000, height=44,
+                on_click=lambda e: self._do_ewidencji(),
+            ))
+        elementy.append(utils.dol_bezpieczny(30))
 
         super().__init__(
             route="/kalkulator", padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
@@ -182,9 +192,21 @@ class KalkulatorTrasyView(ft.View):
             ], spacing=6, tight=True),
         )
 
+    def _do_ewidencji(self):
+        """Formularz przejazdu z policzoną trasą. Kilometry jadą w adresie
+        w metrach — liczba całkowita, której nie pomyli żaden separator."""
+        wpisany = self._pobierz_float(self.e_dystans)
+        if wpisany <= 0:
+            utils.pokaz_komunikat(self._page, "Najpierw podaj dystans trasy.", utils.KOLOR_STATUS["warning"])
+            return
+        km = db.dystans_na_km(wpisany, self.j, km_przy_otwarciu=self._dystans_wczytany_km)
+        utils.przejdz(self._page, f"/kalkulator/ewidencja/{int(round(km * 1000))}/"
+                                  f"{1 if self.c_powrot.value else 0}/{self._trasa_wczytana or 0}")
+
     def _wczytaj_trase(self, trasa):
         self.e_dystans.value = utils.formatuj_liczba(db.dystans_z_km(trasa["dystans"], self.j), 0)
         self._dystans_wczytany_km = trasa["dystans"]
+        self._trasa_wczytana = trasa["id"]
         self.c_powrot.value = bool(trasa["powrot"])
         self.e_osoby.value = str(trasa["osoby"])
         self.e_dodatkowe.value = utils.formatuj_liczba(trasa["oplaty"], 2)
@@ -251,6 +273,9 @@ class KalkulatorTrasyView(ft.View):
         utils.pokaz_menu_kontekstowe(self._page, f"Trasa: {trasa['nazwa']}", utils.odsiej_akcje(self.state.auto_id, [
             {"ikona": ft.Icons.PLAY_ARROW, "tekst": "Wczytaj do kalkulatora", "czyta": True,
              "akcja": lambda: self._wczytaj_trase(trasa)},
+            {"ikona": ft.Icons.ALT_ROUTE, "tekst": "Wpisz przejazd tą trasą",
+             "opis": "Nowy przejazd w ewidencji przebiegu",
+             "akcja": lambda: utils.przejdz(self._page, f"/ewidencja/nowy/szablon/{trasa['id']}")},
             {"ikona": ft.Icons.SAVE_AS, "tekst": "Nadpisz obecnymi wartościami",
              "opis": "Zapisze dystans, powrót, liczbę osób i opłaty z ekranu",
              "akcja": lambda: self._okno_zapisu(trasa)},

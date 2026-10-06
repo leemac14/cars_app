@@ -17,7 +17,7 @@ from views.history_view import HistoriaView, WizytyZbiorczeView
 from views.formularze import (
     FormularzAutoView, FormularzTankowanieView, FormularzInneView,
     FormularzWizytyView, FormularzInterwalView, FormularzZadanieView,
-    FormularzWpisView, FormularzRatyView
+    FormularzWpisView, FormularzRatyView, FormularzPrzejazduView
 )
 from views.settings_view import UstawieniaView
 from views.todo_view import DoZrobieniaView, FormularzDoZrobieniaView
@@ -44,6 +44,7 @@ from views.rok_view import RokWPigulceView
 from views.miesiac_view import MiesiacWPigulceView
 from views.co_nowego_view import CoNowegoView
 from views.raty_view import RatyView
+from views.ewidencja_view import EwidencjaPrzebieguView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
 # Router jest jedynym miejscem, przez które przechodzi KAŻDE otwarcie formularza,
@@ -94,6 +95,22 @@ def _cel_trasy(segmenty):
 
     if glowa == "interwal":
         return (len(segmenty) >= 2), False, None, None
+
+    # Ewidencja przebiegu: /ewidencja i /ewidencja/<rok>/<miesiąc> tylko czytają;
+    # nowy, powtórzony i powrotny przejazd to dodawanie, edycja — wpis z autorem.
+    # Formularz otwarty z kalkulatora (/kalkulator/ewidencja/…) też dodaje.
+    if glowa == "ewidencja":
+        if drugi in AKCJE_DODAWANIA or drugi in ("powtorz", "powrot"):
+            return True, True, None, None
+        if drugi == "edytuj":
+            try:
+                rekord_id = int(trzeci)
+            except (TypeError, ValueError):
+                rekord_id = None
+            return True, False, "przejazdy", rekord_id
+        return False, False, None, None
+    if glowa == "kalkulator" and drugi == "ewidencja":
+        return True, True, None, None
 
     # Umowa raty (/raty/nowa, /raty/edytuj/<id>) to wpis cykliczny — wspólny
     # inwentarz pojazdu bez podpisu autora, więc o edycji rozstrzyga sama rola.
@@ -795,6 +812,50 @@ def main(page: ft.Page):
             ))
         elif segmenty[0] == "kalkulator":
             page.views.append(KalkulatorTrasyView(page, app_state))
+            # /kalkulator/ewidencja/<metry w jedną stronę>/<0|1>/<id trasy albo 0> —
+            # „Dodaj do ewidencji” pod wynikiem: formularz przejazdu leży NA
+            # kalkulatorze, więc „wstecz” wraca do policzonej trasy.
+            if len(segmenty) >= 4 and segmenty[1] == "ewidencja":
+                km = utils.parsuj_int(segmenty[2], 0) / 1000
+                szablon = utils.parsuj_int(segmenty[4], 0) if len(segmenty) >= 5 else 0
+                page.views.append(FormularzPrzejazduView(
+                    page, app_state, None,
+                    zrodlo={"kalkulator": (km, segmenty[3] == "1", szablon or None)}, powrot_do="/kalkulator",
+                ))
+        elif segmenty[0] == "ewidencja":
+            # Ewidencja przebiegu (N-01): /ewidencja, /ewidencja/2026/10; formularz
+            # przejazdu leży NA miesiącu, którego dotyczy (nowy — na bieżącym albo
+            # na dniu z adresu), więc „wstecz” wraca do tego miesiąca.
+            drugi = segmenty[1] if len(segmenty) > 1 else ""
+            trzeci = segmenty[2] if len(segmenty) > 2 else ""
+            rok_trasy = miesiac_trasy = None
+            formularz = None
+            if drugi in ("nowy", "nowa", "nowe"):
+                zrodlo = {}
+                if trzeci == "dzien" and len(segmenty) > 3:
+                    zrodlo["dzien"] = segmenty[3]
+                elif trzeci == "szablon" and len(segmenty) > 3:
+                    zrodlo["szablon"] = utils.parsuj_int(segmenty[3], None)
+                formularz = (None, zrodlo)
+            elif drugi in ("edytuj", "powtorz", "powrot") and trzeci:
+                przejazd_id = utils.parsuj_int(trzeci, None)
+                if drugi == "edytuj":
+                    formularz = (przejazd_id, {})
+                else:
+                    formularz = (None, {drugi: przejazd_id})
+                if drugi != "powtorz":
+                    zrodlowy = db.pobierz_przejazd(przejazd_id)
+                    if zrodlowy and zrodlowy["data_obj"]:
+                        rok_trasy, miesiac_trasy = zrodlowy["data_obj"].year, zrodlowy["data_obj"].month
+            elif drugi and trzeci:
+                rok_trasy, miesiac_trasy = utils.parsuj_int(drugi, None), utils.parsuj_int(trzeci, None)
+            if formularz and formularz[1].get("dzien"):
+                czesci = str(formularz[1]["dzien"]).split(".")  # DD.MM.RRRR
+                if len(czesci) == 3:
+                    rok_trasy, miesiac_trasy = utils.parsuj_int(czesci[2], None), utils.parsuj_int(czesci[1], None)
+            page.views.append(EwidencjaPrzebieguView(page, app_state, rok_trasy, miesiac_trasy))
+            if formularz:
+                page.views.append(FormularzPrzejazduView(page, app_state, formularz[0], zrodlo=formularz[1]))
         elif segmenty[0] == "co-nowego":
             # „Pokaż” przy nowości znika tam, gdzie router i tak by nie wpuścił —
             # tę samą decyzję podajemy ekranowi wprost, zamiast ją powielać.

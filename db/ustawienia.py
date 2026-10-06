@@ -1,6 +1,8 @@
 """Ustawienia globalne i per-pojazd: motyw, waluta, jednostki, progi."""
 
-from .stale import DNI_PRZYPOMNIENIA_O_ODCZYCIE, DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE, JEDNOSTKI_DYSTANSU, JEDNOSTKI_SPALANIA, JEDNOSTKI_ZUZYCIA_EV, KLUCZE_TERMINOW, KOLEJNOSC_TRYBOW_MOTYWU, KOLORY_MOTYWU, PROG_DNI_POWIADOMIEN, PROG_KM_POWIADOMIEN, WALUTY
+from typing import Any
+
+from .stale import DNI_PRZYPOMNIENIA_O_ODCZYCIE, DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE, JEDNOSTKI_DYSTANSU, JEDNOSTKI_SPALANIA, JEDNOSTKI_ZUZYCIA_EV, KLUCZE_TERMINOW, KOLEJNOSC_TRYBOW_MOTYWU, KOLORY_MOTYWU, PROG_DNI_POWIADOMIEN, PROG_KM_POWIADOMIEN, TRYBY_EWIDENCJI, TRYB_EWIDENCJI_DOMYSLNY, WALUTY
 from .polaczenie import polacz_baze
 
 
@@ -363,6 +365,7 @@ KOKPIT_WIDGETY = {
     "do_splaty": "Leasing i kredyt: do spłaty",
     "do_zrobienia": "Do zrobienia",
     "magazyn": "Magazyn — niski stan",
+    "ewidencja": "Ewidencja przebiegu: służbowe km",
     # Kafelki AKCJI: zamiast liczby mają czynność. Te same wpisy, co pod FAB-em
     # w rogu ekranu, plus stan licznika, którego FAB nie ma. Kokpit odpowiadał
     # dotąd wyłącznie na pytanie „co się dzieje”, nigdy „zrób”.
@@ -530,12 +533,81 @@ def zapisz_zakres_wykresu(auto_id, klucz, miesiace):
     )
 
 
+# ============================================================================
+#  EWIDENCJA PRZEBIEGU — tryb, stawka kilometrówki, dane do raportu
+# ============================================================================
+# Tryb i stawka należą do pojazdu na TYM telefonie, oba w jednym wierszu
+# („tryb=kilometrowka;stawka=1.15”) — jedna funkcja klucza w
+# USTAWIENIA_PER_POJAZD zamiast dwóch (migawka kosza zapisuje je po nazwie).
+# Imię, adres i pracodawca do nagłówka kilometrówki to dane OSOBY, nie auta —
+# wspólne dla wszystkich pojazdów.
+
+def _klucz_ewidencji(auto_id):
+    return f"ewidencja_{int(auto_id)}"
+
+
+def pobierz_ustawienia_ewidencji(auto_id) -> dict[str, Any]:
+    """{"tryb": klucz z TRYBY_EWIDENCJI, "stawka": stawka kilometrówki za
+    jednostkę dystansu albo None (nieustawiona)}. Śmieci po ręcznej edycji
+    bazy wracają do wartości domyślnych."""
+    wynik = {"tryb": TRYB_EWIDENCJI_DOMYSLNY, "stawka": None}
+    if not auto_id:
+        return wynik
+    for kawalek in str(pobierz_ustawienie(_klucz_ewidencji(auto_id), "") or "").split(";"):
+        klucz, _, wartosc = kawalek.partition("=")
+        klucz, wartosc = klucz.strip(), wartosc.strip()
+        if klucz == "tryb" and wartosc in TRYBY_EWIDENCJI:
+            wynik["tryb"] = wartosc
+        elif klucz == "stawka":
+            try:
+                stawka = float(wartosc)
+            except ValueError:
+                continue
+            if stawka > 0:
+                wynik["stawka"] = stawka
+    return wynik
+
+
+def zapisz_ustawienia_ewidencji(auto_id, tryb, stawka=None):
+    """Zapisuje oba naraz — formularz ustawień ewidencji pokazuje oba pola.
+    Stawka None albo nie większa od zera = brak stawki."""
+    if not auto_id:
+        return
+    tryb = tryb if tryb in TRYBY_EWIDENCJI else TRYB_EWIDENCJI_DOMYSLNY
+    czesci = [f"tryb={tryb}"]
+    try:
+        stawka = float(stawka) if stawka not in (None, "") else None
+    except (TypeError, ValueError):
+        stawka = None
+    if stawka and stawka > 0:
+        czesci.append(f"stawka={round(stawka, 4)}")
+    zapisz_ustawienie(_klucz_ewidencji(auto_id), ";".join(czesci))
+
+
+KLUCZE_DANYCH_OSOBY = {
+    "osoba": "ewidencja_osoba",
+    "adres": "ewidencja_adres",
+    "pracodawca": "ewidencja_pracodawca",
+}
+
+
+def pobierz_dane_osoby_ewidencji() -> dict[str, str]:
+    """Imię i nazwisko, adres zamieszkania i pracodawca — nagłówek ewidencji
+    kilometrówki. Puste napisy, dopóki ktoś ich nie wpisze."""
+    return {pole: str(pobierz_ustawienie(klucz, "") or "").strip() for pole, klucz in KLUCZE_DANYCH_OSOBY.items()}
+
+
+def zapisz_dane_osoby_ewidencji(osoba="", adres="", pracodawca=""):
+    for pole, wartosc in (("osoba", osoba), ("adres", adres), ("pracodawca", pracodawca)):
+        zapisz_ustawienie(KLUCZE_DANYCH_OSOBY[pole], " ".join(str(wartosc or "").split()))
+
+
 # Ustawienia przywiązane do KONKRETNEGO pojazdu — przenoszone razem z nim do
 # kosza i z powrotem (ID po przywróceniu może się zmienić, patrz
 # przywroc_auto_z_kosza), żeby nie zostawały w bazie jako sieroty.
 # Migawka kosza zapisuje je pod NAZWĄ funkcji budującej klucz — zmiana nazwy
 # którejś z nich zgubiłaby to ustawienie w pojazdach, które już leżą w koszu.
-USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien, _klucz_zakresow_wykresow]
+USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien, _klucz_zakresow_wykresow, _klucz_ewidencji]
 
 
 def _pobierz_ustawienia_pojazdu(auto_id):
@@ -609,6 +681,12 @@ __all__ = [
     "ZAKRESY_WYKRESU",
     "ZAKRES_WYKRESU_DOMYSLNY",
     "_klucz_kokpitu",
+    "_klucz_ewidencji",
+    "KLUCZE_DANYCH_OSOBY",
+    "pobierz_ustawienia_ewidencji",
+    "zapisz_ustawienia_ewidencji",
+    "pobierz_dane_osoby_ewidencji",
+    "zapisz_dane_osoby_ewidencji",
     "_klucz_widzianych_powiadomien",
     "_klucz_zakresow_wykresow",
     "_odczytaj_zakresy_wykresow",

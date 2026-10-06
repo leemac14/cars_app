@@ -28,7 +28,7 @@ from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, opis_gwarancji, zakres_gwarancji
 from .nazwy import klucz_nazwy
 from .rejestry import WARSZTAT_BEZ_NAZWY
-from .eksport import FOLDER_ASSETS, KATEGORIE_EKSPORTU, _MAPA_TRANSLITERACJI_PL, _RaportPDF
+from .eksport import FOLDER_ASSETS, KATEGORIE_EKSPORTU, _MAPA_TRANSLITERACJI_PL, _RaportPDF, generuj_csv
 
 
 # ==================== GRAFIKA „ROK / MIESIĄC W PIGUŁCE” ====================
@@ -856,6 +856,211 @@ def _gwarancje_do_paszportu(auto_id, j):
     return wynik
 
 
+# ==================== EWIDENCJA PRZEBIEGU — RAPORT MIESIĄCA ====================
+# Treść (napisy, kolumny, sumy, uwagi) składa db.dane_raportu_ewidencji; tu jest
+# tylko rysunek. Tabela ma WŁASNE szerokości kolumn i zawija tekst w komórce —
+# ogólny raport dzieli stronę po równo i ucina („Spotkanie z kl...”), a w
+# ewidencji cel i trasa są tym, co się podpisuje. Każda linijka tekstu idzie
+# przez `cell`, bez parametru `ln` (przestarzały w fpdf2).
+
+def _zawin_tekst(pdf, tekst, szerokosc):
+    """Linijki tekstu mieszczące się w `szerokosc` (mm) przy bieżącej czcionce.
+    Słowo dłuższe niż cała szerokość dzieli się twardo."""
+    linie, biezaca = [], ""
+    for slowo in pdf.t(tekst).split():
+        proba = f"{biezaca} {slowo}" if biezaca else slowo
+        if pdf.get_string_width(proba) <= szerokosc:
+            biezaca = proba
+            continue
+        if biezaca:
+            linie.append(biezaca)
+        while len(slowo) > 1 and pdf.get_string_width(slowo) > szerokosc:
+            k = len(slowo) - 1
+            while k > 1 and pdf.get_string_width(slowo[:k]) > szerokosc:
+                k -= 1
+            linie.append(slowo[:k])
+            slowo = slowo[k:]
+        biezaca = slowo
+    if biezaca:
+        linie.append(biezaca)
+    return linie or [""]
+
+
+def _wiersz_tabeli(pdf, x0, szerokosci, wartosci, wyrownania, wysokosc_linii, pogrubiony=False, tlo=None):
+    """Jeden wiersz tabeli z zawijaniem; zwraca jego wysokość. Wołający dba
+    o nową stronę przed wierszem (`_wysokosc_wiersza`)."""
+    pdf.set_font(pdf.czcionka, "B" if pogrubiony else "", 8.5)
+    margines = 1.2
+    kolumny = [_zawin_tekst(pdf, w, s - 2 * margines) for w, s in zip(wartosci, szerokosci)]
+    wysokosc = max(len(linie) for linie in kolumny) * wysokosc_linii + 2 * margines
+    y0, x = pdf.get_y(), x0
+    for linie, szer, wyr in zip(kolumny, szerokosci, wyrownania):
+        if tlo:
+            pdf.set_fill_color(*tlo)
+            pdf.rect(x, y0, szer, wysokosc, style="DF")
+        else:
+            pdf.rect(x, y0, szer, wysokosc)
+        for i, linia in enumerate(linie):
+            pdf.set_xy(x + margines, y0 + margines + i * wysokosc_linii)
+            pdf.cell(szer - 2 * margines, wysokosc_linii, linia, align=wyr)
+        x += szer
+    pdf.set_xy(x0, y0 + wysokosc)
+    return wysokosc
+
+
+def _wysokosc_wiersza(pdf, szerokosci, wartosci, wysokosc_linii, pogrubiony=False):
+    pdf.set_font(pdf.czcionka, "B" if pogrubiony else "", 8.5)
+    return (max(len(_zawin_tekst(pdf, w, s - 2.4)) for w, s in zip(wartosci, szerokosci))
+            * wysokosc_linii + 2.4)
+
+
+def generuj_pdf_ewidencji(dane) -> bytes:
+    """PDF raportu miesiąca ewidencji przebiegu (A4 poziomo) z treści
+    db.dane_raportu_ewidencji: nagłówek z danymi pojazdu i okresu, tabela
+    przejazdów z wierszem „Razem”, podsumowanie, uwagi i miejsca na podpis.
+    Rzuca RuntimeError bez fpdf2 — jak pozostałe raporty."""
+    if FPDF is None:
+        raise RuntimeError("Biblioteka 'fpdf2' nie jest zainstalowana — eksport do PDF jest niedostępny. "
+                           "Zainstaluj: pip install fpdf2")
+    pdf = _RaportPDF(orientation="L")
+    pdf.set_margins(12, 12, 12)
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page()
+    szer_strony = pdf.w - pdf.l_margin - pdf.r_margin
+    dol = pdf.h - 14
+
+    pdf.set_font(pdf.czcionka, "B", 16)
+    pdf.cell(0, 9, pdf.t(dane["tytul"]))
+    pdf.ln(9)
+    pdf.set_font(pdf.czcionka, "", 10.5)
+    pdf.set_text_color(110, 110, 110)
+    pdf.cell(0, 6, pdf.t(dane["podtytul"]))
+    pdf.ln(9)
+    pdf.set_text_color(0, 0, 0)
+
+    # Nagłówek: dwie kolumny par „etykieta: wartość”.
+    pary = dane["naglowek"]
+    polowa = (len(pary) + 1) // 2
+    szer_kolumny = szer_strony / 2
+    y_start = pdf.get_y()
+    y_koniec = y_start
+    for kolumna, czesc in enumerate((pary[:polowa], pary[polowa:])):
+        pdf.set_xy(pdf.l_margin + kolumna * szer_kolumny, y_start)
+        for etykieta, wartosc in czesc:
+            x = pdf.l_margin + kolumna * szer_kolumny
+            pdf.set_x(x)
+            pdf.set_font(pdf.czcionka, "", 9)
+            pdf.set_text_color(110, 110, 110)
+            pdf.cell(52, 5.5, pdf.t(etykieta))
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font(pdf.czcionka, "B", 9)
+            linie = _zawin_tekst(pdf, wartosc, szer_kolumny - 56)
+            for i, linia in enumerate(linie):
+                pdf.set_x(x + 52)
+                pdf.cell(szer_kolumny - 56, 5.5, linia)
+                pdf.ln(5.5)
+        y_koniec = max(y_koniec, pdf.get_y())
+    pdf.set_xy(pdf.l_margin, y_koniec + 4)
+
+    # Tabela przejazdów.
+    waga = sum(k[1] for k in dane["kolumny"])
+    szerokosci = [szer_strony * k[1] / waga for k in dane["kolumny"]]
+    wyrownania = [k[2] for k in dane["kolumny"]]
+    naglowki = [k[0] for k in dane["kolumny"]]
+    linia = 4.2
+
+    def naglowek_tabeli():
+        _wiersz_tabeli(pdf, pdf.l_margin, szerokosci, naglowki, ["C"] * len(naglowki), linia,
+                       pogrubiony=True, tlo=(230, 230, 230))
+
+    if not dane["wiersze"]:
+        pdf.set_font(pdf.czcionka, "", 10)
+        pdf.set_text_color(140, 140, 140)
+        pdf.cell(0, 7, pdf.t("Brak przejazdów w tym okresie."))
+        pdf.ln(9)
+        pdf.set_text_color(0, 0, 0)
+    else:
+        naglowek_tabeli()
+        wiersze = list(dane["wiersze"]) + ([dane["razem"]] if dane.get("razem") else [])
+        for i, wiersz in enumerate(wiersze):
+            ostatni = dane.get("razem") is not None and i == len(wiersze) - 1
+            if pdf.get_y() + _wysokosc_wiersza(pdf, szerokosci, wiersz, linia, ostatni) > dol:
+                pdf.add_page()
+                naglowek_tabeli()
+            _wiersz_tabeli(pdf, pdf.l_margin, szerokosci, wiersz, wyrownania, linia, pogrubiony=ostatni,
+                           tlo=(245, 245, 245) if ostatni else None)
+        pdf.ln(5)
+
+    # Podsumowanie, uwagi, podpisy — każdy blok przenosi się w całości na
+    # następną stronę, gdy się nie mieści.
+    def miejsce(potrzeba):
+        if pdf.get_y() + potrzeba > dol:
+            pdf.add_page()
+
+    if dane["podsumowanie"]:
+        miejsce(8 + 6 * len(dane["podsumowanie"]))
+        pdf.set_font(pdf.czcionka, "B", 11)
+        pdf.cell(0, 7, pdf.t("Podsumowanie"))
+        pdf.ln(8)
+        for etykieta, wartosc in dane["podsumowanie"]:
+            pdf.set_font(pdf.czcionka, "", 9.5)
+            pdf.cell(80, 5.8, pdf.t(etykieta))
+            pdf.set_font(pdf.czcionka, "B", 9.5)
+            for j, linia_wartosci in enumerate(_zawin_tekst(pdf, wartosc, szer_strony - 82)):
+                if j:
+                    pdf.set_x(pdf.l_margin + 80)
+                pdf.cell(szer_strony - 80, 5.8, linia_wartosci)
+                pdf.ln(5.8)
+        pdf.ln(3)
+
+    if dane["uwagi"]:
+        pdf.set_font(pdf.czcionka, "", 9)
+        linie_uwag = [_zawin_tekst(pdf, u, szer_strony - 6) for u in dane["uwagi"]]
+        miejsce(8 + 5 * sum(len(linie) for linie in linie_uwag))
+        pdf.set_font(pdf.czcionka, "B", 10)
+        pdf.cell(0, 6, pdf.t("Uwagi"))
+        pdf.ln(7)
+        pdf.set_font(pdf.czcionka, "", 9)
+        pdf.set_text_color(160, 80, 0)
+        for linie in linie_uwag:
+            for j, tekst in enumerate(linie):
+                pdf.set_x(pdf.l_margin + (4 if j else 0))
+                pdf.cell(szer_strony - 4, 5, (pdf.t("• ") if j == 0 else "") + tekst)
+                pdf.ln(5)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(3)
+
+    if dane["podpisy"]:
+        miejsce(26)
+        pdf.ln(8)
+        szer_podpisu = min(110.0, szer_strony / len(dane["podpisy"]) - 10)
+        y = pdf.get_y()
+        for i, podpis in enumerate(dane["podpisy"]):
+            x = pdf.l_margin + i * (szer_strony / len(dane["podpisy"]))
+            pdf.set_draw_color(120, 120, 120)
+            pdf.line(x, y + 8, x + szer_podpisu, y + 8)
+            pdf.set_xy(x, y + 9)
+            pdf.set_font(pdf.czcionka, "", 8.5)
+            pdf.set_text_color(110, 110, 110)
+            pdf.cell(szer_podpisu, 5, pdf.t(podpis), align="C")
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_xy(pdf.l_margin, y + 18)
+
+    pdf.set_font(pdf.czcionka, "", 7.5)
+    pdf.set_text_color(150, 150, 150)
+    pdf.set_xy(pdf.l_margin, pdf.h - 10)
+    pdf.cell(0, 4, pdf.t(f"Wygenerowano {datetime.now().strftime('%d.%m.%Y %H:%M')} • "
+                         f"przejazdów w tabeli: {dane.get('liczba_przejazdow', len(dane['wiersze']))}"))
+    return bytes(pdf.output())
+
+
+def generuj_csv_ewidencji(dane) -> bytes:
+    """Ta sama tabela co w PDF — dla arkusza albo księgowej. Wiersz „Razem”
+    na końcu, nagłówek i podsumowanie zostają w PDF."""
+    wiersze = list(dane["wiersze"]) + ([dane["razem"]] if dane.get("razem") else [])
+    return generuj_csv([k[0] for k in dane["kolumny"]], wiersze)
+
+
 __all__ = [
     "MIESIACE_PELNE",
     "MIESIACE_SKROT",
@@ -869,9 +1074,14 @@ __all__ = [
     "_rysuj_galerie_karoserii",
     "_rysuj_gwarancje_napraw",
     "_rysuj_strone_tytulowa_paszportu",
+    "_wiersz_tabeli",
+    "_wysokosc_wiersza",
+    "_zawin_tekst",
     "_znajdz_czcionki_grafiki",
     "generuj_grafike_miesiaca",
     "generuj_grafike_roku",
+    "generuj_csv_ewidencji",
+    "generuj_pdf_ewidencji",
     "generuj_pdf_raportu",
     "pobierz_dane_paszportu",
     "podpisy_dni_miesiaca",

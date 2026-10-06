@@ -201,6 +201,7 @@ IKONY_KOKPITU = {
     "do_splaty": ft.Icons.ACCOUNT_BALANCE,
     "do_zrobienia": ft.Icons.CHECKLIST_RTL,
     "magazyn": ft.Icons.INVENTORY_2,
+    "ewidencja": ft.Icons.ALT_ROUTE,
     "akcja_tankowanie": ft.Icons.LOCAL_GAS_STATION,
     "akcja_paragon": ft.Icons.PHOTO_CAMERA,
     "akcja_licznik": ft.Icons.SPEED,
@@ -247,6 +248,7 @@ IKONY_ZRODEL_PRZEBIEGU = {
     "tankowanie": ft.Icons.LOCAL_GAS_STATION,
     "wizyta": ft.Icons.HOME_REPAIR_SERVICE,
     "serwis": ft.Icons.BUILD,
+    "przejazd": ft.Icons.ALT_ROUTE,
 }
 
 
@@ -255,6 +257,15 @@ KOLORY_ZRODEL_PRZEBIEGU = {
     "tankowanie": ft.Colors.BLUE_700,
     "wizyta": ft.Colors.RED_700,
     "serwis": ft.Colors.ORANGE_700,
+    "przejazd": ft.Colors.TEAL_600,
+}
+
+
+# Rodzaj przejazdu w ewidencji przebiegu — kolor TOŻSAMOŚCI (pasek karty,
+# chip rodzaju, wypełnienie paska udziału), nie stan: prywatny nie jest „gorszy”.
+KOLORY_RODZAJU_PRZEJAZDU = {
+    "Służbowy": ft.Colors.TEAL_600,
+    "Prywatny": ft.Colors.BLUE_GREY_400,
 }
 
 
@@ -265,6 +276,7 @@ IKONY_PODZRODEL_ODCZYTU = {
     "kokpit": ft.Icons.BOLT,
     "pojazd": ft.Icons.DIRECTIONS_CAR,
     "import": ft.Icons.INPUT,
+    "ewidencja": ft.Icons.EVENT_AVAILABLE,
 }
 
 
@@ -314,6 +326,7 @@ IKONY_EKSPORTU = {
     "do_zrobienia": ft.Icons.CHECKLIST,
     "warsztaty": ft.Icons.BUSINESS,
     "odczyty_przebiegu": ft.Icons.STRAIGHTEN,
+    "przejazdy": ft.Icons.ALT_ROUTE,
     "tagi": ft.Icons.LABEL,
 }
 
@@ -388,6 +401,7 @@ __all__ = [
     "HEX_KOLOROW",
     "IKONY_AKTYWNOSCI",
     "IKONY_EKSPORTU",
+    "KOLORY_RODZAJU_PRZEJAZDU",
     "IKONY_KATEGORII_INNYCH",
     "IKONY_KATEGORII_KOSZTOW",
     "IKONY_KOKPITU",

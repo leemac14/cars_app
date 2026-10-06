@@ -16,13 +16,14 @@ IKONY_WYSZUKIWANIA = {
     "Zapisana trasa": (ft.Icons.ROUTE, ft.Colors.ORANGE_700),
     "Checklista": (ft.Icons.FACT_CHECK, ft.Colors.LIGHT_GREEN_700),
     "Odczyt licznika": (ft.Icons.SPEED, ft.Colors.BLUE_GREY_700),
+    "Przejazd": (ft.Icons.ALT_ROUTE, ft.Colors.TEAL_600),
 }
 
 
 class SzukajView(ft.View):
     PODPOWIEDZ_STARTOWA = (
         "Wpisz min. 2 znaki, aby przeszukać tankowania, serwis, wizyty, "
-        "inne koszty, warsztaty, wydatki cykliczne, zapisane trasy, checklisty, "
+        "inne koszty, warsztaty, wydatki cykliczne, zapisane trasy, przejazdy z ewidencji, checklisty, "
         "notatki wpisów i listę Do zrobienia bieżącego pojazdu. Zamiast tekstu można "
         "wpisać okres („marzec 2026”, „ostatni tydzień”), pole („stacja:orlen”, "
         "„tag:ubezpieczenie”, „kategoria:opłaty”) albo kwotę („>1000”) — i łączyć to ze sobą. "

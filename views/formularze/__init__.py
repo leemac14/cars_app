@@ -13,11 +13,13 @@ from .interwal import FormularzInterwalView
 from .wpis_serwisowy import FormularzWpisView
 from .wizyta import FormularzWizytyView
 from .rata import FormularzRatyView
+from .przejazd import FormularzPrzejazduView
 
 __all__ = [
     "FormularzAutoView",
     "FormularzInneView",
     "FormularzInterwalView",
+    "FormularzPrzejazduView",
     "FormularzRatyView",
     "FormularzTankowanieView",
     "FormularzWizytyView",

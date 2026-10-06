@@ -128,8 +128,17 @@ KONFIGURACJA_SYNC = [
     {"tabela": "budzety", "kolumny": ["kategoria", "okres", "kwota"], "fk": {},
      "klucz_scalania": ["kategoria", "okres"]},
     # Trasa „do teściów” jest cechą AUTA, nie telefonu — kto wsiądzie, ten ma
-    # tę samą pozycję w kalkulatorze.
-    {"tabela": "trasy_szablony", "kolumny": ["nazwa", "dystans", "powrot", "osoby", "oplaty", "notatki"], "fk": {}},
+    # tę samą pozycję w kalkulatorze. Skąd, dokąd, cel i rodzaj (wersja 50)
+    # robią z niej wzór przejazdu w ewidencji; dołożone, kiedy trasy leżały
+    # już w chmurze — stąd `dopisane`.
+    {"tabela": "trasy_szablony", "kolumny": ["nazwa", "dystans", "powrot", "osoby", "oplaty", "notatki",
+                                             "skad", "dokad", "cel", "sluzbowy"], "fk": {},
+     "dopisane": ["skad", "dokad", "cel", "sluzbowy"]},
+    # Ewidencja przebiegu jest wspólna dla auta: druga osoba dopisuje swoje
+    # przejazdy (kierowca), a raport miesiąca ma być jeden dla obojga.
+    {"tabela": "przejazdy", "kolumny": ["data", "skad", "dokad", "cel", "km", "powrot", "sluzbowy", "kierowca",
+                                        "licznik", "notatka", "notatka_autor", "notatka_data", "dodane_przez"],
+     "fk": {}},
     # Checklista jedzie w komplecie: nagłówek plus pozycje. Stan odhaczenia też
     # — przy wspólnym aucie sens polega właśnie na tym, że druga osoba widzi,
     # co zostało już sprawdzone przed wyjazdem.
@@ -197,6 +206,7 @@ ETYKIETY_TABEL_SYNC = {
     "pakiety_serwisowe_wlasne": "Własny pakiet serwisowy",
     "budzety": "Limit budżetu",
     "trasy_szablony": "Zapisana trasa",
+    "przejazdy": "Przejazd",
     "checklisty": "Checklista",
     "checklisty_pozycje": "Pozycja checklisty",
     "rozliczenia": "Rozliczenie",

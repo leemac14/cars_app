@@ -140,6 +140,15 @@ EKRANY = [
     {"id": "kalkulator", "tytul": "Kalkulator podróży", "opis": "Policz koszt trasy przed wyjazdem",
      "ikona": ft.Icons.MAP, "grupa": "koszty", "trasa": "/kalkulator",
      "slowa": ["trasa", "wyjazd", "podróż", "ile spali", "koszt przejazdu"]},
+    # Ewidencja przebiegu (N-01): po co były kilometry — podział prywatne /
+    # służbowe, kilometrówka i raport miesiąca. Opis i słowa bez „oc”, „olej”,
+    # „koszt”, „opon”, „budż” i „rozrz” — wyszukiwarka ma dla nich dokładne
+    # listy trafień (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "ewidencja", "tytul": "Ewidencja przebiegu",
+     "opis": "Przejazdy służbowe i prywatne, kilometrówka i raport miesiąca",
+     "ikona": ft.Icons.ALT_ROUTE, "grupa": "koszty", "trasa": "/ewidencja",
+     "slowa": ["ewidencja", "kilometrówka", "przejazd", "przejazdy", "służbowe", "prywatne", "delegacja",
+               "vat", "epp", "pracodawca", "zwrot", "kierowca", "cel wyjazdu", "skąd dokąd"]},
 
     {"id": "statystyki", "tytul": "Statystyki", "opis": "Liczby, wykresy, obserwacje i tabele",
      "ikona": ft.Icons.PIE_CHART, "grupa": "analiza", "zakladka": 3,

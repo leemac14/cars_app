@@ -525,6 +525,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         ikona = ft.Icons.GPP_MAYBE
                     elif p["typ"] == "szkice":
                         ikona = ft.Icons.PENDING_ACTIONS
+                    elif p["typ"] == "ewidencja":
+                        ikona = ft.Icons.ALT_ROUTE
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=tytul_pozycji(p),
