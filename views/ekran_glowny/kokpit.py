@@ -333,6 +333,53 @@ class MiksinKokpitu:
                     spacing=6),
             )
 
+        def widget_przede_mna():
+            """Najbliższy miesiąc osi przyszłości: ile to będzie kosztować, ile
+            pozycji (z zaległymi) i trzy najbliższe. „Ile zostało do…” mówi, ile
+            zostało do każdej rzeczy z osobna — ten kafelek, co po kolei wypada
+            w kalendarzu."""
+            os_dane = metryka("przede_mna")
+            pozycje = os_dane["pozycje"]
+            podsumowanie = os_dane["podsumowanie"]
+
+            def otworz(e):
+                utils.przejdz(self._page, "/co-przede-mna")
+
+            if not pozycje and not podsumowanie["razem"]:
+                return kafel_pusty(
+                    ft.Icons.EVENT_NOTE, ft.Colors.BLUE_GREY_700, "Co przede mną",
+                    "Nic w najbliższym miesiącu", otworz,
+                )
+            if podsumowanie["zalegle"]:
+                stan_kafla = "critical"
+            elif any(p["status"] == "blisko" for p in pozycje):
+                stan_kafla = "warning"
+            else:
+                stan_kafla = None
+            # Same terminy bez żadnej kwoty: „0 zł” mówiłoby „nic nie zapłacisz”,
+            # a polisa ma swoją cenę — tylko jeszcze jej nie znamy.
+            if podsumowanie["razem"] > 0:
+                wartosc = utils.razem_osi(podsumowanie)
+                opis, kolor_opisu = utils.liczba_pozycji_osi(podsumowanie), (
+                    utils.KOLOR_STATUS["critical"] if podsumowanie["zalegle"] else ft.Colors.ON_SURFACE_VARIANT)
+            else:
+                wartosc = utils.liczba_pozycji_osi(podsumowanie)
+                opis, kolor_opisu = "bez kwot do zsumowania", ft.Colors.ON_SURFACE_VARIANT
+            return ft.Container(
+                width=SZER_KAFLA + 100, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=stan_kafla),
+                ink=True, on_click=otworz,
+                tooltip="Terminy, raty, wymiany i prognoza wydatków na najbliższy miesiąc",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.EVENT_NOTE, size=15, color=ft.Colors.PRIMARY),
+                        utils.etykieta(f"Co przede mną · {utils.formatuj_dni(os_dane['dni'])}", expand=True),
+                    ], spacing=6),
+                    tekst_wartosci(wartosc),
+                    ft.Text(opis, size=utils.FS["caption"], color=kolor_opisu),
+                ] + [utils.wiersz_osi_kafla(p, j) for p in pozycje[:3]], spacing=4),
+            )
+
         def widget_wykres():
             dane_mc = metryka("koszty_miesieczne")
             maks_mc = max((s for _, _, s in dane_mc), default=0)
@@ -1109,6 +1156,7 @@ class MiksinKokpitu:
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
             "ile_zostalo": widget_ile_zostalo,
+            "przede_mna": widget_przede_mna,
             "wykres": widget_wykres,
             "skumulowany": widget_skumulowany,
             "koszt_1000km": widget_koszt_1000km,

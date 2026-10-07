@@ -182,6 +182,7 @@ IKONY_KOKPITU = {
     "koszt_miesiac": ft.Icons.ACCOUNT_BALANCE_WALLET,
     "termin": ft.Icons.EVENT,
     "ile_zostalo": ft.Icons.HOURGLASS_BOTTOM,
+    "przede_mna": ft.Icons.EVENT_NOTE,
     "wykres": ft.Icons.BAR_CHART,
     "skumulowany": ft.Icons.STACKED_LINE_CHART,
     "koszt_1000km": ft.Icons.AUTO_GRAPH,

@@ -65,6 +65,14 @@ EKRANY = [
      "ikona": ft.Icons.HOURGLASS_BOTTOM, "grupa": "pojazd", "trasa": "/ile-zostalo",
      "slowa": ["odliczanie", "ile zostało", "do kiedy", "termin", "terminy", "gwarancja", "polisa",
                "interwał", "kamień milowy", "okrągły przebieg", "przyszłość"]},
+    # Oś przyszłości (N-02): to samo „do przodu”, co odliczania, ale jako
+    # kalendarz z ratami, wpisami cyklicznymi i prognozą miesięcy. Opis i słowa
+    # bez „oc”, „olej”, „koszt”, „opon” i „budż” — wyszukiwarka ma dla nich swoje
+    # ekrany (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "co-przede-mna", "tytul": "Co przede mną", "opis": "Terminy, raty, wymiany i prognoza wydatków na 30, 90 albo 365 dni",
+     "ikona": ft.Icons.EVENT_NOTE, "grupa": "pojazd", "trasa": "/co-przede-mna",
+     "slowa": ["przyszłość", "plan", "kalendarz", "terminarz", "agenda", "nadchodzące", "do przodu",
+               "urlop", "wakacje", "prognoza", "harmonogram", "zaplanowane", "cykliczne"]},
     {"id": "przebieg", "tytul": "Historia przebiegu", "opis": "Wszystkie odczyty licznika i ich źródła",
      "ikona": ft.Icons.SPEED, "grupa": "pojazd", "trasa": "/przebieg",
      "slowa": ["licznik", "kilometry", "km", "mile", "odczyt", "stan licznika", "przebiegi"]},

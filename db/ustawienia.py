@@ -24,6 +24,7 @@ USTAWIENIA_INTERFEJSU = frozenset({
     "ostatnia_zakladka",
     "ostatnia_podzakladka_kosztow",
     "ostatnie_wyszukiwania",        # db.KLUCZ_HISTORII_WYSZUKIWAN
+    "okno_przyszlosci",             # db.KLUCZ_OKNA_PRZYSZLOSCI
 })
 
 # Układ kokpitu: wspólny „kokpit_widgety” i per pojazd „kokpit_widgety_<id>”.
@@ -346,6 +347,7 @@ KOKPIT_WIDGETY = {
     "koszt_miesiac": "Koszt w tym miesiącu",
     "termin": "Najbliższy termin",
     "ile_zostalo": "Ile zostało do…",
+    "przede_mna": "Co przede mną (30 dni)",
     "wykres": "Wykres wydatków (6 mies.)",
     "skumulowany": "Koszt skumulowany",
     "koszt_1000km": "Koszt na 1000 km (okno)",
@@ -533,6 +535,29 @@ def zapisz_zakres_wykresu(auto_id, klucz, miesiace):
     )
 
 
+# „Co przede mną” (db.os_przyszlosci): ile dni do przodu pokazuje oś. Jedno
+# okno na całą aplikację, nie na pojazd — to horyzont planowania („do urlopu”,
+# „cały rok”), a nie cecha auta. Sama pamięć interfejsu: liczby z bazy od niej
+# nie zależą, więc zapis nie unieważnia pamięci metryk (USTAWIENIA_INTERFEJSU).
+OKNA_PRZYSZLOSCI = (30, 90, 365)
+OKNO_PRZYSZLOSCI_DOMYSLNE = 90
+KLUCZ_OKNA_PRZYSZLOSCI = "okno_przyszlosci"
+
+
+def pobierz_okno_przyszlosci() -> int:
+    """Okno osi przyszłości w dniach — jedno z OKNA_PRZYSZLOSCI; śmieci po
+    ręcznej edycji bazy wracają do domyślnego."""
+    zapisane = str(pobierz_ustawienie(KLUCZ_OKNA_PRZYSZLOSCI, "") or "").strip()
+    dni = int(zapisane) if zapisane.isdigit() else OKNO_PRZYSZLOSCI_DOMYSLNE
+    return dni if dni in OKNA_PRZYSZLOSCI else OKNO_PRZYSZLOSCI_DOMYSLNE
+
+
+def zapisz_okno_przyszlosci(dni):
+    if dni not in OKNA_PRZYSZLOSCI:
+        dni = OKNO_PRZYSZLOSCI_DOMYSLNE
+    zapisz_ustawienie(KLUCZ_OKNA_PRZYSZLOSCI, str(dni))
+
+
 # ============================================================================
 #  EWIDENCJA PRZEBIEGU — tryb, stawka kilometrówki, dane do raportu
 # ============================================================================
@@ -680,6 +705,11 @@ __all__ = [
     "OKNO_1000KM_DOMYSLNE",
     "ZAKRESY_WYKRESU",
     "ZAKRES_WYKRESU_DOMYSLNY",
+    "KLUCZ_OKNA_PRZYSZLOSCI",
+    "OKNA_PRZYSZLOSCI",
+    "OKNO_PRZYSZLOSCI_DOMYSLNE",
+    "pobierz_okno_przyszlosci",
+    "zapisz_okno_przyszlosci",
     "_klucz_kokpitu",
     "_klucz_ewidencji",
     "KLUCZE_DANYCH_OSOBY",

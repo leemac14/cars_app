@@ -57,6 +57,7 @@ class OdliczaniaView(ft.View):
                 elementy.append(baner)
             elementy.extend(self._karta(pozycja) for pozycja in self.pozycje)
             elementy.append(self._nota_o_liczeniu())
+            elementy.append(self._link_do_przyszlosci())
         elementy.append(utils.dol_bezpieczny(10))
 
         super().__init__(
@@ -151,6 +152,15 @@ class OdliczaniaView(ft.View):
         else:
             kontener.ink = False
         return karta
+
+    def _link_do_przyszlosci(self):
+        """Ta lista mówi, ile zostało do każdej rzeczy z osobna. Kalendarz
+        całego roku — z ratami, wpisami cyklicznymi i prognozą miesięcy —
+        stoi w „Co przede mną”."""
+        return ft.Row([ft.TextButton(
+            "Cały rok do przodu", icon=ft.Icons.EVENT_NOTE,
+            on_click=lambda e: utils.przejdz(self._page, "/co-przede-mna"),
+        )], alignment=ft.MainAxisAlignment.CENTER)
 
     def _nota_o_liczeniu(self):
         krok = f"{utils.formatuj_liczba(db.KROK_OKRAGLEGO_PRZEBIEGU, 0)} {self.j}"

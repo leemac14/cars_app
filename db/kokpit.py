@@ -51,6 +51,7 @@ from .analiza import koszt_skumulowany, obserwacje_analityczne, pobierz_zasieg_n
 from .rejestry import pobierz_wydatki_cykliczne
 from .nawigacja import pobierz_ostatnia_aktywnosc
 from .odliczania import odliczania_pojazdu
+from .os_przyszlosci import OKNO_KAFELKA_PRZYSZLOSCI, os_przyszlosci
 
 
 def _koszt_poprzedniego_miesiaca(auto_id):
@@ -107,6 +108,9 @@ METRYKI_KOKPITU = {
     # Dzień jest w kluczu pamięci, więc odliczania przesuwają się o północy
     # także bez żadnego zapisu.
     "odliczania": lambda auto_id: odliczania_pojazdu(auto_id),
+    # Najbliższy miesiąc osi przyszłości — stałe okno, nie to z ekranu: pamięć
+    # metryk nie zna okna wybranego chipami (sama pamięć interfejsu).
+    "przede_mna": lambda auto_id: os_przyszlosci(auto_id, dni=OKNO_KAFELKA_PRZYSZLOSCI),
     "porownanie": lambda auto_id: pobierz_dane_do_porownania(auto_id) or {},
     "spalanie": lambda auto_id: _spalanie(auto_id),
     # Iskry przy kafelkach liczbowych: liczba mówi „ile”, iskra — „w którą stronę”.
@@ -142,6 +146,7 @@ METRYKI_KAFELKOW = {
     "koszt_miesiac": ("koszty_miesieczne", "koszt_poprzedniego_miesiaca"),
     "termin": ("powiadomienia",),
     "ile_zostalo": ("odliczania",),
+    "przede_mna": ("przede_mna",),
     "wykres": ("koszty_miesieczne",),
     "skumulowany": ("skumulowany",),
     "koszt_1000km": ("koszt_1000km",),

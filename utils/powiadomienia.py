@@ -535,6 +535,13 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         on_click=idz_do(p["trasa"]),
                     ))
 
+        # Dzwonek mówi tylko o tym, co już weszło w próg przypomnienia — resztę
+        # roku do przodu (raty, wpisy cykliczne, prognozę miesięcy) pokazuje
+        # oś przyszłości.
+        pozycje.append(ft.Row([ft.TextButton(
+            "Co przede mną", icon=ft.Icons.EVENT_NOTE, on_click=idz_do("/co-przede-mna"),
+        )], alignment=ft.MainAxisAlignment.CENTER))
+
         # Odłożone trzymamy w zwijanej sekcji na dole: nie zaśmiecają listy,
         # ale nie znikają bez śladu — widać datę powrotu i można ją cofnąć.
         pozycje.extend(sekcja_odlozonych())
@@ -558,11 +565,15 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
 RODZAJ_RATY_W_PANELU = "__raty__"
 
 
-def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
+def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
     """Lekki panel (BottomSheet) do zarządzania wydatkami cyklicznymi pojazdu
     (raty, abonamenty, ubezpieczenia ratalne) ORAZ zwykłymi przypomnieniami
     cyklicznymi bez kosztu (np. "co miesiąc sprawdź ciśnienie w oponach") —
-    bez osobnej trasy, analogicznie do pokaz_panel_powiadomien()."""
+    bez osobnej trasy, analogicznie do pokaz_panel_powiadomien().
+
+    `po_zamknieciu` woła ekran, spod którego panel otwarto, gdy arkusz się
+    zamknie: „Co przede mną” liczy wtedy oś od nowa, bo w panelu mogło się coś
+    zapłacić albo przesunąć termin, a pod arkuszem trasa się nie zmienia."""
     # Stała kolumna, której podmieniamy tylko `controls`. Podmiana całego
     # `bs.content` po każdej zmianie nie trafiała do już otwartego arkusza —
     # świeżo dodany wpis (np. sezonowa zmiana opon) pojawiał się dopiero po
@@ -570,7 +581,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state):
     lista_pozycji = ft.Column([], tight=True, spacing=4, scroll=ft.ScrollMode.AUTO)
     bs = ft.BottomSheet(ft.Container(
         padding=20, bgcolor=ft.Colors.SURFACE, content=lista_pozycji,
-    ))
+    ), on_dismiss=(lambda e: po_zamknieciu()) if po_zamknieciu else None)
 
     def idz_do(trasa):
         def handler(e):

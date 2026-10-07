@@ -42,6 +42,7 @@ from .szkice import *
 from .kopie import *
 from .zaproszenia import *
 from .powiadomienia import *
+from .przyszlosc import *
 from .nawigacja import *
 from .zaznaczanie import *
 
@@ -77,6 +78,7 @@ from . import (
     kopie,
     zaproszenia,
     powiadomienia,
+    przyszlosc,
     nawigacja,
     zaznaczanie,
 )

@@ -48,6 +48,16 @@ from .ustawienia import (
 # wydanie ma 47). Nowym wydaniom niepotrzebny: każdy telefon, który ich
 # doczeka, ma już zapamiętaną wersję.
 NOWOSCI = [
+    {"wersja": "2026.10.8", "pozycje": [
+        {"tytul": "Co przede mną", "ikona": "EVENT_NOTE", "ekran": "co-przede-mna",
+         "opis": "Cały plan auta w jednym kalendarzu na 30, 90 albo 365 dni: terminy dokumentów, wymiany "
+                 "podzespołów, wydatki cykliczne, raty, zmiana opon i końce budżetów, z zaległymi na górze. "
+                 "Każdy miesiąc ma prognozę wydatków — codzienne koszty ze średniej plus to, co w nim "
+                 "zaplanowane."},
+        {"tytul": "Najbliższy miesiąc na kokpicie", "ikona": "SPACE_DASHBOARD", "ekran": "kokpit",
+         "opis": "Kafelek „Co przede mną” pokazuje, ile wyjdzie w ciągu 30 dni i co wypada najpierw — "
+                 "dodasz go w układzie kafelków. Do pełnej listy prowadzą też dzwonek i „Ile zostało do…”."},
+    ]},
     {"wersja": "2026.10.6", "pozycje": [
         {"tytul": "Ewidencja przebiegu", "ikona": "ALT_ROUTE", "ekran": "ewidencja",
          "opis": "Przejazdy z datą, trasą, celem i kierowcą, oznaczone jako służbowe albo prywatne — wpisane "
