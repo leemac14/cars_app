@@ -1,19 +1,7 @@
-"""Nagłówki miesięcy na długich listach: separator w liście i pasek nad nią.
-
-Tankowania z trzech lat to jedna długa taśma dat. Przy dwustu wpisach nie wiadomo,
-gdzie się jest, dopóki nie przeczyta się daty na karcie — a wtedy przewijanie już
-poszło dalej. Separator dzieli taśmę na miesiące, a pasek NAD listą stoi w miejscu
-i mówi, w którym miesiącu jest się teraz.
-
-Skąd wiadomo, gdzie jesteśmy? `ListView.on_scroll` podaje pozycję w pikselach,
-a my znamy KOLEJNOŚĆ elementów, nie ich prawdziwe wysokości — karty rosną
-z treścią. Szacujemy więc wysokość listy po swojemu (tak samo jak
-`dopasuj_wysokosc_listy`), a potem SKALUJEMY ten szacunek do prawdy: zdarzenie
-przewijania niesie `max_scroll_extent + viewport_dimension`, czyli rzeczywistą
-wysokość całej zawartości. Iloraz tych dwóch liczb kasuje systematyczny błąd
-oszacowania — bez niego nagłówek rozjeżdżałby się z listą tym bardziej, im dalej
-w dół.
-"""
+"""Nagłówki miesięcy na długich listach: separator w liście i pasek nad nią z bieżącym
+miesiącem. Pozycję szacujemy z kolejności elementów (jak `dopasuj_wysokosc_listy`) i
+SKALUJEMY do prawdziwej wysokości z `max_scroll_extent + viewport_dimension` — bez tego
+nagłówek rozjeżdżałby się z listą."""
 
 import flet as ft
 import log
@@ -129,17 +117,10 @@ class GrupyMiesiecy:
         )
 
     def ustaw(self, pozycje, grupuj=True):
-        """Wypełnia listę kartami, wstawiając separatory na granicach miesięcy.
-
-        `pozycje`: lista słowników z kluczami `karta` (kontrolka), `data` (tekst)
-        i opcjonalnie `kwota`. `grupuj=False` (np. lista posortowana po kwocie,
-        a nie po dacie) wstawia same karty — miesiące nie są wtedy ciągłe i każdy
-        nagłówek kłamałby.
-
-        Zwraca listę grup `[(klucz miesiąca, [pozycje])]` w kolejności wyświetlania.
-        Przydaje się listom, które rysują coś PONAD kartami i muszą wiedzieć, gdzie
-        przebiegają granice — na przykład osi czasu, której linia ma się urywać na
-        każdym nagłówku."""
+        """Wypełnia listę kartami z separatorami na granicach miesięcy. `pozycje`:
+        [{karta, data, kwota?}]; `grupuj=False` (lista nie po dacie) — same karty.
+        Zwraca [(klucz miesiąca, [pozycje])] w kolejności (np. dla osi czasu urywanej na
+        nagłówkach)."""
         self.lista.controls = []
         self._offsety, self._opisy, self._biezacy = [], {}, None
         self._wysokosc_szacowana = 0

@@ -7,14 +7,10 @@ from .ustawienia import pobierz_jednostke_spalania, pobierz_jednostke_zuzycia_ev
 
 
 def przelicz_zuzycie(wartosc_na_100km, elektryczny=False) -> tuple[float, str]:
-    """(wartość w jednostce wybranej w Ustawieniach, nazwa jednostki). Wejściem
-    ZAWSZE jest zużycie na 100 km — dokładnie to, co liczy reszta aplikacji.
-    Jedno miejsce na to przeliczenie, bo korzysta z niego i interfejs
-    (utils.formatuj_spalanie), i teksty obserwacji budowane tutaj, w db.
-    Uwaga na kierunek: przy km/l, mpg i mi/kWh WIĘKSZA liczba znaczy MNIEJSZE
-    zużycie, więc żaden tekst nie może wnioskować o trendzie z samej tej wartości.
-    Jednostka zużycia jest niezależna od jednostki dystansu (db.jednostki) —
-    Ustawienia tylko podpowiadają naturalną parę przy przełączaniu km/mi."""
+    """(wartość, jednostka) zużycia w jednostce z Ustawień; wejście ZAWSZE na 100 km.
+    Jedno miejsce przeliczenia dla interfejsu i tekstów obserwacji. Uwaga: przy km/l,
+    mpg i mi/kWh WIĘKSZA liczba = MNIEJSZE zużycie — nie wnioskuj o trendzie z wartości.
+    Niezależna od jednostki dystansu."""
     jednostka = pobierz_jednostke_zuzycia_ev() if elektryczny else pobierz_jednostke_spalania()
     try:
         val = float(wartosc_na_100km)

@@ -6,15 +6,9 @@ import utils
 
 
 class ArchiwumView(ft.View):
-    """Auta, które odeszły, ale których historia została.
-
-    Czym się różni od Kosza: kosz trzyma MIGAWKĘ usuniętego auta i istnieje po
-    to, żeby cofnąć pomyłkę — danych z niego nie da się przeglądać ani
-    wyeksportować, dopóki pojazd nie wróci. Archiwum trzyma auto w komplecie,
-    tyle że poza garażem: historia, koszty i eksport są dostępne od ręki, bo po
-    sprzedaży sięga się do nich najczęściej (rozliczenie z kupującym, gwarancja
-    na wymienioną część, porównanie z następnym autem).
-    """
+    """Auta, które odeszły, ale ich historia została. Kosz to MIGAWKA do cofnięcia
+    pomyłki (bez przeglądania i eksportu); archiwum trzyma auto w komplecie poza garażem
+    — historia, koszty i eksport od ręki."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page

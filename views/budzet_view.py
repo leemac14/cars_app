@@ -113,26 +113,16 @@ class BudzetView(ft.View):
         )
 
     def _nota_o_liczeniu(self):
-        return ft.Container(
-            padding=utils.SPACING["md"],
-            **utils.powierzchnia(self._page, "blok"),
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
-                    utils.podpis("Jak liczony jest stan"),
-                ], spacing=6),
-                ft.Text(
-                    "Miesiąc i rok sumują się od pierwszego dnia okresu do dzisiaj: ostrzeżenie "
-                    "zapala się przy 80% limitu ALBO wtedy, gdy dotychczasowe tempo wskazuje "
-                    "na przekroczenie przed końcem okresu — czarna kreska na pasku pokazuje, "
-                    "ile okresu już minęło. „Ostatnie 30 dni” to okno kończące się dzisiaj: "
-                    "z każdym dniem najstarszy dzień z niego wypada, więc na przełomie miesiąca "
-                    "nic się nie zeruje. Takie okno jest całe za nami, dlatego nie ma na nim "
-                    "kreski ani prognozy — pokazuje samą sumę. Wizyta zbiorcza wchodzi wszędzie "
-                    "jako całość, a jej pozycje nie liczą się drugi raz.",
-                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                ),
-            ], spacing=4),
+        return utils.nota_o_liczeniu(
+            self._page, "Jak liczony jest stan",
+            "Miesiąc i rok sumują się od pierwszego dnia okresu do dzisiaj: ostrzeżenie "
+            "zapala się przy 80% limitu ALBO wtedy, gdy dotychczasowe tempo wskazuje "
+            "na przekroczenie przed końcem okresu — czarna kreska na pasku pokazuje, "
+            "ile okresu już minęło. „Ostatnie 30 dni” to okno kończące się dzisiaj: "
+            "z każdym dniem najstarszy dzień z niego wypada, więc na przełomie miesiąca "
+            "nic się nie zeruje. Takie okno jest całe za nami, dlatego nie ma na nim "
+            "kreski ani prognozy — pokazuje samą sumę. Wizyta zbiorcza wchodzi wszędzie "
+            "jako całość, a jej pozycje nie liczą się drugi raz.",
         )
 
     def zapisz(self, e):

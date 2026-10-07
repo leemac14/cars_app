@@ -17,13 +17,8 @@ FOLDER_ODROCZONE = os.path.join(STORAGE_PATH, "zalaczniki_odroczone")
 FOLDER_KOSZ = os.path.join(STORAGE_PATH, "kosz_zalaczniki")
 
 
-# Nazwy podzespołów zakładanych nowemu pojazdowi. Bez emoji — ikonę dokłada
-# interfejs, a sama nazwa trafia do bazy, do eksportu CSV/PDF i do wyszukiwarki,
-# gdzie emoji tylko przeszkadzało (nie da się go wpisać, psuje sortowanie i nie
-# ma glifu w czcionce raportu).
-#
-# To BAZA dla każdego napędu. Co konkretny napęd dokłada, a czego w nim nie ma,
-# mówi PODZESPOLY_NAPEDU niżej — tu nie ma nic, co zależy od paliwa.
+# Podzespoły zakładane nowemu pojazdowi — BAZA dla każdego napędu (dodatki w
+# PODZESPOLY_NAPEDU). Bez emoji: nazwa trafia do bazy, eksportu i wyszukiwarki.
 DOMYSLNE_ZADANIA = [
     "Olej silnikowy i filtr", "Filtr powietrza", "Filtr kabinowy",
     "Pasek / Łańcuch rozrządu", "Wymiana opon / Kół", "Klocki hamulcowe", "Tarcze hamulcowe"
@@ -118,15 +113,10 @@ TYPY_LADOWANIA = ["AC", "DC"]
 OPISY_LADOWANIA = {"AC": "AC — wolne (dom / praca)", "DC": "DC — szybkie (trasa)"}
 
 
-# Podzespoły zależne od napędu: DOMYSLNE_ZADANIA plus to, co dany napęd DODAJE,
-# minus to, czego w nim nie ma. ŚWIADOMIE nie ma tu sześciu gotowych list —
-# pokrywałyby się w większości, a dopisanie jednej wspólnej pozycji znaczyłoby
-# sześć edycji i szansę na przeoczenie jednej.
-#
-# Klucze muszą pokrywać CAŁE TYPY_PALIWA (pilnuje tests/test_podzespoly_napedu.py):
-# nowy typ paliwa ma wymusić decyzję, a nie po cichu dostać listę benzynową.
-# Puste {} jest taką decyzją — auto na gaz to auto benzynowe z instalacją, więc
-# niczego nie traci, a zwykła hybryda serwisuje się jak benzyna.
+# Podzespoły zależne od napędu: DOMYSLNE_ZADANIA plus dodatki minus braki. Klucze muszą
+# pokrywać CAŁE TYPY_PALIWA (tests/test_podzespoly_napedu.py) — nowy typ paliwa wymusza
+# decyzję; puste {} też nią jest (gaz = benzyna z instalacją, zwykła hybryda jak
+# benzyna).
 PODZESPOLY_NAPEDU = {
     "Benzyna": {},
     "Diesel": {"dodaj": ["Filtr paliwa", "Filtr cząstek stałych (DPF)", "Pasek osprzętu"]},
@@ -143,12 +133,9 @@ PODZESPOLY_NAPEDU = {
 }
 
 
-# Interwał podpowiadany podzespołowi zakładanemu automatycznie. ŚWIADOMIE tylko
-# CZASOWY i tylko tam, gdzie termin nie zależy od modelu auta: przebieg
-# międzyobsługowy różni się między silnikami kilkukrotnie, więc zgadnięty
-# interwał km to powiadomienie, które kłamie — km zostawiamy użytkownikowi.
-# Legalizacja butli LPG jest tu jedynym prawdziwym TERMINEM: liczy się dziesięć
-# lat od badania, a przejechane kilometry nie mają z nim nic wspólnego.
+# Interwał podpowiadany automatycznie — ŚWIADOMIE tylko CZASOWY i tylko tam, gdzie nie
+# zależy od modelu (km zostawiamy użytkownikowi). Legalizacja butli LPG to prawdziwy
+# TERMIN: dziesięć lat od badania.
 DOMYSLNE_INTERWALY_MIESIACE = {
     "Legalizacja butli LPG": 120,
     "Płyn hamulcowy": 24,
@@ -196,11 +183,8 @@ TERMINY_DOKUMENTOW = [
 
 KLUCZE_TERMINOW = {k for k, _, _ in TERMINY_DOKUMENTOW}
 
-# Notatka „najlepsza oferta OC/AC”: jedno pole tekstowe pojazdu (kolumna
-# `oferta_oc_ac`, a obok `oferta_oc_ac_data` — kiedy tekst ostatnio się zmienił).
-# Wspólna dla OC i AC, bo ubezpieczenie porównuje się zwykle za jednym razem;
-# pokazują ją te terminy, których dotyczy. Zostaje po odnowieniu polisy:
-# zeszłoroczne porównanie ma być punktem wyjścia następnego, nie kasować się.
+# Notatka „najlepsza oferta OC/AC”: kolumna `oferta_oc_ac` + `oferta_oc_ac_data`
+# (ostatnia zmiana tekstu). Wspólna dla OC i AC, zostaje po odnowieniu polisy.
 ETYKIETA_OFERTY_OC_AC = "Najlepsza oferta OC/AC"
 KLUCZE_TERMINOW_Z_OFERTA = ("oc", "ac")
 MAKS_DLUGOSC_OFERTY_OC_AC = 300
@@ -208,22 +192,16 @@ MAKS_DLUGOSC_OFERTY_OC_AC = 300
 PROGI_DNI_DOKUMENTU_OPCJE = [7, 14, 30, 60, 90, 180, 365]
 
 
-# Rodzaj wpisu cyklicznego (wydatki_cykliczne.typ). „wydatek” to wszystko, co
-# było do tej pory — rata, abonament albo goła czynność do odhaczenia
-# (rozróżnia je czy_koszt). „opony” to osobny rodzaj, bo jego wykonanie ma
-# SKUTEK W DANYCH: przestawia zamontowany komplet w magazynie opon, zamiast
-# tylko przesunąć termin.
+# Rodzaj wpisu cyklicznego (wydatki_cykliczne.typ): „wydatek” — rata, abonament albo
+# czynność (rozróżnia czy_koszt); „opony” — wykonanie przestawia zamontowany komplet.
 TYP_CYKLICZNY_WYDATEK = "wydatek"
 
 TYP_CYKLICZNY_OPONY = "opony"
 
-# Rata leasingu albo kredytu (M-22). Do tej pory była zwykłym wydatkiem
-# cyklicznym — bez końca i bez sumy, więc na pytanie „ile jeszcze zostało do
-# spłaty” nie było odpowiedzi. Wpis tego rodzaju niesie UMOWĘ (liczba rat,
-# pierwsza rata, wykup, kwota finansowania — kolumny z migracji 49), a jego
-# „Zapłacone” płaci KOLEJNĄ ratę z harmonogramu i po ostatniej kończy wpis
-# (db/raty.py). Starsza wersja aplikacji nie zna tych rodzajów i traktuje je
-# jak zwykły wydatek (rejestry._poprawny_typ).
+# Rata leasingu albo kredytu (M-22): wpis niesie UMOWĘ (kolumny z migracji 49),
+# „Zapłacone” płaci KOLEJNĄ ratę harmonogramu i po ostatniej kończy wpis (db/raty.py).
+# Starsza wersja aplikacji traktuje te rodzaje jak zwykły wydatek
+# (rejestry._poprawny_typ).
 TYP_CYKLICZNY_LEASING = "leasing"
 
 TYP_CYKLICZNY_KREDYT = "kredyt"
@@ -234,11 +212,8 @@ TYPY_RAT = (TYP_CYKLICZNY_LEASING, TYP_CYKLICZNY_KREDYT)
 # wartości od początku listy, więc odciski starszych migracji się nie zmieniają.
 TYPY_CYKLICZNE = [TYP_CYKLICZNY_WYDATEK, TYP_CYKLICZNY_OPONY, TYP_CYKLICZNY_LEASING, TYP_CYKLICZNY_KREDYT]
 
-# Raty równe (annuitetowe) to leasing i większość kredytów samochodowych:
-# ta sama kwota co miesiąc, a w niej coraz mniej odsetek. Raty malejące mają
-# stałą część kapitałową i odsetki od salda, więc rata spada co miesiąc —
-# tylko przy kredycie i tylko z oprocentowaniem, bo bez niego nie ma z czego
-# policzyć kolejnych kwot.
+# Raty równe (annuitetowe) — ta sama kwota co miesiąc; malejące — stała część kapitałowa
+# + odsetki od salda, tylko przy kredycie i z oprocentowaniem.
 RATY_ROWNE = "rowne"
 
 RATY_MALEJACE = "malejace"
@@ -281,16 +256,9 @@ KOLEJNOSC_PRIORYTETU = {"Wysoki": 1, "Średni": 2, "Niski": 3}
 KOLORY_MOTYWU = ["Indygo", "Czerwony", "Zielony", "Niebieski", "Szary", "Pomarańczowy", "Fioletowy", "Różowy", "Żółty", "Limonkowy"]
 
 
-# Kategorie „Innych kosztów”. W bazie (inne_koszty.kategoria) leży ETYKIETA,
-# a nie klucz — dokładnie tak, jak zapisywało to od zawsze
-# oznacz_zaplacony_wydatek_cykliczny („Cykliczne”). Dzięki temu stare wpisy nie
-# wymagają żadnej migracji, a filtr kategorii i wyszukiwarka, które czytają tę
-# kolumnę jako tekst, działają bez zmian.
-#
-# Powód wydzielenia opłat drogowych: winieta, przejazd autostradą i mandat to
-# koszt WYMUSZONY trasą, nie decyzją o utrzymaniu auta. Wrzucone do wspólnego
-# worka z myjnią i wyposażeniem znikały w jednej sumie i nie dało się
-# powiedzieć, ile kosztuje samo jeżdżenie po płatnych drogach.
+# Kategorie „Innych kosztów”. W bazie (inne_koszty.kategoria) leży ETYKIETA, nie klucz
+# (jak „Cykliczne”) — stare wpisy bez migracji, filtr i wyszukiwarka czytają tekst.
+# Opłaty drogowe osobno, bo to koszt wymuszony trasą.
 KATEGORIA_INNE_DOMYSLNA = "Ogólne"
 
 KATEGORIA_INNE_DROGOWE = "Mandaty i opłaty drogowe"
@@ -316,11 +284,9 @@ TABELE_Z_ZALACZNIKIEM = {"tankowania", "wizyty", "inne_koszty", "zdjecia_karoser
                          "szkice_wpisow"}
 
 
-# Tabele, w których obok `data` (DD.MM.RRRR, bez zmian) leży `data_iso`
-# (RRRR-MM-DD, migracja 44). Tekstu DD.MM.RRRR SQLite nie posortuje ani nie
-# porówna zakresem, `data_iso` — tak. Wartość to zawsze `date.na_iso(data)`,
-# dopisywana przy KAŻDYM zapisie daty: jawnie w SQL albo przez
-# `uzupelnij_date_iso` tam, gdzie wiersz jest słownikiem (chmura, kosz).
+# Tabele z `data_iso` (RRRR-MM-DD, migracja 44) obok `data` (DD.MM.RRRR). Wartość zawsze
+# `date.na_iso(data)`, przy KAŻDYM zapisie daty: jawnie w SQL albo `uzupelnij_date_iso`
+# (wiersz jako słownik).
 TABELE_Z_DATA_ISO = (
     "tankowania", "inne_koszty", "wizyty", "historia",
     "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
@@ -328,11 +294,9 @@ TABELE_Z_DATA_ISO = (
 )
 
 
-# Stan licznika zapisuje się w aplikacji na pięć sposobów. Cztery z nich są
-# „przy okazji” — nikt nie dodaje tankowania po to, żeby zanotować przebieg —
-# ale dla historii licznika są tak samo wiarygodne jak odczyt wpisany wprost.
-# Przejazd z ewidencji niesie licznik tylko wtedy, gdy ktoś go wpisał
-# (przejazdy.licznik — stan PO przejeździe).
+# Pięć źródeł stanu licznika; cztery „przy okazji”, ale dla historii tak samo
+# wiarygodne. Przejazd z ewidencji tylko z wpisanym licznikiem (przejazdy.licznik — stan
+# PO przejeździe).
 ZRODLA_PRZEBIEGU = {
     "odczyt": "Odczyt licznika",
     "tankowanie": "Tankowanie",
@@ -357,11 +321,8 @@ ZRODLA_ODCZYTU = {
 ZRODLO_ODCZYTU_DOMYSLNE = "reczny"
 
 
-# Krótka notatka przy pojedynczym wpisie. Wartość to nazwa kolumny z TREŚCIĄ:
-# wpisy, które takiego pola nie miały, dostały w migracji 34 własne 'notatka',
-# a tam gdzie pole opisowe istnieje od dawna (wizyta, zadanie do zrobienia,
-# magazyn, opony, warsztat) używamy JEGO — dokładanie drugiego pola na to samo
-# rozjechałoby dane, które użytkownik już wpisał.
+# Notatka przy wpisie: wartość to kolumna z TREŚCIĄ — 'notatka' z migracji 34 albo
+# istniejące pole opisu (wizyta, zadanie, magazyn, opony, warsztat).
 POLA_NOTATKI = {
     "tankowania": "notatka",
     "historia": "notatka",
@@ -412,11 +373,9 @@ SEZONY_PRZELACZALNE = ("Letnie", "Zimowe")
 MIESIACE_ZIMOWE = {11, 12, 1, 2, 3}
 
 
-# Status pojazdu (samochody.status). Sprzedane auto NIE jest usuwane i nie
-# trafia do kosza: znika tylko z przełącznika i showroomu, a cała historia
-# zostaje na miejscu — do wglądu i eksportu z ekranu Archiwum. Kolumna z
-# wartością domyślną „aktywny” oznacza, że wszystkie istniejące zapytania
-# działają dalej bez filtra; filtrują tylko cztery miejsca wypisujące garaż.
+# Status pojazdu (samochody.status). Sprzedane NIE jest usuwane ani w koszu: znika z
+# przełącznika i showroomu, historia zostaje (Archiwum). Domyślnie „aktywny”; filtrują
+# tylko miejsca wypisujące garaż.
 STATUS_POJAZDU_AKTYWNY = "aktywny"
 
 STATUS_POJAZDU_SPRZEDANY = "sprzedany"
@@ -425,11 +384,9 @@ STATUS_POJAZDU_SPRZEDANY = "sprzedany"
 KOLEJNOSC_TRYBOW_MOTYWU = ["jasny", "ciemny", "system"]
 
 
-# Ewidencja przebiegu (N-01): PO CO ktoś ją prowadzi. Od tego zależy, co ekran
-# pokazuje najpierw i który układ raportu proponuje — rachunek przejazdów jest
-# jeden. Ustawienie należy do pojazdu NA TYM telefonie (db/ustawienia.py,
-# _klucz_ewidencji): kilometrówkę liczy się według stawki własnego pracodawcy,
-# a druga osoba przy tym samym aucie może rozliczać się inaczej.
+# Ewidencja przebiegu (N-01): PO CO się ją prowadzi — decyduje o kolejności ekranu i
+# proponowanym układzie raportu. Ustawienie pojazdu NA TYM telefonie (db/ustawienia.py,
+# _klucz_ewidencji).
 TRYBY_EWIDENCJI = {
     "podzial": "Podział prywatne / służbowe",
     "kilometrowka": "Kilometrówka — auto prywatne w pracy",

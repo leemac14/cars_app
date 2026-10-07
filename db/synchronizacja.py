@@ -32,13 +32,9 @@ OPISY_ROL = {
     ROLA_PODGLAD: "Widzisz całą historię pojazdu, ale niczego nie zmieniasz. Nic z tego telefonu nie trafia do chmury.",
 }
 
-# Tabele, w których wpis ma podpis autora (kolumna `dodane_przez`). Tylko dla
-# nich ma sens pytanie „czyj to wpis” — reszta to słowniki wspólne dla pojazdu
-# (podzespoły, tagi, warsztaty, magazyn), gdzie własność pojedynczego wiersza
-# nic nie znaczy. Rozliczenie też ma autora: współautor cofa tylko to, które
-# sam zapisał — cudze „Rozliczone” potwierdza pieniądze, które ktoś dostał.
-# Przejazd w ewidencji też: współautor poprawia swoje trasy, cudzych nie rusza
-# (kierowca to osobne pole — wpisać można też przejazd kogoś innego).
+# Tabele z podpisem autora (`dodane_przez`) — tylko w nich pytanie „czyj to wpis” ma
+# sens (reszta to wspólne słowniki pojazdu). Rozliczenie i przejazd też: współautor cofa
+# i poprawia tylko swoje (kierowca to osobne pole).
 TABELE_Z_AUTOREM = ("tankowania", "wizyty", "historia", "inne_koszty", "rozliczenia", "przejazdy")
 
 
@@ -76,13 +72,9 @@ def czy_moge_dodawac(auto_id):
 
 
 def czy_moge_zmieniac_wpis(auto_id, autor=None):
-    """Czy wolno mi edytować/skasować KONKRETNY wpis. `autor` to zawartość
-    kolumny `dodane_przez`.
-
-    Współautor rusza wyłącznie to, co sam podpisał. Wpis bez podpisu (sprzed
-    wprowadzenia imion albo dodany przez kogoś, kto imienia nie ustawił) jest
-    dla współautora cudzy — świadomie, bo alternatywą jest oddanie mu całej
-    historii sprzed jego dołączenia."""
+    """Czy wolno edytować/skasować KONKRETNY wpis (`autor` = `dodane_przez`). Współautor
+    rusza tylko podpisane przez siebie; wpis bez podpisu jest dla niego cudzy —
+    świadomie."""
     rola = rola_pojazdu(auto_id)
     if rola == ROLA_PODGLAD:
         return False
@@ -110,10 +102,9 @@ def autor_wpisu(tabela, rekord_id):
 
 
 def czy_moge_zmieniac_rekord(auto_id, tabela, autor=None):
-    """Uprawnienie do zmiany rekordu, gdy autora już znamy — z rozstrzygnięciem,
-    czy w danej tabeli pytanie „czyj to wpis” w ogóle ma sens. Podzespoły, opony,
-    magazyn czy zdjęcia karoserii to wspólny inwentarz pojazdu; tam ograniczenie
-    współautora nie działa, bo odcięłoby go od rzeczy, które sam zakłada."""
+    """Uprawnienie do zmiany rekordu przy znanym autorze, z rozstrzygnięciem, czy tabela
+    ma autorów. Podzespoły, opony, magazyn, zdjęcia karoserii to wspólny inwentarz — tam
+    ograniczenie współautora nie działa."""
     rola = rola_pojazdu(auto_id)
     if rola == ROLA_PODGLAD:
         return False
@@ -127,12 +118,6 @@ def czy_moge_zmieniac_rekord(auto_id, tabela, autor=None):
 def czy_moge_edytowac_w_tabeli(auto_id, tabela, rekord_id):
     """To samo pytanie, gdy mamy tylko id rekordu — autora dobija sobie sam."""
     return czy_moge_zmieniac_rekord(auto_id, tabela, autor_wpisu(tabela, rekord_id))
-
-
-def czy_moge_usuwac_pojazd(auto_id):
-    """Rozłączenie pojazdu z chmury i skasowanie go z garażu zostaje przy
-    właścicielu i pełnym dostępie."""
-    return rola_pojazdu(auto_id) in ROLE_Z_PELNYM_DOSTEPEM
 
 
 # ---------------------------- KODY ZAPROSZEŃ ----------------------------
@@ -281,14 +266,9 @@ MAKS_PROB_NAGROBKA = 5
 
 
 def zarejestruj_nagrobek(tabela, zdalny_id, auto_id=None):
-    """Zapamiętuje lokalnie, że wiersz o danym zdalne_id (z tabeli 'tabela') został
-    usunięty na tym urządzeniu — sam rekord znika z lokalnej bazy od razu (jak
-    dotychczas), ale info o usunięciu trzeba jeszcze wypchnąć na serwer przy
-    najbliższej synchronizacji (patrz sync/nagrobki.py).
-
-    `auto_id` jest opcjonalne: NULL znaczy „nie wiadomo, z którego pojazdu”
-    i taki nagrobek leci przy synchronizacji dowolnego auta, dokładnie jak
-    przed wprowadzeniem ról."""
+    """Zapamiętuje, że wiersz o `zdalne_id` z `tabela` usunięto lokalnie — do
+    wypchnięcia przy najbliższej synchronizacji (sync/nagrobki.py). `auto_id` NULL =
+    „nie wiadomo, z którego pojazdu” — leci przy synchronizacji dowolnego auta."""
     if not zdalny_id:
         return
     with polacz_baze() as conn:
@@ -358,7 +338,6 @@ __all__ = [
     "czy_moge_dodawac",
     "czy_moge_edytowac_w_tabeli",
     "czy_moge_zmieniac_rekord",
-    "czy_moge_usuwac_pojazd",
     "czy_moge_zmieniac_wpis",
     "czy_tylko_podglad",
     "kody_dostepu",

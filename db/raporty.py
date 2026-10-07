@@ -32,11 +32,8 @@ from .eksport import FOLDER_ASSETS, KATEGORIE_EKSPORTU, _MAPA_TRANSLITERACJI_PL,
 
 
 # ==================== GRAFIKA „ROK / MIESIĄC W PIGUŁCE” ====================
-# Podsumowanie roku albo miesiąca jako obrazek do wysłania — ta sama treść, co
-# na ekranie, tylko w formie, którą da się wrzucić na czat. Rysowane Pillow
-# (jest już w projekcie dla miniatur zdjęć), bez żadnej nowej zależności.
-# Rysownik jest JEDEN (`_narysuj_pigulke`); rok i miesiąc podają mu tylko
-# własny zestaw liczb.
+# Podsumowanie jako obrazek do wysłania, rysowane Pillow. Rysownik jest JEDEN
+# (`_narysuj_pigulke`); rok i miesiąc podają tylko liczby.
 
 MIESIACE_SKROT = ["sty", "lut", "mar", "kwi", "maj", "cze",
                   "lip", "sie", "wrz", "paź", "lis", "gru"]
@@ -71,21 +68,14 @@ def _znajdz_czcionki_grafiki():
 
 
 def _narysuj_pigulke(naglowek, nazwa, tytul, plakietki, kafle, wykres, fakty, akcent) -> bytes:
-    """Rysownik „w pigułce” — jeden dla roku i dla miesiąca. PNG 1080×1440:
-    gradient, nagłówek z wielkim tytułem i plakietkami, kafle po dwa w rzędzie,
-    słupki i wiersze faktów nad stopką. Rok i miesiąc różnią się wyłącznie
-    zestawem liczb, który tu przychodzi:
-
-    * `tytul` — wielki napis („2026”, „Wrzesień”); gdy razem z plakietkami nie
-      mieści się w kadrze, kurczy się, zamiast uciec za krawędź,
-    * `plakietki` — krótkie napisy w pigułkach obok tytułu („rok w toku”),
-    * `kafle` — krotki (etykieta, wartość, podpis albo None), po dwa w rzędzie,
-    * `wykres` — None albo {"tytul", "wartosci", "etykiety", "szczyt"}: słupek
-      na każdą wartość, etykieta None to słupek bez podpisu, `szczyt` to indeks
-      słupka w kolorze akcentu,
-    * `fakty` — krotki (etykieta, wartość), tyle, ile zmieści się nad stopką.
-
-    Rzuca RuntimeError, gdy Pillow jest niedostępne."""
+    """Rysownik „w pigułce” dla roku i miesiąca, PNG 1080×1440. Parametry:
+    - `tytul` — wielki napis (kurczy się, gdy z plakietkami nie mieści się w kadrze);
+    - `plakietki` — krótkie napisy obok tytułu;
+    - `kafle` — (etykieta, wartość, podpis albo None), po dwa w rzędzie;
+    - `wykres` — None albo {tytul, wartosci, etykiety, szczyt}: etykieta None = słupek
+      bez podpisu, `szczyt` — indeks słupka w akcencie;
+    - `fakty` — (etykieta, wartość), ile się zmieści nad stopką.
+    RuntimeError bez Pillow."""
     if Image is None:
         raise RuntimeError("Biblioteka Pillow nie jest zainstalowana — grafika jest niedostępna.")
     from PIL import ImageDraw, ImageFont
@@ -354,11 +344,9 @@ def podpisy_dni_miesiaca(liczba_dni, szczyt):
 
 
 def generuj_grafike_miesiaca(auto_nazwa, dane, akcent=(56, 189, 248)) -> bytes:
-    """PNG 1080×1440 „Miesiąc w pigułce” — ten sam rysownik, co rok, inny
-    zestaw liczb: słupek na każdy dzień, średnia dzienna zamiast miesięcznej
-    i porównania z poprzednim miesiącem oraz z tym samym miesiącem rok
-    wcześniej. `dane` to wynik podsumowanie_miesiaca().
-    Rzuca RuntimeError, gdy Pillow jest niedostępne."""
+    """PNG 1080×1440 „Miesiąc w pigułce” z wyniku podsumowanie_miesiaca(): słupek na
+    dzień, średnia dzienna, porównania z poprzednim miesiącem i rokiem wcześniej.
+    RuntimeError bez Pillow."""
     waluta = pobierz_walute()
     j = jednostka_dystansu()
     rok, miesiac = dane["rok"], dane["miesiac"]
@@ -645,17 +633,12 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
                          tryb_paszportu=False, zdjecie_glowne=None, specyfikacja=None,
                          terminy=None, punkty_przebiegu=None, zdjecia_karoserii=None,
                          gwarancje=None):
-    """
-    kategorie_dane: {klucz: (naglowki, wiersze)} — jak z pobierz_dane_eksportu().
-    podsumowanie: opcjonalny słownik z oblicz_podsumowanie_okresu() do nagłówka raportu.
-    tryb_paszportu: gdy True, zamiast prostego 3-liniowego nagłówka renderuje pełną
-    stronę tytułową (zdjęcie, nazwa, specyfikacja, ważne terminy) i — jeśli podano —
-    wykres przebiegu w czasie oraz galerię zdjęć karoserii na końcu. Używane przez
-    generuj_pdf_paszportu() do zbudowania "Cyfrowego paszportu pojazdu". Pozostałe
-    nowe parametry mają znaczenie tylko w tym trybie. `gwarancje` — krotki
-    (część, „gwarancja jeszcze…”, szczegóły, status) z pobierz_dane_paszportu().
-    Zwraca bajty pliku PDF. Rzuca RuntimeError, jeśli fpdf2 nie jest zainstalowane.
-    """
+    """PDF raportu; zwraca bajty. kategorie_dane: {klucz: (naglowki, wiersze)} jak z
+    pobierz_dane_eksportu(); podsumowanie — opcjonalnie z oblicz_podsumowanie_okresu().
+    tryb_paszportu=True (generuj_pdf_paszportu) — strona tytułowa (zdjęcie,
+    specyfikacja, terminy), wykres przebiegu i galeria karoserii; pozostałe parametry
+    tylko w tym trybie. `gwarancje` — (część, „gwarancja jeszcze…”, szczegóły, status).
+    RuntimeError bez fpdf2."""
     if FPDF is None:
         raise RuntimeError("Biblioteka 'fpdf2' nie jest zainstalowana — eksport do PDF jest niedostępny. Zainstaluj: pip install fpdf2")
 
@@ -723,14 +706,8 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         pdf.set_y(pdf.get_y() + 55 + 14)
 
     for klucz, (naglowki, wiersze) in kategorie_dane.items():
-        # Notatki wpisów pomijamy w PDF: tabela dzieli szerokość strony PO RÓWNO
-        # między kolumny i przycina zawartość, więc kolumna wolnego tekstu byłaby
-        # nieczytelna („Tankowanie po...”), a przy okazji zwęziłaby wszystkie
-        # pozostałe. W CSV, gdzie szerokość nie ogranicza niczego, notatki są.
-        # Wizyty nazywają tę kolumnę „Notatki” — dopóki miały siedem kolumn,
-        # przeciskała się niezauważona; przy robociźnie i częściach już nie.
-        # Link do produktu w magazynie (M-15) — z tego samego powodu: ucięty
-        # adres nikogo nigdzie nie zaprowadzi, a na papierze i tak nie kliknie.
+        # Notatek i linków do produktu nie ma w PDF: tabela dzieli szerokość po równo i
+        # ucina tekst. W CSV są.
         for kolumna_notatek in ("Notatka", "Notatki", "Link"):
             if kolumna_notatek in naglowki:
                 i_not = naglowki.index(kolumna_notatek)
@@ -785,12 +762,10 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
 
 
 def pobierz_dane_paszportu(auto_id):
-    """Zbiera dane do wzbogacenia raportu PDF o 'paszport pojazdu': zdjęcie
-    profilowe, specyfikację, ważne terminy, historię przebiegu (do wykresu)
-    i zdjęcia karoserii (do galerii na końcu). Używane przez
-    eksportuj_dane_zaawansowane() w main.py, gdy w ekranie eksportu zaznaczono
-    'Dołącz pełny paszport pojazdu'. Zwraca słownik kwargs gotowy do
-    rozpakowania w generuj_pdf_raportu(tryb_paszportu=True, **wynik)."""
+    """Dane „paszportu pojazdu” do PDF: zdjęcie, specyfikacja, terminy, historia
+    przebiegu, zdjęcia karoserii. Wynik to kwargs do
+    generuj_pdf_raportu(tryb_paszportu=True, **wynik) (main.py:
+    eksportuj_dane_zaawansowane)."""
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -857,11 +832,9 @@ def _gwarancje_do_paszportu(auto_id, j):
 
 
 # ==================== EWIDENCJA PRZEBIEGU — RAPORT MIESIĄCA ====================
-# Treść (napisy, kolumny, sumy, uwagi) składa db.dane_raportu_ewidencji; tu jest
-# tylko rysunek. Tabela ma WŁASNE szerokości kolumn i zawija tekst w komórce —
-# ogólny raport dzieli stronę po równo i ucina („Spotkanie z kl...”), a w
-# ewidencji cel i trasa są tym, co się podpisuje. Każda linijka tekstu idzie
-# przez `cell`, bez parametru `ln` (przestarzały w fpdf2).
+# Treść składa db.dane_raportu_ewidencji, tu tylko rysunek. Tabela ma WŁASNE szerokości
+# kolumn i zawija tekst w komórce (cel i trasa są podpisywane). Linijki przez `cell`,
+# bez `ln` (przestarzały w fpdf2).
 
 def _zawin_tekst(pdf, tekst, szerokosc):
     """Linijki tekstu mieszczące się w `szerokosc` (mm) przy bieżącej czcionce.

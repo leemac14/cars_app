@@ -1,11 +1,5 @@
-"""Zużycie części z magazynu w formularzu wpisu serwisowego i wizyty.
-
-Oba formularze miały kartę „Magazyn części” skopiowaną co do linijki. Dopóki
-zużycie tylko zdejmowało sztuki ze stanu, kopia była tania. Od kiedy niesie
-KOSZT — podgląd kwoty na żywo, cenę zapamiętaną przy edycji, walidację ilości
-i dopisek pod polem kosztu — musiałaby zgadzać się w dwóch miejscach naraz,
-a to rozjeżdża się przy pierwszej poprawce.
-"""
+"""Zużycie części z magazynu w formularzach wpisu serwisowego i wizyty — jedna karta
+zamiast dwóch kopii (koszt na żywo, cena przy edycji, walidacja ilości)."""
 
 import db
 import flet as ft
@@ -75,17 +69,11 @@ def opis_zuzycia_z_magazynu(zuzycie):
 
 
 class ZuzycieMagazynu:
-    """Karta „Magazyn części” razem z kosztem zużycia.
-
-    `zrodlo` to klucz z db.POWIAZANIA_MAGAZYNU („historia” albo „wizyty”),
-    `rekord_id` — edytowany rekord. Nowy wpis i duplikat przychodzą bez niego:
-    zużycia się nie kopiuje, bo stan magazynu mógł się od tamtej pory zmienić.
-
-    Formularz odpowiada za trzy rzeczy: wstawia `karta()`, pokazuje koszt
-    przez utils.KosztNaprawy (ten słucha zmian przez `przy_zmianie()`) i przy
-    zapisie woła `sprawdz()`. W polach kosztu stoi SAMA usługa —
-    `koszt_doliczony` to kwota, którą trzeba odjąć od zapisanego kosztu
-    rekordu, zanim trafi do formularza."""
+    """Karta „Magazyn części” z kosztem zużycia. `zrodlo` — klucz z
+    db.POWIAZANIA_MAGAZYNU („historia”/„wizyty”), `rekord_id` — edytowany rekord (nowy i
+    duplikat bez niego — zużycia się nie kopiuje). Formularz: `karta()`, koszt przez
+    utils.KosztNaprawy (słucha `przy_zmianie()`), `sprawdz()`. W polach kosztu SAMA
+    usługa — `koszt_doliczony` odjąć od zapisanego kosztu."""
 
     def __init__(self, page: ft.Page, auto_id, zrodlo, rekord_id=None):
         self._page = page

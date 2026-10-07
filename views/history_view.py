@@ -107,13 +107,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.posortuj_liste(wpisy, self.state, "historia", opcje_sort)
 
                 def otworz_menu_historii(h_id, w_id, zalacznik=None, notatka=None):
-                    # Wpisu z wizyty zbiorczej nadal nie edytujemy stąd (dane trzyma
-                    # wizyta), ale NOTATKĘ da się dopisać — jest własnością tego
-                    # jednego wpisu, więc blokowanie jej tutaj byłoby sztuczne.
-                    # Gwarancja też jest własnością jednej pozycji: wspólną ustawia
-                    # formularz wizyty, a tu — wyjątek dla tego podzespołu
-                    # (akumulator z trzyletnią, reszta z roczną). Obie zmieniają
-                    # dane, więc przechodzą przez sito roli jak menu zwykłego wpisu.
+                    # Wpisu z wizyty zbiorczej nie edytujemy stąd (dane w wizycie), ale
+                    # NOTATKĘ i gwarancję (wyjątek dla podzespołu) tak — należą do
+                    # jednej pozycji; obie przechodzą przez sito roli.
                     if w_id:
                         utils.pokaz_menu_kontekstowe(self._page, "Wpis z wizyty zbiorczej", utils.odsiej_akcje(
                             self.state.auto_id, [

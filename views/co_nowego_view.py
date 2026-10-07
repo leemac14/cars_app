@@ -5,22 +5,14 @@ import utils
 
 
 class CoNowegoView(ft.View):
-    """„Co nowego” — wydania aplikacji od najnowszego (M-19 w katalogu pomysłów).
+    """„Co nowego” — wydania od najnowszego (M-19). Raz po aktualizacji otwiera się samo
+    nad kokpitem (main.py); poza tym w menu bocznym i Ustawieniach › O aplikacji.
+    Niewidziane wydania na górze z plakietką „Nowe”.
 
-    Raz po aktualizacji otwiera się samo jako pierwszy ekran nad kokpitem
-    (main.py), poza tym leży w menu bocznym i w Ustawieniach › O aplikacji.
-    Wydania, których ten telefon jeszcze nie pokazywał, stoją na górze
-    z plakietką „Nowe”; pod nimi cała historia zmian.
-
-    Wejście tutaj oznacza wszystko jako widziane. Próg „nowego” trzyma jednak
-    `state.nowosci_od` — ustawia go start (wersja sprzed aktualizacji) albo
-    pierwsze wejście w tej sesji — więc przebudowa ekranu przez router dalej
-    podświetla te same wydania, zamiast zgasić plakietki w pół czytania.
-
-    „Pokaż” prowadzi do funkcji przez rejestr ekranów (utils.otworz_ekran)
-    i znika tam, gdzie i tak by nie wpuścił: bez pojazdu przy ekranie, który go
-    wymaga, i przy roli, której router odmówi — tę decyzję podaje router jako
-    `wolno_wejsc(trasa)`. Treść wydań leży w db/nowosci.py."""
+    Wejście oznacza wszystko jako widziane, ale próg „nowego” trzyma `state.nowosci_od`
+    (start albo pierwsze wejście w sesji), więc przebudowa nie gasi plakietek w pół
+    czytania. „Pokaż” przez utils.otworz_ekran; znika bez pojazdu i przy roli, której
+    router odmówi (`wolno_wejsc(trasa)`). Treść: db/nowosci.py."""
 
     def __init__(self, page: ft.Page, state, wolno_wejsc=None):
         self._page = page

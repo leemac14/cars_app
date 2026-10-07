@@ -82,18 +82,12 @@ def parsuj_zapytanie_kwotowe(zapytanie) -> tuple[float | None, float | None, str
 
 
 # ============================================================================
-#  Zapytania datowe i operatory pól
+# Zapytania datowe i operatory pól
 # ============================================================================
-# `parsuj_zapytanie_kwotowe` pokazało, że najtańsza wyszukiwarka to ta bez
-# dodatkowych kontrolek: wzorzec rozpoznawany WPROST w polu tekstowym, a gdy nic
-# nie pasuje — cichy powrót do szukania tekstowego. Ten sam schemat obsługuje
-# teraz daty („marzec 2026”, „ostatni tydzień”) i pola („stacja:orlen”).
-#
-# Zasada, której trzymają się wszystkie wzorce: rozpoznajemy tylko to, co NIE
-# może być zwykłym słowem z danych. Dlatego lista form miesiąca jest zamknięta
-# („listwa” zaczyna się od „lis”, ale listopadem nie jest), nazwa spoza mapy
-# POLA_WYSZUKIWANIA zostaje zwykłym tekstem, a sama liczba jest kwotą wyłącznie
-# wtedy, gdy stanowi CAŁE zapytanie — „opony 205” dalej szuka tekstu.
+# Wzorce rozpoznawane WPROST w polu tekstowym („marzec 2026”, „ostatni tydzień”,
+# „stacja:orlen”, kwoty), a gdy nic nie pasuje — zwykłe szukanie. Rozpoznajemy tylko to,
+# co NIE może być zwykłym słowem: zamknięta lista form miesiąca, pole spoza
+# POLA_WYSZUKIWANIA to tekst, liczba jest kwotą tylko jako CAŁE zapytanie.
 
 _BEZ_OGONKOW = str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ")
 
@@ -360,16 +354,11 @@ def _zakres_z_dwoch_punktow(tekst):
 
 
 def parsuj_zapytanie_datowe(zapytanie) -> tuple[Data | None, Data | None, str] | None:
-    """Rozpoznaje zapytanie o datę i zwraca (od, do, opis) albo None.
-
-    Obsługiwane formy: „marzec 2026”, „marca 2026”, „mar 2026”, sam „marzec”,
-    „03.2026”, „2026-03”, „rok 2026”, „01.03.2026”, „od 01.03.2026”,
-    „do 31.03.2026”, „01.01.2026-31.03.2026”, „dziś”, „wczoraj”, „ten
-    tydzień/miesiąc/rok”, „ostatni tydzień/miesiąc/kwartał/rok”, „ostatnie N
-    dni/tygodni/miesięcy/lat”, „zeszły tydzień/miesiąc/rok”.
-
-    Sam czterocyfrowy rok BEZ słowa „rok” zostaje kwotą — „2026” w tej
-    aplikacji równie dobrze bywa ceną naprawy."""
+    """Zapytanie o datę → (od, do, opis) albo None. Formy: „marzec 2026”, „marca 2026”,
+    „mar 2026”, „marzec”, „03.2026”, „2026-03”, „rok 2026”, „01.03.2026”, „od …”, „do
+    …”, „01.01.2026-31.03.2026”, „dziś”, „wczoraj”, „ten/ostatni/zeszły
+    tydzień/miesiąc/rok”, „ostatni kwartał”, „ostatnie N dni/tygodni/miesięcy/lat”. Sam
+    rok BEZ słowa „rok” zostaje kwotą."""
     tekst = _uprosc(" ".join(str(zapytanie or "").split()))
     if not tekst:
         return None
@@ -450,15 +439,9 @@ def _opis_filtrow(pola, data, kwota, tekst):
 
 
 def parsuj_zapytanie(zapytanie) -> dict | None:
-    """Rozkłada zapytanie na filtry albo zwraca None, gdy nie ma czego rozkładać.
-
-    Wynik: {pola, data, kwota, tekst, opis}. `pola` to lista (pole, wartość),
-    `data` i `kwota` to krotki z parserów, `tekst` to reszta do szukania
-    tekstowego. None znaczy „zwykłe zapytanie tekstowe” — wołający ma wtedy
-    robić dokładnie to, co robił dotąd.
-
-    Filtry się SUMUJĄ: „stacja:orlen marzec 2026 >200” to trzy warunki naraz.
-    Kwota jest ostatnia w opisie, bo pasek trybu dopisuje za nią walutę."""
+    """Zapytanie → {pola, data, kwota, tekst, opis} albo None („zwykły tekst”). `pola` —
+    [(pole, wartość)], `tekst` — reszta. Filtry się SUMUJĄ; kwota ostatnia w opisie
+    (pasek dopisuje walutę)."""
     tekst = " ".join(str(zapytanie or "").split())
     if not tekst:
         return None
@@ -606,13 +589,9 @@ def skrot_notatki(tekst, maks=60):
 
 
 def _wpis(typ, tytul, podpis, data, trasa, kwota=None, tekst_dodatkowy="", **pola):
-    """Jeden rekord dla wyszukiwania po filtrach: część jawna (ta sama, co
-    zawsze) plus pola, po których wolno filtrować, i tekst do szukania.
-
-    `podpis` to widoczny opis wyniku — nazwa `opis` jest zajęta przez POLE
-    o tej nazwie (`opis:` w zapytaniu). `tekst_dodatkowy` wchodzi tylko do
-    szukania tekstowego: pozycje checklisty czy numer DOT opony nie mieszczą
-    się na karcie wyniku, ale szuka się po nich jak najbardziej."""
+    """Rekord do wyszukiwania po filtrach: część jawna + pola do filtrów + tekst.
+    `podpis` — widoczny opis (`opis` to nazwa POLA); `tekst_dodatkowy` tylko do szukania
+    (pozycje checklisty, DOT opony)."""
     pola = {klucz: str(wartosc or "") for klucz, wartosc in pola.items()}
     pola.setdefault("nazwa", str(tytul or ""))
     pola["typ"] = typ
@@ -629,19 +608,9 @@ def _wpis(typ, tytul, podpis, data, trasa, kwota=None, tekst_dodatkowy="", **pol
 
 
 def _wszystkie_wpisy(auto_id):
-    """WSZYSTKIE dane pojazdu jako jednolite rekordy — bez filtrowania w SQL.
-
-    Zapytanie z filtrami („stacja:orlen marzec 2026 >200”) porównuje kilka
-    warunków naraz, a każdy dotyczy innej kolumny w innej tabeli. Złożenie tego
-    w SQL to trzynaście zapytań z doklejanym WHERE; pobranie wszystkiego raz
-    i przefiltrowanie w Pythonie kosztuje przy danych jednego auta tyle samo,
-    a warunki dają się dowolnie łączyć.
-
-    Tą samą drogą idzie zwykłe szukanie tekstowe. Osobna ścieżka na LIKE była
-    drugą listą pól do pilnowania i już się rozjechała: nie znała notatek
-    magazynu, nie umiała złożyć dwóch słów („orlen luty”) i potykała się
-    o ogonki („pelny bak”). Operator (`stacja:`) jest od ZAWĘŻANIA wyniku,
-    a nie warunkiem, żeby cokolwiek znaleźć."""
+    """WSZYSTKIE dane pojazdu jako jednolite rekordy, filtrowane w Pythonie (przy jednym
+    aucie tyle samo co SQL, a warunki łączą się dowolnie). Tą samą drogą idzie szukanie
+    tekstowe; operator (`stacja:`) tylko ZAWĘŻA wynik."""
     wpisy = []
     j = jednostka_dystansu()  # raz na całe szukanie, nie przy każdym wierszu
 
@@ -858,23 +827,13 @@ def wyszukiwanie_zaawansowane(auto_id, filtr):
 
 
 def globalne_wyszukiwanie(auto_id, zapytanie) -> list[dict]:
-    """Przeszukuje WSZYSTKIE dane bieżącego pojazdu: tankowania, historię
-    serwisową, podzespoły, wizyty, inne koszty, listę Do zrobienia, odczyty
-    licznika, magazyn, opony, warsztaty, wydatki cykliczne, zapisane trasy
-    i checklisty. Używane przez widok /szukaj — jedną wspólną wyszukiwarkę
-    dostępną z paska głównego, w odróżnieniu od lokalnych pól filtruj_*
-    działających tylko na już wczytanej liście.
-
-    Zapytanie idzie przez `parsuj_zapytanie`, więc okres, pole i kwota są
-    DODATKIEM do szukania tekstowego, a nie warunkiem: „orlen” znajduje to samo,
-    co „stacja:orlen”, tylko szerzej — operator jedynie zawęża do konkretnej
-    kolumny. Słowa łączą się przez I („orlen luty” to dwa warunki), wielkość
-    liter i polskie ogonki nie mają znaczenia („pelny bak” = „Pełny bak”).
-
-    Zwraca listę słowników {typ, tytul, opis, data, trasa, tagi}, posortowaną
-    malejąco po dacie (nierozpoznane daty lądują na końcu). `tagi` to tekst
-    z wpisu (tankowanie, wizyta, inny koszt) — karta wyniku rysuje z niego
-    chipy; przy wynikach szukania samej kwoty stoi tylko przy tych trzech."""
+    """Przeszukuje WSZYSTKIE dane bieżącego pojazdu (tankowania, historia, podzespoły,
+    wizyty, inne koszty, Do zrobienia, odczyty, magazyn, opony, warsztaty, cykliczne,
+    trasy, checklisty) dla /szukaj. Przez `parsuj_zapytanie`: okres, pole i kwota są
+    DODATKIEM — „orlen” znajduje to co „stacja:orlen”, tylko szerzej; słowa łączą się
+    przez I; wielkość liter i ogonki bez znaczenia. Zwraca [{typ, tytul, opis, data,
+    trasa, tagi}] malejąco po dacie (nierozpoznane na końcu); `tagi` tylko przy
+    tankowaniu, wizycie i innym koszcie."""
     if not auto_id or not zapytanie or not zapytanie.strip():
         return []
 
@@ -892,17 +851,10 @@ def globalne_wyszukiwanie(auto_id, zapytanie) -> list[dict]:
 
 
 # ============================================================================
-#  Historia wyszukiwań
+# Historia wyszukiwań
 # ============================================================================
-# Szuflada pamięta ostatnio otwierane ekrany, bo rzeczy używanych raz na miesiąc
-# nie pamięta się między sesjami. Wyszukiwarka ma ten sam problem: fraza, która
-# kiedyś zadziałała („stacja:orlen”, „marzec 2026”), za dwa tygodnie jest do
-# wymyślenia od nowa. Lista siedzi w JEDNYM wierszu `ustawienia` — nie ma tu
-# licznika ani przypinania, więc osobna tabela dokładałaby migrację, wpis
-# w konfiguracji synchronizacji i w koszu, a nie dawałaby nic ponadto.
-#
-# Rozdzielaczem są znaki końca linii: fraza bywa z przecinkiem („stacja:orlen,
-# bp”), a nowej linii w jednolinijkowym polu nie da się wpisać.
+# Lista w JEDNYM wierszu `ustawienia` (bez liczników i przypinania — tabela to migracja,
+# sync i kosz za nic). Rozdzielacz: koniec linii (fraza bywa z przecinkiem).
 
 KLUCZ_HISTORII_WYSZUKIWAN = "ostatnie_wyszukiwania"
 
@@ -931,12 +883,9 @@ def pobierz_ostatnie_wyszukiwania(limit=MAKS_OSTATNICH_WYSZUKIWAN) -> list[str]:
 
 
 def zanotuj_wyszukiwanie(zapytanie) -> list[str]:
-    """Dopisuje frazę na początek historii i zwraca listę PO zmianie.
-
-    Fraza, której początkiem jest fraza już zapisana („marzec” wobec „marzec
-    2026”), WYPIERA tamtą zamiast stawać obok — wyszukiwarka szuka przy każdej
-    literze, więc inaczej historia zapełniłaby się kolejnymi stadiami jednego
-    zapytania. Ta sama zasada załatwia duplikaty."""
+    """Dopisuje frazę na początek historii i zwraca listę PO zmianie. Fraza
+    przedłużająca zapisaną („marzec” → „marzec 2026”) WYPIERA ją (szukanie idzie przy
+    każdej literze); to samo załatwia duplikaty."""
     fraza = " ".join(str(zapytanie or "").split())
     if len(fraza) < MIN_DLUGOSC_ZAPAMIETANEJ or not czy_zapamietywac_wyszukiwania():
         return pobierz_ostatnie_wyszukiwania()

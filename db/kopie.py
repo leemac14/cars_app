@@ -1,30 +1,14 @@
-"""Automatyczna kopia zapasowa: archiwum ZIP z bazą, zdjęciami i koszem — samo,
-co N dni, do wskazanego folderu, z rotacją do K ostatnich kopii.
-
-Cała historia aut żyje w jednym pliku SQLite na telefonie. Ręczny eksport był
-od dawna, ale był czynnością, o której trzeba pamiętać — a pamięta się o niej
-dokładnie do pierwszej utraty danych. Ten moduł dokłada mechanizmowi eksportu
-zegar. Zasady, na których to stoi:
-
-* **To samo archiwum co kopia ręczna.** `zapisz_archiwum_kopii` buduje ZIP,
-  który wczytuje zwykłe „Wczytaj kopię bazy” — kopia automatyczna nie ma
-  własnego formatu ani własnej drogi powrotu.
-* **Starsze kopie znikają dopiero po sprawdzeniu nowej.** Kontrola spójności
-  migawki bazy (`PRAGMA quick_check`), zapis do pliku `.czesc`, test CRC
-  całego archiwum, dopiero potem zmiana nazwy na `.zip` i rotacja. Zepsuta baza
-  nie wypycha z folderu dobrych kopii.
-* **Rotacja rusza wyłącznie własne pliki**: `flota_kopia_RRRR-MM-DD_GGMMSS.zip`
-  w tym jednym folderze, bez podfolderów. `kopia_baza.zip` zapisany obok
-  ręcznie jest bezpieczny.
-* **Ustawienia kopii należą do urządzenia, nie do danych.** Klucze `kopia_*`
-  przeżywają wczytanie kopii (`ustawienia_kopii_urzadzenia` i
-  `przywroc_ustawienia_kopii_urzadzenia`) — inaczej telefon przejąłby z kopii
-  zrobionej na komputerze folder `E:\\…`, a daty ostatnich kopii mówiłyby
-  o innym urządzeniu.
-
-Folder domyślny: na Androidzie Documents/Flota Mobile — przeżywa odinstalowanie
-aplikacji, a od Androida 11 aplikacja może tam pisać bez żadnych uprawnień. Na
-komputerze `kopie/` obok bazy."""
+"""Automatyczna kopia zapasowa: ZIP z bazą, zdjęciami i koszem, co N dni, do wskazanego
+folderu, z rotacją do K ostatnich.
+- To samo archiwum co kopia ręczna (`zapisz_archiwum_kopii`), wczytywane zwykłym
+  „Wczytaj kopię bazy”.
+- Starsze kopie znikają dopiero po sprawdzeniu nowej: `PRAGMA quick_check`, zapis do
+  `.czesc`, test CRC, zmiana nazwy na `.zip`, rotacja.
+- Rotacja rusza tylko własne pliki `flota_kopia_RRRR-MM-DD_GGMMSS.zip` w tym folderze.
+- Ustawienia `kopia_*` należą do urządzenia i przeżywają wczytanie kopii
+  (`ustawienia_kopii_urzadzenia`, `przywroc_ustawienia_kopii_urzadzenia`).
+Folder domyślny: Android — Documents/Flota Mobile (przeżywa odinstalowanie, Android 11+
+bez uprawnień); komputer — `kopie/` obok bazy."""
 
 import errno
 import io
@@ -49,10 +33,10 @@ from .ustawienia import PRZEDROSTEK_USTAWIEN_NOWOSCI, pobierz_ustawienie, usun_u
 
 
 # ============================================================================
-#  USTAWIENIA
+# USTAWIENIA
 # ============================================================================
-# Wszystkie klucze zaczynają się od `kopia_` — po tym przedrostku wczytanie
-# kopii odkłada je na bok i przywraca (patrz niżej, „ustawienia urządzenia”).
+# Wszystkie klucze zaczynają się od `kopia_` — po przedrostku wczytanie kopii odkłada je
+# i przywraca.
 
 PRZEDROSTEK_USTAWIEN_KOPII = "kopia_"
 KLUCZ_KOPIA_AUTOMATYCZNA = "kopia_automatyczna"
@@ -94,20 +78,8 @@ def _liczba_z_opcji(wartosc, opcje, domyslna):
     return liczba if liczba in opcje else domyslna
 
 
-def czy_kopia_automatyczna():
-    """Domyślnie włączona: kopia, którą trzeba najpierw włączyć, jest dokładnie
-    tą, o której się zapomina."""
-    return (pobierz_ustawienie(KLUCZ_KOPIA_AUTOMATYCZNA, "1") or "1") == "1"
-
-
 def zapisz_kopie_automatyczna(wlaczona):
     zapisz_ustawienie(KLUCZ_KOPIA_AUTOMATYCZNA, "1" if wlaczona else "0")
-
-
-def pobierz_kopie_co_dni():
-    """Co ile dni kopia automatyczna. Przy wyłączonej — po ilu dniach bez kopii
-    kokpit zaczyna o niej przypominać."""
-    return _liczba_z_opcji(pobierz_ustawienie(KLUCZ_KOPIA_CO_DNI), KOPIA_CO_DNI_OPCJE, KOPIA_CO_DNI_DOMYSLNIE)
 
 
 def zapisz_kopie_co_dni(dni):
@@ -134,11 +106,9 @@ def na_androidzie():
 
 
 def domyslny_folder_kopii():
-    """Documents/Flota Mobile na telefonie, `kopie/` obok bazy na komputerze.
-
-    Na Androidzie nie folder aplikacji: ten ginie razem z nią (odinstalowanie,
-    „Wyczyść dane”), a kopia ma przeżyć właśnie takie wypadki. W Dokumentach
-    i Pobranych Android 11+ pozwala aplikacji zakładać pliki bez uprawnień."""
+    """Documents/Flota Mobile na telefonie, `kopie/` obok bazy na komputerze. Nie folder
+    aplikacji — ginie z nią (odinstalowanie, „Wyczyść dane”); w Dokumentach i Pobranych
+    Android 11+ pozwala pisać bez uprawnień."""
     if na_androidzie():
         pamiec = os.environ.get("EXTERNAL_STORAGE") or "/storage/emulated/0"
         return os.path.join(pamiec, "Documents", NAZWA_FOLDERU_KOPII_ANDROID)
@@ -238,13 +208,11 @@ def _sprawdz_spojnosc_migawki(sciezka):
 
 
 def zapisz_archiwum_kopii(cel, sprawdz_spojnosc=False):
-    """Archiwum kopii zapasowej (baza + załączniki + kosz) do pliku albo obiektu
-    plikowego `cel`. Format wczytuje „Wczytaj kopię bazy” (main.wykonaj_import).
-
-    `sprawdz_spojnosc=True` puszcza na migawce bazy `PRAGMA quick_check`
-    i przerywa, zanim cokolwiek trafi do archiwum. Na końcu archiwum dostaje
-    `manifest.json` (wersja schematu, liczba wpisów, suma kontrolna bazy,
-    bilans załączników), który import pokazuje przed nadpisaniem bazy."""
+    """Archiwum kopii (baza + załączniki + kosz) do pliku albo obiektu plikowego `cel`,
+    w formacie „Wczytaj kopię bazy” (main.wykonaj_import). `sprawdz_spojnosc=True` —
+    `PRAGMA quick_check` na migawce przed zapisem. Na końcu `manifest.json` (wersja
+    schematu, liczba wpisów, suma kontrolna, bilans załączników) do podglądu przed
+    wczytaniem."""
     nazwa_bazy = os.path.basename(BAZA_DANYCH)
     with tempfile.TemporaryDirectory() as tmp:
         migawka = os.path.join(tmp, nazwa_bazy)
@@ -389,14 +357,11 @@ def _policz_stan_kopii():
 
 
 def stan_kopii_zapasowej() -> dict[str, Any]:
-    """Wszystko, o co pytają kokpit, dzwonek i Ustawienia — jednym odczytem,
-    z pamięci do najbliższego zapisu albo zmiany daty.
-
-    Klucze: wlaczona, co_dni, ile, folder, folder_domyslny, ostatnia (datetime
-    świeższej z kopii automatycznej i ręcznej albo None), ostatnia_auto,
-    ostatnia_reczna, rodzaj_ostatniej, dni (od ostatniej, w dniach
-    kalendarzowych), blad (tekst ostatniej nieudanej próby albo None),
-    ma_dane, nalezna (kopia automatyczna ma ruszyć), zalegla (ostrzegać)."""
+    """Wszystko dla kokpitu, dzwonka i Ustawień jednym odczytem, z pamięci do zapisu lub
+    zmiany daty. Klucze: wlaczona, co_dni, ile, folder, folder_domyslny, ostatnia
+    (świeższa z automatycznej i ręcznej), ostatnia_auto, ostatnia_reczna,
+    rodzaj_ostatniej, dni, blad, ma_dane, nalezna (kopia ma ruszyć), zalegla
+    (ostrzegać)."""
     return z_pamieci("kopia_zapasowa", None, _policz_stan_kopii)
 
 
@@ -531,17 +496,10 @@ def _zanotuj_wynik(udana, blad=None):
 
 
 def wykonaj_kopie(wymus=False) -> dict[str, Any]:
-    """Kopia do folderu z rotacją. Bez `wymus` tylko wtedy, gdy należna — start
-    aplikacji i powrót z tła wołają ją bez sprawdzania; `wymus=True` to „Zrób
-    teraz” z banera, dzwonka albo Ustawień.
-
-    Zwraca {ok, pominieta (nic do zrobienia), w_toku (inna kopia właśnie się
-    pisze), sciezka, rozmiar, usuniete (ile starszych skasowała rotacja),
-    folder, blad (tekst dla człowieka albo None)}.
-
-    Nie rzuca: przy starcie woła ją wątek w tle, który i tak nie miałby komu
-    pokazać wyjątku. Błąd zostaje w ustawieniach (kokpit i dzwonek mówią o nim
-    od najbliższego odświeżenia) i w dzienniku błędów."""
+    """Kopia do folderu z rotacją; bez `wymus` tylko należna (start i powrót z tła
+    wołają bez sprawdzania), `wymus=True` — „Zrób teraz”. Zwraca {ok, pominieta, w_toku,
+    sciezka, rozmiar, usuniete, folder, blad}. Nie rzuca (woła ją wątek w tle): błąd
+    zostaje w ustawieniach i dzienniku błędów."""
     wynik = {"ok": False, "pominieta": False, "w_toku": False, "sciezka": None,
              "rozmiar": 0, "usuniete": 0, "folder": None, "blad": None}
     if not wymus and not stan_kopii_zapasowej()["nalezna"]:
@@ -596,12 +554,10 @@ def wykonaj_kopie(wymus=False) -> dict[str, Any]:
 
 
 # ============================================================================
-#  USTAWIENIA URZĄDZENIA PRZY WCZYTYWANIU KOPII
+# USTAWIENIA URZĄDZENIA PRZY WCZYTYWANIU KOPII
 # ============================================================================
-# Wczytanie kopii podmienia CAŁĄ bazę, razem z tabelą ustawień. Folder, rytm,
-# liczba kopii i daty ostatnich kopii opisują jednak to urządzenie, a nie dane:
-# kopia z komputera przyniosłaby telefonowi folder `E:\…`, a kopia sprzed
-# miesiąca — przekonanie, że od miesiąca nic nie zapisano.
+# Wczytanie kopii podmienia CAŁĄ bazę z ustawieniami, a folder, rytm, liczba i daty
+# kopii opisują urządzenie — dlatego są odkładane i przywracane.
 
 # Ten sam los czeka „Co nowego”: to, które wydania ten telefon już pokazał,
 # opisuje urządzenie, nie dane — kopia z drugiego telefonu pokazałaby nowości
@@ -658,14 +614,12 @@ __all__ = [
     "PRZEDROSTEK_USTAWIEN_KOPII",
     "PRZEDROSTKI_USTAWIEN_URZADZENIA",
     "czy_folder_kopii_domyslny",
-    "czy_kopia_automatyczna",
     "domyslny_folder_kopii",
     "kopia_w_toku",
     "lista_kopii",
     "na_androidzie",
     "pobierz_folder_kopii",
     "pobierz_ile_kopii",
-    "pobierz_kopie_co_dni",
     "przygotuj_zip_kopii",
     "przywroc_ustawienia_kopii_urzadzenia",
     "skopiuj_baze",

@@ -1,26 +1,10 @@
-"""Pamięć pozycji przewijania: ekran ma zostawać tam, gdzie był.
-
-Router przebudowuje CAŁY stos widoków przy każdej zmianie sortowania, filtra
-i po każdej akcji na wpisie — `przejdz(page, page.route)` robi
-`page.views.clear()` i składa ekran od nowa. Nowa lista zaczyna się od zera,
-więc ktoś, kto przewinął sto tankowań w dół i odhaczył jedno z nich, lądował
-z powrotem na samej górze.
-
-Nie przebudowywać wcale byłoby lepiej, ale to przepisanie dziesięciu ekranów na
-odświeżanie w miejscu. Tańsza i — co ważniejsze — PEŁNIEJSZA odpowiedź: zapamiętać,
-gdzie stał pasek, i wrócić tam zaraz po zbudowaniu. Działa dla każdego ekranu
-naraz, także dla tych, które dopiero powstaną.
-
-Dwie rzeczy, na których to stoi:
-
-1. **Klucz musi przeżyć przebudowę, a kontrolka nie.** Po `views.clear()` nie ma
-   ani widoku, ani listy — zostaje tylko `state`. Dlatego pozycje siedzą
-   w `state.pozycje_przewijania` pod kluczem opisującym MIEJSCE (trasa, zakładka,
-   nazwa listy), a nie obiekt.
-2. **Powrót musi poczekać na układ.** `scroll_to` wywołane w chwili budowania nie
-   ma jeszcze czego przewijać — Flutter nie policzył wysokości. Stąd krótkie
-   oddanie sterowania, tak samo jak przy szkieletach (patrz utils.szkielet).
-"""
+"""Pamięć pozycji przewijania: router przebudowuje CAŁY stos (`page.views.clear()`) przy
+sortowaniu, filtrze i akcji na wpisie, więc zapamiętujemy pozycję i wracamy po
+zbudowaniu — działa dla każdego ekranu.
+1. Pozycje w `state.pozycje_przewijania` pod kluczem MIEJSCA (trasa, zakładka, lista),
+nie kontrolki.
+2. Powrót czeka na układ (`scroll_to` przy budowie nie ma czego przewijać) — jak przy
+szkieletach."""
 
 import asyncio
 import inspect
@@ -32,10 +16,8 @@ from .animacje import _petla_dziala
 # chodzi tylko o to, żeby Flutter zdążył policzyć wysokość zawartości.
 OPOZNIENIE_POWROTU_S = 0.08
 
-# Druga próba, po oknie szkieletu. Ekrany z wykresami i długimi listami pokazują
-# najpierw zarys, a treść dobudowują chwilę później (utils.szkielet) — w chwili
-# pierwszej próby nie ma tam jeszcze czego przewijać. Powtórka nic nie kosztuje,
-# a bez niej właśnie te ekrany, które przewija się najdłużej, wracałyby na górę.
+# Druga próba po oknie szkieletu — ekrany z wykresami dobudowują treść później
+# (utils.szkielet).
 OPOZNIENIE_DRUGIEJ_PROBY_S = 0.20
 
 # Poniżej tylu pikseli nie ma czego pamiętać. Bez tego progu każde muśnięcie
@@ -63,12 +45,9 @@ def _pamiec(state):
 
 
 def dodaj_obsluge_przewijania(kontrolka, handler):
-    """Dokłada handler do `on_scroll`, ZAMIAST go podmieniać.
-
-    Na tej samej liście siedzi dziś nagłówek miesiąca (utils.miesiace) i pamięć
-    pozycji. Przypisanie wprost sprawiłoby, że ten, kto dopisze się drugi, po
-    cichu wyłącza pierwszego — a najgorsze w takiej usterce jest to, że nic nie
-    wybucha."""
+    """Dokłada handler do `on_scroll` ZAMIAST go podmieniać — na liście siedzą nagłówek
+    miesiąca (utils.miesiace) i pamięć pozycji, a przypisanie po cichu wyłączyłoby
+    pierwszego."""
     poprzedni = getattr(kontrolka, "on_scroll", None)
 
     if poprzedni is None:
@@ -118,15 +97,8 @@ def zapomnij_pozycje(state, klucz=None):
 
 
 def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None, opis=None):
-    """Wraca na zadaną pozycję, gdy tylko Flutter policzy układ.
-
-    Próbujemy DWA razy. Pierwsza próba idzie po jednej klatce i załatwia zwykłe
-    listy. Druga czeka na okno szkieletu: ekrany z wykresami pokazują najpierw
-    zarys, a treść dobudowują chwilę później (utils.szkielet) — w chwili
-    pierwszej próby nie ma tam jeszcze czego przewijać.
-
-    `nadal_aktualne` chroni przed szarpnięciem: jeśli w te dwieście milisekund
-    użytkownik zdążył sam przewinąć, druga próba odpuszcza."""
+    """Wraca na pozycję po policzeniu układu: dwie próby (po jednej klatce i po oknie
+    szkieletu). `nadal_aktualne` — druga odpuszcza, gdy użytkownik zdążył sam przewinąć."""
     if not pikseli or pikseli < PROG_PAMIETANIA:
         return False
 
@@ -135,11 +107,9 @@ def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None, opis=None):
     nazwa = opis or type(kontrolka).__name__
 
     async def _ustaw():
-        # `scroll_to` jest we Flecie 0.86 KORUTYNĄ. Wywołane bez `await` tworzy
-        # obiekt korutyny, wyrzuca go i nie przewija niczego — po cichu, bez
-        # żadnego błędu. Dokładnie ta klasa usterki, co porzucony `run_task`
-        # (patrz audyt 4 w tests/audyty.py). `isawaitable` zamiast samego
-        # `await`, bo w starszych Fletach ta sama metoda bywa synchroniczna.
+        # `scroll_to` w Flecie 0.86 jest KORUTYNĄ — bez `await` po cichu nic nie robi
+        # (jak porzucony `run_task`, audyt 4 w tests/audyty.py). `isawaitable`, bo w
+        # starszych Fletach bywa synchroniczna.
         try:
             wynik = kontrolka.scroll_to(offset=cel, duration=0)
             if inspect.isawaitable(wynik):
@@ -174,17 +144,9 @@ def przewin_na(page, kontrolka, pikseli, nadal_aktualne=None, opis=None):
 
 
 def pamietaj_pozycje(page, state, kontrolka, klucz):
-    """Podpina zapisywanie pozycji i od razu wraca na zapamiętaną.
-
-    Wołać zaraz po zbudowaniu kontrolki, jeszcze w trakcie budowania ekranu —
-    im wcześniej ruszy powrót, tym mniejsza szansa, że użytkownik zdąży zobaczyć
-    listę na górze i dopiero potem skok.
-
-    `klucz` może być funkcją bez argumentów. To nie jest ozdoba: ekran główny
-    NIE przebudowuje się przy zmianie zakładki (przełącza zawartość w miejscu),
-    więc przewijana jest wciąż ta sama kontrolka, a miejsce, którego dotyczy —
-    już inne. Klucz liczony w chwili przewijania trafia do właściwej zakładki,
-    klucz zapamiętany przy podpięciu zapisywałby Kokpit pod Serwisem."""
+    """Podpina zapis pozycji i od razu wraca na zapamiętaną; wołać zaraz po zbudowaniu
+    kontrolki. `klucz` może być funkcją — ekran główny przełącza zakładki w miejscu (ta
+    sama kontrolka, inne miejsce), więc klucz liczony w chwili przewijania."""
     if kontrolka is None:
         return kontrolka
 

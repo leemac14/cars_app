@@ -15,17 +15,9 @@ from .powiadomienia import pokaz_panel_wydatkow_cyklicznych, przycisk_dzwonka
 
 
 # ==================== REJESTR EKRANÓW I NAWIGACJA BOCZNA ====================
-# Aplikacja urosła do kilkudziesięciu ekranów i największym problemem przestało
-# być „czy da się to zrobić”, a stało się „gdzie to było”. Rok w pigułce dało
-# się otworzyć z menu ⋮ i z kafelka w statystykach, historię przebiegu z karty
-# pojazdu i z dialogu przebiegu — czyli za każdym razem skądinąd.
-#
-# Dlatego jest JEDEN spis ekranów. Napędza on wszystko naraz:
-#   • szufladę boczną (utils.zbuduj_szuflade),
-#   • kafelki skrótów na Kokpicie i paski sekcji w zakładkach,
-#   • wyszukiwarkę, która od teraz znajduje nie tylko wpisy, ale i ekrany,
-#   • statystykę „ostatnio używane” (db.zanotuj_uzycie_ekranu).
-# Dodanie ekranu w jednym miejscu wystawia go od razu we wszystkich czterech.
+# JEDEN spis ekranów napędza szufladę (utils.zbuduj_szuflade), skróty na Kokpicie i
+# paski sekcji, wyszukiwarkę ekranów i „ostatnio używane” (db.zanotuj_uzycie_ekranu) —
+# nowy ekran dopisany tu jest od razu we wszystkich.
 
 GRUPY_EKRANOW = [
     # „Start” to grupa jednoelementowa i celowo bez nagłówka w szufladzie —
@@ -45,11 +37,11 @@ GRUPY_WG_ID = {g["id"]: g for g in GRUPY_EKRANOW}
 
 
 # Klucze pozycji:
-#   id        — stały identyfikator (trafia do bazy: skróty, ostatnio używane)
-#   trasa     — dokąd prowadzi; brak trasy oznacza zakładkę główną albo akcję
-#   zakladka / podzakladka — ekran mieszkający w zakładce ekranu głównego
-#   akcja     — nazwa akcji wymagającej kontekstu (eksport bazy, motyw, ...)
-#   slowa     — dodatkowe słowa, po których ekran ma być do znalezienia
+# - id — stały identyfikator (trafia do bazy: skróty, ostatnio używane);
+# - trasa — dokąd prowadzi; brak = zakładka główna albo akcja;
+# - zakladka / podzakladka — ekran w zakładce ekranu głównego;
+# - akcja — nazwa akcji wymagającej kontekstu (eksport bazy, motyw…);
+# - slowa — dodatkowe słowa do wyszukiwania.
 EKRANY = [
     {"id": "kokpit", "tytul": "Kokpit", "opis": "Skróty, widżety i stan pojazdu",
      "ikona": ft.Icons.SPACE_DASHBOARD, "grupa": "start", "zakladka": 0,
@@ -319,18 +311,10 @@ def ekrany_grupy(grupa_id, akcje=None, ma_pojazd=True):
 
 
 def uruchom_akcje(page: ft.Page, obsluga):
-    """Wywołuje akcję z rejestru ekranów niezależnie od tego, czy jest zwykłą
-    funkcją, czy asynchroniczną.
-
-    `akcje_nawigacji` owija wszystko w lambdy (`lambda: cb_export(None)`), więc
-    po samej lambdzie nie widać, że pod spodem siedzi `async def`. Wywołanie
-    zwracało wtedy korutynę, której nikt nie awaitował — kopia zapasowa i
-    wczytanie bazy po cichu nie robiły NIC, a jedynym śladem było
-    „RuntimeWarning: coroutine ... was never awaited” w konsoli.
-
-    page.run_task wymaga prawdziwego `async def` (sprawdza
-    `asyncio.iscoroutinefunction`), więc gotowej korutyny nie da się mu podać
-    wprost — musi ją opakować osobna funkcja."""
+    """Wywołuje akcję z rejestru — zwykłą albo async. Lambdy z `akcje_nawigacji`
+    ukrywają `async def`, a nieawaitowana korutyna po cichu nic nie robiła;
+    page.run_task wymaga prawdziwego `async def`, więc korutynę opakowuje osobna
+    funkcja."""
     wynik = obsluga()
     if not inspect.isawaitable(wynik):
         return
@@ -345,14 +329,9 @@ def uruchom_akcje(page: ft.Page, obsluga):
 
 
 def otworz_ekran(page: ft.Page, state, ekran, akcje=None, widok=None):
-    """Wejście na ekran z rejestru — po jego identyfikatorze albo po całym wpisie.
-    Historię „ostatnio używanych” prowadzi router (zanotuj_ekran_dla_trasy), bo
-    ekran można otworzyć także zwykłym odnośnikiem; tu zapisujemy tylko AKCJE,
-    których w adresie nie widać.
-
-    `widok` podaje ten, kto wie, że ekran główny JEST w tej chwili na wierzchu
-    (kafelek kokpitu). Wtedy zakładka przełącza się u niego w miejscu, z płynnym
-    przejściem, zamiast przebudową całego ekranu przez router."""
+    """Wejście na ekran z rejestru (po id albo wpisie). „Ostatnio używane” prowadzi
+    router (zanotuj_ekran_dla_trasy); tu zapisujemy tylko AKCJE. `widok` — gdy ekran
+    główny jest na wierzchu, zakładka przełącza się w miejscu z przejściem."""
     if isinstance(ekran, str):
         ekran = EKRANY_WG_ID.get(ekran)
     if not ekran:
@@ -395,11 +374,8 @@ def otworz_ekran(page: ft.Page, state, ekran, akcje=None, widok=None):
         przejdz(page, ekran["trasa"])
 
 
-# Fraza od tylu znaków, trafiająca w treść wpisu, może wygrać z ekranem.
-# „Budżet” to nazwa funkcji — ekran budżetu ma stać nad wpisami. Ale „rozrząd”
-# czy „olej” to słowa z DANYCH: kto je wpisuje, szuka swojego wpisu, a ekran
-# Podzespołów łapie się na nie tylko przez słowa pomocnicze. Krótka fraza
-# („rok”, „oc”) mówi za mało, żeby ekrany ustępowały wpisom.
+# Od tej długości fraza trafiająca w treść wpisu może wygrać z ekranem: „rozrząd”,
+# „olej” to słowa z DANYCH; krótka fraza („rok”, „oc”) mówi za mało.
 DLUGA_FRAZA_OD = 4
 
 # Od tej wagi trafienie nie jest już w tytule, tylko w opisie albo słowach
@@ -461,13 +437,9 @@ def znajdz_ekrany(fraza, akcje=None, ma_pojazd=True, limit=6):
 
 
 def rozstaw_ekrany(fraza, sa_wpisy, akcje=None, ma_pojazd=True, limit=6):
-    """(nad_wpisami, pod_wpisami) — gdzie wyszukiwarka stawia pasujące ekrany.
-
-    Wszystkie idą NAD wpisy, gdy fraza jest krótsza niż DLUGA_FRAZA_OD albo nie
-    trafiła w żaden wpis. Inaczej każdy ekran rozstrzyga osobno: trafienie
-    w tytuł zostaje nad wpisami („opony” → Opony), trafienie tylko w opis albo
-    słowa pomocnicze schodzi pod nie („opony” → Magazyn, „rozrząd” →
-    Podzespoły i interwały). Limit obejmuje obie grupy razem."""
+    """(nad_wpisami, pod_wpisami) — miejsce pasujących ekranów w wyszukiwarce. Wszystkie
+    NAD, gdy fraza krótsza niż DLUGA_FRAZA_OD albo bez trafień we wpisach; inaczej
+    trafienie w tytuł nad, tylko w opis lub słowa — pod. Limit obejmuje obie grupy."""
     trafienia = _trafienia_ekranow(fraza, akcje, ma_pojazd)[:limit]
     if not sa_wpisy or len((fraza or "").strip()) < DLUGA_FRAZA_OD:
         return [e for _, e in trafienia], []
@@ -551,19 +523,11 @@ def _naglowek_grupy_szuflady(grupa, liczba=None, zwinieta=False, on_click=None, 
 
 
 def zbuduj_szuflade(page: ft.Page, state, akcje=None, aktywny_ekran=None, on_pojazdy=None, widok=None):
-    """Boczna szuflada — GŁÓWNA mapa aplikacji. Cztery zakładki na dole zostają
-    dla rzeczy robionych codziennie; szuflada odpowiada na pytanie „gdzie to
-    było”, bo pokazuje WSZYSTKIE ekrany naraz, pogrupowane i zawsze w tej samej
-    kolejności. Sekcje są rozwinięte DOMYŚLNIE — szukając czegoś raz na miesiąc
-    chce się przewinąć wzrokiem, a nie zgadywać, w której zwiniętej sekcji to
-    siedzi. Ale przy kilkunastu ekranach lista zrobiła się dłuższa niż ekran, więc
-    każdą sekcję da się zwinąć dotknięciem nagłówka, a wybór jest zapamiętywany
-    (klucz `szuflada_zwiniete`). Zwinięty nagłówek niesie ikonę grupy i licznik
-    pozycji, żeby dało się poznać, co w środku.
-
-    `widok` to widok, w którym szuflada zamieszka — potrzebny do jej zasunięcia.
-    Podaje go wołający, bo w chwili budowania widok nie jest jeszcze wpięty
-    w page.views i nie da się go stamtąd odczytać."""
+    """Boczna szuflada — GŁÓWNA mapa aplikacji: wszystkie ekrany pogrupowane, zawsze w
+    tej samej kolejności. Sekcje rozwinięte domyślnie, zwijane dotknięciem nagłówka
+    (pamięć w `szuflada_zwiniete`); zwinięty nagłówek ma ikonę i licznik. `widok` —
+    widok szuflady (do zasunięcia), podawany, bo przy budowie nie ma go jeszcze w
+    page.views."""
     akcje = akcje or {}
     ma_pojazd = bool(state.auto_id)
     liczniki = db.liczniki_nawigacji(state.auto_id) if ma_pojazd else {}
@@ -946,10 +910,8 @@ def akcje_nawigacji(page: ft.Page, state, cb_export=None, cb_import=None, cb_the
 
 
 def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme, on_menu=None):
-    """Pasek górny ekranu głównego. Menu ⋮ zniknęło: kilkanaście pozycji ukrytych
-    pod trzema kropkami w prawym rogu było najgorszym możliwym miejscem na MAPĘ
-    aplikacji. Zastąpił je hamburger po lewej, który wysuwa szufladę z pełnym,
-    pogrupowanym spisem ekranów (patrz utils.EKRANY i zbuduj_szuflade)."""
+    """Pasek górny ekranu głównego: hamburger po lewej wysuwa szufladę z pełnym spisem
+    ekranów (utils.EKRANY, zbuduj_szuflade); menu ⋮ zniknęło."""
 
     def awaryjne_menu(e):
         pokaz_nawigacje_awaryjna(page, state, akcje_nawigacji(page, state, cb_export, cb_import, cb_theme))

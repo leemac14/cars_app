@@ -11,15 +11,11 @@ SZEROKOSC_KOLUMNY = 100
 
 BRAK_PIATEJ_OSI = "Brak (4 osie)"
 
-# Piąta, OPCJONALNA oś radaru porównawczego (patrz PorownanieView._osie_radaru
-# i ._selektor_piatej_osi) — do wyboru obok stałej czwórki (koszt/km,
-# spalanie, kondycja, wiek). Klucz słownika to jednocześnie etykieta widoczna
-# w dropdownie ORAZ wartość zapamiętywana w state.porownanie_piata_os (ten sam
-# wzorzec co BRAK_ZMIAN w body_view.py). Wartość to krotka w kształcie
-# zgodnym z _osie_radaru(), bez samej etykiety: (jednostka, funkcja wartości,
-# funkcja formatująca, czy_mniej_znaczy_lepiej, czy_zero_jest_realna_wartoscia).
-# Korzysta WYŁĄCZNIE z pól już liczonych przez db.pobierz_dane_do_porownania()
-# — żadnych nowych zapytań do bazy.
+# Piąta, OPCJONALNA oś radaru (PorownanieView._osie_radaru, ._selektor_piatej_osi) obok
+# stałej czwórki (koszt/km, spalanie, kondycja, wiek). Klucz = etykieta w dropdownie i
+# wartość w state.porownanie_piata_os. Wartość: (jednostka, funkcja wartości, funkcja
+# formatująca, czy_mniej_znaczy_lepiej, czy_zero_jest_realna_wartoscia). Tylko pola z
+# db.pobierz_dane_do_porownania() — bez nowych zapytań.
 OSIE_OPCJONALNE_RADARU = {
     # Koszt „teraz”, a nie z całego życia auta — patrz db.pobierz_dane_do_porownania.
     # Waluta SKŁADA SIĘ w lambdzie, nie w stałej modułu: stała liczy się przy
@@ -388,24 +384,11 @@ class PorownanieView(ft.View):
             return None
 
     def _osie_radaru(self):
-        """Definicje osi radaru: (etykieta, jednostka, funkcja wartości,
-        funkcja formatująca, czy_mniej_znaczy_lepiej, czy_zero_jest_realna_wartoscia).
-
-        Wartości są BEZWZGLĘDNE — w tabeli pod wykresem widać realne liczby w
-        swoich jednostkach. Sam wielokąt musi jednak dzielić jedną skalę
-        promienia, więc każdą oś skalujemy do jej WŁASNEGO maksimum wśród
-        porównywanych aut (100% promienia = najwyższa wartość na tej osi).
-        Bez tego oś „Kondycja” (0-100 pkt) zjadłaby oś „Koszt/km” (ok. 1 zł) i
-        wykres byłby nieczytelny.
-
-        Ostatni element (czy_zero_jest_realna_wartoscia) mówi, czy wynik 0 na
-        danej osi to prawdziwa, dobra wartość (np. „0 otwartych usterek” —
-        wynik, który MUSI się pokazać), czy raczej brak danych (spalanie
-        0 l/100km po prostu nie zostało jeszcze policzone). Stała czwórka ma
-        tu False — zero zmian w jej dotychczasowym zachowaniu. Opcjonalna
-        piąta oś (wybierana w _selektor_piatej_osi, patrz
-        OSIE_OPCJONALNE_RADARU) dokłada się na końcu listy, jeśli użytkownik
-        ją włączył."""
+        """Osie radaru: (etykieta, jednostka, funkcja wartości, funkcja formatująca,
+        czy_mniej_znaczy_lepiej, czy_zero_jest_realna_wartoscia). Wartości BEZWZGLĘDNE
+        (tabela pod wykresem), ale wielokąt skaluje każdą oś do JEJ maksimum wśród aut.
+        czy_zero_jest_realna_wartoscia — 0 to dobry wynik (np. „0 usterek”), a nie brak
+        danych; stała czwórka ma False. Opcjonalna piąta oś dokłada się na końcu."""
         stale = [
             (f"Koszt / {self.j}", f"{utils.symbol_waluty()}/{self.j}",
              lambda d: d.get("koszt_km"),
@@ -466,12 +449,8 @@ class PorownanieView(ft.View):
         osie = self._osie_radaru()
         selektor = self._selektor_piatej_osi()
 
-        # Oś bez ani jednej wartości nic nie wnosi — a fl_chart i tak wymaga
-        # min. 3 wierzchołków, więc przy zbyt ubogich danych rezygnujemy.
-        # zero_ok NIE jest jednakowy dla wszystkich osi: stała czwórka nadal
-        # traktuje 0 jak brak danych (jak dotychczas), ale opcjonalna piąta
-        # oś (np. „0 otwartych usterek” — najlepszy możliwy wynik) zgłasza
-        # zero_ok=True, żeby taki wynik się nie zgubił.
+        # Oś bez wartości odpada, a fl_chart wymaga min. 3 wierzchołków. zero_ok: stała
+        # czwórka traktuje 0 jak brak danych, piąta oś może zgłosić zero_ok=True.
         wartosci = {}   # etykieta osi -> {auto_id: wartosc}
         aktywne = []
         for etykieta, jednostka, pobierz, formatuj, mniej_lepiej, zero_ok in osie:

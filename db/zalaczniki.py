@@ -21,16 +21,11 @@ KOLUMNY_ZE_SCIEZKAMI = [("samochody", "zdjecie_glowne")] + [(t, "zalacznik") for
 
 # ---------------------------------------------------------------- ścieżki w bazie
 # Baza trzyma ścieżkę WZGLĘDNĄ wobec STORAGE_PATH, zawsze z '/':
-# 'zalaczniki/<uuid>.jpg', w kolumnie `pliki` kosza 'kosz_zalaczniki/<plik>'.
-# STORAGE_PATH zależy od urządzenia (Android: /data/user/0/<pakiet>/files/data,
-# komputer: ""), więc ścieżka bezwzględna z jednego urządzenia na drugim wskazuje
-# w pustkę. Sklejenie ze STORAGE_PATH dzieje się dopiero przy odczycie.
-#
-# Starsze bazy mają jeszcze ścieżki bezwzględne (Android) i względne z '\'
-# (Windows). Odczyt rozumie wszystkie, więc migracji danych nie ma: każdą wartość
-# z bazy, zanim trafi do os.path / shutil / ft.Image, przepuszcza się przez
-# sciezka_pliku_zalacznika (albo utils.abs_zalacznik), a zapisuje przez
-# wzgledna_sciezka_zalacznika.
+# 'zalaczniki/<uuid>.jpg', w `pliki` kosza 'kosz_zalaczniki/<plik>'; STORAGE_PATH
+# dokłada się dopiero przy odczycie. Starsze bazy mają ścieżki bezwzględne (Android) i
+# względne z odwrotnym ukośnikiem (Windows) — odczyt rozumie wszystkie, bez migracji.
+# Wartość z bazy do os.path / shutil / ft.Image tylko przez sciezka_pliku_zalacznika
+# (albo utils.abs_zalacznik), zapis przez wzgledna_sciezka_zalacznika.
 
 
 def _z_ukosnikami(sciezka) -> str:
@@ -84,15 +79,10 @@ def pelna_sciezka_zalacznika(zapisana) -> str | None:
 
 
 def sciezka_pliku_zalacznika(zapisana) -> str | None:
-    """Ścieżka do pliku wskazanego wartością z bazy — do odczytu, przeniesienia, skasowania.
-
-    Najpierw pelna_sciezka_zalacznika. Gdy tam pliku nie ma, a wpis wskazuje
-    folder aplikacji, szuka tej samej nazwy w tutejszym folderze o tej nazwie,
-    potem w drugim (załączniki / kosz) — tak trafia dawny wpis bezwzględny
-    z innego urządzenia. Nazwy to losowe UUID-y, więc dopasowanie jest
-    jednoznaczne. Plików spoza folderów aplikacji (np. odroczonych) nie szuka.
-    Gdy pliku nie ma nigdzie, oddaje ścieżkę pełną: komunikat o braku mówi
-    wtedy o tym, co faktycznie stoi w bazie."""
+    """Ścieżka pliku z wartości w bazie. Najpierw pelna_sciezka_zalacznika; gdy pliku
+    brak, a wpis wskazuje folder aplikacji — ta sama nazwa (UUID) w tutejszym folderze,
+    potem w drugim (załączniki / kosz). Spoza folderów aplikacji nie szuka; nie
+    znaleziony → ścieżka pełna (komunikat mówi, co stoi w bazie)."""
     pelna = pelna_sciezka_zalacznika(zapisana)
     if not pelna or os.path.exists(pelna):
         return pelna
@@ -107,18 +97,9 @@ def sciezka_pliku_zalacznika(zapisana) -> str | None:
 
 
 def napraw_sciezki_zalacznikow() -> tuple[int, int]:
-    """Przepisuje nieaktualne ścieżki załączników na tutejsze i zwraca (naprawione, brakujace).
-
-    Kopia zapasowa zrobiona na telefonie niesie dawne ścieżki bezwzględne
-    (/data/user/0/<pakiet>/files/data/zalaczniki/...), których na komputerze nie
-    ma. Pliki jadą w ZIP-ie i lądują w folderze załączników, ale wpis wskazuje
-    katalog innego urządzenia. Tak samo w drugą stronę.
-
-    Wpis, który wskazuje istniejący plik, zostaje, jaki jest — także dawny
-    bezwzględny (bez migracji). Wpis bez pliku pod wskazaną ścieżką, którego
-    plik znajduje sciezka_pliku_zalacznika, dostaje postać względną. Wpisów,
-    których pliku nie ma nigdzie, NIE ruszamy — lepiej zostawić ślad, dokąd
-    prowadziły, niż podmienić je na inną nieistniejącą ścieżkę."""
+    """Przepisuje nieaktualne ścieżki załączników (np. z kopii z telefonu) na tutejsze;
+    zwraca (naprawione, brakujace). Wpis trafiający w plik zostaje; znaleziony przez
+    sciezka_pliku_zalacznika dostaje postać względną; nieznaleziony NIE jest ruszany."""
     naprawione = 0
     brakujace = 0
 
@@ -204,11 +185,8 @@ def zapisz_zalacznik(sciezka_zrodlowa):
     if Image is not None:
         try:
             with Image.open(sciezka_zrodlowa) as img:
-                # Korekta orientacji na podstawie tagu EXIF — zdjęcia z telefonu
-                # (zwłaszcza robione z aparatem trzymanym pionowo) mają "surowe"
-                # piksele obrócone, a poprawną orientację niesie wyłącznie tag
-                # EXIF Orientation. PIL go NIE stosuje automatycznie przy zapisie,
-                # więc bez tej korekty zapisany JPEG zostaje trwale "położony".
+                # Korekta orientacji z tagu EXIF Orientation — PIL nie stosuje jej sam,
+                # więc bez niej zdjęcie zostaje „położone”.
                 img = ImageOps.exif_transpose(img)
 
                 # JPEG zna tylko RGB i skalę szarości. Wcześniej zamieniane były
@@ -236,12 +214,9 @@ def zapisz_zalacznik(sciezka_zrodlowa):
 
 
 def polacz_zdjecia_w_pdf(sciezki_zdjec):
-    """Łączy kilka zdjęć w jeden wielostronicowy plik PDF (jedno zdjęcie = jedna
-    strona), zapisany jako plik tymczasowy w FOLDER_ODROCZONE — sprzątany
-    automatycznie po godzinie przez posprzataj_odroczone_zalaczniki, gdyby coś
-    poszło nie tak i plik nie trafił finalnie do bazy. Koryguje orientację EXIF
-    tak samo jak zapisz_zalacznik(). Zwraca ścieżkę do PDF-a albo None, jeśli się
-    nie uda (brak Pillow albo któregoś z plików źródłowych)."""
+    """Łączy zdjęcia w wielostronicowy PDF (zdjęcie = strona) w FOLDER_ODROCZONE
+    (sprzątany po godzinie przez posprzataj_odroczone_zalaczniki), z korektą EXIF jak
+    zapisz_zalacznik(). Zwraca ścieżkę albo None (brak Pillow lub pliku)."""
     if Image is None or not sciezki_zdjec:
         return None
 

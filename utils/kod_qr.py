@@ -1,22 +1,9 @@
-"""Kod QR bez zewnętrznej biblioteki: koder w czystym Pythonie, obraz z Pillow.
-
-Pillow rysuje, ale nie koduje. Korekcja błędów (Reed–Solomon nad GF(256)),
-rozmieszczenie bitów i maski to osobna część normy ISO/IEC 18004 — mieści się
-w tym jednym pliku, a aplikacja nie dostaje nowej zależności do zbudowania na
-Androida (ta sama zasada co `urllib` zamiast `requests`).
-
-Zakres świadomie wąski: tryb bajtowy (UTF-8), wersje 1–10 — do 213 bajtów przy
-poziomie M. Link zaproszenia ma ich 27. Dłuższy tekst rzuca ValueError zamiast
-po cichu się uciąć.
-
-Poziom korekcji z wywołania jest MINIMALNY: gdy dane zmieszczą się w tej samej
-wersji przy wyższym poziomie, kod dostaje wyższy (tak samo robi segno —
-„boost_error”). Zaproszenie ląduje na wersji 3 z poziomem Q: zniesie odblask
-i porysowaną szybkę, a nie urośnie ani o moduł.
-
-Wynik sprawdzony prawdziwymi czytnikami (OpenCV, ZXing) i porównany moduł po
-module z biblioteką segno przy tej samej masce — próbki w tests/test_kod_qr.py.
-"""
+"""Kod QR bez zewnętrznej biblioteki: koder w czystym Pythonie (Reed–Solomon nad
+GF(256), maski — ISO/IEC 18004), obraz z Pillow; bez nowej zależności dla Androida. Tryb
+bajtowy (UTF-8), wersje 1–10 (do 213 bajtów przy M); dłuższy tekst → ValueError. Poziom
+korekcji z wywołania to MINIMUM — podnoszony, gdy mieści się w tej samej wersji
+(zaproszenie: wersja 3, poziom Q). Sprawdzone czytnikami (OpenCV, ZXing) i z segno —
+tests/test_kod_qr.py."""
 
 import io
 

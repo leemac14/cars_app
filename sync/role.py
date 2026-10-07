@@ -1,13 +1,6 @@
-"""Rola uczestnika: kto ma prawo wypchnąć zmianę, a kto tylko czyta.
-
-Trzy krótkie funkcje, ale to one stoją przed wszystkimi zapisami do chmury,
-więc mieszkają nisko w pakiecie i nie zależą od niczego poza `db`.
-
-Blokada w interfejsie jest wygodą, a `_wolno_wypchnac_zmiane` drugą warstwą;
-twardą granicę stawia wyzwalacz po stronie Supabase
-(patrz supabase/role_wspoldzielenia.sql). Warstwy są trzy, bo błąd w tym
-miejscu oznacza nadpisanie cudzych danych.
-"""
+"""Rola uczestnika: kto może wypchnąć zmianę. Interfejs to wygoda,
+`_wolno_wypchnac_zmiane` druga warstwa, wyzwalacz w Supabase
+(supabase/role_wspoldzielenia.sql) trzecia."""
 
 import db
 import uuid as uuid_lib
@@ -28,13 +21,8 @@ def _nowy_kod():
 
 
 def _wolno_wypchnac_zmiane(auto_id, rola, tabela, wiersz):
-    """Czy wolno mi wysłać ZMIANĘ istniejącego rekordu.
-
-    Podgląd nie wysyła nic. Współautor nie rusza cudzych wpisów — ale tylko
-    w tabelach, w których „czyj to wpis” w ogóle ma sens (te z kolumną
-    `dodane_przez`). Podzespoły, tagi, warsztaty czy magazyn to wspólny
-    słownik pojazdu: zablokowanie ich odebrałoby współautorowi możliwość
-    dopisania przebiegu do podzespołu, który sam wcześniej założył."""
+    """Czy wolno wysłać ZMIANĘ istniejącego rekordu. Podgląd — nic; współautor — nie
+    cudze, ale tylko w tabelach z `dodane_przez` (wspólne słowniki pojazdu są wolne)."""
     if rola == db.ROLA_PODGLAD:
         return False
     if rola != db.ROLA_WSPOLAUTOR:

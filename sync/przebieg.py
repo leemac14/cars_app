@@ -1,12 +1,6 @@
-"""Jeden przebieg synchronizacji — kolejność, zamek i wynik.
-
-Moduł jest wysoko w pakiecie, bo woła wszystko poniżej: sesję, role, nagrobki,
-wysyłanie i pobieranie. Kolejność w `_synchronizuj_pod_zamkiem` jest treścią,
-a nie szczegółem: najpierw wypchnięcie własnych zmian, potem pobranie cudzych.
-
-Tu mieszka też `_ZAMEK_SYNC` — jedyne miejsce, w którym pakiet pilnuje, żeby
-dwa przebiegi nie szły równolegle.
-"""
+"""Jeden przebieg synchronizacji — kolejność, zamek, wynik. W
+`_synchronizuj_pod_zamkiem` kolejność jest treścią: najpierw wypchnięcie własnych zmian,
+potem pobranie cudzych. Tu `_ZAMEK_SYNC`."""
 
 import db
 import sqlite3
@@ -31,14 +25,9 @@ _ZAMEK_SYNC = threading.Lock()
 
 
 def synchronizuj_wszystko(auto_id, pelne=False, czekaj=True):
-    """Jedna synchronizacja pojazdu. `pelne=True` ignoruje znacznik delty
-    i ściąga komplet („Pobierz wszystko od nowa”).
-
-    Cały przebieg jest pod zamkiem: auto-synchronizacja po zapisie formularza
-    leci przez page.run_task, więc dwa szybkie zapisy pod rząd uruchamiały dwa
-    przebiegi naraz — obydwa czytały ten sam `zdalny_hash`, obydwa wypychały
-    i jeden nadpisywał drugiemu wynik. Wywołanie z `czekaj=False` (tło) po
-    prostu odpuszcza, gdy inna synchronizacja właśnie trwa; ręczne czeka."""
+    """Jedna synchronizacja pojazdu; `pelne=True` ignoruje znacznik delty. Cała pod
+    zamkiem (dwa szybkie zapisy ścigały się o `zdalny_hash`); `czekaj=False` (tło)
+    odpuszcza, gdy inna trwa, ręczna czeka."""
     wspolny_id, _ = czy_udostepniony(auto_id)
     if not wspolny_id:
         return 0, 0
@@ -117,11 +106,8 @@ def _synchronizuj_pod_zamkiem(auto_id, wspolny_id, pelne=False):
 
     db.przelicz_wszystkie_zadania(auto_id)
     db.zapisz_ustawienie("ostatnia_synchronizacja", datetime.now().strftime("%d.%m.%Y %H:%M"))
-    # Udana synchronizacja zamyka sprawę także dla kolejki. Wcześniej wpis
-    # kasował się wyłącznie w synchronizuj_w_tle i przetworz_kolejke_sync, więc
-    # po ręcznym „Synchronizuj teraz” pomarańczowa kropka „czeka na wysłanie”
-    # potrafiła wisieć aż do końca backoffu — nawet godzinę po tym, jak
-    # wszystko już poszło.
+    # Udana synchronizacja zdejmuje też wpis z kolejki (inaczej kropka „czeka na
+    # wysłanie” wisiała do końca backoffu).
     db.usun_z_kolejki_sync(auto_id)
 
     return wyslano, pobrano

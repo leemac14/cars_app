@@ -7,15 +7,10 @@ from views.rok_view import SekcjePigulki
 
 
 class MiesiacWPigulceView(SekcjePigulki, ft.View):
-    """„Rok w pigułce” dla jednego miesiąca — ekran i grafika do wysłania.
-    Liczby karty, kafle, rozbicie kosztów i zapis grafiki są wspólne z rokiem
-    (`SekcjePigulki`); własne są tu tylko strzałki miesięcy, słupki dni
-    i werdykt z porównaniami.
-
-    Dwie trasy, ten sam ekran: `/miesiac/2026/9` z szuflady i wyszukiwarki
-    (powrót na start) oraz `/rok/2026/9` — dotknięcie słupka w Roku w pigułce.
-    Wtedy ekran leży NA roku, więc i strzałka w pasku, i systemowe „wstecz”
-    wracają do roku, a strzałki miesięcy zostają w tej samej trasie."""
+    """„Rok w pigułce” dla miesiąca — ekran i grafika; wspólne z rokiem przez
+    `SekcjePigulki`, własne: strzałki miesięcy, słupki dni, werdykt z porównaniami.
+    Trasy: `/miesiac/2026/9` (szuflada, wyszukiwarka; powrót na start) i `/rok/2026/9`
+    (słupek w Roku — ekran leży NA roku, „wstecz” wraca do roku)."""
 
     def __init__(self, page: ft.Page, state, rok=None, miesiac=None, z_roku=False):
         self._page = page
@@ -152,12 +147,9 @@ class MiesiacWPigulceView(SekcjePigulki, ft.View):
         )
 
     def _wykres_dni(self):
-        """Miesiąc w rytmie dni — słupek na dzień, najdroższy podświetlony.
-
-        Podpis „30” jest szerszy niż jeden słupek, więc pasek podpisów liczy
-        w połówkach dnia: podpis zajmuje dwa dni wyśrodkowane na swoim słupku
-        i stoi dokładnie pod nim, bez nachodzenia na sąsiada. Dni z podpisem
-        te same, co na grafice (`db.podpisy_dni_miesiaca`)."""
+        """Słupek na dzień, najdroższy podświetlony. Podpisy liczone w połówkach dnia
+        (podpis zajmuje dwa dni wyśrodkowane na słupku); dni z podpisem jak na grafice
+        (`db.podpisy_dni_miesiaca`)."""
         d = self.dane
         dni = d["dni"]
         maks = max(dni.values()) if dni else 0

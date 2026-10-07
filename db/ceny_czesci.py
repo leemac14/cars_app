@@ -1,22 +1,10 @@
-"""Historia cen części (M-15): ile część kosztowała przy kolejnych zakupach.
+"""Historia cen części (M-15). Dziennik `ceny_czesci` trzyma zakupy, których pozycja
+magazynu już nie pamięta; zakupy jednej części łączy `klucz_nazwy`, osobno dla pojazdu.
 
-Pozycja magazynu pamięta JEDEN zakup — bieżącą cenę za jednostkę, datę i sklep.
-Dziennik `ceny_czesci` trzyma też te zakupy, których pozycja już nie pamięta:
-sprzed zmiany ceny, sprzed zużycia i usunięcia pozycji. Zakupy jednej części
-łączy nazwa po `klucz_nazwy` („Filtr oleju” i „filtr oleju ” to ta sama krzywa),
-osobno dla każdego pojazdu — jak magazyn.
-
-Tożsamość zakupu to (klucz nazwy, dzień zakupu). Zapis pozycji z tą samą datą
-zakupu to POPRAWKA tego zakupu; z inną datą — NOWY zakup, a poprzedni zostaje
-w historii. Bieżące ceny pozycji nie są przepisywane do dziennika migracją:
-`historia_cen_pojazdu` dokłada je w locie jako punkty „obecne”, a do dziennika
-trafiają dopiero wtedy, gdy pozycja traci tę cenę (nowy zakup, usunięcie,
-scalenie duplikatów). Dzięki temu dwa telefony współdzielące auto nie wpisują
-po aktualizacji tych samych zakupów dwa razy.
-
-Moduł leży PRZED `magazyn`, bo usuwanie pozycji zachowuje tu jej ostatni zakup;
-sam nie potrzebuje niczego z magazynu.
-"""
+Tożsamość zakupu = (klucz nazwy, dzień): ta sama data to POPRAWKA, inna — NOWY zakup.
+Bieżące ceny pozycji nie trafiają do dziennika migracją: `historia_cen_pojazdu` dokłada
+je w locie, a dziennik dostaje je dopiero, gdy pozycja traci cenę — dwa telefony nie
+dublują zakupów. Moduł leży PRZED `magazyn`."""
 
 import sqlite3
 from datetime import date, datetime
@@ -132,18 +120,12 @@ def _przenies_historie(conn, auto_id, klucz_stary, nowa_nazwa, czesc_id):
 
 
 def zanotuj_zakup_czesci(conn, auto_id, przed, po) -> None:
-    """Zapis pozycji magazynu w formularzu → dziennik zakupów. Woła się w TEJ
-    SAMEJ transakcji co zapis pozycji, już po INSERT albo UPDATE.
-
-    `przed` — pozycja sprzed zapisu (None przy nowej), `po` — po zapisie;
-    słowniki z kluczami id, nazwa, data_zakupu, cena_jednostkowa, jednostka,
-    ilosc, sklep.
-
-    - nowa pozycja z ceną → zakup; kupiona ilość = stan, z jakim ją założono;
-    - ta sama data zakupu → poprawka tego samego zakupu (bez nowego punktu);
-    - inna data → nowy zakup, a poprzedni zostaje w historii; kupiono tyle,
-      o ile urósł stan w tym zapisie;
-    - zmiana nazwy zabiera historię pozycji pod nową nazwę."""
+    """Zapis pozycji magazynu → dziennik zakupów; w TEJ SAMEJ transakcji, po
+    INSERT/UPDATE. `przed` (None przy nowej) i `po` — słowniki pozycji.
+    - nowa z ceną → zakup (ilość = stan początkowy);
+    - ta sama data → poprawka zakupu;
+    - inna data → nowy zakup (ilość = przyrost stanu), poprzedni zostaje;
+    - zmiana nazwy przenosi historię."""
     if not auto_id or not po:
         return
     klucz_po = klucz_nazwy(po.get("nazwa"))
@@ -182,15 +164,11 @@ def _kolejnosc_zakupu(punkt):
 
 
 def historia_cen_pojazdu(auto_id) -> dict[str, list[dict[str, Any]]]:
-    """{klucz_nazwy: [zakup, …]} — każda lista od najstarszego zakupu.
-
-    Zakup: {"id", "ids", "nazwa", "data", "data_iso", "cena", "jednostka",
-    "ilosc", "sklep", "obecna", "magazyn_id"}. `obecna` znaczy bieżącą cenę
-    pozycji magazynu `magazyn_id`; przy tym samym dniu pozycja wygrywa z wierszem
-    dziennika, bo to jej cenę dolicza się do serwisu. Cena pozycji, której
-    dziennik nie zna (sprzed wersji 48 albo zmieniona starszą wersją aplikacji),
-    dochodzi jako punkt bez `id`. `ids` — wszystkie wiersze dziennika tego punktu
-    (ten sam zakup zapisany przez dwa telefony przed synchronizacją)."""
+    """{klucz_nazwy: [zakup, …]} od najstarszego. Zakup: id, ids, nazwa, data, data_iso,
+    cena, jednostka, ilosc, sklep, obecna, magazyn_id. `obecna` — bieżąca cena pozycji
+    (przy tym samym dniu wygrywa z dziennikiem); cena nieznana dziennikowi dochodzi jako
+    punkt bez `id`; `ids` — wszystkie wiersze dziennika punktu (dubel z dwóch
+    telefonów)."""
     if not auto_id:
         return {}
     with polacz_baze() as conn:
@@ -349,13 +327,9 @@ def odstep_zakupow(od, do, dzis=None) -> str:
 
 
 def kup_ponownie(czesc_id, ilosc, cena_jednostkowa, sklep=None, data=None) -> dict[str, Any] | None:
-    """Kolejny zakup części, która już jest w magazynie: stan rośnie o `ilosc`,
-    a cena pozycji (za jednostkę i koszt zakupu), data i sklep stają się tymi
-    z TEGO zakupu — ostatnia cena, nie średnia ważona z tym, co zostało na
-    półce. Poprzedni zakup zostaje w historii cen.
-
-    Zwraca {"auto_id", "stan", "dodano"} albo None, gdy nie ma czego zapisać
-    (zła ilość lub cena, nie ma pozycji, rola nie pozwala)."""
+    """Kolejny zakup części z magazynu: stan rośnie o `ilosc`, a cena, data i sklep
+    pozycji stają się tymi z TEGO zakupu (ostatnia cena, nie średnia); poprzedni zostaje
+    w historii. Zwraca {auto_id, stan, dodano} albo None."""
     ilosc = _na_liczbe(ilosc)
     cena = _na_liczbe(cena_jednostkowa)
     if not czesc_id or ilosc is None or ilosc <= 0 or cena is None or cena <= 0:

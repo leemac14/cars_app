@@ -1,38 +1,12 @@
 """Rotujący log błędów — jedyne miejsce, w którym aplikacja zapisuje, co jej nie wyszło.
+W korzeniu, nie w `utils/`, bo piszą tu wszystkie warstwy (także `db`, które nie zna
+Fleta); zależności tylko ze standardowej biblioteki.
 
-`except Exception: pass` występuje w tym projekcie kilkadziesiąt razy i zwykle
-słusznie: kontrolki nie ma jeszcze w drzewie strony, panel nie zdążył się
-odświeżyć, starsza wersja Fleta nie zna zdarzenia. Cena jest jednak stała —
-zgłoszone przez drugą osobę „u mnie nie działa" jest nie do zdiagnozowania, bo
-po błędzie nie zostaje żaden ślad. Ten moduł zamienia zgłoszenie w informację.
-
-DLACZEGO W KORZENIU, A NIE W `utils/`
--------------------------------------
-Pisze tu KAŻDA warstwa: `db` (które celowo nie zna Fleta), `sync`, `utils`
-i widoki. Moduł w `utils/` zmusiłby warstwę danych do zaimportowania warstwy
-interfejsu — czyli do zbudowania dokładnie tego cyklu, którego zabrania
-`claude/struktura-projektu-pakiety.md`. Stąd `log.py` obok `date.py` i
-`state.py`, z zależnościami wyłącznie z biblioteki standardowej.
-
-CO TRAFIA DO PLIKU
-------------------
-* wyjątki nieobsłużone (`sys.excepthook`), także z wątków i z `__del__`;
-* wszystko, co biblioteki zgłaszają przez `logging` od poziomu WARNING w górę —
-  w tym „Task exception was never retrieved" z asyncio, czyli błąd korutyny
-  puszczonej przez `page.run_task`, który dziś nie zostawia po sobie nic;
-* wyjątki połknięte świadomie — tam, gdzie zamiast `pass` woła się
-  `log.polkniety("opis")`;
-* okruszki: start aplikacji i każda zmiana ekranu. Bez nich wiadomo CO padło,
-  ale nie wiadomo, co użytkownik wtedy robił.
-
-Czego w pliku NIE MA: VIN-ów, numerów polis, telefonów ani kwot. Log trzyma
-komunikaty błędów i nazwy ekranów, bo ma się nadawać do wysłania obcej osobie.
-
-DIAGNOSTYKA NIE MA PRAWA WYWALIĆ APLIKACJI
-------------------------------------------
-Każdy krok jest zabezpieczony osobno. Brak prawa zapisu na katalog danych
-znaczy „aplikacja działa bez logu", a nie „aplikacja się nie uruchamia".
-"""
+Do pliku trafiają: wyjątki nieobsłużone (`sys.excepthook`, także wątki i `__del__`),
+`logging` od WARNING (m.in. „Task exception was never retrieved” z asyncio), wyjątki
+połknięte świadomie (`log.polkniety("opis")`) i okruszki (start, zmiana ekranu). NIE
+trafiają VIN-y, polisy, telefony ani kwoty. Diagnostyka nie ma prawa wywalić aplikacji:
+brak zapisu = działanie bez logu."""
 
 import logging
 import logging.handlers
@@ -225,12 +199,10 @@ def polkniety(kontekst):
 
 
 # ============================================================================
-#  POMIAR CZASU
+# POMIAR CZASU
 # ============================================================================
-# Start aplikacji to jedyne miejsce, w którym czas widać gołym okiem, i jedyne,
-# którego nie da się zmierzyć u siebie: na komputerze deweloperskim wszystko
-# jest szybkie. Pomiar zapisany do logu jedzie razem z „Wyślij log", więc mówi,
-# ile to trwało NA TYM telefonie i przy TYCH danych — zamiast zgadywania.
+# Pomiar startu w logu jedzie z „Wyślij log” — mówi, ile to trwało NA TYM telefonie i
+# przy TYCH danych.
 
 _pomiary = {}
 
@@ -368,12 +340,8 @@ def wyczysc():
 # ============================================================================
 
 def formatuj_rozmiar(bajty):
-    """Rozmiar w bajtach po ludzku. ŚWIADOMA kopia `db.formatuj_rozmiar`.
-
-    Ten moduł nie importuje niczego z projektu — to warunek tego, żeby mógł
-    z niego korzystać `db`, które o `utils` nie ma prawa wiedzieć. Cena jest
-    jedna: dwie kopie sześciu linijek. Trzyma je razem test, który porównuje
-    wynik obu na tym samym zestawie wartości."""
+    """Rozmiar w bajtach po ludzku. ŚWIADOMA kopia `db.formatuj_rozmiar` (ten moduł nie
+    importuje nic z projektu); zgodność pilnuje test."""
     if bajty < 1024:
         return f"{bajty} B"
     if bajty < 1024 * 1024:
@@ -400,11 +368,8 @@ def nazwa_pliku_raportu(teraz=None):
 
 
 def zbierz_raport(dodatkowe=None):
-    """Nagłówek diagnostyczny plus cała treść logu — to, co wychodzi z „Wyślij log".
-
-    `dodatkowe` to słownik etykieta → wartość, dokładany przez wołającego:
-    ten moduł nie zna ani Fleta, ani bazy, a wersja Fleta i wersja schematu są
-    pierwszą rzeczą, o którą trzeba by dopytywać przy każdym zgłoszeniu."""
+    """Nagłówek diagnostyczny plus treść logu („Wyślij log”). `dodatkowe` — {etykieta:
+    wartość} od wołającego (np. wersja Fleta i schematu)."""
     dane = podsumowanie()
 
     wiersze = {

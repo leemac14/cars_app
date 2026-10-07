@@ -34,12 +34,8 @@ def _zapytanie_tabeli(tabela, pola="*", warunek_dodatkowy=None):
 
 
 def _hash_zawartosci(dane: dict) -> str:
-    """Odcisk treści rekordu. Klucze zaczynające się od podkreślnika są POMIJANE:
-    to pola dokładane przez serwer (dziś `_autor_uid` — identyfikator autora
-    stemplowany przez wyzwalacz ról), których aplikacja nie zna i nie wysyła.
-    Bez tego wyłączenia każdy rekord po stronie serwera miałby inny hash niż
-    ten sam rekord policzony lokalnie i KAŻDA zmiana zgłaszałaby się jako
-    konflikt edycji z dwóch urządzeń."""
+    """Odcisk treści rekordu. Klucze z podkreślnikiem POMIJANE — to pola serwera
+    (`_autor_uid` z wyzwalacza ról); inaczej każdy rekord wyglądałby na konflikt."""
     istotne = {k: v for k, v in (dane or {}).items() if not str(k).startswith("_")}
     kanoniczny = json.dumps(istotne, sort_keys=True, default=str, ensure_ascii=True)
     return hashlib.sha256(kanoniczny.encode("utf-8")).hexdigest()

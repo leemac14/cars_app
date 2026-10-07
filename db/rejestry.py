@@ -77,18 +77,12 @@ def _wpisy_z_warsztatem(c, auto_id):
 
 
 def pobierz_karty_warsztatow(auto_id) -> list[dict[str, Any]]:
-    """Karty ekranu „Warsztaty”: rejestr warsztatów pojazdu plus nazwy, które
-    stoją na wizytach i wpisach serwisowych, a karty nie mają (wpisane, zanim
-    powstał rejestr, albo z usuniętą kartą) — te z `id` None.
-
-    Warsztat jest w bazie NAZWĄ, nie kluczem obcym: wizyty i historia trzymają
-    tekst. Dopasowanie idzie więc po `klucz_nazwy`, jak przy scalaniu duplikatów.
-
-    Klucze: id, nazwa, klucz, telefon, adres, notatki, wizyt (wizyty zbiorcze
-    i wpisy serwisowe poza wizytą — pozycja wizyty to ta sama wizyta),
-    wizyt_zbiorczych, nazwa_na_wizytach (pisownia z listy wizyt — wartość jej
-    filtra „Warsztat”), ostatnia (data ostatniej wizyty, zapis jak w bazie).
-    Od ostatnio odwiedzonego; bez wizyt na końcu, alfabetycznie."""
+    """Karty ekranu „Warsztaty”: rejestr pojazdu plus nazwy z wizyt i wpisów, które
+    karty nie mają (`id` None). Warsztat to w bazie NAZWA (tekst), dopasowanie po
+    `klucz_nazwy`. Klucze: id, nazwa, klucz, telefon, adres, notatki, wizyt (wizyty +
+    wpisy poza wizytą), wizyt_zbiorczych, nazwa_na_wizytach (wartość filtra „Warsztat”),
+    ostatnia (data jak w bazie). Od ostatnio odwiedzonego; bez wizyt na końcu,
+    alfabetycznie."""
     if not auto_id:
         return []
     with polacz_baze() as conn:
@@ -145,16 +139,10 @@ def pobierz_karty_warsztatow(auto_id) -> list[dict[str, Any]]:
 
 
 def zapisz_warsztat(auto_id, warsztat_id, nazwa, telefon=None, adres=None, notatki=None) -> str | None:
-    """Nowa karta (`warsztat_id` None) albo poprawka istniejącej. Zwraca None po
-    zapisie, a przy odmowie — zdanie dla użytkownika (formularz pokazuje je pod
-    nazwą).
-
-    Zmiana nazwy przepisuje ją też na wizytach i wpisach serwisowych, tak jak
-    scalanie duplikatów: warsztat żyje tam jako tekst, więc bez tego karta
-    zgubiłaby własną historię. Przepisujemy po kluczu nazwy, czyli dokładnie
-    to, co karta liczy jako swoje wizyty. Współautor zmienia tylko swoje wpisy —
-    gdy nazwę noszą też cudze, zmiana nazwy przepisałaby je u niego, a chmura
-    by ich nie przyjęła; odmawiamy wtedy w całości."""
+    """Nowa karta (`warsztat_id` None) albo poprawka; zwraca None po zapisie albo zdanie
+    odmowy (pod nazwą w formularzu). Zmiana nazwy przepisuje ją po kluczu na wizytach i
+    wpisach (warsztat żyje tam jako tekst). Współautor: gdy nazwę noszą też cudze wpisy,
+    odmowa w całości (chmura by ich nie przyjęła)."""
     nazwa = normalizuj_nazwe(nazwa)
     klucz = klucz_nazwy(nazwa)
     if not klucz:
@@ -271,24 +259,12 @@ def usun_wydatek_cykliczny(wydatek_id):
 
 
 def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
-    """Dla klasycznego wydatku (czy_koszt=1) tworzy wpis w inne_koszty na podstawie
-    wydatku cyklicznego, tak jak dotychczas. Dla samego przypomnienia bez kosztu
-    (czy_koszt=0, np. "co miesiąc sprawdź ciśnienie w oponach") NIE dopisuje nic
-    do inne_koszty — tylko odnotowuje wykonanie. W obu przypadkach przesuwa
-    następny termin o okres_dni od DZISIAJ (nie od starej daty — dzięki temu
-    spóźniona pozycja nie generuje serii zaległych powiadomień pod rząd).
-
-    Wpis typu 'opony' dodatkowo PRZESTAWIA ZAMONTOWANY KOMPLET w magazynie opon.
-    To cały sens tego typu: potwierdzenie „zrobione” ma zostawić bazę w stanie
-    zgodnym z rzeczywistością, a nie kazać poprawiać drugiego ekranu ręcznie.
-    Brak drugiego kompletu nie blokuje odhaczenia — termin i tak się przesuwa,
-    a wołający dostaje w wyniku powód, żeby móc o tym powiedzieć.
-
-    Rata leasingu albo kredytu nie przesuwa terminu o okres: płaci KOLEJNĄ
-    pozycję swojego harmonogramu i po wykupie się kończy (db.zaplac_rate).
-
-    Zwraca słownik opisujący, co się stało (typ wpisu, czy powstał koszt, wynik
-    zmiany opon) — interfejs buduje z tego komunikat."""
+    """„Zapłacone/Wykonano” wpisu cyklicznego. czy_koszt=1 — wpis w inne_koszty;
+    czy_koszt=0 — tylko odnotowanie. Termin przesuwa się o okres_dni od DZISIAJ
+    (spóźniona pozycja nie robi serii zaległych). Typ 'opony' PRZESTAWIA zamontowany
+    komplet (brak drugiego nie blokuje — powód w wyniku). Rata leasingu lub kredytu
+    płaci KOLEJNĄ pozycję harmonogramu (db.zaplac_rate). Zwraca słownik z opisem skutków
+    do komunikatu."""
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute("SELECT nazwa, kwota, okres_dni, czy_koszt, typ FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
@@ -328,12 +304,8 @@ def pobierz_przypomnienia_o_oponach(auto_id) -> list[tuple[int, str, float, int,
 
 
 def przesun_przypomnienie_o_oponach(auto_id, utworz_gdy_brak=False):
-    """Przesuwa termin przypomnienia o zmianie opon o pół roku OD DZIŚ.
-
-    Woła się to zawsze wtedy, kiedy opony faktycznie zostały zmienione — także
-    ręcznie, z ekranu Magazynu. Bez tego przypomnienie dalej dobijało się o
-    czynność, która została już wykonana, a użytkownik musiał je odklikiwać
-    drugi raz w panelu wydatków cyklicznych."""
+    """Przesuwa przypomnienie o zmianie opon o pół roku OD DZIŚ — przy każdej faktycznej
+    zmianie, także ręcznej z Magazynu."""
     wpisy = pobierz_przypomnienia_o_oponach(auto_id)
     if not wpisy:
         if utworz_gdy_brak:
@@ -348,24 +320,16 @@ def przesun_przypomnienie_o_oponach(auto_id, utworz_gdy_brak=False):
 
 
 def wykonaj_sezonowa_zmiane_opon(auto_id, docelowy_sezon=None):
-    """Zmiana opon uruchomiona WPROST z magazynu, a nie z listy przypomnień.
-
-    Robi obie rzeczy naraz: przestawia zamontowany komplet i przesuwa termin
-    następnej zmiany. Wcześniej te dwie połowy tej samej czynności leżały
-    w dwóch różnych miejscach aplikacji i trzeba było pamiętać o obu.
-
-    Zwraca to samo, co przelacz_zestaw_sezonowy, plus `termin_przesuniety`."""
+    """Zmiana opon WPROST z magazynu: przestawia komplet i przesuwa termin następnej
+    zmiany. Zwraca to co przelacz_zestaw_sezonowy plus `termin_przesuniety`."""
     wynik = przelacz_zestaw_sezonowy(auto_id, docelowy_sezon)
     wynik["termin_przesuniety"] = przesun_przypomnienie_o_oponach(auto_id) if wynik.get("ok") else False
     return wynik
 
 
 # ==================== SZABLONY TRAS ====================
-# Kalkulator podróży liczył za każdym razem od zera, choć trasy powtarzają się
-# co do kilometra: „do teściów”, „do pracy i z powrotem”, „nad morze”. Szablon
-# zapamiętuje to, co jest CECHĄ TRASY (dystans, powrót, ekipa, opłaty), a NIE
-# zapamiętuje spalania ani ceny paliwa — te mają się brać z aktualnych danych
-# pojazdu, inaczej zapisana trasa z zeszłego roku liczyłaby po starych cenach.
+# Szablon pamięta CECHY TRASY (dystans, powrót, ekipa, opłaty), NIE spalanie ani cenę
+# paliwa — te zawsze z aktualnych danych.
 
 
 def pobierz_trasy_szablony(auto_id) -> list[dict[str, Any]]:
@@ -424,14 +388,10 @@ def zapisz_trase_szablon(auto_id, nazwa, dystans, powrot=False, osoby=1, oplaty=
 
 def zapisz_szablon_przejazdu(auto_id, nazwa, skad="", dokad="", cel="", sluzbowy=None, dystans=0.0,
                              powrot=False, trasa_id=None):
-    """Wzór przejazdu z formularza ewidencji — ta sama tabela, co trasy
-    kalkulatora, więc trasa zapisana tu jest też chipem w kalkulatorze,
-    a trasa z kalkulatora uzupełnia formularz przejazdu.
-
-    Bez `trasa_id` kluczem jest nazwa (jak w `zapisz_trase_szablon`). Nadpisanie
-    istniejącej trasy zmienia tylko to, co formularz przejazdu zna — dystans,
-    powrót, skąd, dokąd, cel i rodzaj; liczba osób i opłaty z kalkulatora
-    zostają. Zwraca id trasy albo None (brak nazwy)."""
+    """Wzór przejazdu z formularza ewidencji — ta sama tabela co trasy kalkulatora
+    (wspólne chipy). Bez `trasa_id` kluczem jest nazwa; nadpisanie zmienia tylko pola
+    przejazdu (dystans, powrót, skąd, dokąd, cel, rodzaj), osoby i opłaty zostają.
+    Zwraca id albo None (brak nazwy)."""
     nazwa = normalizuj_nazwe(nazwa)
     if not auto_id or not nazwa:
         return None
@@ -524,13 +484,9 @@ def _czy_o_oponach(nazwa):
 
 
 def domyslne_zadania(typ_paliwa) -> list[tuple[str, int | None, int]]:
-    """Lista startowa podzespołów dla napędu: (nazwa, interwał w miesiącach albo
-    None, dotyczy_opon). Składana z DOMYSLNE_ZADANIA i modułu z
-    PODZESPOLY_NAPEDU, więc pozycja wspólna dla wszystkich aut istnieje w kodzie
-    DOKŁADNIE RAZ — zamiast sześciu list, które trzeba poprawiać równolegle.
-
-    Nieznany albo pusty typ paliwa → sama baza, czyli dokładnie to, co robił
-    formularz, zanim napęd cokolwiek zmieniał."""
+    """Lista startowa podzespołów dla napędu: (nazwa, interwał w miesiącach albo None,
+    dotyczy_opon), z DOMYSLNE_ZADANIA i PODZESPOLY_NAPEDU (pozycja wspólna istnieje
+    RAZ). Nieznany typ paliwa → sama baza."""
     modul = PODZESPOLY_NAPEDU.get(str(typ_paliwa or "").strip(), {})
     bez = {klucz_nazwy(x) for x in modul.get("usun", ())}
     wynik, widziane = [], set()
@@ -548,12 +504,8 @@ def domyslne_zadania(typ_paliwa) -> list[tuple[str, int | None, int]]:
 
 
 def brakujace_podzespoly(auto_id, typ_paliwa) -> list[tuple[str, int | None, int]]:
-    """Pozycje z listy startowej napędu, których pojazd jeszcze NIE ma.
-
-    Instalacja gazowa powstaje zwykle po zakupie, a lista startowa wykonuje się
-    tylko raz, przy zakładaniu pojazdu — bez tego auto przerobione na LPG
-    zostaje z listą benzynową na zawsze. Porównanie po kluczu nazwy, więc własna
-    pisownia użytkownika („filtr paliwa ”) nie rodzi duplikatu."""
+    """Pozycje listy startowej napędu, których pojazd jeszcze NIE ma (np. LPG założony
+    po zakupie); porównanie po kluczu nazwy."""
     if not auto_id:
         return []
     with polacz_baze() as conn:
@@ -564,12 +516,9 @@ def brakujace_podzespoly(auto_id, typ_paliwa) -> list[tuple[str, int | None, int
 
 
 def dodaj_domyslne_zadania(auto_id, pozycje) -> int:
-    """Zakłada podzespoły z listy (nazwa, interwał miesięcy, dotyczy_opon)
-    i zwraca liczbę dopisanych. Nazwy, które pojazd już ma, pomija — to samo
-    wołanie dwa razy nie zrobi duplikatu.
-
-    Jedno miejsce na ten INSERT: woła je i formularz nowego pojazdu, i dialog po
-    zmianie napędu w aucie już prowadzonym."""
+    """Zakłada podzespoły z listy (nazwa, interwał miesięcy, dotyczy_opon), pomija
+    istniejące; zwraca liczbę dopisanych. Jedno miejsce INSERT dla nowego pojazdu i
+    zmiany napędu."""
     if not auto_id or not pozycje:
         return 0
     dopisane = 0
@@ -591,19 +540,9 @@ def dodaj_domyslne_zadania(auto_id, pozycje) -> int:
 
 
 def pakiety_dla_pojazdu(auto_id) -> list[tuple[str, list[str]]]:
-    """Wbudowane PAKIETY_SERWISOWE, które da się w TYM pojeździe wykonać w
-    całości — elektryk przestaje dostawać „Przegląd olejowy” i „Duży przegląd
-    (rozrząd)”.
-
-    Warunek jest twardy (wszystkie pozycje, nie choć jedna), bo nazwa gotowego
-    zestawu jest obietnicą składu: „Przegląd olejowy” zawężony do filtra
-    kabinowego kłamie bardziej niż brak zestawu, a niepełny skład użytkownik
-    i tak ułoży lepiej własnym pakietem.
-
-    ŚWIADOMIE po zawartości pojazdu, a nie po typie paliwa: to ta sama decyzja
-    (listę startową składa napęd), ale prawdziwa również wtedy, gdy użytkownik
-    sam coś dołożył albo skasował. Zestaw obiecujący rozrząd autu bez rozrządu
-    kłamie niezależnie od tego, czym to auto jeździ."""
+    """Wbudowane PAKIETY_SERWISOWE wykonalne w TYM pojeździe w całości (wszystkie
+    pozycje — nazwa zestawu obiecuje skład). ŚWIADOMIE po zawartości pojazdu, nie po
+    typie paliwa."""
     if not auto_id:
         return [(nazwa, list(pozycje)) for nazwa, pozycje in PAKIETY_SERWISOWE.items()]
     with polacz_baze() as conn:

@@ -5,14 +5,9 @@ import utils
 
 
 class OdliczaniaView(ft.View):
-    """„Ile zostało do…” — jedna lista odliczań: terminy dokumentów, gwarancja,
-    podzespoły z interwałem i najbliższy okrągły przebieg, od najbliższego.
-
-    Mniejszy brat osi przyszłości (N-02 w katalogu pomysłów): ten sam kierunek
-    patrzenia — do przodu — ale bez wydatków cyklicznych, prognozy kosztów
-    i filtrów okresu. Odpowiada na pytanie zadawane najczęściej po otwarciu
-    aplikacji, więc ma też kafelek na kokpicie. Liczby liczy
-    db.odliczania_pojazdu, słowa — utils/format.py."""
+    """„Ile zostało do…” — jedna lista odliczań od najbliższego: dokumenty, gwarancja,
+    podzespoły z interwałem, okrągły przebieg; ma kafelek na kokpicie. Liczby:
+    db.odliczania_pojazdu, słowa: utils/format.py."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page
@@ -164,27 +159,17 @@ class OdliczaniaView(ft.View):
 
     def _nota_o_liczeniu(self):
         krok = f"{utils.formatuj_liczba(db.KROK_OKRAGLEGO_PRZEBIEGU, 0)} {self.j}"
-        return ft.Container(
-            padding=utils.SPACING["md"],
-            **utils.powierzchnia(self._page, "blok"),
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
-                    utils.podpis("Jak liczony jest pasek"),
-                ], spacing=6),
-                ft.Text(
-                    "Pasek pokazuje, jaka część okresu już minęła. OC, AC, assistance, przegląd, "
-                    "gaśnica i apteczka liczą rok przed terminem; gwarancja producenta — od "
-                    "pierwszej rejestracji, a bez niej od zakupu; jej limit przebiegu — od zera na "
-                    "liczniku; gwarancja naprawy — od dnia (albo licznika) wymiany. Podzespół "
-                    "i gwarancja naprawy pokazują licznik, który skończy się pierwszy — ten sam, co "
-                    "karta w zakładce Serwis i dzwonek. Okrągły przebieg to najbliższe pełne "
-                    f"{krok}. Leasing i kredyt odliczają do ostatniej raty (wykup płaci się w jej "
-                    "terminie), a ich pasek to część zapłaconych płatności. Daty przy kilometrach "
-                    "to prognoza ze średniego przebiegu dziennego. "
-                    "Kolor mówi to samo, co powiadomienia: pomarańczowy — termin w progu "
-                    "przypomnienia, czerwony — po terminie.",
-                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                ),
-            ], spacing=4),
+        return utils.nota_o_liczeniu(
+            self._page, "Jak liczony jest pasek",
+            "Pasek pokazuje, jaka część okresu już minęła. OC, AC, assistance, przegląd, "
+            "gaśnica i apteczka liczą rok przed terminem; gwarancja producenta — od "
+            "pierwszej rejestracji, a bez niej od zakupu; jej limit przebiegu — od zera na "
+            "liczniku; gwarancja naprawy — od dnia (albo licznika) wymiany. Podzespół "
+            "i gwarancja naprawy pokazują licznik, który skończy się pierwszy — ten sam, co "
+            "karta w zakładce Serwis i dzwonek. Okrągły przebieg to najbliższe pełne "
+            f"{krok}. Leasing i kredyt odliczają do ostatniej raty (wykup płaci się w jej "
+            "terminie), a ich pasek to część zapłaconych płatności. Daty przy kilometrach "
+            "to prognoza ze średniego przebiegu dziennego. "
+            "Kolor mówi to samo, co powiadomienia: pomarańczowy — termin w progu "
+            "przypomnienia, czerwony — po terminie.",
         )

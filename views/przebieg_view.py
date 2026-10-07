@@ -5,12 +5,9 @@ import utils
 
 
 class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
-    """Historia stanu licznika — WSZYSTKIE znane przebiegi, nie tylko wpisane
-    ręcznie. Tankowanie, wizyta i wpis serwisowy też niosą stan licznika, więc
-    pokazywanie samych własnych odczytów dawało obraz uboższy niż dane, które
-    aplikacja już ma. Każdy wpis mówi, skąd pochodzi; edytować da się stąd
-    wyłącznie własne odczyty, bo reszta to odbicie prawdziwego wpisu kosztowego
-    i poprawianie go „tutaj” rozjeżdżałoby dane."""
+    """Historia stanu licznika — WSZYSTKIE znane przebiegi (tankowania, wizyty, wpisy,
+    odczyty) ze źródłem; edytować stąd można tylko własne odczyty (reszta to odbicie
+    wpisów)."""
 
     # Tabela z notatką dla danego źródła — notatkę da się dopisać do każdego
     # wpisu, niezależnie od tego, czy jego przebieg edytuje się stąd.

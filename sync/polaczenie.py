@@ -1,12 +1,6 @@
-"""Klient Supabase i sesja anonimowa — jedno wejście dla całego pakietu.
-
-`_pobierz_klient` importuje `supabase` DOPIERO przy pierwszym wywołaniu.
-To nie jest ozdoba: aplikacja ma działać w 100% offline, a import biblioteki
-sieciowej na starcie kosztowałby czas przy każdym uruchomieniu, także temu,
-kto żadnego auta nie współdzieli.
-
-`_klient_cache` jest tu ŚWIADOMIE nieujęte w `__all__` — patrz komentarz niżej.
-"""
+"""Klient Supabase i sesja anonimowa. `_pobierz_klient` importuje `supabase` DOPIERO
+przy pierwszym wywołaniu (start offline bez kosztu biblioteki). `_klient_cache`
+ŚWIADOMIE poza `__all__` — komentarz niżej."""
 
 import db
 import log

@@ -1,10 +1,5 @@
-"""Odtworzenie lokalnej bazy z chmury — po reinstalacji albo na nowym telefonie.
-
-To NIE jest synchronizacja: nie ma tu porównywania hashy ani rozstrzygania
-konfliktów, bo nie ma z czym porównywać. Chmura jest jedynym źródłem prawdy,
-a lokalne dane pojazdu są nadpisywane. Dlatego osobny moduł — żeby nikt nie
-wywołał tego przez pomyłkę zamiast zwykłego przebiegu.
-"""
+"""Odtworzenie bazy z chmury (reinstalacja, nowy telefon). To NIE synchronizacja: chmura
+jest jedynym źródłem prawdy, lokalne dane pojazdu są nadpisywane — stąd osobny moduł."""
 
 import db
 

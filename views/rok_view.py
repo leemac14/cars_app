@@ -7,12 +7,10 @@ from state import MIESIACE_NAZWY
 
 
 class SekcjePigulki:
-    """Sekcje wspólne „Roku w pigułce” i „Miesiąca w pigułce”: liczby karty
-    głównej, kafle, rozbicie kosztów, przycisk grafiki i jej zapis. Oba ekrany
-    mają w `self.dane` ten sam zestaw kluczy (`db._rachunek_okresu`), więc
-    różnią się tylko nagłówkiem, słupkami i werdyktem. Grafikę rysuje
-    `_rysuj_grafike(akcent)`, a nazwę pliku daje `_nazwa_grafiki()` — każdy
-    ekran swoje."""
+    """Sekcje wspólne roku i miesiąca w pigułce: karta główna, kafle, rozbicie kosztów,
+    przycisk i zapis grafiki. Oba ekrany mają w `self.dane` klucze z
+    `db._rachunek_okresu`; grafika przez `_rysuj_grafike(akcent)`, nazwa pliku
+    `_nazwa_grafiki()`."""
 
     def _liczby_karty(self):
         """Dół karty głównej: kilometry, pieniądze i porównanie dystansu."""

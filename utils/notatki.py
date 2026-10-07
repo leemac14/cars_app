@@ -11,10 +11,8 @@ from .formularze import styl_pola
 
 
 # ==================== KRÓTKA NOTATKA PRZY WPISIE ====================
-# Jeden zestaw komponentów na całą aplikację: podgląd na karcie, pełna treść w
-# dialogu, szybka edycja z menu wpisu i pole w formularzu. Dołożenie notatki do
-# kolejnej listy to dzięki temu dwie linijki, a nie kopia UI — i wszędzie
-# wygląda tak samo, więc użytkownik uczy się tego raz.
+# Jeden zestaw komponentów: podgląd na karcie, pełna treść w dialogu, edycja z menu i
+# pole w formularzu.
 
 def _podpis_notatki(autor, data):
     """„Kasia • 04.09.2026 18:12”, z pominięciem części, których brakuje."""
@@ -151,11 +149,8 @@ def szybka_notatka(page: ft.Page, tabela, rekord_id, po_zapisie_callback=None, t
 
 
 def zapisz_notatke_z_formularza(tabela, rekord_id, nowa_tresc, tresc_bazowa):
-    """Zapis notatki przy zapisie CAŁEGO wpisu z formularza. Kluczowy warunek:
-    piszemy tylko wtedy, gdy treść faktycznie się zmieniła. Bez tego poprawienie
-    kwoty tankowania przestemplowałoby podpis pod cudzą notatką na własny —
-    a przy wspólnym aucie to dokładnie ta informacja, po którą się tam sięga.
-    Zwraca True, jeśli notatka została zapisana."""
+    """Zapis notatki przy zapisie CAŁEGO wpisu — tylko gdy treść się zmieniła (inaczej
+    poprawka kwoty przestemplowałaby podpis pod cudzą notatką). True = zapisano."""
     if not rekord_id:
         return False
     nowa = db.przytnij_notatke(nowa_tresc)

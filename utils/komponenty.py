@@ -8,7 +8,7 @@ from .stale import (
     FS, IKONY_OBSERWACJI, KOLORY_TONU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING,
     ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych, kolory_chipa_tagu,
 )
-from .typografia import etykieta
+from .typografia import etykieta, podpis
 from .wyglad import pasek_zawijany, powierzchnia, tlo_karty
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
@@ -56,13 +56,26 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
     )
 
 
+def nota_o_liczeniu(page, tytul, tekst):
+    """Karta „Jak liczone…” pod listą: ikona, podpis i opis drobnym drukiem."""
+    return ft.Container(
+        padding=SPACING["md"],
+        **powierzchnia(page, "blok"),
+        content=ft.Column([
+            ft.Row([
+                ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
+                podpis(tytul),
+            ], spacing=6),
+            ft.Text(tekst, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+        ], spacing=4),
+    )
+
+
 def komponent_wyboru_koloru(page: ft.Page, aktualny_kolor=None, etykieta_brak="Domyślny (jak w Ustawieniach)",
                             z_brakiem=True, rozmiar=45):
-    """Wiersz kółek do wyboru koloru z palety db.KOLORY_MOTYWU — koloru motywu
-    pojazdu albo koloru tagu. Z `z_brakiem` na początku stoi pozycja 'Brak'
-    (pojazd użyje wtedy globalnego koloru domyślnego); tag bez koloru nie ma
-    sensu, więc tam jej nie ma. Zwraca (kontener, pobierz_wynik), gdzie
-    pobierz_wynik() zwraca nazwę koloru z db.KOLORY_MOTYWU albo None."""
+    """Wiersz kółek z palety db.KOLORY_MOTYWU (kolor pojazdu albo tagu); `z_brakiem` —
+    pozycja 'Brak' (kolor globalny). Zwraca (kontener, pobierz_wynik) — nazwa koloru
+    albo None."""
     stan = {"wybrany": aktualny_kolor if aktualny_kolor in db.KOLORY_MOTYWU else None}
     wiersz = ft.Row(wrap=True, spacing=10, run_spacing=10)
 
@@ -301,12 +314,8 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
 
 
 def chip_tagu(nazwa, kolor):
-    """Chip jednego tagu na karcie wpisu: tło w kolorze tagu i napis, który na
-    nim widać (kolory_chipa_tagu). Kategoria innego kosztu zostaje stonowana,
-    z ikoną — tag w pełnym kolorze już się z nią nie zlewa.
-
-    Tag bez koloru (spoza słownika, np. z importu CSV) dostaje samą obwódkę.
-    Dawniej dostawał niebieski, czyli udawał kolor, którego nikt nie wybrał."""
+    """Chip tagu na karcie: tło w kolorze tagu, czytelny napis (kolory_chipa_tagu);
+    kategoria innego kosztu stonowana z ikoną. Tag bez koloru — sama obwódka."""
     kolory = kolory_chipa_tagu(kolor)
     if kolory is None:
         return ft.Container(
@@ -508,12 +517,9 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
 
 
 def komponent_wyboru_stacji(page: ft.Page, state, aktualna_nazwa="", elektryczny=False):
-    """Wybór stacji paliw z listy tych, na których już tankowałeś (słownik
-    budowany w locie z tabeli 'tankowania' — patrz db.pobierz_stacje_paliw),
-    z możliwością przełączenia na ręczne wpisanie nowej nazwy. Ten sam wzorzec
-    co komponent_wyboru_warsztatu. Dzięki temu 'Orlen', 'orlen' i 'ORLEN'
-    nie rozjeżdżają rankingu cen (db.pobierz_trend_cen_paliwa).
-    Zwraca (kontener, pobierz_wartosc, ustaw_wartosc)."""
+    """Wybór stacji z tych, na których już tankowano (db.pobierz_stacje_paliw), z
+    przełączeniem na wpisanie nowej — jak komponent_wyboru_warsztatu. Zwraca (kontener,
+    pobierz_wartosc, ustaw_wartosc)."""
     etyk = db.etykiety_paliwa(elektryczny)
     cache_stacji = {"dane": None}
 
@@ -699,10 +705,8 @@ def znacznik_wykonania(page: ft.Page, tekst="Gotowe", po_zakonczeniu=None, pauza
 
 def wiersz_danych(page: ft.Page, ikona, etykieta, wartosc, kopiowalne=False, telefon=False,
                   podpowiedz=None):
-    """Jeden wiersz danych pojazdu: ikona, etykieta, wartość. Wartość długa
-    i przepisywana ręcznie (VIN, numer polisy) dostaje przycisk kopiowania,
-    numer telefonu — przycisk dzwonienia. Puste pole zostaje widoczne z myślnikiem,
-    bo brak informacji też jest informacją: wiadomo, co warto uzupełnić."""
+    """Wiersz danych pojazdu: ikona, etykieta, wartość; VIN i polisa z kopiowaniem,
+    telefon z dzwonieniem. Puste pole z myślnikiem."""
     tekst = str(wartosc).strip() if wartosc not in (None, "") else ""
     kolumna = [
         ft.Text(etykieta, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
@@ -772,12 +776,9 @@ def karta_obserwacji(page: ft.Page, obserwacja, kompaktowa=False, on_click=None)
 
 
 def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
-    """Standardowa karta pozycji na liście, opcjonalnie z kolorowym paskiem
-    statusu/priorytetu po lewej stronie. Zwraca (karta, kontener) — dokładnie
-    jak dotychczas, karta.content nadal wskazuje na to samo, więc istniejące
-    triki typu `karta.content.opacity = ...` działają bez zmian.
-    Kontener ma już gotową (ale nieaktywną) animację naciśnięcia —
-    zobacz `z_efektem_nacisniecia` niżej."""
+    """Karta pozycji listy, opcjonalnie z paskiem statusu po lewej. Zwraca (karta,
+    kontener) — karta.content wskazuje to samo co dawniej; kontener ma nieaktywną
+    animację naciśnięcia (`z_efektem_nacisniecia`)."""
     plaszczyzna = powierzchnia(page, "karta")
     tlo_finalne = tlo if tlo is not None else plaszczyzna["bgcolor"]
 
@@ -810,13 +811,9 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
 
 
 def z_efektem_nacisniecia(kontener: ft.Container, funkcja):
-    """Owija istniejący handler (on_click / on_long_press) tym samym efektem
-    'naciśnięcia' co `fab_animowany` — karta na chwilę się zmniejsza i wraca.
-    `kontener` musi pochodzić z `karta_listy` (ma już scale/animate_scale).
-    W widoku, zamiast:
-        kontener.on_click = _on_click
-    użyj:
-        kontener.on_click = utils.z_efektem_nacisniecia(kontener, _on_click)"""
+    """Owija on_click / on_long_press efektem naciśnięcia (jak `fab_animowany`);
+    `kontener` z `karta_listy`. Użycie: kontener.on_click =
+    utils.z_efektem_nacisniecia(kontener, _on_click)."""
     async def wrapper(e):
         kontener.scale = 0.97
         kontener.update()
@@ -830,11 +827,8 @@ def z_efektem_nacisniecia(kontener: ft.Container, funkcja):
 
 
 def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
-    """Animowany zamiennik powtarzanego wzorca 'btn_zakladki' — segmenty
-    przełączają się płynną animacją koloru i skali zamiast twardego przeskoku.
-    opcje: lista (etykieta, indeks) albo (etykieta, indeks, ikona) — ikona jest
-    opcjonalna i pojawia się przed podpisem. on_zmiana(nowy_idx) wywoływane po
-    kliknięciu."""
+    """Animowany przełącznik segmentów (zamiast 'btn_zakladki'). opcje: (etykieta,
+    indeks) albo (etykieta, indeks, ikona); on_zmiana(nowy_idx) po kliknięciu."""
     segmenty = []
     for opcja in opcje:
         etykieta, idx = opcja[0], opcja[1]
@@ -869,12 +863,9 @@ def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
 
 
 def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szybkie akcje"):
-    """FAB „rozwijany” (speed-dial): dotknięcie głównego przycisku odsłania
-    pionowy stos mniejszych przycisków z opisanymi szybkimi akcjami, zamiast
-    pojedynczego przejścia do jednego formularza. `akcje`: lista krotek
-    (ikona, etykieta, on_click) — on_click przyjmuje `e` jak zwykły on_click,
-    może być sync albo async. Menu zamyka się automatycznie po wybraniu
-    dowolnej akcji albo ponownym dotknięciu głównego przycisku."""
+    """FAB speed-dial: główny przycisk odsłania stos szybkich akcji. `akcje`: [(ikona,
+    etykieta, on_click)] — on_click z `e`, sync albo async. Zamyka się po wyborze albo
+    ponownym dotknięciu."""
     stan = {"otwarte": False}
     kontener_akcji = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.END, visible=False)
 
@@ -955,6 +946,7 @@ def fab_animowany(icon, on_click, tooltip=None):
 
 
 __all__ = [
+    "nota_o_liczeniu",
     "chip_tagu",
     "chipy_kwot",
     "ekran_braku_danych",

@@ -12,26 +12,17 @@ from .dialogi import otworz_dialog, pokaz_komunikat, zamknij_dialog
 
 
 def abs_zalacznik(sciezka_wzgledna):
-    """Bezwzględna ścieżka do pliku załącznika, gotowa dla ft.Image.
-
-    W bazie stoi postać względna ('zalaczniki/<nazwa>') albo dawna bezwzględna,
-    także z innego urządzenia (kopia zapasowa z telefonu na komputerze).
-    db.sciezka_pliku_zalacznika skleja ją ze STORAGE_PATH tego urządzenia, a gdy
-    pliku tam nie ma, szuka tej samej nazwy w folderze załączników i w koszu —
-    obraz pokazuje się nawet przed db.napraw_sciezki_zalacznikow(). Gdy pliku
-    nie ma nigdzie, wraca ścieżka z bazy, żeby komunikat o błędzie (i podgląd
-    „brak pliku”) mówił o tym, co faktycznie tam stoi."""
+    """Bezwzględna ścieżka załącznika dla ft.Image przez db.sciezka_pliku_zalacznika
+    (postać względna, dawna bezwzględna, plik z innego urządzenia — szuka w załącznikach
+    i koszu). Nie znaleziony — ścieżka z bazy (komunikat mówi, co tam stoi)."""
     if not sciezka_wzgledna:
         return None
     return os.path.abspath(db.sciezka_pliku_zalacznika(sciezka_wzgledna))
 
 
 def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=False):
-    """tylko_zdjecie=True wymusza pojedynczy plik (zdjęcie profilowe pojazdu,
-    pojedyncze zdjęcie w galerii karoserii) — bez wielokrotnego wyboru.
-    Domyślnie (False) pozwala zaznaczyć od razu kilka zdjęć naraz — zostaną
-    automatycznie połączone w jeden wielostronicowy PDF (np. kilka stron
-    faktury/paragonu)."""
+    """tylko_zdjecie=True — pojedynczy plik (zdjęcie pojazdu, karoseria); domyślnie
+    wiele zdjęć naraz, łączonych w jeden wielostronicowy PDF."""
     stan = {"nowa_sciezka": None, "usuniete": False}
     obsluzono = {"wartosc": False}  # zabezpiecza przed podwójnym zadziałaniem on_result + await
 
@@ -144,11 +135,9 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, tylko_zdjecie=Fal
 
 
 def komponent_wielu_nowych_zdjec(page: ft.Page):
-    """Widget do MASOWEGO dodawania nowych zdjęć (np. galeria karoserii): pozwala
-    zaznaczyć od razu kilka plików i dobierać kolejne w kilku turach (nowe pliki
-    dopisują się do listy, nie zastępują jej). Zwraca (kontrolka, pobierz_wynik),
-    gdzie pobierz_wynik() to lista ścieżek źródłowych — jeszcze niezapisanych
-    do trwałego magazynu (kopiowanie robi się dopiero przy zapisie formularza)."""
+    """MASOWE dodawanie nowych zdjęć (np. karoseria), w kilku turach (nowe dopisują się
+    do listy). Zwraca (kontrolka, pobierz_wynik) — ścieżki źródłowe; kopiowanie dopiero
+    przy zapisie formularza."""
     stan = {"pliki": []}
     obsluzono = {"wartosc": False}
     lista_podgladow = ft.Column(spacing=8)

@@ -8,13 +8,9 @@ from state import MIESIACE_NAZWY
 
 
 class PodzialKosztowView(ft.View):
-    """Saldo współdzielonego auta: kto ile zapłacił, kto komu ile jest winien
-    i „Rozliczone”, które zeruje saldo z datą. Pod saldem zostaje zestawienie
-    miesiąca (proporcje), na dole historia rozliczeń.
-
-    Saldo liczy się z całej podpisanej historii minus migawki rozliczeń (patrz
-    db/rozliczenia.py), więc spóźniony albo poprawiony wpis sprzed rozliczenia
-    pojawia się tu jako korekta, zamiast zniknąć z rachunku."""
+    """Saldo współdzielonego auta, „Rozliczone” z datą, pod nim zestawienie miesiąca, na
+    dole historia rozliczeń. Saldo z całej historii minus migawki (db/rozliczenia.py) —
+    spóźniony wpis to korekta, nie zguba."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page
@@ -443,23 +439,13 @@ class PodzialKosztowView(ft.View):
     # ------------------------------------------------------------- nota
 
     def _nota(self):
-        return ft.Container(
-            padding=utils.SPACING["md"],
-            **utils.powierzchnia(self._page, "blok"),
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
-                    utils.podpis("Jak liczone jest saldo"),
-                ], spacing=6),
-                ft.Text(
-                    "Saldo liczy podpisane wydatki: tankowania, wpisy serwisowe, wizyty i inne koszty. "
-                    "Każdy okres między rozliczeniami dzieli się po równo między osoby, które wtedy "
-                    "dzieliły auto — także te, które nic nie zapłaciły. „Rozliczone” zeruje saldo "
-                    "z wybraną datą; wpis sprzed niej dopisany, poprawiony albo usunięty później nie "
-                    "przepada, tylko trafia do bieżącego salda jako korekta. Wpisy bez podpisu (sprzed "
-                    "ustawienia imienia) nie wchodzą do salda. Kilometry w zestawieniu miesięcznym to "
-                    "przybliżenie na podstawie tankowań, a nie pomiar, kto siedział za kierownicą.",
-                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                ),
-            ], spacing=4),
+        return utils.nota_o_liczeniu(
+            self._page, "Jak liczone jest saldo",
+            "Saldo liczy podpisane wydatki: tankowania, wpisy serwisowe, wizyty i inne koszty. "
+            "Każdy okres między rozliczeniami dzieli się po równo między osoby, które wtedy "
+            "dzieliły auto — także te, które nic nie zapłaciły. „Rozliczone” zeruje saldo "
+            "z wybraną datą; wpis sprzed niej dopisany, poprawiony albo usunięty później nie "
+            "przepada, tylko trafia do bieżącego salda jako korekta. Wpisy bez podpisu (sprzed "
+            "ustawienia imienia) nie wchodzą do salda. Kilometry w zestawieniu miesięcznym to "
+            "przybliżenie na podstawie tankowań, a nie pomiar, kto siedział za kierownicą.",
         )

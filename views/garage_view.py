@@ -165,11 +165,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         utils.potwierdz(self._page, "Usuwanie", tresc, wykonaj)
 
     def _ostrzezenie_o_zuzyciu(self, ids):
-        """Dopisek do potwierdzenia usunięcia, gdy pozycja była już użyta w serwisie.
-
-        Usunięcie pozycji kasuje też jej zużycia (inaczej wpisy wskazywałyby
-        część, której nie ma). Koszt zostaje we wpisach i wizytach — ale znika
-        ślad, skąd się wziął, a tego nie widać, dopóki się nie zajrzy."""
+        """Dopisek do potwierdzenia usunięcia pozycji użytej w serwisie: usunięcie
+        kasuje jej zużycia; koszt zostaje we wpisach, ale ginie ślad, skąd się wziął."""
         podsumowanie = db.pobierz_podsumowanie_zuzycia(self.state.auto_id)
         uzycia = [podsumowanie[i] for i in ids if i in podsumowanie]
         if not uzycia:
@@ -253,12 +250,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         return elementy
 
     def _karta_sezonu_opon(self):
-        """Sterowanie sezonową zmianą opon wprost z magazynu.
-
-        Do tej pory zmiana kompletu żyła w dwóch miejscach naraz: przypomnienie
-        w panelu wydatków cyklicznych przesuwało termin, a montaż trzeba było
-        odklikać osobno w menu zestawu — albo odwrotnie. Ten przycisk robi obie
-        rzeczy jednym dotknięciem (db.wykonaj_sezonowa_zmiane_opon)."""
+        """Sezonowa zmiana opon wprost z magazynu: montaż i przesunięcie przypomnienia
+        jednym dotknięciem (db.wykonaj_sezonowa_zmiane_opon)."""
         stan = db.pobierz_stan_opon(self.state.auto_id) or {}
         przypomnienia = db.pobierz_przypomnienia_o_oponach(self.state.auto_id)
 

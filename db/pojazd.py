@@ -42,16 +42,9 @@ TERMINY_POJAZDU = [
 
 
 # ==================== STATUS POJAZDU: AKTYWNY / SPRZEDANY ====================
-# Sprzedaż auta nie jest usunięciem: przestaje ono jeździć, ale historia
-# tankowań, serwisów i kosztów dopiero teraz jest KOMPLETNA i najbardziej warta
-# zachowania — do rozliczenia z kupującym, do porównania z następnym autem, do
-# gwarancji na części. Kosz się do tego nie nadaje, bo trzyma migawkę JSON, a nie
-# dane, które da się otworzyć i wyeksportować.
-#
-# Dlatego zwykła kolumna `status` z domyślną wartością 'aktywny'. Filtrowanie
-# dopisujemy TYLKO w miejscach, które wypisują garaż (przełącznik pojazdu,
-# showroom, porównanie, wybór auta na starcie) — cała reszta zapytań pracuje na
-# konkretnym auto_id i nie ma powodu wiedzieć o statusie.
+# Sprzedaż to nie usunięcie: historia zostaje do wglądu i eksportu. Kolumna `status`
+# (domyślnie 'aktywny'); filtrują TYLKO miejsca wypisujące garaż (przełącznik, showroom,
+# porównanie, wybór auta na starcie).
 
 WARUNEK_AKTYWNE = "COALESCE(status, 'aktywny') <> 'sprzedany'"
 
@@ -164,11 +157,9 @@ def pobierz_dane_pojazdu(auto_id):
 
 
 def terminy_pojazdu(auto_id, dane=None, dzis=None):
-    """Wszystkie terminy dokumentów pojazdu z policzonymi dniami i statusem.
-    Status ('po_terminie' / 'blisko' / 'ok') liczy się względem progu USTAWIONEGO
-    DLA TEGO DOKUMENTU, więc pokrywa się dokładnie z momentem powiadomienia.
-    `dzis` podaje „Ile zostało do…”, żeby wszystkie jego odliczania liczyły się
-    od tego samego dnia."""
+    """Terminy dokumentów pojazdu z dniami i statusem ('po_terminie'/'blisko'/'ok') wg
+    progu USTAWIONEGO DLA DOKUMENTU — jak powiadomienie. `dzis` podaje „Ile zostało do…”
+    (wspólny dzień odliczeń)."""
     dane = dane or pobierz_dane_pojazdu(auto_id)
     if not dane:
         return []
@@ -201,19 +192,14 @@ def najblizszy_termin_pojazdu(auto_id, dane=None):
 
 
 # ==================== NOTATKA „NAJLEPSZA OFERTA OC/AC” ====================
-# Jedno pole tekstowe pojazdu: cena i towarzystwo najlepszej znalezionej oferty.
-# Wspólne dla OC i AC, zostaje po odnowieniu polisy (za rok jest punktem wyjścia
-# porównania) i trzyma obok siebie datę ostatniej zmiany tekstu — bez niej
-# zeszłoroczna oferta wyglądałaby tak samo jak tegoroczna.
+# Jedno pole tekstowe pojazdu (cena i towarzystwo), wspólne dla OC i AC, zostaje po
+# odnowieniu polisy; obok data ostatniej zmiany tekstu.
 
 
 def ustal_oferte_oc_ac(nowy_tekst, stary_tekst=None, stara_data=None, dzis=None) -> tuple[str | None, str | None]:
-    """Co zapisać w kolumnach oferty po edycji: (tekst, data zapisu).
-
-    Data odświeża się TYLKO wtedy, gdy zmienił się tekst. Formularz pojazdu
-    zapisuje wszystkie pola naraz, więc zapis z poprawioną rejestracją nie może
-    zrobić ze starej oferty „zapisanej dziś”. Pusty tekst kasuje i tekst, i datę.
-    `dzis` (date) podaje test; na co dzień liczy się dzisiejszy dzień."""
+    """Co zapisać w kolumnach oferty: (tekst, data zapisu). Data odświeża się TYLKO przy
+    zmianie tekstu (formularz zapisuje wszystkie pola naraz); pusty tekst kasuje oba.
+    `dzis` dla testów."""
     nowy = str(nowy_tekst or "").strip()[:MAKS_DLUGOSC_OFERTY_OC_AC].strip() or None
     stary = str(stary_tekst or "").strip() or None
     if nowy is None:
@@ -246,10 +232,9 @@ def zapisz_oferte_oc_ac(auto_id, tekst, dzis=None) -> bool:
 
 
 def oferta_oc_ac_pojazdu(dane) -> dict[str, Any] | None:
-    """Notatka z danych pojazdu (słownik z `pobierz_dane_pojazdu`) albo None, gdy
-    jej nie ma. `tekst` — pełny, z podziałem na linie (Karta pojazdu i formularz),
-    `linia` — w jednej linii (powiadomienie, kafel), `data` — kiedy tekst ostatnio
-    się zmienił (None, gdy nieznana), `zdanie` — gotowe „Najlepsza oferta OC/AC: …”."""
+    """Notatka z danych pojazdu (`pobierz_dane_pojazdu`) albo None: `tekst` (z liniami),
+    `linia` (w jednej linii), `data` (ostatnia zmiana albo None), `zdanie` („Najlepsza
+    oferta OC/AC: …”)."""
     dane = dane or {}
     tekst = str(dane.get("oferta_oc_ac") or "").strip()
     if not tekst:
@@ -268,13 +253,9 @@ ADRES_HISTORII_POJAZDU = "https://historiapojazdu.gov.pl/"
 
 
 def pola_historii_pojazdu(dane) -> list[dict[str, str]]:
-    """Trzy dane, o które prosi Historia Pojazdu, w kolejności jej formularza:
-    numer rejestracyjny, VIN, data pierwszej rejestracji (`klucz`, `etykieta`,
-    `wartosc`). Każda w postaci do wklejenia bez poprawek: numer i VIN bez
-    odstępów, wielkimi literami — przerwa na tablicy oddziela tylko wyróżnik
-    powiatu, a wklejony odstęp łatwo przeoczyć w polu formularza; data jako
-    DD.MM.RRRR, jak w polu B dowodu. Data, której nie da się odczytać, zostaje
-    tak, jak ją wpisano. Brak danej to pusty napis."""
+    """Trzy dane dla Historii Pojazdu w kolejności jej formularza (`klucz`, `etykieta`,
+    `wartosc`): numer rejestracyjny i VIN bez odstępów, wielkimi literami; data
+    pierwszej rejestracji DD.MM.RRRR (nieczytelna — jak wpisana). Brak = pusty napis."""
     dane = dane or {}
     surowa_data = str(dane.get("data_pierwszej_rejestracji") or "").strip()
     data = parsuj_date(surowa_data)
@@ -289,27 +270,17 @@ def pola_historii_pojazdu(dane) -> list[dict[str, str]]:
 
 
 def pobierz_metryki_pojazdu(auto_id, dane=None):
-    """Liczby opisujące pojazd jako całość: wiek, tempo jazdy, koszt posiadania.
-
-    Sedno jest w koszcie posiadania: paliwo i serwis to tylko część rachunku,
-    a największą pozycją bywa UTRATA WARTOŚCI, której nie widać w żadnym wpisie.
-    Dopiero cena zakupu i dzisiejsza wartość pozwalają powiedzieć, ile naprawdę
-    kosztuje kilometr. Każda z tych liczb jest opcjonalna — pola, których
-    użytkownik nie uzupełnił, po prostu nie mają wyniku (None), zamiast psuć
-    pozostałe."""
+    """Wiek, tempo jazdy i koszt posiadania pojazdu — z utratą wartości (cena zakupu i
+    dzisiejsza wartość). Brak danych daje None tylko w swojej liczbie."""
     dane = dane or pobierz_dane_pojazdu(auto_id)
     if not dane:
         return None
 
     dzis = datetime.now().date()
 
-    # Sprzedane auto ma rachunek ZAMKNIĘTY. Utrata wartości domyka się ceną
-    # sprzedaży, ale czas leci dalej — a że dzielimy przez okres posiadania,
-    # koszt miesięczny sprzedanego auta malałby z każdym miesiącem sam z siebie,
-    # bez żadnego zdarzenia w danych. Dlatego wszystkie metryki liczymy na dzień
-    # sprzedaży: i licznik (wydatki), i mianownik (dni). Bez wpisanej daty nie ma
-    # czym domknąć, więc zostaje dzisiaj; data z przyszłości (literówka) nie może
-    # rozciągać posiadania, więc jej też nie używamy.
+    # Sprzedane auto ma rachunek ZAMKNIĘTY: wszystko (wydatki i dni) liczymy na dzień
+    # sprzedaży, inaczej koszt miesięczny malałby sam. Bez daty sprzedaży albo z datą z
+    # przyszłości — dzisiaj.
     sprzedany = str(dane.get("status") or STATUS_POJAZDU_AKTYWNY) == STATUS_POJAZDU_SPRZEDANY
     data_sprzedazy = parsuj_date(dane.get("data_sprzedazy")) if sprzedany else None
     if data_sprzedazy == datetime.min.date() or (data_sprzedazy and data_sprzedazy > dzis):

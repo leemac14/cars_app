@@ -1,11 +1,6 @@
-"""Adres projektu Supabase, mapa tabel i etykiety — bez ani jednej instrukcji.
-
-Ten moduł jest na samym dole pakietu, bo `KONFIGURACJA_SYNC` jest jedynym
-opisem tego, CO w ogóle jedzie do chmury: dwadzieścia jeden tabel, ich klucze
-i kolumny. Dołożenie tabeli do synchronizacji to wpis tutaj, a nie łatka
-w pięciu miejscach — i dlatego `tests/test_schemat.py` porównuje ten słownik
-wprost z `PRAGMA table_info`.
-"""
+"""Adres Supabase, mapa tabel i etykiety — bez instrukcji. `KONFIGURACJA_SYNC` to jedyny
+opis tego, CO jedzie do chmury; `tests/test_schemat.py` porównuje go z `PRAGMA
+table_info`."""
 
 
 # Kolumna znacznika czasu w tabeli zdalne_rekordy. Jeśli w Twoim projekcie
@@ -21,11 +16,9 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 # ----------------------------------------------------------------------------------
 
 
-# Link zaproszenia carsapp://app/dolacz/<KOD> — w kodzie QR i w zaproszeniu
-# wysłanym SMS-em. Schemat i host MUSZĄ być takie same jak w pyproject.toml
-# ([tool.flet.android.deep_linking]) — inaczej Android nie skieruje linku do
-# aplikacji. Oba małymi literami: Android porównuje je z rozróżnianiem wielkości.
-# Flet podaje aplikacji samą ścieżkę, więc link trafia na trasę /dolacz/<KOD>.
+# Link zaproszenia carsapp://app/dolacz/<KOD> (QR i SMS). Schemat i host MUSZĄ być jak w
+# pyproject.toml ([tool.flet.android.deep_linking]), małymi literami; Flet podaje samą
+# ścieżkę → trasa /dolacz/<KOD>.
 SCHEMAT_LINKU = "carsapp"
 HOST_LINKU = "app"
 TRASA_DOLACZENIA = "dolacz"
@@ -61,15 +54,10 @@ KOLUMNY_POJAZDU = [
     "oferta_oc_ac", "oferta_oc_ac_data",
 ]
 
-# Kolumny pojazdu dołożone do synchronizacji, kiedy w chmurze były już rekordy
-# `info_pojazdu` — odpowiednik `dopisane` z KONFIGURACJA_SYNC dla karty pojazdu.
-# Dopóki są puste, karta liczy się tak, jakby ich nie było: hash zapamiętany przed
-# aktualizacją powstał bez tych kluczy. Bez tej tolerancji telefon po aktualizacji
-# widziałby w KAŻDYM współdzielonym aucie „zmianę lokalną” i wysłałby swoją kartę
-# nad tą, którą druga osoba zdążyła zmienić (status, daty) — albo nad notatką
-# wpisaną na jej telefonie, zaktualizowanym wcześniej. Nowa kolumna dokładana do
-# KOLUMNY_POJAZDU po wdrożeniu synchronizacji trafia też tutaj, tak samo jak
-# `dopisane` przy tabelach.
+# Kolumny pojazdu dołożone do synchronizacji, gdy w chmurze były już rekordy
+# `info_pojazdu` (jak `dopisane` przy tabelach): puste nie zmieniają hasha karty. Bez
+# tego telefon po aktualizacji wysłałby swoją kartę nad zmianą drugiej osoby. Nowa
+# kolumna KOLUMNY_POJAZDU po wdrożeniu sync → także tutaj.
 KOLUMNY_POJAZDU_DOPISANE = ["oferta_oc_ac", "oferta_oc_ac_data"]
 
 
@@ -80,11 +68,9 @@ KONFIGURACJA_SYNC = [
     {"tabela": "tagi", "kolumny": ["nazwa", "kolor"], "fk": {}},
     {"tabela": "tankowania", "kolumny": ["data", "przebieg", "dystans", "litry", "kwota", "do_pelna", "stacja", "tagi", "rodzaj_energii", "typ_ladowania", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     {"tabela": "zadania", "kolumny": ["nazwa", "interwal_km", "interwal_miesiace", "dotyczy_opon", "prog_km", "prog_dni"], "fk": {}},
-    # `dopisane` — kolumny dołożone do synchronizacji, kiedy w chmurze były już
-    # rekordy. Dopóki są puste, rekord liczy się tak, jakby kolumny nie było:
-    # inaczej nowy klucz zmieniałby hash KAŻDEGO wiersza, telefon po
-    # aktualizacji wysyłałby całą tabelę od nowa, a drugi telefon zgłaszałby
-    # przy każdym wierszu konflikt z wersją, którą właśnie wysłał pierwszy.
+    # `dopisane` — kolumny dołożone, gdy w chmurze były już rekordy; puste nie zmieniają
+    # hasha (inaczej po aktualizacji cała tabela szłaby od nowa z konfliktem przy każdym
+    # wierszu).
     {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "koszt_robocizny", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji", "gwarancja_data", "gwarancja_przebieg"], "fk": {},
      "dopisane": ["koszt_robocizny", "gwarancja_data", "gwarancja_przebieg"]},
     # Gwarancja naprawy jedzie do drugiej osoby: to ona stoi z autem
@@ -120,11 +106,8 @@ KONFIGURACJA_SYNC = [
     {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "zrodlo", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
     {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},
-    # Limit wydatków ustala się raz dla pojazdu, nie osobno w każdym telefonie —
-    # inaczej dwie osoby patrzyłyby na dwa różne budżety tego samego auta.
-    # 'klucz_scalania' jest tu konieczny: (kategoria, okres) ma w bazie UNIQUE,
-    # więc rekord przychodzący z chmury musi umieć wejść w istniejący lokalny
-    # wiersz zamiast rozbić się o indeks (patrz _pobierz_tabele).
+    # Budżet wspólny dla pojazdu. 'klucz_scalania' konieczny: (kategoria, okres) ma
+    # UNIQUE, więc rekord z chmury przejmuje lokalny wiersz (_pobierz_tabele).
     {"tabela": "budzety", "kolumny": ["kategoria", "okres", "kwota"], "fk": {},
      "klucz_scalania": ["kategoria", "okres"]},
     # Trasa „do teściów” jest cechą AUTA, nie telefonu — kto wsiądzie, ten ma
@@ -144,10 +127,8 @@ KONFIGURACJA_SYNC = [
     # co zostało już sprawdzone przed wyjazdem.
     {"tabela": "checklisty", "kolumny": ["nazwa", "opis", "ostatnie_uzycie"], "fk": {}},
     {"tabela": "checklisty_pozycje", "kolumny": ["tresc", "kolejnosc", "odhaczone"], "fk": {"checklista_id": "checklisty"}},
-    # Saldo jest wspólne, więc „Rozliczone” kliknięte na jednym telefonie musi
-    # wyzerować je także na drugim. Rozliczenie się nie zmienia (najwyżej się je
-    # cofa), a migawka sald jedzie w całości — z niej drugi telefon liczy to samo
-    # saldo, nawet jeśli część wpisów dostanie dopiero przy następnej wymianie.
+    # Saldo wspólne — „Rozliczone” z jednego telefonu zeruje je na drugim; migawka sald
+    # jedzie w całości.
     {"tabela": "rozliczenia", "kolumny": ["data", "uczestnicy", "salda", "przelewy", "notatka", "klucz", "poprzednie", "dodane_przez", "data_utworzenia"], "fk": {}},
 ]
 

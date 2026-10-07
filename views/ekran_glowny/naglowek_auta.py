@@ -35,11 +35,9 @@ class MiksinNaglowkaAuta:
         metryki_pojazdu = db.pobierz_metryki_pojazdu(self.state.auto_id, dane_pojazdu) or {}
         najblizszy_termin = db.najblizszy_termin_pojazdu(self.state.auto_id, dane_pojazdu)
 
-        # Podgląd sprzedanego auta otwiera się z Archiwum przez podstawienie
-        # state.auto_id. Takiego pojazdu NIE MA na liście `auta`, więc strzałki
-        # „poprzedni/następny” prowadziłyby w losowe miejsce, a przy garażu
-        # złożonym z samych sprzedanych aut lista byłaby pusta i modulo poleciałoby
-        # dzieleniem przez zero. Dlatego przy archiwalnym pojeździe karuzeli nie ma.
+        # Sprzedane auto (z Archiwum przez state.auto_id) NIE jest na liście `auta` —
+        # strzałki prowadziłyby losowo, a przy samych sprzedanych modulo dzieliłoby
+        # przez zero. Przy archiwalnym pojeździe karuzeli nie ma.
         czy_sprzedany = str(dane_pojazdu.get("status") or "aktywny") == db.STATUS_POJAZDU_SPRZEDANY
 
         idx = 0
@@ -430,12 +428,9 @@ class MiksinNaglowkaAuta:
             )
             utils.otworz_dialog(self._page, dlg)
 
-        # Przebieg z wiekiem obok siebie: dopiero razem mówią, czy 135 tys. km
-        # to dużo. Wiek jest tylko dopiskiem — dotknięcie nadal aktualizuje licznik.
-        # Dopiski (wiek, przebieg roczny) sklejamy w JEDEN tekst z expand:
-        # dwa osobne, sztywne teksty w tym wierszu nie miały jak się skurczyć
-        # i przy dłuższych liczbach wychodziły pod przyciski po prawej stronie
-        # karty — stąd wrażenie nachodzących na siebie ikon.
+        # Przebieg obok wieku; dotknięcie aktualizuje licznik. Dopiski (wiek, przebieg
+        # roczny) w JEDNYM tekście z expand — dwa sztywne teksty wychodziły pod
+        # przyciski po prawej.
         dopiski = []
         if metryki_pojazdu.get("wiek_lat"):
             dopiski.append(f"{utils.formatuj_liczba(metryki_pojazdu['wiek_lat'], 1)} lat")
@@ -535,12 +530,8 @@ class MiksinNaglowkaAuta:
             wiersz_status,
         ], spacing=4, expand=True)
 
-        # JEDEN przycisk zamiast dwóch. Ołówek „Edytuj pojazd” stał tuż pod
-        # ikoną „i”, a nad nimi w tym samym wierszu siedział jeszcze ołówek
-        # aktualizacji przebiegu — trzy podobne ikony na przestrzeni 60 px, przy
-        # czym dwie z nich robiły co innego. Edycja danych pojazdu jest o jedno
-        # dotknięcie dalej: z Karty pojazdu i z szuflady („Edytuj dane pojazdu”),
-        # a to nie jest czynność, którą robi się codziennie.
+        # JEDEN przycisk zamiast dwóch: edycja danych pojazdu jest w Karcie pojazdu i w
+        # szufladzie („Edytuj dane pojazdu”).
         przyciski_karty = ft.IconButton(
             icon=ft.Icons.INFO_OUTLINE, icon_size=20, icon_color=ft.Colors.PRIMARY,
             tooltip="Karta pojazdu: terminy, wartość, ubezpieczenie, ściągawka",
@@ -549,11 +540,8 @@ class MiksinNaglowkaAuta:
         )
 
         # --- TŁO KARTY: rozmyte zdjęcie pojazdu zamiast płaskiego koloru ---
-        # Zdjęcie idzie pod treść mocno rozmyte i przykryte gradientem w kolorze
-        # powierzchni. Karta ma nieść „to jest MOJE auto" barwą i kształtem
-        # widocznym kątem oka, a nie czytelnym obrazkiem — pod nazwą, rejestracją
-        # i statusem musi zostać tło o przewidywalnym kontraście, niezależnie od
-        # tego, czy zdjęcie jest jasne, ciemne czy kontrastowe.
+        # Zdjęcie mocno rozmyte pod gradientem w kolorze powierzchni — tło niesie barwę,
+        # a kontrast treści zostaje przewidywalny.
         PROMIEN_KARTY = 12  # zgodny z domyślnym kształtem ft.Card (RoundedRectangleBorder 12)
 
         tresc_karty = ft.Container(

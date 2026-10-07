@@ -98,12 +98,9 @@ class MiksinZakladkiStatystyki:
             utils.przejdz(self._page, "/")
 
         self.elementy.append(utils.segmented_control(
-            # Podzakładka nazywa się „Obserwacje”, a nie „Analiza” — od kiedy
-            # cała zakładka nosi nazwę Analiza, dwie „Analizy” jedna w drugiej
-            # mówiłyby użytkownikowi dokładnie tyle, co nic.
-            # „Obserwacje” stoją trzecie, ale dostają indeks 3, a nie 2: numery
-            # podzakładek siedzą w zapamiętanym stanie użytkownika i przesunięcie
-            # ich otworzyłoby komuś Tabele zamiast Wykresów po aktualizacji.
+            # Podzakładka „Obserwacje” (cała zakładka to Analiza). Stoi trzecia, ale ma
+            # indeks 3, nie 2: numery podzakładek siedzą w zapamiętanym stanie —
+            # przesunięcie otworzyłoby komuś inną podzakładkę.
             self._page,
             [("Liczby", 0), ("Wykresy", 1), ("Obserwacje", 3), ("Tabele", 2)],
             self.state.stat_podzakladka, zmien_podzakladke
@@ -303,10 +300,8 @@ class MiksinZakladkiStatystyki:
             )
 
             # ----- Rozbicie „Innych kosztów” na kategorie -----
-            # Trzy paski wyżej mówią, ile poszło na „inne”. Samo w sobie to
-            # bezużyteczna liczba: w tym worku leży mandat obok myjni i polisy.
-            # Dopiero rozbicie pokazuje, czy „inne” rosną od opłat drogowych
-            # (czyli od jeżdżenia), czy od czegoś zupełnie innego.
+            # Pokazuje, czy „inne” rosną od opłat drogowych (jeżdżenia), czy od czegoś
+            # innego.
             granica_kategorii = utils.granica_zakresu(utils.zakres_wykresu(self.state, "kategorie"))
             rozbicie_innych = db.pobierz_koszty_innych_wg_kategorii(self.state.auto_id, granica_kategorii)
             inn_kat = sum(suma_kat for _, suma_kat, _ in rozbicie_innych)

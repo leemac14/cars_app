@@ -5,7 +5,7 @@ import flet as ft
 import math
 import re
 from date import parsuj_date
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 from .stale import KOLOR_STATUS, formatuj_liczba
 
@@ -103,32 +103,12 @@ def formatuj_date_pl(d):
     return tekst
 
 
-def oblicz_prognoze_terminu(zostalo_km, sredni_dzienny_przebieg):
-    if not sredni_dzienny_przebieg or sredni_dzienny_przebieg <= 0:
-        return None, None
-    if zostalo_km is None or zostalo_km < 0:
-        return None, None
-
-    dni = int(round(zostalo_km / sredni_dzienny_przebieg))
-    return dni, date.today() + timedelta(days=dni)
-
-
 def _opis_prognozy_dni(dni):
     if dni <= 0:
         return "dziś"
     if dni == 1:
         return "jutro"
     return f"ok. {dni} dni"
-
-
-def formatuj_prognoze_km(zostalo_km, sredni_dzienny_przebieg):
-    tekst_km = formatuj_dystans(zostalo_km)
-
-    dni, data = oblicz_prognoze_terminu(zostalo_km, sredni_dzienny_przebieg)
-    if dni is None:
-        return tekst_km
-
-    return f"{tekst_km} ({_opis_prognozy_dni(dni)} - {formatuj_date_pl(data)})"
 
 
 def formatuj_dni(n):
@@ -427,13 +407,9 @@ def kolor_i_tekst_terminu(termin_str):
 
 
 def opis_przerwanego_ciagu(ciag, rodzaj=None, przebieg=None):
-    """Zdanie pod polem „do pełna”, gdy wpis byłby kolejnym z rzędu bez pełnego
-    baku (`ciag` z db.pobierz_ciag_do_pelna). None, gdy nie ma o czym mówić:
-    poprzedni wpis był pełny albo odcinek zamyka już późniejszy pełny bak.
-
-    Mówi „policzy się dopiero”, a nie „nie policzy się”: niepełne tankowania nie
-    przepadają, tylko dopisują się do odcinka, który zamknie następny pełny bak.
-    `przebieg` — licznik z formularza (None, gdy pole jest jeszcze puste)."""
+    """Zdanie pod polem „do pełna”, gdy wpis byłby kolejnym bez pełnego baku (`ciag` z
+    db.pobierz_ciag_do_pelna); None, gdy nie ma o czym mówić. „Policzy się dopiero” —
+    niepełne czekają na następny pełny bak. `przebieg` — licznik z formularza albo None."""
     if not ciag or ciag.get("zamkniety") or not ciag.get("niepelnych"):
         return None
 
@@ -499,7 +475,6 @@ __all__ = [
     "formatuj_dystans",
     "formatuj_na_dystans",
     "formatuj_okres",
-    "formatuj_prognoze_km",
     "formatuj_rozmiar",
     "formatuj_spalanie",
     "jednostka_dystansu",
@@ -507,7 +482,6 @@ __all__ = [
     "krotki_opis_odliczania",
     "linie_opisu_interwalu",
     "linie_opisu_odczytu",
-    "oblicz_prognoze_terminu",
     "opis_licznika_na_karte",
     "opis_nietypowej_ceny",
     "opis_odliczania",

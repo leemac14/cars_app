@@ -86,15 +86,9 @@ def pokaz_bledy_formularza(page: ft.Page, bledy):
 
 
 def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
-    """
-    Wspólna logika 'nietypowy przebieg — potwierdź ponownie' używana przy zapisie
-    tankowań i wpisów historii. Pamięta DOKŁADNĄ wartość, która została już
-    potwierdzona (nie tylko fakt, że jakieś ostrzeżenie się kiedyś pojawiło),
-    więc zmiana na INNĄ podejrzaną wartość ponownie wymusi potwierdzenie.
-
-    Zwraca True, jeśli zapis należy przerwać (pokazano świeże ostrzeżenie).
-    Zwraca False, jeśli można kontynuować zapis.
-    """
+    """„Nietypowy przebieg — potwierdź ponownie” przy zapisie tankowań i wpisów. Pamięta
+    DOKŁADNĄ potwierdzoną wartość — inna podejrzana znów wymaga potwierdzenia. True =
+    przerwij zapis (pokazano ostrzeżenie)."""
     ostrzezenie = db.sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=wyklucz_id, tabela=tabela, nowa_data_str=nowa_data_str)
 
     if ostrzezenie and getattr(pole_przebiegu, "_potwierdzona_wartosc", None) != nowy_przebieg:
@@ -129,12 +123,9 @@ def sprawdz_duplikat_tankowania(page: ft.Page, pole_kwoty: ft.TextField, auto_id
 
 
 def sprawdz_nietypowa_cene(page: ft.Page, pole_ceny: ft.TextField, auto_id, data_str, rodzaj, cena, wyklucz_id=None):
-    """Analogicznie do sprawdz_podejrzany_przebieg — ostrzega, gdy cena za litr
-    (albo kWh) odstaje co najmniej trzykrotnie od każdej z cen tego samego źródła
-    z wpisów najbliższych w czasie (db.nietypowa_cena). Prawie zawsze to cyfra
-    albo przecinek za dużo lub za mało w litrach, cenie albo kwocie. Pamięta
-    potwierdzoną cenę, więc inna nietypowa wartość znów wymaga potwierdzenia.
-    Zwraca True, jeśli zapis należy przerwać."""
+    """Jak sprawdz_podejrzany_przebieg: ostrzega, gdy cena jednostkowa odstaje co
+    najmniej 3× od cen odniesienia (db.nietypowa_cena) — zwykle literówka. Pamięta
+    potwierdzoną cenę. True = przerwij zapis."""
     wynik = db.nietypowa_cena(cena, db.ceny_jednostkowe_w_poblizu(auto_id, data_str, rodzaj, wyklucz_id=wyklucz_id))
     klucz = (round(cena or 0, 3), rodzaj)
 
@@ -195,12 +186,8 @@ def styl_dropdown(page: ft.Page = None):
 
 
 def wysokosc_listy(page: ft.Page, udzial=0.5, minimalna=260):
-    """Sugerowana wysokość (px) dla zwirtualizowanej listy/siatki (ListView/GridView)
-    osadzonej w przewijanym widoku. Używamy jej zamiast `expand=True`, bo gdy nad listą
-    jest dużo stałych elementów (nagłówek auta, skróty, pasek sortowania, wyszukiwarka),
-    `expand` potrafi skurczyć się do zera na mniejszych telefonach i lista znika
-    całkowicie. Dzięki stałej wysokości lista ZAWSZE jest widoczna i przewija się sama,
-    a resztę strony (nagłówek itp.) przewija się nad nią jak zwykłą stronę."""
+    """Wysokość (px) zwirtualizowanej listy/siatki w przewijanym widoku — zamiast
+    `expand=True`, który na małych telefonach potrafi skurczyć listę do zera."""
     try:
         wys_ekranu = page.height or getattr(page.window, "height", None) or 800
     except Exception:
@@ -209,22 +196,10 @@ def wysokosc_listy(page: ft.Page, udzial=0.5, minimalna=260):
 
 
 def dopasuj_wysokosc_listy(lista, page: ft.Page, wysokosc_pozycji=175, na_wiersz=1, udzial=0.5):
-    """Dociąga wysokość zwirtualizowanej listy do tego, co w niej NAPRAWDĘ leży.
-
-    `wysokosc_listy` daje pół ekranu i tyle samo zajmowała lista z jedną kartą,
-    co z pięćdziesięcioma — pod krótką listą zostawał wtedy pusty prostokąt na
-    pół ekranu (najbardziej rzucało się to w oczy w Wizytach i Karoserii, gdzie
-    tło listy jest jasne). Teraz bierzemy MNIEJSZĄ z dwóch wartości: sugerowaną
-    połowę ekranu i szacowaną wysokość zawartości.
-
-    `wysokosc_pozycji` to przybliżona wysokość jednej karty razem z odstępem —
-    lepiej ją PRZESZACOWAĆ, bo zapas oznacza tylko trochę wolnego miejsca, a
-    niedoszacowanie chowa ostatnią kartę za wewnętrznym przewijaniem.
-    `na_wiersz` > 1 dla siatek (GridView), gdzie w jednym wierszu stoi kilka
-    kafelków.
-
-    Wołać PO wypełnieniu listy kartami. Wysokość zapamiętuje się na kontrolce,
-    żeby obrót ekranu (dostosuj_wysokosc_listy) przeliczył ją tak samo."""
+    """Dociąga wysokość zwirtualizowanej listy do zawartości: MNIEJSZA z połowy ekranu i
+    szacunku. `wysokosc_pozycji` lepiej PRZESZACOWAĆ (niedoszacowanie chowa ostatnią
+    kartę); `na_wiersz` > 1 dla siatek. Wołać PO wypełnieniu; wysokość zapamiętana na
+    kontrolce (dostosuj_wysokosc_listy przy obrocie)."""
     try:
         liczba = len(lista.controls or [])
     except Exception:

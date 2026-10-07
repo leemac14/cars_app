@@ -1,23 +1,9 @@
-"""Ewidencja przebiegu (N-01): przejazdy prywatne i służbowe, miesiąc w liczbach,
-kilometrówka, licznik na granicach okresu i dane raportu.
-
-Aplikacja znała stan licznika z kilku źródeł, ale nie wiedziała, PO CO były
-kilometry. Przejazd to data, skąd, dokąd, cel, kilometry, rodzaj (służbowy albo
-prywatny) i kierowca — wpisany ręcznie, z zapisanej trasy kalkulatora albo
-powtórzony. Opcjonalny stan licznika po przejeździe jest jeszcze jednym źródłem
-historii licznika (db/przebieg.py).
-
-Okresem rozliczeniowym jest miesiąc: kilometry służbowe i prywatne, podział
-kosztów miesiąca w tej samej proporcji, kwota kilometrówki (stawka × km
-służbowe) i licznik na początek i koniec okresu — z niego „nieopisane km”, czyli
-to, czego w ewidencji brakuje. Raport w trzech układach składa
-`dane_raportu_ewidencji`, a rysuje db/raporty.py — liczby osobno od rysunku,
-żeby test sprawdzał treść, a nie piksele.
-
-Kilometry w bazie są zawsze w km i zawsze za CAŁY przejazd: „tam i z powrotem”
-ma już podwojoną liczbę, więc suma miesiąca to zwykła suma kolumny. Ekran
-pokazuje je w jednostce z Ustawień (km albo mi).
-"""
+"""Ewidencja przebiegu (N-01): przejazdy prywatne i służbowe (data, skąd, dokąd, cel,
+km, rodzaj, kierowca, opcjonalny licznik — też źródło historii licznika). Okres =
+miesiąc: km służbowe i prywatne, podział kosztów w tej proporcji, kilometrówka, licznik
+na granicach i „nieopisane km”. Raport składa `dane_raportu_ewidencji` (napisy), rysuje
+db/raporty.py. Km w bazie zawsze w km i za CAŁY przejazd (tam i z powrotem już
+podwojone)."""
 
 import sqlite3
 from calendar import monthrange
@@ -59,11 +45,8 @@ UKLADY_RAPORTU_EWIDENCJI = {
     "kilometrowka": "Kilometrówka",
 }
 
-# Stawki za 1 km z rozporządzenia Ministra Infrastruktury z 25 marca 2002 r.
-# w sprawie zwrotu kosztów używania do celów służbowych pojazdów niebędących
-# własnością pracodawcy (Dz.U. nr 27, poz. 271), w brzmieniu od 17.01.2023.
-# To stawki MAKSYMALNE — pracodawca może płacić mniej, dlatego w aplikacji
-# tylko podpowiadają, a pole stawki zostaje do wpisania.
+# Stawki za 1 km z rozporządzenia MI z 25.03.2002 (Dz.U. nr 27, poz. 271), brzmienie od
+# 17.01.2023. To stawki MAKSYMALNE — tylko podpowiedź, pole stawki zostaje do wpisania.
 STAWKI_KILOMETROWKI = (
     ("Samochód do 900 cm³", 0.89),
     ("Samochód powyżej 900 cm³", 1.15),
@@ -251,13 +234,10 @@ def blad_przejazdu(dane) -> str | None:
 
 
 def zapisz_przejazd(auto_id, dane, przejazd_id=None) -> int | None:
-    """Nowy przejazd albo poprawka istniejącego. `dane`: data (DD.MM.RRRR),
-    skad, dokad, cel, km (CAŁY przejazd, w km), powrot, sluzbowy, kierowca,
-    licznik (km po przejeździe albo None). Zwraca id albo None, gdy dane są
-    niepełne (`blad_przejazdu`) albo poprawiany przejazd zniknął.
-
-    Autor (`dodane_przez`) to imię z Ustawień i nie zmienia się przy edycji —
-    współautor poprawia swoje przejazdy po podpisie, nie po kierowcy."""
+    """Nowy albo poprawiany przejazd. `dane`: data (DD.MM.RRRR), skad, dokad, cel, km
+    (CAŁY przejazd, km), powrot, sluzbowy, kierowca, licznik (albo None). Zwraca id albo
+    None (niepełne dane — `blad_przejazdu` — albo przejazd zniknął). `dodane_przez` nie
+    zmienia się przy edycji."""
     if not auto_id or blad_przejazdu(dane):
         return None
     data = str(dane["data"]).strip()
@@ -352,10 +332,9 @@ def ostatni_przejazd_trasy(auto_id, skad, dokad, wyklucz_id=None) -> dict[str, A
 
 
 def poprzedni_stan_licznika(auto_id, data_str, licznik=None, wyklucz_id=None) -> dict[str, Any] | None:
-    """Ostatni znany stan licznika z dnia przejazdu albo wcześniej — z niego
-    formularz liczy kilometry, gdy wpisany jest stan po przejeździe. Przy
-    podanym `licznik` tylko odczyty nie wyższe od niego (dwa przejazdy tego
-    samego dnia: drugi liczy od pierwszego). Sam poprawiany przejazd się nie liczy."""
+    """Ostatni znany stan licznika z dnia przejazdu lub wcześniej (formularz liczy z
+    niego km). Przy `licznik` — tylko odczyty nie wyższe (dwa przejazdy jednego dnia);
+    sam poprawiany przejazd się nie liczy."""
     d = parsuj_date(data_str)
     if not auto_id or d == datetime.min.date():
         return None
@@ -373,16 +352,12 @@ def poprzedni_stan_licznika(auto_id, data_str, licznik=None, wyklucz_id=None) ->
 
 
 # ============================================================================
-#  LICZNIK NA GRANICACH OKRESU I NIEOPISANE KILOMETRY
+# LICZNIK NA GRANICACH OKRESU I NIEOPISANE KILOMETRY
 # ============================================================================
-# Licznik mówi, ILE przejechano, ewidencja — PO CO. Różnica to „nieopisane
-# km”. Odczyt na początek okresu to ostatni znany stan sprzed miesiąca (stan
-# „na koniec poprzedniego okresu”), na koniec — ostatni w miesiącu. Odczyty
-# rzadko leżą na samych granicach, więc porównujemy z przejazdami z TEGO SAMEGO
-# okna: po dniu odczytu początkowego, do dnia odczytu końcowego włącznie
-# (odczyt traktujemy jako zrobiony wieczorem). Przejazd ze stanem licznika jest
-# sam takim odczytem — jego kilometry są przed nim, więc liczą się do okna,
-# które na nim się kończy.
+# Nieopisane km = licznik (ILE) − ewidencja (PO CO). Start = ostatni stan sprzed
+# miesiąca, koniec = ostatni w miesiącu. Porównujemy z przejazdami z TEGO SAMEGO okna:
+# po dniu odczytu początkowego do dnia końcowego włącznie (odczyt „wieczorem”); przejazd
+# ze stanem licznika sam jest odczytem.
 
 def _punkty_licznika(auto_id):
     punkty = []
@@ -403,13 +378,10 @@ def _suma_km(auto_id, od_data, do_data) -> float:
 
 
 def licznik_okresu(auto_id, od_data, do_data, punkty=None) -> dict[str, Any]:
-    """Stan licznika na początek i koniec okresu i porównanie z ewidencją.
-
-    Klucze: `start`, `data_start`, `start_przed` (odczyt sprzed okresu — tak,
-    jak powinno być), `koniec`, `data_koniec`, `koniec_na_ostatni_dzien`,
-    `km` (koniec − start; None bez dwóch odczytów), `opisane_km` (przejazdy
-    z okna odczytów), `nieopisane_km` (km − opisane; ujemne = w ewidencji
-    więcej niż na liczniku), `cofka` (licznik niższy na końcu)."""
+    """Licznik na początek i koniec okresu kontra ewidencja. Klucze: start, data_start,
+    start_przed (odczyt sprzed okresu), koniec, data_koniec, koniec_na_ostatni_dzien, km
+    (koniec − start; None bez dwóch odczytów), opisane_km (przejazdy z okna),
+    nieopisane_km (ujemne = ewidencja ponad licznik), cofka (licznik niższy na końcu)."""
     punkty = _punkty_licznika(auto_id) if punkty is None else punkty
     przed = [p for p in punkty if p[0] < od_data]
     w_okresie = [p for p in punkty if od_data <= p[0] <= do_data]
@@ -437,12 +409,9 @@ def licznik_okresu(auto_id, od_data, do_data, punkty=None) -> dict[str, Any]:
 
 
 def stan_na_koniec_miesiaca(auto_id, rok, miesiac, dzis=None) -> dict[str, Any]:
-    """Co wiadomo o liczniku na ostatni dzień miesiąca — dla „Zamknij miesiąc”.
-
-    `zamkniety` — jest odczyt (z dowolnego źródła) z ostatniego dnia.
-    `podpowiedz` — ostatni odczyt w miesiącu (albo sprzed niego) plus przejazdy
-    wpisane po nim: przy kompletnej ewidencji to dokładnie stan na koniec.
-    `mozna_zamknac` — miesiąc już się skończył albo trwa jego ostatni dzień."""
+    """Licznik na ostatni dzień miesiąca dla „Zamknij miesiąc”: `zamkniety` (jest odczyt
+    z ostatniego dnia), `podpowiedz` (ostatni odczyt + przejazdy po nim),
+    `mozna_zamknac` (miesiąc skończony albo trwa jego ostatni dzień)."""
     dzis = dzis or datetime.now().date()
     koniec = koniec_miesiaca(rok, miesiac)
     punkty = [p for p in _punkty_licznika(auto_id) if p[0] <= koniec]
@@ -537,15 +506,10 @@ def _braki(przejazdy):
 
 
 def podsumowanie_ewidencji(auto_id, rok, miesiac, dzis=None, z_kosztami=True) -> dict[str, Any]:
-    """Miesiąc ewidencji w liczbach — ekran, kafelek, przypomnienie i raport.
-
-    Kilometry: `km`, `km_sluzbowe`, `km_prywatne`, `udzial_sluzbowy` (0–1,
-    None bez przejazdów). Koszty miesiąca (`koszty`: paliwo, serwis, inne,
-    razem) dzielone w proporcji kilometrów (`koszty_sluzbowe`,
-    `koszty_prywatne`) — nieopisane km do podziału NIE wchodzą, ekran mówi
-    o nich osobno. `kilometrowka`: stawka, km i kwota (suma kwot przejazdów).
-    `licznik`: patrz `licznik_okresu`. `rok_do_dzis`: kilometry od stycznia do
-    końca tego miesiąca."""
+    """Miesiąc ewidencji w liczbach. km, km_sluzbowe, km_prywatne, udzial_sluzbowy (0–1,
+    None bez przejazdów); koszty (paliwo, serwis, inne, razem) dzielone proporcją km na
+    koszty_sluzbowe i koszty_prywatne (nieopisane km poza podziałem); kilometrowka
+    (stawka, km, kwota); licznik (`licznik_okresu`); rok_do_dzis."""
     dzis = dzis or datetime.now().date()
     rok, miesiac = int(rok), int(miesiac)
     od, do = date(rok, miesiac, 1), koniec_miesiaca(rok, miesiac)
@@ -727,21 +691,12 @@ def _procent_tekstem(udzial):
 
 
 def dane_raportu_ewidencji(auto_id, rok, miesiac, uklad=None, dzis=None) -> dict[str, Any]:
-    """Treść raportu miesiąca w wybranym układzie — wszystko jako gotowe napisy.
-
-    • „vat” — ewidencja przebiegu w układzie z art. 86a ust. 7 ustawy o VAT:
-      numer rejestracyjny, okres, początek ewidencji, stan licznika na początek
-      i koniec okresu, kolejne numery wpisów, data, cel, trasa, kilometry,
-      kierowca, suma kilometrów i miejsce na potwierdzenie podatnika.
-    • „kilometrowka” — tylko przejazdy służbowe, ze stawką i kwotą przy każdym;
-      dane osoby i pojazdu (z pojemnością silnika), podpisy osoby i pracodawcy.
-    • „podzial” — wszystkie przejazdy z rodzajem, podział kilometrów i kosztów
-      miesiąca.
-
-    Zwraca {uklad, tytul, podtytul, naglowek: [(etykieta, wartość)], kolumny:
-    [(nagłówek, szerokość względna, wyrównanie „L”/„R”/„C”)], wiersze, razem
-    (wiersz sumy albo None), podsumowanie: [(etykieta, wartość)], uwagi, podpisy,
-    nazwa_pliku}."""
+    """Treść raportu miesiąca jako gotowe napisy. Układy: „vat” (art. 86a ust. 7 ustawy
+    o VAT: rejestracja, okres, licznik na początek i koniec, numerowane wpisy, suma,
+    potwierdzenie), „kilometrowka” (tylko służbowe ze stawką i kwotą, dane osoby i
+    pojazdu z pojemnością, podpisy), „podzial” (wszystkie z rodzajem, podział km i
+    kosztów). Zwraca {uklad, tytul, podtytul, naglowek, kolumny: [(nagłówek, szerokość,
+    „L”/„R”/„C”)], wiersze, razem, podsumowanie, uwagi, podpisy, nazwa_pliku}."""
     p = podsumowanie_ewidencji(auto_id, rok, miesiac, dzis=dzis)
     uklad = uklad if uklad in UKLADY_RAPORTU_EWIDENCJI else p["tryb"]
     j = jednostka_dystansu()

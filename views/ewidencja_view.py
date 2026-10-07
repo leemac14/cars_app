@@ -1,17 +1,8 @@
-"""„Ewidencja przebiegu” — przejazdy prywatne i służbowe miesiąc po miesiącu (N-01).
-
-Aplikacja znała licznik, a nie wiedziała, PO CO były kilometry. Ten ekran
-prowadzi ewidencję: przejazdy wybranego miesiąca, ich podział na służbowe
-i prywatne, kwotę kilometrówki, podział kosztów miesiąca w tej samej
-proporcji i licznik na początek i koniec okresu — z „nieopisanymi km”, czyli
-tym, czego w ewidencji brakuje. Stąd idzie raport miesiąca (PDF albo CSV)
-w jednym z trzech układów i „Zamknij miesiąc” — stan licznika na ostatni dzień.
-
-Liczy wszystko db.podsumowanie_ewidencji; ten sam rachunek stoi na kafelku
-kokpitu, w przypomnieniu i w raporcie. Tryb ewidencji (podział, kilometrówka,
-VAT) i stawka należą do pojazdu na tym telefonie — ustawia się je zębatką
-w pasku.
-"""
+"""„Ewidencja przebiegu” (N-01): przejazdy miesiąca, podział służbowe/prywatne,
+kilometrówka, podział kosztów w tej proporcji, licznik na granicach z „nieopisanymi km”,
+raport (PDF/CSV, trzy układy) i „Zamknij miesiąc”. Liczy db.podsumowanie_ewidencji (ten
+sam rachunek co kafelek, przypomnienie i raport). Tryb i stawka należą do pojazdu na tym
+telefonie (zębatka w pasku)."""
 
 from datetime import datetime
 

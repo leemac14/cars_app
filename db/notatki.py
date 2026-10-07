@@ -55,11 +55,8 @@ def pobierz_notatke(tabela, rekord_id) -> tuple[str, str | None, str | None]:
 
 
 def zapisz_notatke(tabela, rekord_id, tresc):
-    """Zapisuje krótką notatkę POJEDYNCZEGO wpisu i zwraca auto_id pojazdu —
-    wołający wypycha nim zmianę w tle (utils.wypchnij_w_tle), dzięki czemu
-    notatka dociera do wszystkich współdzielących ten pojazd.
-    Pusta treść kasuje notatkę RAZEM z podpisem: sam autor bez tekstu
-    zostawiałby na karcie „Kasia • 04.09.2026” bez żadnej uwagi."""
+    """Zapisuje notatkę POJEDYNCZEGO wpisu i zwraca auto_id (wołający wypycha zmianę:
+    utils.wypchnij_w_tle). Pusta treść kasuje notatkę RAZEM z podpisem."""
     kolumna = POLA_NOTATKI.get(tabela)
     if not kolumna or not rekord_id:
         raise ValueError(f"Wpisy z tabeli '{tabela}' nie mają notatki.")

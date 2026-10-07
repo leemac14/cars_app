@@ -6,16 +6,10 @@ import utils
 
 
 class PrzyszloscView(ft.View):
-    """„Co przede mną” — wspólna oś przyszłości (N-02 w katalogu pomysłów):
-    terminy dokumentów, wymiany podzespołów, wydatki cykliczne, raty, zmiana
-    opon, końce budżetów i prognoza kosztu każdego miesiąca — w oknie 30, 90
-    albo 365 dni, chronologicznie, z zaległymi na górze.
-
-    Starszy brat „Ile zostało do…”: tamta lista mówi, ile zostało do każdej
-    rzeczy z osobna, ta — co po kolei wypada w kalendarzu i ile to będzie
-    kosztować. Dziennik życia auta patrzy wstecz, dzwonek — tylko na to, co już
-    w progu przypomnienia. Liczy db.os_przyszlosci, słowa i wiersze składa
-    utils/przyszlosc.py, a okno pamięta db.pobierz_okno_przyszlosci."""
+    """„Co przede mną” (N-02): terminy, wymiany, cykliczne, raty, zmiana opon, końce
+    budżetów i prognoza kosztu miesięcy w oknie 30/90/365 dni, zaległe na górze. Liczy
+    db.os_przyszlosci, wiersze składa utils/przyszlosc.py, okno pamięta
+    db.pobierz_okno_przyszlosci."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page
@@ -237,25 +231,15 @@ class PrzyszloscView(ft.View):
                        "przeciętym brzegiem okna proporcjonalnie do dni. ")
         else:
             biezace = "Bieżących jeszcze nie ma — średnia potrzebuje choć jednego pełnego miesiąca wpisów. "
-        return ft.Container(
-            padding=utils.SPACING["md"],
-            **utils.powierzchnia(self._page, "blok"),
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
-                    utils.podpis("Jak liczona jest prognoza"),
-                ], spacing=6),
-                ft.Text(
-                    "Prognoza miesiąca to bieżące plus zaplanowane. " + biezace
-                    + "Zaplanowane to kwoty pozycji z tej listy: wydatki cykliczne, raty z harmonogramu "
-                    "i wymiany podzespołów po cenie ostatniej wymiany (z „~”). Zapłacone wydatki cykliczne "
-                    "i wymiany podzespołów z interwałem nie wchodzą do średniej — ich przyszłe kwoty stoją "
-                    "na liście, więc nic nie liczy się dwa razy. Polisa i przegląd nie mają tu kwoty; "
-                    "zapłacone zwykłym kosztem są w średniej. Kolejne wymiany zakładają wymianę w terminie, "
-                    "a daty przy kilometrach to prognoza ze średniego przebiegu dziennego. Zaległe stoją "
-                    "na górze bez względu na okno. Kolor mówi to samo, co powiadomienia: pomarańczowy — "
-                    "w progu przypomnienia, czerwony — po terminie albo ponad budżet.",
-                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                ),
-            ], spacing=4),
+        return utils.nota_o_liczeniu(
+            self._page, "Jak liczona jest prognoza",
+            "Prognoza miesiąca to bieżące plus zaplanowane. " + biezace
+            + "Zaplanowane to kwoty pozycji z tej listy: wydatki cykliczne, raty z harmonogramu "
+            "i wymiany podzespołów po cenie ostatniej wymiany (z „~”). Zapłacone wydatki cykliczne "
+            "i wymiany podzespołów z interwałem nie wchodzą do średniej — ich przyszłe kwoty stoją "
+            "na liście, więc nic nie liczy się dwa razy. Polisa i przegląd nie mają tu kwoty; "
+            "zapłacone zwykłym kosztem są w średniej. Kolejne wymiany zakładają wymianę w terminie, "
+            "a daty przy kilometrach to prognoza ze średniego przebiegu dziennego. Zaległe stoją "
+            "na górze bez względu na okno. Kolor mówi to samo, co powiadomienia: pomarańczowy — "
+            "w progu przypomnienia, czerwony — po terminie albo ponad budżet.",
         )

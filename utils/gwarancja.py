@@ -1,11 +1,6 @@
-"""Gwarancja naprawy na ekranie: pola ze skrótami w formularzach, okno przy
-pozycji wizyty zbiorczej i linijka „Gwarancja jeszcze 8 miesięcy” na kartach.
-
-Liczy i mówi warstwa danych (db/gwarancje.py) — tu jest tylko wygląd: kolor
-stanu, ikona i to, gdzie który napis stoi. Koniec gwarancji nie jest usterką,
-więc gwarancja, która minęła, jest szara, a nie czerwona: niczego już nie
-chroni, ale też niczego nie zaniedbano.
-"""
+"""Gwarancja naprawy na ekranie: pola ze skrótami, okno przy pozycji wizyty, linijka
+„Gwarancja jeszcze 8 miesięcy”. Liczy db/gwarancje.py, tu tylko wygląd; gwarancja, która
+minęła, jest szara (to nie usterka)."""
 
 import db
 import flet as ft
@@ -137,21 +132,11 @@ def _okres_slownie(start, koniec):
 
 
 class PolaGwarancji:
-    """Gwarancja naprawy w formularzu: do kiedy i do jakiego stanu licznika,
-    a pod każdym polem skróty („2 lata”, „+20 tys. km”).
-
-    Skrót trzyma się WYMIANY — tak jak na fakturze, gdzie gwarancja to „24
-    miesiące od wydania auta”. Zmiana daty albo licznika wymiany przesuwa ją
-    o tyle samo, dopóki ktoś nie wybierze końca z kalendarza albo nie wpisze
-    limitu ręcznie — wtedy obowiązuje to, co wpisał. Podświetlony skrót to
-    zawsze ten, za którym gwarancja jedzie (także przy edycji starego wpisu,
-    którego koniec wypada dokładnie po tylu miesiącach).
-
-    `data_wymiany` i `przebieg_wymiany` to funkcje bez argumentów (tekst z pola
-    daty i licznik w km albo None), bo formularz zmienia je na bieżąco.
-    Formularz wstawia `kontrolki()`, woła `przy_zmianie_wymiany()`, gdy ruszy
-    datę albo licznik wymiany, do wykrywania zmian bierze `migawka()`, a przy
-    zapisie — `sprawdz()`."""
+    """Gwarancja naprawy w formularzu (do kiedy, do jakiego licznika) ze skrótami („2
+    lata”, „+20 tys. km”). Skrót trzyma się WYMIANY: zmiana jej daty lub licznika
+    przesuwa gwarancję, dopóki ktoś nie wpisze końca ręcznie. `data_wymiany` i
+    `przebieg_wymiany` to funkcje bez argumentów. Formularz: `kontrolki()`,
+    `przy_zmianie_wymiany()`, `migawka()`, `sprawdz()`."""
 
     def __init__(self, page: ft.Page, koniec=None, limit_km=None, data_wymiany=None,
                  przebieg_wymiany=None, miesiace=None, dystans_km=None, uwagi=()):

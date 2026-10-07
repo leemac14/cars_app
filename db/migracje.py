@@ -21,10 +21,8 @@ from .kosz import posprzataj_kosz
 # — patrz wersja_schematu_aplikacji() na dole pliku.
 WERSJA_SCHEMATU = None
 
-# Tabele z `data_iso` na stan wersji 44 — ZAMROŻONE. Wypełnienie wstecz tej
-# wersji chodzi po nich, zanim późniejsze migracje dołożą następne (szkice
-# paragonów, wersja 46): stara baza migrowana od zera nie ma ich jeszcze
-# w tym miejscu drabinki, a nowa tabela zaczyna pusta, więc nie ma czego liczyć.
+# Tabele z `data_iso` na stan wersji 44 — ZAMROŻONE: baza migrowana od zera nie ma
+# jeszcze w tym miejscu tabel z późniejszych wersji (np. szkice, 46).
 _TABELE_DATY_ISO_WERSJI_44 = (
     "tankowania", "inne_koszty", "wizyty", "historia",
     "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
@@ -221,14 +219,9 @@ def init_db():
             ALTER TABLE wydatki_cykliczne ADD COLUMN zdalne_id TEXT;
             ALTER TABLE odczyty_przebiegu ADD COLUMN zdalne_id TEXT;
             """,
-            # Wersja 19: Wsparcie synchronizacji EDYCJI i USUNIĘĆ (nie tylko nowych
-            # wpisów). zdalny_hash pamięta hash treści ostatnio zsynchronizowanej z
-            # serwerem — różnica przy kolejnej synchronizacji oznacza lokalną edycję
-            # do wypchnięcia. zdalne_nagrobki to lokalna kolejka "do usunięcia na
-            # serwerze przy najbliższej okazji": rekord znika z lokalnej bazy od razu
-            # (jak dotychczas), a jego zdalny odpowiednik trzeba jeszcze osobno
-            # oznaczyć jako usunięty. Bez auto_id — kasowanie po zdalnym ID nie jest
-            # przywiązane do konkretnego pojazdu.
+            # Wersja 19: synchronizacja EDYCJI i USUNIĘĆ. zdalny_hash — hash treści
+            # ostatnio zsynchronizowanej (różnica = edycja do wypchnięcia);
+            # zdalne_nagrobki — kolejka usunięć do wysłania na serwer, bez auto_id.
             """
             ALTER TABLE tankowania ADD COLUMN zdalny_hash TEXT;
             ALTER TABLE zadania ADD COLUMN zdalny_hash TEXT;
@@ -253,23 +246,16 @@ def init_db():
             ALTER TABLE tagi ADD COLUMN zdalne_id TEXT;
             ALTER TABLE tagi ADD COLUMN zdalny_hash TEXT;
             """,
-            # Wersja 21: Atrybucja wpisów przy współdzielonych pojazdach — kto
-            # dodał dany wpis (tankowanie/serwis/wizytę/koszt). Wypełniane samą
-            # nazwą ustawioną lokalnie w Ustawieniach (patrz pobierz_moje_imie),
-            # bo anonymous auth w Supabase nie niesie żadnej nazwy użytkownika.
-            # Puste dla wpisów sprzed tej wersji.
+            # Wersja 21: kto dodał wpis — nazwa z Ustawień (pobierz_moje_imie), bo
+            # anonimowe logowanie Supabase nie niesie nazwy. Puste dla starszych wpisów.
             """
             ALTER TABLE tankowania ADD COLUMN dodane_przez TEXT;
             ALTER TABLE historia ADD COLUMN dodane_przez TEXT;
             ALTER TABLE wizyty ADD COLUMN dodane_przez TEXT;
             ALTER TABLE inne_koszty ADD COLUMN dodane_przez TEXT;
             """,
-            # Wersja 22: Indeksy pod synchronizację (sync.py) — _wypchnij_tabele/
-            # _pobierz_tabele robią WHERE auto_id=? AND zdalne_id IS NULL/NOT NULL
-            # na każdej tabeli przy KAŻDEJ synchronizacji; bez indeksu to pełne
-            # skanowanie tabeli, co przy dużej historii zacznie zauważalnie
-            # spowalniać sync. idx_historia_zdalne osobno, bo historia nie ma
-            # kolumny auto_id (jest tylko przez zadanie_id/wizyta_id).
+            # Wersja 22: indeksy pod synchronizację (WHERE auto_id=? AND zdalne_id IS
+            # [NOT] NULL); idx_historia_zdalne osobno, bo historia nie ma auto_id.
             """
             CREATE INDEX IF NOT EXISTS idx_tankowania_auto_zdalne ON tankowania(auto_id, zdalne_id);
             CREATE INDEX IF NOT EXISTS idx_zadania_auto_zdalne ON zadania(auto_id, zdalne_id);
@@ -305,23 +291,15 @@ def init_db():
             """
             ALTER TABLE samochody ADD COLUMN wiadomosc_statusu TEXT;
             """,
-            # Wersja 25: Synchronizacja zużycia części z magazynu podczas wizyt
-            # (wizyta_czesci_magazynu) — dotąd tabela była celowo pomijana przez
-            # sync (patrz KONFIGURACJA_SYNC w sync.py), więc przy współdzielonym
-            # pojeździe zużycie części dodane offline na jednym urządzeniu nie
-            # pojawiało się na drugim. Bez auto_id, tak jak historia — dowiązanie
-            # do pojazdu tylko pośrednio przez wizyta_id -> wizyty.auto_id.
+            # Wersja 25: synchronizacja wizyta_czesci_magazynu; bez auto_id, jak
+            # historia (pojazd przez wizyta_id).
             """
             ALTER TABLE wizyta_czesci_magazynu ADD COLUMN zdalne_id TEXT;
             ALTER TABLE wizyta_czesci_magazynu ADD COLUMN zdalny_hash TEXT;
             CREATE INDEX IF NOT EXISTS idx_wizyta_czesci_magazynu_zdalne ON wizyta_czesci_magazynu(zdalne_id);
             """,
-            # Wersja 26: (a) indywidualne progi powiadomień per podzespół —
-            # analogicznie do prog_ostrzezenia w magazyn_czesci. NULL = użyj
-            # globalnych prog_km_powiadomien / prog_dni_powiadomien z Ustawień,
-            # więc dla istniejących wpisów nic się nie zmienia. (b) kolumny
-            # synchronizacji dla własnych pakietów serwisowych — bez nich partner
-            # przy współdzielonym pojeździe nie widział Twoich pakietów.
+            # Wersja 26: (a) progi powiadomień per podzespół (NULL = globalne z
+            # Ustawień); (b) kolumny synchronizacji własnych pakietów serwisowych.
             """
             ALTER TABLE zadania ADD COLUMN prog_km INTEGER;
             ALTER TABLE zadania ADD COLUMN prog_dni INTEGER;
@@ -329,81 +307,52 @@ def init_db():
             ALTER TABLE pakiety_serwisowe_wlasne ADD COLUMN zdalny_hash TEXT;
             CREATE INDEX IF NOT EXISTS idx_pakiety_wlasne_auto_zdalne ON pakiety_serwisowe_wlasne(auto_id, zdalne_id);
             """,
-            # Wersja 27: (a) gwarancja pojazdu — dokładnie ten sam wzorzec co
-            # AC/Assistance/gaśnica/apteczka, plus opcjonalny limit kilometrowy;
-            # (b) kolejka offline dla auto-synchronizacji — dotąd brak sieci przy
-            # zapisie kończył się cichym `except: pass` bez ponowienia. UNIQUE na
-            # auto_id, bo sync i tak działa na całym pojeździe naraz.
+            # Wersja 27: (a) gwarancja pojazdu (wzorzec AC/Assistance + limit km); (b)
+            # kolejka offline auto-synchronizacji, UNIQUE na auto_id.
             """
             ALTER TABLE samochody ADD COLUMN gwarancja_data TEXT;
             ALTER TABLE samochody ADD COLUMN gwarancja_przebieg INTEGER;
             CREATE TABLE IF NOT EXISTS kolejka_sync (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, powod TEXT, proby INTEGER NOT NULL DEFAULT 0, ostatnia_proba TEXT, nastepna_proba TEXT, ostatni_blad TEXT);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_kolejka_sync_auto ON kolejka_sync(auto_id);
             """,
-            # Wersja 28: Cykliczne przypomnienia bez kosztu — wydatki_cykliczne
-            # może teraz reprezentować też zwykłe przypomnienie (np. "co miesiąc
-            # sprawdź ciśnienie w oponach"), bez wymuszania kwoty. czy_koszt=1
-            # (domyślnie, zgodnie z dotychczasowym zachowaniem) to klasyczny
-            # wydatek cykliczny — zaznaczenie "Zapłacone" dopisuje kwotę do
-            # inne_koszty. czy_koszt=0 to samo przypomnienie — zaznaczenie
-            # "Wykonano" tylko przesuwa termin, bez wpisu kosztu.
+            # Wersja 28: cykliczne przypomnienia bez kosztu. czy_koszt=1 (domyślnie) —
+            # „Zapłacone” dopisuje koszt; czy_koszt=0 — „Wykonano” tylko przesuwa
+            # termin.
             """
             ALTER TABLE wydatki_cykliczne ADD COLUMN czy_koszt INTEGER NOT NULL DEFAULT 1;
             """,
-            # Wersja 29: Kosz na usunięte pojazdy. Usunięcie auta nie kasuje już
-            # danych — zrzuca cały pojazd (tabela samochody + wszystkie tabele
-            # potomne, łącznie z historią i wizytami) do JSON-a w kolumnie
-            # 'migawka', a fizyczne zdjęcia przenosi do FOLDER_KOSZ. 'pliki' to
-            # mapa [ścieżka_w_koszu, ścieżka_oryginalna] potrzebna przy powrocie.
-            # Nagrobki synchronizacji CELOWO nie powstają przy przenoszeniu do
-            # kosza (patrz usun_auto_do_kosza) — dopóki auto siedzi w koszu, na
-            # serwerze i u współdzielących nadal istnieje; nagrobki rejestruje
-            # dopiero trwałe skasowanie. 'schemat_wersja' pozwala przy
-            # przywracaniu rozpoznać migawkę zrobioną na starszym schemacie
-            # bazy — kolumny, których już nie ma, są wtedy pomijane.
+            # Wersja 29: kosz na usunięte pojazdy — cały pojazd jako JSON w 'migawka',
+            # zdjęcia w FOLDER_KOSZ, 'pliki' = mapa [ścieżka_w_koszu, oryginalna].
+            # Nagrobki CELOWO dopiero przy trwałym skasowaniu. 'schemat_wersja' pozwala
+            # pominąć przy przywracaniu kolumny, których już nie ma.
             """
             CREATE TABLE IF NOT EXISTS kosz_pojazdy (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT NOT NULL, data_usuniecia TEXT NOT NULL, migawka TEXT NOT NULL, pliki TEXT, liczba_wpisow INTEGER NOT NULL DEFAULT 0, rozmiar_plikow INTEGER NOT NULL DEFAULT 0, schemat_wersja INTEGER);
             CREATE INDEX IF NOT EXISTS idx_kosz_data ON kosz_pojazdy(data_usuniecia);
             """,
-            # Wersja 30: zużycie części z magazynu przy POJEDYNCZYM wpisie
-            # serwisowym, a nie tylko przy wizycie zbiorczej. Osobna tabela,
-            # bo wizyta_czesci_magazynu.wizyta_id jest NOT NULL i dowiązane do
-            # tabeli wizyt — wpis poza wizytą nie ma czego tam wskazać.
-            # Struktura celowo lustrzana (ilosc_uzyta + kolumny synchronizacji),
-            # więc cała obsługa w sync.py i w koszu jest tym samym kodem.
+            # Wersja 30: zużycie części przy POJEDYNCZYM wpisie serwisowym — osobna
+            # tabela (wizyta_id jest NOT NULL), lustrzana do wizyta_czesci_magazynu,
+            # więc sync i kosz to ten sam kod.
             """
             CREATE TABLE IF NOT EXISTS historia_czesci_magazynu (id INTEGER PRIMARY KEY AUTOINCREMENT, historia_id INTEGER NOT NULL, magazyn_id INTEGER NOT NULL, ilosc_uzyta REAL NOT NULL DEFAULT 1, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (historia_id) REFERENCES historia(id) ON DELETE CASCADE, FOREIGN KEY (magazyn_id) REFERENCES magazyn_czesci(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_historia_czesci_historia ON historia_czesci_magazynu(historia_id);
             CREATE INDEX IF NOT EXISTS idx_historia_czesci_magazyn ON historia_czesci_magazynu(magazyn_id);
             CREATE INDEX IF NOT EXISTS idx_historia_czesci_zdalne ON historia_czesci_magazynu(zdalne_id);
             """,
-            # Wersja 31: odkładanie („drzemka”) pojedynczego powiadomienia.
-            # „Wiem o przeglądzie, zrobię go za dwa tygodnie” — wyciszenie JEDNEGO
-            # przypomnienia bez oznaczania czegokolwiek jako wykonane. Klucz to
-            # stabilny identyfikator powiadomienia (patrz _klucz_powiadomienia),
-            # a nie treść, bo opis zmienia się z każdym dniem („Zostało 12 dni”).
-            # Świadomie NIE synchronizujemy tej tabeli ani nie zabieramy jej do
-            # kosza: drzemka jest krótkotrwała, osobista i dotyczy tego urządzenia.
+            # Wersja 31: drzemka pojedynczego powiadomienia. Klucz = stabilny
+            # identyfikator (_klucz_powiadomienia), nie treść. Świadomie bez
+            # synchronizacji i kosza — sprawa tego urządzenia.
             """
             CREATE TABLE IF NOT EXISTS wyciszone_powiadomienia (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, klucz TEXT NOT NULL, do_dnia TEXT NOT NULL, tytul TEXT, utworzono TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_wyciszone_klucz ON wyciszone_powiadomienia(auto_id, klucz);
             """,
-            # Wersja 32: typ nadwozia. Do tej pory każdy pojazd w selektorze
-            # wyglądał identycznie (ta sama ikona samochodu), więc przy kilku
-            # autach w garażu rozróżniało się je dopiero po przeczytaniu nazwy.
-            # Sylwetka nadwozia na krążku w kolorze przypisanym do auta daje
-            # rozpoznanie jednym spojrzeniem. Puste = ogólna ikona, jak dotąd.
+            # Wersja 32: typ nadwozia — sylwetka na krążku w selektorze pojazdów; puste
+            # = ogólna ikona.
             """
             ALTER TABLE samochody ADD COLUMN nadwozie TEXT;
             """,
-            # Wersja 33: osobne śledzenie paliwa i prądu. Hybryda plug-in zużywa
-            # OBA źródła, a dotąd wpis mógł być tylko jednym z nich — trzeba było
-            # wybrać, którą stronę się liczy. Teraz każdy wpis w 'tankowania'
-            # deklaruje 'rodzaj_energii' ('paliwo' albo 'prad'), więc zużycie,
-            # koszty i wykresy da się policzyć dla każdej strony niezależnie.
-            # 'typ_ladowania' (AC/DC) rozdziela wolne ładowanie w domu od drogiego
-            # szybkiego na trasie. Bateria i deklarowany zasięg zasilają szacunek
-            # realnego zasięgu z RZECZYWISTEGO zużycia użytkownika.
+            # Wersja 33: paliwo i prąd osobno. 'rodzaj_energii' ('paliwo'/'prad') przy
+            # każdym wpisie 'tankowania', 'typ_ladowania' (AC/DC); bateria i deklarowany
+            # zasięg do szacunku realnego zasięgu.
             """
             ALTER TABLE tankowania ADD COLUMN rodzaj_energii TEXT;
             ALTER TABLE tankowania ADD COLUMN typ_ladowania TEXT;
@@ -411,23 +360,11 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN zasieg_ev TEXT;
             CREATE INDEX IF NOT EXISTS idx_tankowania_auto_rodzaj ON tankowania(auto_id, rodzaj_energii);
             """,
-            # Wersja 34: krótka notatka przy POJEDYNCZYM wpisie. Do tej pory
-            # kontekst („tankowanie po zjeździe z autostrady”, „olej dolany, nie
-            # wymiana”) nie miał się gdzie zapisać — zostawały tagi, czyli
-            # słownik wspólny dla całego pojazdu, albo nazwa kosztu, która trafia
-            # na wykresy. Notatka jest wolnym tekstem JEDNEGO wpisu i nigdzie się
-            # nie agreguje.
-            # Kolumny osobne, a nie jedna wspólna tabela notatek: cała reszta
-            # aplikacji (synchronizacja z KONFIGURACJA_SYNC, kosz, cofanie
-            # usunięcia przez PRAGMA table_info, eksport) działa na kolumnach
-            # rekordu i dostaje notatkę za darmo — tabela obok wymagałaby łatki
-            # w każdym z tych miejsc.
-            # 'notatka_autor' i 'notatka_data' są niezależne od
-            # dodane_przez/zmodyfikowane_przez, bo uwagę przy współdzielonym
-            # pojeździe zwykle dopisuje KTO INNY niż autor wpisu, i to długo po
-            # jego dodaniu. Wizyty (notatki), zadania do zrobienia (opis),
-            # magazyn, opony i warsztaty mają swoje pole opisu od dawna —
-            # tam dokładamy tylko wspólną prezentację, bez nowych kolumn.
+            # Wersja 34: notatka przy POJEDYNCZYM wpisie, wolny tekst, nigdzie się nie
+            # agreguje. Kolumny w rekordzie, nie osobna tabela — sync, kosz, cofanie i
+            # eksport dostają ją za darmo. 'notatka_autor' i 'notatka_data' niezależne
+            # od autora wpisu (uwagę dopisuje zwykle ktoś inny). Wizyty, zadania,
+            # magazyn, opony i warsztaty mają własne pole opisu.
             """
             ALTER TABLE tankowania ADD COLUMN notatka TEXT;
             ALTER TABLE tankowania ADD COLUMN notatka_autor TEXT;
@@ -442,47 +379,25 @@ def init_db():
             ALTER TABLE odczyty_przebiegu ADD COLUMN notatka_autor TEXT;
             ALTER TABLE odczyty_przebiegu ADD COLUMN notatka_data TEXT;
             """,
-            # Wersja 35: analiza i prognozy. (a) 'pojemnosc_baku' domyka komplet
-            # danych o zbiornikach — bateria była od wersji 33, bak dopiero teraz;
-            # bez niego nie da się policzyć zasięgu auta spalinowego, a to
-            # najczęściej zadawane pytanie przed dłuższą trasą. Pole TEKSTOWE,
-            # jak reszta specyfikacji ('55 l', '55,5'), czytane przez
-            # _liczba_lub_none. (b) Tabela budżetów: limit wydatków per pojazd,
-            # osobno na paliwo, serwis, inne i wszystko razem, w wersji
-            # miesięcznej albo rocznej. UNIQUE na (auto_id, kategoria, okres),
-            # bo dwa limity na to samo nie mają sensu — zapis jest upsertem.
-            # Kolumny synchronizacji, bo przy współdzielonym aucie limit ustala
-            # się raz dla obu osób; inaczej każdy patrzyłby na inny budżet.
+            # Wersja 35: (a) 'pojemnosc_baku' — TEKST jak reszta specyfikacji, czytany
+            # przez _liczba_lub_none; (b) budżety: limit per pojazd, kategoria
+            # (paliwo/serwis/inne/razem) i okres; UNIQUE (auto_id, kategoria, okres) —
+            # zapis to upsert; synchronizowane.
             """
             ALTER TABLE samochody ADD COLUMN pojemnosc_baku TEXT;
             CREATE TABLE IF NOT EXISTS budzety (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, kategoria TEXT NOT NULL, okres TEXT NOT NULL, kwota REAL NOT NULL DEFAULT 0, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_budzety_klucz ON budzety(auto_id, kategoria, okres);
             CREATE INDEX IF NOT EXISTS idx_budzety_zdalne ON budzety(zdalne_id);
             """,
-            # Wersja 36: skąd wziął się odczyt licznika. Historia odczytów
-            # pokazuje teraz WSZYSTKIE znane stany licznika — także te, które
-            # aplikacja zebrała sama przy tankowaniu, wizycie i wpisie serwisowym
-            # (te wynikają z samych tabel, bez nowych kolumn). Ta kolumna
-            # rozstrzyga tylko wewnętrzny podział własnych odczytów: wpisany
-            # ręcznie w historii, szybka aktualizacja z kokpitu, korekta przy
-            # danych pojazdu czy import z pliku. NULL = wpis sprzed tej wersji,
-            # traktowany jako ręczny — czyli dokładnie tym, czym wtedy był.
+            # Wersja 36: źródło własnego odczytu licznika (ręczny, kokpit, korekta przy
+            # danych pojazdu, import). NULL = sprzed wersji, traktowany jako ręczny.
             """
             ALTER TABLE odczyty_przebiegu ADD COLUMN zrodlo TEXT;
             """,
-            # Wersja 37: dane pojazdu, których dotąd nie było gdzie trzymać, a
-            # których szuka się w konkretnych, powtarzalnych sytuacjach:
-            # (a) ZAKUP I WARTOŚĆ — dopiero cena zakupu i dzisiejsza wartość
-            #     domykają rachunek posiadania: samo paliwo i serwis pomijają
-            #     największy koszt auta, czyli utratę wartości;
-            # (b) UBEZPIECZENIE I POMOC — po stłuczce szuka się numeru polisy
-            #     i telefonu do assistance, zwykle w emocjach i cudzym aucie;
-            # (c) ŚCIĄGAWKA — kod lakieru przy zaprawce, rozmiar opon i felg
-            #     przy zakupie, moment dokręcania i rozstaw śrub przy zmianie kół;
-            # (d) PIERWSZA REJESTRACJA — z niej liczy się WIEK auta i roczny
-            #     przebieg; sam rocznik potrafi się różnić od rejestracji o rok.
-            # Wszystko jako kolumny pojazdu, bo to opis JEGO tożsamości i wszystko
-            # leci do partnera tą samą drogą co reszta danych auta.
+            # Wersja 37: dane pojazdu — (a) zakup i wartość (rachunek posiadania), (b)
+            # ubezpieczenie i assistance, (c) ściągawka (kod lakieru, rozmiary, moment
+            # dokręcania), (d) pierwsza rejestracja (z niej wiek i roczny przebieg).
+            # Kolumny pojazdu, jadą do partnera jak reszta.
             """
             ALTER TABLE samochody ADD COLUMN data_zakupu TEXT;
             ALTER TABLE samochody ADD COLUMN cena_zakupu REAL;
@@ -508,32 +423,15 @@ def init_db():
             """
             CREATE TABLE IF NOT EXISTS ekrany_uzycie (ekran_id TEXT PRIMARY KEY, licznik INTEGER NOT NULL DEFAULT 0, ostatnio TEXT, przypiety INTEGER NOT NULL DEFAULT 0, kolejnosc INTEGER NOT NULL DEFAULT 0);
             """,
-            # Wersja 39: pięć rzeczy, których dotąd nie było gdzie zapisać.
-            #
-            # (a) `wydatki_cykliczne.typ` — sezonowa zmiana opon przestaje być
-            #     zwykłym wpisem w kalendarzu. Wpis typu 'opony' w chwili
-            #     wykonania przestawia zamontowany komplet w magazynie opon
-            #     (patrz przelacz_zestaw_sezonowy), czyli robi to, po co się go
-            #     zakłada. Domyślne 'wydatek' zostawia wszystkie istniejące
-            #     wpisy dokładnie tam, gdzie były.
-            #
-            # (b) `trasy_szablony` — trasa „Do teściów” liczona co miesiąc od
-            #     nowa to za każdym razem te same 180 km wpisywane ręcznie.
-            #     Szablon trzyma komplet parametrów kalkulatora poza ceną
-            #     paliwa i spalaniem, bo TE mają się brać z aktualnych danych.
-            #
-            # (c) `checklisty` + `checklisty_pozycje` — lista wielokrotnego
-            #     użytku, odhaczana przed wyjazdem i zerowana po powrocie.
-            #     Osobno od `do_zrobienia`, gdzie pozycja znika po wykonaniu.
-            #     Stan ptaszka siedzi w pozycji, bo to stan BIEŻĄCEGO przejścia.
-            #
-            # (d) `samochody.status` + data i cena sprzedaży — sprzedane auto
-            #     znika z garażu, ale historia zostaje do wglądu i eksportu.
-            #     Kolumna z DEFAULT 'aktywny' oznacza, że żadne z dziesiątek
-            #     istniejących zapytań nie wymaga dopisania filtra — filtrują
-            #     tylko cztery miejsca, które wypisują listę pojazdów.
-            #     Cena sprzedaży domyka rachunek posiadania: to ona, a nie
-            #     szacunek, mówi ile auto naprawdę kosztowało.
+            # Wersja 39:
+            # (a) `wydatki_cykliczne.typ` — wpis 'opony' po wykonaniu przestawia komplet
+            # w magazynie (przelacz_zestaw_sezonowy); domyślne 'wydatek'.
+            # (b) `trasy_szablony` — parametry kalkulatora bez ceny paliwa i spalania
+            # (te zawsze aktualne).
+            # (c) `checklisty` + `checklisty_pozycje` — wielokrotnego użytku; stan
+            # ptaszka w pozycji.
+            # (d) `samochody.status` z DEFAULT 'aktywny' + data i cena sprzedaży —
+            # filtrują tylko miejsca wypisujące listę pojazdów.
             """
             ALTER TABLE wydatki_cykliczne ADD COLUMN typ TEXT DEFAULT 'wydatek';
 
@@ -552,34 +450,16 @@ def init_db():
             ALTER TABLE samochody ADD COLUMN data_sprzedazy TEXT;
             ALTER TABLE samochody ADD COLUMN cena_sprzedazy REAL;
             """,
-            # Wersja 40: role przy współdzieleniu pojazdu. Do tej pory kod
-            # zaproszenia dawał dokładnie jedno uprawnienie — wszystko. Kto
-            # dostał kod, mógł też skasować cudze tankowanie sprzed roku, a
-            # jedyną granicą było zaufanie.
-            #
-            # (a) `rola_wspoldzielenia` mówi, czym JEST dla mnie ten pojazd:
-            #     'wlasciciel' (ja go udostępniłem), 'pelna' (dołączyłem
-            #     kodem pełnym — zachowanie dotychczasowe), 'wspolautor'
-            #     (dopisuję swoje wpisy, cudzych nie ruszam) albo 'podglad'
-            #     (tylko czytam; aplikacja nigdy nic nie wysyła). Domyślne
-            #     'wlasciciel' zostawia wszystkie istniejące pojazdy dokładnie
-            #     z tymi prawami, które miały do tej pory.
-            #
-            # (b) `kod_wspolautora` / `kod_podgladu` — dwa dodatkowe, NIEZALEŻNE
-            #     kody zaproszenia trzymane u właściciela. Celowo losowe, a nie
-            #     wyprowadzone z kodu głównego: gdyby były jego wariantem, gość
-            #     z kodu podglądu odgadłby kod pełny i cała rola byłaby ozdobą.
-            #
-            # (c) `znacznik_delty` — najwyższy `zaktualizowano` pobrany
-            #     z serwera. Bez niego każda synchronizacja ściągała komplet
-            #     rekordów ze wszystkich tabel, za każdym razem, po komórce.
-            #
-            # (d) `zdalne_nagrobki.auto_id` + `proby` — nagrobek wiedział tylko
-            #     CO usunąć, nie z którego pojazdu, więc przy synchronizacji
-            #     auta A leciały też skasowania z auta B (w tym z pojazdu, do
-            #     którego mam wyłącznie podgląd). `proby` zamyka drugą dziurę:
-            #     nagrobek odrzucany przez serwer w nieskończoność (bo nie mam
-            #     do niego prawa) próbował się wysłać przy każdej synchronizacji.
+            # Wersja 40: role przy współdzieleniu.
+            # (a) `rola_wspoldzielenia`: 'wlasciciel' (domyślnie), 'pelna', 'wspolautor'
+            # (swoje wpisy), 'podglad' (nic nie wysyła).
+            # (b) `kod_wspolautora` / `kod_podgladu` — NIEZALEŻNE losowe kody u
+            # właściciela (wariant kodu głównego dałoby się odgadnąć).
+            # (c) `znacznik_delty` — najwyższy `zaktualizowano` z serwera (bez niego
+            # każda synchronizacja ściągała wszystko).
+            # (d) `zdalne_nagrobki.auto_id` + `proby` — nagrobki tylko z
+            # synchronizowanego auta; odrzucany przez serwer nie próbuje w
+            # nieskończoność.
             """
             ALTER TABLE samochody ADD COLUMN rola_wspoldzielenia TEXT DEFAULT 'wlasciciel';
             ALTER TABLE samochody ADD COLUMN kod_wspolautora TEXT;
@@ -590,75 +470,40 @@ def init_db():
             ALTER TABLE zdalne_nagrobki ADD COLUMN proby INTEGER NOT NULL DEFAULT 0;
             CREATE INDEX IF NOT EXISTS idx_zdalne_nagrobki_auto ON zdalne_nagrobki(auto_id);
             """,
-            # Wersja 41: koszt części z magazynu doliczany do kosztu serwisu.
-            # Do tej pory olej kupiony do magazynu nie liczył się NIGDZIE: zakup
-            # nie jest wydatkiem w statystykach, a zużycie przy wymianie
-            # zostawiało koszt wpisu taki, jaki ktoś wpisał — zwykle samą
-            # robociznę albo zero.
-            #
-            # (a) `magazyn_czesci.cena_jednostkowa` — cena jednej sztuki, litra
-            #     albo grama. Dotychczasowe `cena` to koszt zakupu CAŁEJ ilości
-            #     („5 l za 150 zł”), a przy zużyciu liczy się to, co zeszło
-            #     z półki: 4 l to 120 zł, nie 150. Osobna kolumna zamiast nowego
-            #     znaczenia `cena`, bo przy współdzielonym aucie telefon ze
-            #     starszą wersją dalej czyta `cena` jako koszt zakupu.
-            #
-            # (b) `koszt` przy zużyciu (wizyta i pojedynczy wpis) — ile z kosztu
-            #     rekordu przyszło z magazynu. Zapamiętany w chwili zapisu:
-            #     późniejsza zmiana ceny w magazynie nie ma prawa przepisywać
-            #     zamkniętej wizyty sprzed roku. NULL znaczy „nie doliczone” —
-            #     i tak zostają wszystkie dotychczasowe zużycia. Wstecz nic się
-            #     nie dolicza; koszt dojdzie dopiero przy edycji takiego wpisu.
+            # Wersja 41: koszt części z magazynu doliczany do serwisu.
+            # (a) `magazyn_czesci.cena_jednostkowa` — osobno od `cena` (koszt CAŁEGO
+            # zakupu), bo starsza wersja na drugim telefonie dalej czyta `cena` po
+            # staremu.
+            # (b) `koszt` przy zużyciu — ile z kosztu rekordu przyszło z magazynu,
+            # zamrożone w chwili zapisu; NULL = „nie doliczone” (stare zużycia, wstecz
+            # nic się nie dolicza).
             """
             ALTER TABLE magazyn_czesci ADD COLUMN cena_jednostkowa REAL;
             ALTER TABLE wizyta_czesci_magazynu ADD COLUMN koszt REAL;
             ALTER TABLE historia_czesci_magazynu ADD COLUMN koszt REAL;
             """,
-            # Wersja 42: robocizna osobno od części — przy wizycie i przy
-            # pojedynczym wpisie serwisowym. Jedna kwota nie mówi, czy drogi
-            # jest warsztat, czy części, a od tego zależy, czy szukać innego
-            # mechanika, czy kupować części samemu.
-            #
-            # NULL znaczy „bez podziału” — i tak zostają wszystkie dotychczasowe
-            # wpisy. Części nie mają własnej kolumny: to reszta kosztu po
-            # odjęciu robocizny i części z magazynu (te zna `koszt` przy
-            # zużyciu). Trzecia zapisana kwota potrafiłaby rozjechać się z
-            # dwiema pozostałymi — po edycji na telefonie ze starszą wersją, po
-            # zwrocie pozycji wizyty na listę Do zrobienia, po usunięciu pozycji
-            # magazynu — a reszta z definicji zawsze się sumuje.
+            # Wersja 42: robocizna osobno (wizyta i pojedynczy wpis); NULL = bez
+            # podziału. Części nie mają kolumny — to reszta po robociźnie i magazynie,
+            # więc zawsze się sumuje (trzecia kwota rozjeżdżałaby się po edycjach
+            # starszą wersją, zwrotach i usunięciach).
             """
             ALTER TABLE wizyty ADD COLUMN koszt_robocizny REAL;
             ALTER TABLE historia ADD COLUMN koszt_robocizny REAL;
             """,
-            # Wersja 43: rozliczenia współdzielonego auta. Ekran podziału
-            # pokazywał proporcje miesiąca, ale nie prowadził rachunku — a przy
-            # wspólnym aucie liczy się saldo: kto komu ile jest winien.
-            #
-            # Rozliczenie NIE jest datą odcięcia. Trzyma migawkę: ile każda
-            # osoba miała na plusie albo minusie w chwili „Rozliczone” (`salda`,
-            # w groszach), kto dzielił koszty zamkniętego okresu (`uczestnicy`)
-            # i kto komu oddał (`przelewy`). Saldo to cała podpisana historia
-            # minus wszystkie migawki — dzięki temu wpis sprzed rozliczenia
-            # dopisany, poprawiony albo usunięty po nim (albo przysłany z drugiego
-            # telefonu dzień później) nie przepada, tylko pojawia się w bieżącym
-            # saldzie. `klucz` i `poprzednie` łączą rozliczenia w łańcuch: dwa
-            # kliknięcia „Rozliczone” na dwóch telefonach przed synchronizacją
-            # mają tego samego poprzednika i liczy się tylko pierwsze z nich —
-            # inaczej wyzerowałyby to samo saldo dwa razy.
+            # Wersja 43: rozliczenia współdzielonego auta. Rozliczenie to migawka, NIE
+            # data odcięcia: `salda` (grosze), `uczestnicy`, `przelewy`. Saldo = cała
+            # podpisana historia minus migawki, więc późniejsza zmiana starego wpisu
+            # trafia do bieżącego salda. `klucz` i `poprzednie` tworzą łańcuch — dwa
+            # „Rozliczone” z tym samym poprzednikiem liczą się raz.
             """
             CREATE TABLE IF NOT EXISTS rozliczenia (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, uczestnicy TEXT NOT NULL DEFAULT '[]', salda TEXT NOT NULL DEFAULT '{}', przelewy TEXT NOT NULL DEFAULT '[]', notatka TEXT, klucz TEXT, poprzednie TEXT, dodane_przez TEXT, data_utworzenia TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto ON rozliczenia(auto_id);
             CREATE INDEX IF NOT EXISTS idx_rozliczenia_auto_zdalne ON rozliczenia(auto_id, zdalne_id);
             """,
-            # Wersja 44: sortowalna data obok dotychczasowej. `data` zostaje jak
-            # była (DD.MM.RRRR), a obok niej staje `data_iso` (RRRR-MM-DD) —
-            # tekst, który SQLite umie posortować i porównać zakresem. Bez niej
-            # każde „od–do” wczytywało cały pojazd i parsowało daty w Pythonie,
-            # a indeksy z wersji 7 i 22 kończyły się na auto_id. Historia nie ma
-            # auto_id, więc jej indeks idzie przez podzespół — tak ją zawężają
-            # zapytania (JOIN zadania). Istniejące wiersze wypełnia blok
-            # `if i == 43` niżej, każdy późniejszy zapis — kod, który zapisuje
-            # datę (db/daty.py).
+            # Wersja 44: `data_iso` (RRRR-MM-DD) obok `data` (DD.MM.RRRR) — zakresy i
+            # sortowanie w SQL. Indeks historii przez podzespół (brak auto_id).
+            # Istniejące wiersze wypełnia blok `if i == 43` niżej, późniejsze zapisy —
+            # kod (db/daty.py).
             """
             ALTER TABLE tankowania ADD COLUMN data_iso TEXT;
             ALTER TABLE inne_koszty ADD COLUMN data_iso TEXT;
@@ -677,62 +522,37 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_zdjecia_karoserii_auto_data_iso ON zdjecia_karoserii(auto_id, data_iso);
             CREATE INDEX IF NOT EXISTS idx_zadania_auto_data_iso ON zadania(auto_id, data_iso);
             """,
-            # Wersja 45: gwarancja na wykonaną naprawę. Gwarancja na całe auto
-            # siedzi w terminach pojazdu (wersja 27), ale gwarancja na CZĘŚĆ nie
-            # miała się gdzie zapisać — a to ona decyduje, czy za powtórną
-            # wymianę płaci się drugi raz. Ten sam wzorzec, co przy aucie: data
-            # końca (DD.MM.RRRR, jak `samochody.gwarancja_data`) i stan licznika
-            # w km, do którego gwarancja obowiązuje; obowiązuje to, co skończy
-            # się pierwsze, a NULL w obu znaczy „bez gwarancji”.
-            #
-            # Liczy się gwarancja WPISU (także pozycji wizyty zbiorczej) — to ją
-            # czytają karty, dzwonek i paszport. Wizyta ma własną parę kolumn
-            # tylko jako „gwarancję wspólną” z formularza: jej zmiana przechodzi
-            # na pozycje, które ją mają, a pozycja z inną (wyjątek ustawiony
-            # w historii podzespołu) zostaje przy swojej. Bez zapisanej wspólnej
-            # wizyta z dwiema pozycjami i jednym wyjątkiem nie wiedziałaby,
-            # która z dwóch gwarancji jest wyjątkiem.
+            # Wersja 45: gwarancja naprawy — data końca (DD.MM.RRRR) i licznik w km;
+            # obowiązuje to, co skończy się pierwsze, NULL w obu = bez gwarancji. Liczy
+            # się gwarancja WPISU (też pozycji wizyty); para kolumn wizyty to „gwarancja
+            # wspólna” formularza — przechodzi na pozycje, które ją mają, a pozycja z
+            # wyjątkiem zostaje przy swojej.
             """
             ALTER TABLE historia ADD COLUMN gwarancja_data TEXT;
             ALTER TABLE historia ADD COLUMN gwarancja_przebieg INTEGER;
             ALTER TABLE wizyty ADD COLUMN gwarancja_data TEXT;
             ALTER TABLE wizyty ADD COLUMN gwarancja_przebieg INTEGER;
             """,
-            # Wersja 46: kolejka „do wpisania” (M-08). Zdjęcie paragonu przy
-            # dystrybutorze, wpis wieczorem. Szkic to OSOBNA tabela, a nie flaga
-            # przy tankowaniach i kosztach: wpis bez kwoty i litrów rozjechałby
-            # każdą statystykę, eksport i synchronizację, które ufają, że
-            # tankowanie ma liczby. `rodzaj`, `przebieg` (km) i `opis` są
-            # opcjonalne — dopisuje się je zaraz po migawce albo wcale.
-            # Tabela jest lokalna: zdjęcia nie jadą do chmury (N-06).
+            # Wersja 46: kolejka „do wpisania” (M-08) — szkic to OSOBNA tabela (wpis bez
+            # kwot rozjechałby statystyki, eksport i sync); `rodzaj`, `przebieg` (km),
+            # `opis` opcjonalne. Tabela lokalna — zdjęcia nie jadą do chmury (N-06).
             """
             CREATE TABLE IF NOT EXISTS szkice_wpisow (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, data_iso TEXT, godzina TEXT, zalacznik TEXT, rodzaj TEXT, przebieg INTEGER, opis TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_szkice_wpisow_auto_data_iso ON szkice_wpisow(auto_id, data_iso);
             """,
-            # Wersja 47: notatka „najlepsza oferta OC/AC”. Ubezpieczenie kupuje się
-            # raz w roku i za każdym razem porównanie zaczynało od zera, bo
-            # zeszłoroczne nigdzie nie zostało. Jedno pole tekstowe pojazdu
-            # (cena i towarzystwo) plus data, kiedy tekst ostatnio się zmienił —
-            # za rok widać, czy to porównanie z tego sezonu, czy z poprzedniego.
-            # Kolumny pojazdu, bo to jego dane: jadą do drugiej osoby tą samą
-            # drogą co ubezpieczyciel i składka (KOLUMNY_POJAZDU). Data w formacie
-            # dd.mm.rrrr, jak inne daty pojazdu. Puste (NULL) = brak notatki.
+            # Wersja 47: notatka „najlepsza oferta OC/AC” — tekst pojazdu (cena i
+            # towarzystwo) + data ostatniej zmiany (dd.mm.rrrr). Kolumny pojazdu, jadą w
+            # KOLUMNY_POJAZDU; NULL = brak notatki.
             """
             ALTER TABLE samochody ADD COLUMN oferta_oc_ac TEXT;
             ALTER TABLE samochody ADD COLUMN oferta_oc_ac_data TEXT;
             """,
-            # Wersja 48: historia cen części (M-15). Pozycja magazynu pamiętała
-            # tylko BIEŻĄCY zakup, więc to, że filtr oleju podrożał o połowę
-            # w dwa lata, ginęło przy pierwszej zmianie ceny. `ceny_czesci` to
-            # dziennik zakupów pojazdu: jeden wiersz na zakup części (nazwa, data,
-            # cena za jednostkę, ile kupiono, sklep), grupowany po klucz_nazwy —
-            # bez klucza obcego do pozycji, bo historia ma przeżyć zużytą
-            # i usuniętą pozycję. `data` pusta = zakup bez daty (stara cena
-            # pozycji, która daty nie miała). Dzisiejsze ceny z magazynu NIE są
-            # przepisywane: liczą się jako punkty w locie (db/ceny_czesci.py),
-            # inaczej dwa telefony współdzielące auto wpisałyby po aktualizacji
-            # te same zakupy dwa razy i wysłały je sobie nawzajem.
-            # Sklep i link do produktu należą do pozycji — to tam się po nie sięga.
+            # Wersja 48: historia cen części (M-15). `ceny_czesci` — dziennik zakupów
+            # pojazdu (nazwa, data, cena za jednostkę, ilość, sklep), grupowany po
+            # klucz_nazwy, bez klucza obcego (przeżywa usuniętą pozycję); pusta `data` =
+            # zakup bez daty. Bieżące ceny magazynu NIE są przepisywane — liczą się w
+            # locie (db/ceny_czesci.py), inaczej dwa telefony zdublowałyby zakupy. Sklep
+            # i link należą do pozycji.
             """
             ALTER TABLE magazyn_czesci ADD COLUMN sklep TEXT;
             ALTER TABLE magazyn_czesci ADD COLUMN link TEXT;
@@ -740,18 +560,12 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_ceny_czesci_auto_data_iso ON ceny_czesci(auto_id, data_iso);
             CREATE INDEX IF NOT EXISTS idx_ceny_czesci_auto_zdalne ON ceny_czesci(auto_id, zdalne_id);
             """,
-            # Wersja 49: harmonogram leasingu i kredytu (M-22). Rata była
-            # wydatkiem cyklicznym bez końca i bez sumy — nie dało się
-            # powiedzieć, ile jeszcze zostało do spłaty. Umowa siedzi w TYM
-            # SAMYM wierszu `wydatki_cykliczne` (rodzaj 'leasing' albo 'kredyt'),
-            # bo przypomnienie o racie i „Zapłacone” już tam są, a istniejącą ratę
-            # wystarczy przestawić, bez przepisywania. `zaplacone_platnosci` liczy
-            # zapłacone pozycje harmonogramu: raty, a po nich wykup (przy
-            # kredycie rata balonowa). `oprocentowanie` (roczne, %) jest tylko
-            # przy ratach liczonych z oprocentowania i przy malejących — przy
-            # racie z umowy stopę wylicza się z raty i kwoty finansowania.
-            # Daty w formacie dd.mm.rrrr, jak `nastepna_data`. Wszystko puste
-            # (NULL) w zwykłych wydatkach i przypomnieniach.
+            # Wersja 49: harmonogram leasingu i kredytu (M-22). Umowa w TYM SAMYM
+            # wierszu `wydatki_cykliczne` (rodzaj 'leasing'/'kredyt').
+            # `zaplacone_platnosci` — zapłacone pozycje harmonogramu (raty, potem wykup
+            # lub balon); `oprocentowanie` (roczne, %) tylko przy ratach z
+            # oprocentowania i malejących. Daty dd.mm.rrrr; w zwykłych wpisach wszystko
+            # NULL.
             """
             ALTER TABLE wydatki_cykliczne ADD COLUMN liczba_rat INTEGER;
             ALTER TABLE wydatki_cykliczne ADD COLUMN zaplacone_platnosci INTEGER;
@@ -762,20 +576,11 @@ def init_db():
             ALTER TABLE wydatki_cykliczne ADD COLUMN oprocentowanie REAL;
             ALTER TABLE wydatki_cykliczne ADD COLUMN rodzaj_rat TEXT;
             """,
-            # Wersja 50: ewidencja przebiegu (N-01). Aplikacja znała stan
-            # licznika z kilku źródeł, ale nie wiedziała, PO CO były kilometry —
-            # a od tego zależy rozliczenie z pracodawcą, kilometrówka i 100% VAT
-            # przy aucie firmowym. Przejazd: data, skąd, dokąd, cel, kilometry
-            # (CAŁY przejazd — przy „tam i z powrotem” już podwojone, więc suma
-            # miesiąca to zwykła suma kolumny), służbowy/prywatny i kierowca
-            # (tekst, jak podpis autora). `licznik` (km, opcjonalny) to stan po
-            # przejeździe — wpisany staje się kolejnym źródłem w historii
-            # licznika. Notatka z podpisem jak przy tankowaniu.
-            #
-            # Zapisana trasa kalkulatora dostaje to, czego brakowało jej do
-            # wzoru przejazdu: skąd, dokąd, cel i rodzaj. NULL w starych trasach
-            # znaczy „nie dotyczy” — trasa „do teściów” z samym dystansem dalej
-            # działa w kalkulatorze jak dotąd.
+            # Wersja 50: ewidencja przebiegu (N-01). Przejazd: data, skąd, dokąd, cel,
+            # km (CAŁY przejazd), służbowy/prywatny, kierowca (tekst); `licznik` (km,
+            # opcjonalny) — stan po przejeździe, źródło historii licznika; notatka z
+            # podpisem. Trasy kalkulatora dostają skąd, dokąd, cel i rodzaj (NULL w
+            # starych = nie dotyczy).
             """
             CREATE TABLE IF NOT EXISTS przejazdy (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, data_iso TEXT, skad TEXT, dokad TEXT, cel TEXT, km REAL NOT NULL DEFAULT 0, powrot INTEGER NOT NULL DEFAULT 0, sluzbowy INTEGER NOT NULL DEFAULT 1, kierowca TEXT, licznik INTEGER, notatka TEXT, notatka_autor TEXT, notatka_data TEXT, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_przejazdy_auto_data_iso ON przejazdy(auto_id, data_iso);
@@ -805,12 +610,9 @@ def init_db():
                             raise e
                         print(f"[migracja {i+1}] Pominięto (kolumna już istnieje): {stmt.splitlines()[0][:80]}")
 
-            # Jednorazowe uzupełnienie danych po dodaniu kolumny dotyczy_opon (wersja 8) —
-            # dla istniejących podzespołów odtwarzamy dawne zachowanie na podstawie starej,
-            # nazwowej heurystyki, żeby po aktualizacji nic nie „zniknęło”.
-            # Istniejące wpisy nie mają jeszcze rodzaju energii — wypełniamy go
-            # według typu paliwa POJAZDU, bo do tej pory auto mogło mieć tylko
-            # jedno źródło. Dzięki temu żadna statystyka nie zaczyna od zera.
+            # Jednorazowo po wersji 8: dotyczy_opon dla istniejących podzespołów ze
+            # starej heurystyki nazw; rodzaj energii starych wpisów z typu paliwa
+            # POJAZDU.
             if i == 32:
                 cursor.execute(
                     "UPDATE tankowania SET rodzaj_energii = CASE WHEN auto_id IN "
@@ -857,13 +659,9 @@ def init_db():
                     "WHERE rola_wspoldzielenia IS NULL OR TRIM(rola_wspoldzielenia)=''"
                 )
 
-            # Cena za jednostkę dla pozycji, które już leżą w magazynie. Kupiona
-            # ilość to stan na półce PLUS wszystko, co już z niej zeszło —
-            # `ilosc` maleje przy każdym zużyciu, więc sama zaniżałaby dzielnik
-            # (zużyta butelka oleju ma stan 0). To czysta funkcja danych, które
-            # i tak jadą do chmury, więc drugi telefon policzy dokładnie to samo,
-            # niezależnie od tego, kiedy zaktualizuje aplikację. Pozycji bez
-            # żadnej ilości nie zgadujemy — cena zostaje pusta.
+            # Cena za jednostkę istniejących pozycji: kupiona ilość = stan na półce PLUS
+            # wszystko, co z niej zeszło. Funkcja danych z chmury, więc drugi telefon
+            # policzy to samo; bez ilości cena zostaje pusta.
             if i == 40:
                 cursor.execute(
                     "SELECT m.id, m.cena, COALESCE(m.ilosc, 0)"
@@ -879,11 +677,8 @@ def init_db():
                             (round(cena / kupiona, 4), czesc_id)
                         )
 
-            # `data_iso` dla wszystkiego, co już leży w bazie — tą samą funkcją,
-            # którą liczy każdy późniejszy zapis, więc wiersz sprzed aktualizacji
-            # i wiersz dopisany po niej z tą samą datą mają tę samą wartość.
-            # Datę, której aplikacja nie umie odczytać, zostawiamy z NULL-em:
-            # lista (parsuj_date) też nie widzi w niej daty.
+            # `data_iso` dla istniejących wierszy — tą samą funkcją co każdy zapis;
+            # nieczytelna data zostaje NULL (lista też jej nie widzi).
             if i == 43:
                 przelicz_daty_iso(conn, tabele=_TABELE_DATY_ISO_WERSJI_44)
 
@@ -908,21 +703,10 @@ def init_db():
 
 
 def porzadki_startowe() -> tuple[int, int]:
-    """Sprzątanie, na które pierwszy piksel nie czeka. Zwraca wynik naprawy
-    ścieżek: (dopasowane, brakujące) — zera, gdy naprawa już kiedyś poszła.
-
-    Wszystkie trzy rzeczy rosną razem z danymi, a żadna nie jest potrzebna do
-    narysowania ekranu: kasowanie odroczonych załączników i wygasłych pozycji
-    kosza chodzi po plikach, a naprawa ścieżek — po wszystkich załącznikach
-    w bazie. Dlatego `main.py` woła to w wątku w tle, PO pierwszym renderze.
-
-    Cena jest jedna i policzalna: przez chwilę po starcie licznik kosza może
-    pokazywać pozycję, która właśnie wygasła. Retencja liczona jest w dniach,
-    więc sekunda opóźnienia nie znaczy nic.
-
-    Wołane osobno, nie z `init_db()`, także dlatego, że `init_db()` chodzi
-    również przy wczytywaniu kopii — a tam sprzątanie zdąży się przy następnym
-    starcie."""
+    """Sprzątanie po pierwszym renderze (wątek w tle w `main.py`): kasowanie odroczonych
+    załączników, wygasłego kosza i jednorazowa naprawa ścieżek; zwraca (dopasowane,
+    brakujące) z naprawy. Osobno od `init_db()`, bo ten chodzi też przy wczytywaniu
+    kopii."""
     posprzataj_odroczone_zalaczniki()
 
     # Tabela kosza musi już istnieć, więc dopiero po migracjach. Wygasłe pozycje
@@ -930,11 +714,9 @@ def porzadki_startowe() -> tuple[int, int]:
     # retencja liczona jest w dniach, więc częściej nie ma sensu.
     posprzataj_kosz()
 
-    # Jednorazowa naprawa ścieżek załączników przeniesionych z innego urządzenia.
-    # Wczytanie kopii woła to samo wprost, przy KAŻDYM imporcie (patrz
-    # main.wykonaj_import) — ten blok jest dla baz, które przyjechały z telefonu,
-    # zanim naprawa w ogóle powstała, i mają w sobie ścieżki
-    # /data/user/0/<pakiet>/files/data/zalaczniki/... wskazujące donikąd.
+    # Jednorazowa naprawa ścieżek załączników z innego urządzenia
+    # (/data/user/0/<pakiet>/files/...) — dla baz sprzed tej naprawy; wczytanie kopii
+    # woła ją przy KAŻDYM imporcie (main.wykonaj_import).
     if pobierz_ustawienie("naprawa_sciezek_zalacznikow_v1") == "1":
         return 0, 0
 
@@ -951,22 +733,16 @@ def porzadki_startowe() -> tuple[int, int]:
 
 
 # ============================================================================
-#  WERSJA SCHEMATU PRZY WCZYTYWANIU KOPII
+# WERSJA SCHEMATU PRZY WCZYTYWANIU KOPII
 # ============================================================================
-# Migracje idą tylko w przód. Kopia zrobiona na telefonie z nowszą wersją
-# aplikacji, wczytana na komputerze ze starszą, to cicha katastrofa: baza ma
-# kolumny, o których ten kod nie wie, więc nowe pola przestają się wypełniać
-# i nie jadą do chmury — a nic się przy tym nie wywala. Numer wersji jest
-# w bazie od zawsze; wystarczy go przeczytać PRZED nadpisaniem.
+# Migracje idą tylko w przód: kopia z nowszej wersji aplikacji wczytana w starszej po
+# cichu gubi nowe kolumny. Wersję czytamy PRZED nadpisaniem.
 
 
 def wersja_schematu_aplikacji() -> int:
-    """Najwyższy numer schematu, jaki zna TA wersja aplikacji.
-
-    Ustawiany przez `init_db()`, bo `migracje` jest zmienną lokalną w jego
-    wnętrzu i nie da się jej zaimportować (patrz `tests/test_migracje.py`, które
-    czyta ją z AST). Zanim `init_db()` pójdzie choć raz, zostaje odczyt z bazy;
-    zero znaczy „nie wiadomo" i wtedy nic nie blokujemy."""
+    """Najwyższy numer schematu, jaki zna TA wersja aplikacji. Ustawia go `init_db()`
+    (`migracje` jest lokalna — `tests/test_migracje.py` czyta ją z AST); wcześniej
+    odczyt z bazy, zero = „nie wiadomo” (nic nie blokujemy)."""
     if WERSJA_SCHEMATU is not None:
         return WERSJA_SCHEMATU
     zapisana = str(pobierz_ustawienie("schema_version", "") or "").strip()
@@ -974,13 +750,9 @@ def wersja_schematu_aplikacji() -> int:
 
 
 def wersja_schematu_pliku(sciezka) -> int | None:
-    """Numer schematu bazy leżącej w PLIKU — bez otwierania jej jako bieżącej.
-
-    Otwieramy w trybie tylko do odczytu: plik, który dopiero sprawdzamy, nie ma
-    prawa się przy tym zmienić ani powstać. None znaczy „nie do odczytania" —
-    bardzo stara kopia bez tabeli ustawień, plik, który nie jest bazą SQLite,
-    albo brak dostępu. To rozróżnienie jest istotne: przy zerze migracje puszczą
-    całą drabinkę, a przy „nie wiem" nie wolno zakładać niczego."""
+    """Numer schematu bazy w PLIKU, otwartej tylko do odczytu. None = nie do odczytania
+    (stara kopia bez ustawień, nie SQLite, brak dostępu) — co innego niż zero, przy
+    którym migracje puszczą całą drabinkę."""
     try:
         adres = pathlib.Path(sciezka).resolve().as_uri() + "?mode=ro"
         polaczenie = sqlite3.connect(adres, uri=True)
@@ -1021,15 +793,8 @@ def wersja_schematu_kopii(sciezka) -> int | None:
 
 
 def sprawdz_kopie_przed_wczytaniem(sciezka) -> tuple[bool, str]:
-    """(czy wolno wczytać, powód odmowy). Powód jest pusty, gdy wolno.
-
-    Kopia STARSZA przechodzi bez słowa — dociągnięcie jej drabinką migracji to
-    normalna, przewidziana droga. Blokujemy wyłącznie kopię NOWSZĄ, bo tej nie
-    da się cofnąć: migracji w tył nie ma i nigdy nie będzie.
-
-    Nieczytelnego pliku też nie blokujemy: od zgłaszania uszkodzonej kopii jest
-    sam import, razem z przywróceniem bazy sprzed próby. Diagnostyka nie ma
-    prawa zamknąć drogi, której nie potrafi ocenić."""
+    """(czy wolno wczytać, powód odmowy); pusty powód = wolno. Blokujemy WYŁĄCZNIE kopię
+    NOWSZĄ (migracji w tył nie ma); starsza przechodzi, a nieczytelną zgłosi sam import."""
     try:
         wersja_pliku = wersja_schematu_kopii(sciezka)
     except Exception:

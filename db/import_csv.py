@@ -135,13 +135,9 @@ _TYSIACE_KROPKA = re.compile(r"-?\d{1,3}(\.\d{3})+")
 
 
 def rozpoznaj_separator_dziesietny(wartosci) -> str | None:
-    """Separator dziesiętny całego pliku: „.”, „,” albo None (nie wiadomo).
-
-    Pojedyncza liczba bywa dwuznaczna — „12,345” to w USA stan licznika,
-    u nas ilość paliwa — ale plik z jednej aplikacji trzyma się jednej
-    konwencji. Głos oddaje liczba, która rozstrzyga sama: „1,234.56”, „45.67”,
-    „45,67”, „1.234.567”. Głosy za oboma separatorami = plik mieszany → None,
-    czyli ocena liczba po liczbie, jak dotąd (`_parsuj_liczbe_csv`)."""
+    """Separator dziesiętny całego pliku: „.”, „,” albo None. Głosują tylko liczby
+    jednoznaczne („1,234.56”, „45,67”, „1.234.567”); głosy za oboma → None i ocena
+    liczba po liczbie (`_parsuj_liczbe_csv`)."""
     glosy = set()
     for wartosc in wartosci:
         s = "".join(znak for znak in str(wartosc or "") if znak in "0123456789,.-")
@@ -292,10 +288,9 @@ def _numery(numery_wierszy, wiersze):
 
 
 def przygotuj_import_tankowan(auto_id, naglowki, wiersze, mapowanie, jednostka_pliku="km", numery_wierszy=None):
-    """Waliduje wiersze wg mapowania kolumn i wykrywa duplikaty względem tego,
-    co JUŻ jest w bazie (ta sama data + przebieg + kwota, jak w dedupie sync).
-    Licznik i dystans z pliku w `jednostka_pliku` trafiają do bazy w km.
-    Nic nie zapisuje. Zwraca {"gotowe": [...], "duplikaty": n, "bledy": [(nr, powod)]}."""
+    """Waliduje wiersze wg mapowania i wykrywa duplikaty z bazą (data + przebieg +
+    kwota, jak dedup sync); licznik i dystans z `jednostka_pliku` do km. Nic nie
+    zapisuje. Zwraca {"gotowe": [...], "duplikaty": n, "bledy": [(nr, powod)]}."""
     gotowe, bledy = [], []
     duplikaty = 0
 
@@ -627,14 +622,10 @@ def zaimportuj_odczyty(auto_id, gotowe):
 
 
 def przygotuj_import_wizyt(auto_id, naglowki, wiersze, mapowanie, jednostka_pliku="km", numery_wierszy=None):
-    """Wizyty serwisowe z pliku — bez pozycji z listy zadań: zakres prac trafia
-    do notatek wizyty, a koszt w całości do wiadra „serwis”. Duplikatem jest
-    ta sama data + przebieg + koszt.
-
-    Wizyta bez licznika dostaje 0, które aplikacja czyta jak „nie wiadomo”
-    (historia licznika i kontrola skoków ją pomijają). Zerowy koszt przechodzi
-    tylko z opisem prac — to wtedy naprawa gwarancyjna albo przegląd w cenie,
-    a bez opisu taki wiersz nic nie mówi. Nic nie zapisuje."""
+    """Wizyty z pliku bez pozycji z listy zadań: zakres prac do notatek, koszt w całości
+    do „serwis”; duplikat = data + przebieg + koszt. Brak licznika → 0 („nie wiadomo”,
+    pomijane przez historię licznika). Zerowy koszt przechodzi tylko z opisem prac. Nic
+    nie zapisuje."""
     gotowe, bledy = [], []
     duplikaty = 0
 
@@ -848,10 +839,8 @@ def zaimportuj_przejazdy(auto_id, gotowe):
 
 
 # ==================== KATEGORIE Z NAZW ====================
-# Inne aplikacje mają własne słowniki kosztów (Fuelio: Parking, Wash, Tolls…;
-# Drivvo i aCar: typy wydatków). Tu zamieniamy je na kategorie „Innych
-# kosztów” tej aplikacji — po słowach-kluczach w kilku językach, bo nazwy
-# kategorii są tam tłumaczone razem z interfejsem.
+# Słowniki kosztów innych aplikacji (Fuelio, Drivvo, aCar) → kategorie „Innych kosztów”
+# po słowach-kluczach w kilku językach.
 
 _KATEGORIA_URZEDOWA = "Opłaty urzędowe"
 

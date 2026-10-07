@@ -10,15 +10,10 @@ from .pamiec import zanotuj_zmiane_danych
 
 @contextmanager
 def polacz_baze(zmienia_dane=True):
-    """Połączenie zatwierdzane przy wyjściu z bloku, wycofywane przy wyjątku.
-
-    Zapis, który zmienił choć jeden wiersz, podbija znacznik zmian danych, więc
-    policzone wcześniej metryki (kokpit, nagłówek, odznaki) same wiedzą, że są
-    nieaktualne. `zmienia_dane=False` mówi: ten zapis to wyłącznie pamięć
-    interfejsu — „ostatnio używane ekrany”, pozycja startowa — i nie rusza
-    żadnej liczby na ekranie. Router zapisuje je przy KAŻDYM przejściu, więc
-    bez tego wyjątku pamięć metryk czyściłaby się przed każdym powrotem na
-    kokpit."""
+    """Połączenie zatwierdzane przy wyjściu, wycofywane przy wyjątku. Zapis zmieniający
+    wiersz podbija znacznik zmian (metryki same wiedzą, że są nieaktualne).
+    `zmienia_dane=False` — zapis samej pamięci interfejsu (router zapisuje ją przy
+    KAŻDYM przejściu; bez tego pamięć metryk czyściłaby się co krok)."""
     conn = sqlite3.connect(BAZA_DANYCH)
     conn.execute('PRAGMA foreign_keys = ON;')
     try:

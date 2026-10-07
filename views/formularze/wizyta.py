@@ -200,12 +200,8 @@ class FormularzWizytyView(ft.View):
         )
 
     # ================= PAKIETY SERWISOWE =================
-    # Dawniej: PopupMenuButton z pozycjami po dwie linijki i dwa ciasne
-    # AlertDialogi (lista + edycja), w których skład pakietu był tylko sklejonym
-    # tekstem, a podmiana składu wymagała sztuczki „zastąp obecnym zaznaczeniem”.
-    # Teraz: panel od dołu na pełną szerokość — karty pakietów ze składem jako
-    # chipy i osobnymi przyciskami akcji, a edytor pokazuje WSZYSTKIE podzespoły
-    # pojazdu z checkboxami, więc skład układa się wprost.
+    # Panel od dołu: karty pakietów ze składem jako chipy i przyciskami akcji; edytor
+    # pokazuje WSZYSTKIE podzespoły pojazdu z checkboxami.
 
     def _zbuduj_przycisk_pakietow(self):
         return ft.Container(
@@ -512,13 +508,9 @@ class FormularzWizytyView(ft.View):
             elif nazwa_norm in poprzednie_norm:
                 chk.value = False
 
-        # WAŻNE: jedna zbiorcza aktualizacja całej kolumny zamiast osobnego
-        # chk.update() w pętli — pojedyncze wywołania potrafiły "zgubić" zmianę
-        # pierwszej checkboksy na liście przy szybkich, wielokrotnych update().
-        # Pakiet stosujemy teraz zaraz po zamknięciu panelu dolnego, więc
-        # przerysowanie owijamy strażnikiem — wartości checkboxów są już
-        # ustawione i tak, a wyjątek z niezamontowanej kontrolki nie ma prawa
-        # przerwać całej akcji.
+        # WAŻNE: jedna aktualizacja kolumny zamiast chk.update() w pętli (pojedyncze
+        # gubiły zmiany). Przerysowanie po zamknięciu panelu w strażniku — wyjątek z
+        # niezamontowanej kontrolki nie może przerwać akcji.
         try:
             self.kolumna_czesci.update()
         except Exception:
@@ -607,16 +599,11 @@ class FormularzWizytyView(ft.View):
                 nowa_gwarancja = db.klucz_gwarancji(gw_koniec, gw_limit)
                 cur.execute("UPDATE wizyty SET data=?, data_iso=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, zalacznik=?, tagi=?, gwarancja_data=?, gwarancja_przebieg=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, *nowa_gwarancja, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
 
-                # Pozycje, które zostają zaznaczone, POPRAWIAMY w miejscu, a nie
-                # kasujemy i zakładamy od nowa. Skasowanie gubiło to, co pozycja
-                # niesie poza datą i przebiegiem — cenę pozycji z listy Do
-                # zrobienia (od niej zależy zwrot pozycji z wizyty), notatkę
-                # i załącznik — a do tego każda poprawka literówki w dacie
-                # robiła z całej wizyty nagrobki plus nowe rekordy w chmurze.
-                # Nagrobek dostają tylko pozycje odznaczone (rejestrujemy go
-                # dopiero po commicie tej transakcji, patrz niżej).
-                # Gwarancja: pozycje przy dotychczasowej gwarancji wizyty dostają
-                # nową, pozycje z własną (wyjątek z historii podzespołu) — nie.
+                # Zostające pozycje POPRAWIAMY w miejscu (UPDATE), nie kasujemy —
+                # skasowanie gubiło cenę z Do zrobienia, notatkę i załącznik, a w
+                # chmurze robiło nagrobki i nowe rekordy. Nagrobek tylko dla
+                # odznaczonych (po commicie). Gwarancja: pozycje przy dotychczasowej
+                # wspólnej dostają nową, pozycje z własną (wyjątek) — nie.
                 cur.execute("SELECT id, zadanie_id, zdalne_id, gwarancja_data, gwarancja_przebieg FROM historia WHERE wizyta_id=? ORDER BY id", (self.w_id,))
                 zostaja = set()
                 for h_id, zid, zdalne_id, gw_data_poz, gw_km_poz in cur.fetchall():

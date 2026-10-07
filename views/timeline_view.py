@@ -153,12 +153,8 @@ class TimelineView(ft.View):
                 page, utils.szkielet_ekranu(page, wykres=True, karty=5, linie=2),
                 tresc, widok=self,
             )],
-            # Przewija SAM WIDOK, jak na pozostałych ekranach. Wcześniej treść
-            # wracała opakowana we własną przewijaną kolumnę z `expand=True`,
-            # a ta trafiała do kontenera szkieletu, który wysokości nie ma —
-            # kolumna nie miała czego wypełnić, więc nic się nie przewijało,
-            # a pasek filtrów w nieograniczonej szerokości rozkładał każdy
-            # chip na osobną linijkę.
+            # Przewija SAM WIDOK (kolumna z `expand=True` w kontenerze szkieletu nie
+            # miała wysokości — nic się nie przewijało).
             scroll=ft.ScrollMode.AUTO,
         )
 
@@ -179,13 +175,8 @@ class TimelineView(ft.View):
             w["dol"].bgcolor = ft.Colors.TRANSPARENT if i == len(widoczne_wiersze) - 1 else kolor
 
     def _rozloz_os(self, widoczne):
-        """Układa wiersze w liście z nagłówkami miesięcy i domyka oś na granicy
-        każdego z nich.
-
-        Oś to ciągła pionowa kreska biegnąca między zdarzeniami. Nagłówek miesiąca
-        ją przerywa, więc linia musi urywać się PRZED nim i zaczynać PO nim —
-        inaczej wystawałaby w tło nagłówka. Dlatego końcówki poprawiamy osobno
-        w każdej grupie, a nie raz na całą listę."""
+        """Wiersze z nagłówkami miesięcy; oś urywa się PRZED nagłówkiem i zaczyna PO nim
+        — końcówki poprawiane w każdej grupie."""
         grupy = self.miesiace.ustaw(
             widoczne, grupuj=utils.czy_po_dacie(self.state, "timeline")
         )
@@ -193,20 +184,11 @@ class TimelineView(ft.View):
             self._popraw_koncowki_osi(wiersze)
 
     def _wiersz_osi_czasu(self, z):
-        """Jeden przystanek na osi: pionowa linia + kropka z ikoną po lewej,
-        karta zdarzenia po prawej.
-
-        Linia i kropka są POZYCJONOWANE w ft.Stack, a nie rozciągane w Row —
-        i to jest tu sedno. Element listy dostaje od ListView nieograniczoną
-        wysokość, więc `CrossAxisAlignment.STRETCH` albo `expand=True` na
-        pionowej kresce kazałyby jej wypełnić nieskończoność i cały widok
-        przestawał się renderować. W Stacku rozmiar wyznacza sam wiersz (jedyne
-        dziecko niepozycjonowane), a kreska `dol` (top=… + bottom=0) dociąga się
-        do jego dołu — razem z odstępem pod kartą, dzięki czemu oś jest ciągła
-        między zdarzeniami.
-
-        Zwraca dict z kontrolką i referencjami do obu odcinków linii, bo
-        wyszukiwarka musi móc później poprawić końcówki osi."""
+        """Przystanek na osi: linia + kropka z ikoną po lewej, karta zdarzenia po
+        prawej. Linia i kropka POZYCJONOWANE w ft.Stack, nie rozciągane w Row — ListView
+        daje nieograniczoną wysokość, a STRETCH albo `expand=True` na kresce psuły
+        render. Kreska `dol` (top=… + bottom=0) dociąga się do dołu wiersza. Zwraca dict
+        z kontrolką i oboma odcinkami linii (do poprawy końcówek)."""
         _, typ, data, tytul, opis, kwota, zalacznik, trasa = z[:8]
         autor = z[8] if len(z) > 8 else None
         notatka = z[9] if len(z) > 9 else None

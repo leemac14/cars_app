@@ -123,15 +123,10 @@ def pobierz_pozycje_wizyty(wizyta_id) -> list[dict[str, Any]]:
 
 
 def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
-    """Zdejmuje wskazane pozycje z wizyty i odkłada je z powrotem na listę
-    Do zrobienia — droga powrotna do utworz_wizyte_z_do_zrobienia, potrzebna
-    gdy część została zamówiona, ale nie zamontowana przy tej samej okazji.
-
-    Cena pozycji wraca jako szacowany koszt i jest ODEJMOWANA od kosztu
-    całkowitego wizyty — w wizycie zostaje tylko to, co faktycznie zrobiono.
-    Zwraca słownik zgodny z utils.pokaz_komunikat_cofnij, wzbogacony o "liczba"
-    i "nazwy" zwróconych pozycji.
-    """
+    """Zdejmuje pozycje z wizyty i odkłada na listę Do zrobienia (odwrotność
+    utworz_wizyte_z_do_zrobienia). Cena pozycji wraca jako szacowany koszt i jest
+    ODEJMOWANA od kosztu wizyty. Zwraca słownik dla utils.pokaz_komunikat_cofnij z
+    „liczba” i „nazwy”."""
     if not wizyta_id or not historia_ids:
         return None
 

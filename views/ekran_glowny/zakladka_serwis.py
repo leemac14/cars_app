@@ -29,11 +29,8 @@ class MiksinZakladkiSerwis:
         self.elementy.append(ft.Row(naglowek_serwis, vertical_alignment=ft.CrossAxisAlignment.CENTER))
 
         # --- SEKCJE „POD-SERWISOWE” JAKO KARTY, A NIE MENU ⋮ ---
-        # Wizyty, zadania i magazyn siedziały pod trzema kropkami w rogu
-        # nagłówka — czyli w miejscu, w które zagląda się wtedy, gdy się już WIE,
-        # że tam coś jest. Jako karty z opisem i licznikiem mówią same o sobie,
-        # co mają w środku i czy wymagają uwagi. Karoseria przeniosła się do
-        # grupy „Pojazd”: to dokumentacja stanu auta, a nie czynność serwisowa.
+        # Wizyty, zadania i magazyn jako karty z opisem i licznikiem; karoseria w grupie
+        # „Pojazd”.
         self.elementy.append(utils.pasek_sekcji(
             self._page, self.state,
             ["wizyty", "do-zrobienia", "magazyn"],

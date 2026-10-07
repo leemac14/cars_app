@@ -1,16 +1,7 @@
-"""Co poszło nie tak w tym przebiegu — do pokazania człowiekowi.
-
-Dwie listy zbierane podczas jednej synchronizacji: rekordy nadpisane mimo
-zmiany po obu stronach oraz zmiany odrzucone przez rolę. Bez tego
-synchronizacja kończy się słowem „gotowe" nawet wtedy, gdy po drodze zjadła
-czyjąś edycję.
-
-UWAGA: obie listy są mutowane W MIEJSCU (`append`, `clear`) i nigdy nie są
-przypisywane na nowo. Dzięki temu każdy moduł, który je zaimportuje, trzyma
-TEN SAM obiekt — inaczej `_synchronizuj_pod_zamkiem` czyściłby własną kopię,
-a `pobierz_konflikty_ostatniej_synchronizacji` czytało cudzą.
-Pilnuje tego `test_listy_konfliktow_sa_jednym_obiektem`.
-"""
+"""Konflikty jednej synchronizacji do pokazania człowiekowi: rekordy nadpisane mimo
+zmiany po obu stronach i zmiany odrzucone przez rolę. UWAGA: obie listy mutowane W
+MIEJSCU (`append`, `clear`), nigdy przypisywane na nowo — każdy moduł trzyma TEN SAM
+obiekt (`test_listy_konfliktow_sa_jednym_obiektem`)."""
 
 import db
 

@@ -1,29 +1,10 @@
-"""Ekran startowy: tablica rejestracyjna zamiast pustego okna.
-
-Między uruchomieniem a pierwszym ekranem aplikacja otwiera bazę, przepuszcza
-migracje i buduje widok. Do tej pory było w tym czasie puste okno — a puste okno
-i zawieszona aplikacja wyglądają identycznie (ta sama obserwacja, co przy
-szkieletach, patrz utils.szkielet).
-
-Na ekranie startowym stoi `tablica_rejestracyjna()`: niebieski pasek UE, czarny
-tekst na białym. To najbardziej charakterystyczny element całej aplikacji i to
-samo, po czym rozpoznaje się auto na parkingu — więc ustawia ton reszty, zamiast
-być logiem doklejonym na wierzchu.
-
-Dwie decyzje, które warto znać:
-
-1. **Tablica pojawia się PRZED otwarciem bazy**, więc najpierw nosi nazwę
-   aplikacji. Gdy baza wstanie, numer wskakuje na jej miejsce. Odwrotna
-   kolejność (czekać na numer) oznaczałaby, że najdłuższy kawałek startu —
-   migracje — znowu odbywa się przy pustym oknie.
-2. **Ruch robi `ProgressBar` w trybie nieokreślonym.** W chwili, gdy ekran
-   startowy jest na wyświetlaczu, pętla zdarzeń jest zajęta otwieraniem bazy
-   i żadna animacja sterowana z Pythona nie miałaby kiedy pojechać. Pasek
-   nieokreślony rysuje Flutter po swojej stronie i nic go nie zatrzyma.
-
-Ekran startowy znika sam: router zaczyna od `page.views.clear()`, więc pierwsza
-nawigacja zdejmuje go razem z resztą stosu.
-"""
+"""Ekran startowy: tablica rejestracyjna zamiast pustego okna (pusta wygląda jak
+zawieszona).
+1. Tablica pojawia się PRZED otwarciem bazy z nazwą aplikacji; numer wskakuje, gdy baza
+wstanie.
+2. Ruch robi `ProgressBar` w trybie nieokreślonym — rysuje go Flutter, a pętla Pythona
+jest zajęta bazą.
+Znika sam: router zaczyna od `page.views.clear()`."""
 
 import flet as ft
 import log
@@ -42,12 +23,9 @@ SZEROKOSC_PASKA = 120
 
 
 class EkranStartowy:
-    """Widok startowy i uchwyt do jego tablicy.
-
-    Klasa, a nie sama funkcja, bo tablicę trzeba móc PODMIENIĆ po otwarciu bazy,
-    a `ft.View` nie ma pola, w którym dałoby się ją trzymać (dopisanie własnego
-    atrybutu do kontrolki Fleta przechodzi bez błędu i nic nie robi — patrz
-    audyt pól kontrolek w tests/audyty.py)."""
+    """Widok startowy z uchwytem do tablicy (podmienianej po otwarciu bazy). Klasa, bo
+    `ft.View` nie ma pola na tablicę, a własny atrybut kontrolki Fleta nic nie robi
+    (audyt pól w tests/audyty.py)."""
 
     def __init__(self, page: ft.Page = None, numer=None):
         self._page = page

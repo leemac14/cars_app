@@ -25,11 +25,7 @@ _SKALA_KONDYCJI = [
 
 
 # ---------------------- ZAKRES CZASU NAD WYKRESEM ----------------------
-# Jeden komponent dla wszystkich wykresów w aplikacji. Wcześniej każdy wykres
-# miał zakres zaszyty w kodzie — wydatki sześć miesięcy, reszta całą historię —
-# i przy kilkuletnim dzienniku obie wartości były złe, tylko w przeciwnych
-# kierunkach: jedna gubiła poprzedni sezon, druga zgniatała ostatnie miesiące
-# w kreskę przy krawędzi.
+# Jeden komponent zakresu dla wszystkich wykresów (zamiast zakresów zaszytych w kodzie).
 ZAKRESY_CZASU = [("3 mies.", 3), ("6 mies.", 6), ("Rok", 12), ("Wszystko", 0)]
 
 _OPISY_ZAKRESU = {
@@ -60,12 +56,8 @@ def zakres_wykresu(state, klucz):
 
 
 def granica_zakresu(miesiace, dzisiaj=None):
-    """Pierwszy dzień najstarszego miesiąca mieszczącego się w zakresie;
-    None dla „Wszystko”.
-
-    Granica jest MIESIĘCZNA, a nie „dzisiaj minus 90 dni”: wykresy grupują dane
-    po miesiącach, więc cięcie w połowie miesiąca zrobiłoby z najstarszego
-    słupka ogryzek i pokazało spadek, którego nie było."""
+    """Pierwszy dzień najstarszego miesiąca w zakresie; None dla „Wszystko”. Granica
+    MIESIĘCZNA (wykresy grupują po miesiącach — cięcie w połowie robiłoby ogryzek)."""
     if not miesiace:
         return None
     dzis = dzisiaj or datetime.now().date()
@@ -96,12 +88,8 @@ def klucze_miesiecy_zakresu(miesiace, najstarszy_mc=None, dzisiaj=None):
 
 
 def okresy_slupkow(miesiace, najstarszy_mc=None, dzisiaj=None):
-    """Siatka słupków wykresu słupkowego: [(etykieta, [klucze miesięcy]), ...]
-    od najstarszego do najnowszego.
-
-    Do roku włącznie słupek = miesiąc. „Wszystko” przy dłuższej historii zbija
-    miesiące w kwartały, a powyżej trzech lat w lata — trzydzieści sześć
-    słupków zmieściłoby się na telefonie tylko jako kreski bez podpisów."""
+    """Siatka słupków: [(etykieta, [klucze miesięcy])] od najstarszego. Do roku słupek =
+    miesiąc; „Wszystko” przy dłuższej historii — kwartały, powyżej trzech lat — lata."""
     klucze = klucze_miesiecy_zakresu(miesiace, najstarszy_mc, dzisiaj)
 
     if len(klucze) <= 12:
@@ -138,12 +126,8 @@ def krok_etykiet_osi(liczba_punktow, ile_podpisow=6):
 
 
 def pasek_zakresu_czasu(page: ft.Page, state, klucz):
-    """Zakres czasu nad wykresem: „3 mies. / 6 mies. / Rok / Wszystko”
-    w jednej pigułce dosuniętej do prawej krawędzi.
-
-    `klucz` nazywa WYKRES (np. "wydatki"), bo każdy pamięta swój zakres
-    osobno — spalanie z roku obok wydatków z kwartału to normalne pytanie,
-    a jeden wspólny przełącznik kazałby zadawać je na raty."""
+    """Zakres czasu nad wykresem: „3 mies. / 6 mies. / Rok / Wszystko”. `klucz` nazywa
+    WYKRES — każdy pamięta swój zakres osobno."""
     auto_id = getattr(state, "auto_id", None)
     aktualny = db.pobierz_zakres_wykresu(auto_id, klucz)
 
@@ -175,11 +159,9 @@ def _pigulka_chipow(page: ft.Page, opcje, aktualny, wybierz, podpowiedz=None):
             animate=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
             tooltip=podpowiedz(wartosc_chipa) if podpowiedz else None,
             on_click=lambda e, w=wartosc_chipa: wybierz(w),
-            # ANI `alignment`, ANI `expand` — kontener z wyrównaniem rozciąga
-            # się do całej szerokości, jaką dostanie, więc cztery takie chipy
-            # w pasku zawijanym lądowały jeden pod drugim i zjadały ekran.
-            # Bez wyrównania kontener ma rozmiar swojej treści, a `tight=True`
-            # pilnuje tego samego po stronie wiersza.
+            # ANI `alignment`, ANI `expand` — kontener z wyrównaniem rozciąga się na
+            # całą szerokość (chipy lądowały jeden pod drugim); `tight=True` pilnuje
+            # tego po stronie wiersza.
             content=ft.Row(
                 [ft.Text(
                     etykieta_chipa, size=FS["caption"],
@@ -220,14 +202,9 @@ def kolor_kondycji_plynny(wynik):
 
 
 def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=True, scena=None):
-    """Kołowy wskaźnik kondycji (0-100) — pierścień wypełniony proporcjonalnie do
-    wyniku, w kolorze płynnie przechodzącym od czerwieni do zieleni, z liczbą
-    w środku. Zastępuje sam tekst „82/100”: wypełnienie i barwa niosą ocenę,
-    więc kafelek da się odczytać jednym spojrzeniem, bez czytania liczby.
-
-    `scena` (utils.ScenaWejscia) sprawia, że przy wejściu na kokpit pierścień
-    napełnia się od zera — razem z liczbą i barwą, więc wskaźnik przejeżdża
-    wtedy przez całą skalę od czerwieni do swojego koloru."""
+    """Kołowy wskaźnik kondycji (0–100): pierścień wypełniony proporcjonalnie, kolor od
+    czerwieni do zieleni, liczba w środku. `scena` (utils.ScenaWejscia) napełnia go od
+    zera przy wejściu."""
     scena = scena or ScenaWejscia(wlaczona=False)
     kolor = kolor_kondycji_plynny(wynik)
     rozmiar_liczby = rozmiar_liczby or max(14, int(rozmiar * 0.30))
@@ -275,12 +252,8 @@ def gauge_kondycji(wynik, rozmiar=72, grubosc=7, rozmiar_liczby=None, pokaz_max=
 
 
 def pasek_budzetu(page: ft.Page, stan, pokaz_szczegoly=True, scena=None):
-    """Wykorzystanie jednego limitu. Poza samym paskiem rysujemy pionowy
-    ZNACZNIK UPŁYWU OKRESU — miejsce, w którym wypadałoby być dzisiaj, gdyby
-    wydawać równo. Bez niego „62% limitu” nic nie mówi: w połowie miesiąca to
-    kłopot, a 28. dnia powód do zadowolenia. Okno ruchome („ostatnie 30 dni”)
-    znacznika nie dostaje — całe leży w przeszłości, więc kreska stałaby zawsze
-    na końcu paska i nie mówiłaby nic."""
+    """Wykorzystanie limitu z pionowym ZNACZNIKIEM UPŁYWU OKRESU (gdzie wypadałoby być
+    przy równym wydawaniu). Okno ruchome znacznika nie dostaje (całe w przeszłości)."""
     scena = scena or ScenaWejscia(wlaczona=False)
     scena.nastepny_wiersz()
     kolor = {
@@ -470,14 +443,8 @@ def karta_analizy(page: ft.Page, tytul, ikona, zawartosc, kolor=None):
 
 def sparkline(wartosci, kolor=None, wysokosc=30, szerokosc=None, wypelnienie=True,
               grubosc=2, punkty_koncowe=True):
-    """Mini-wykres liniowy bez osi, siatki i etykiet — „iskra” pokazująca sam
-    kształt trendu obok liczby (patrz kafelek „Śr. spalanie” w kokpicie).
-
-    `wartosci`: lista liczb w kolejności chronologicznej. Przy mniej niż 2
-    sensownych punktach zwraca None — wywołujący sam decyduje, co pokazać
-    zamiast wykresu. Skala Y jest dociskana do zakresu danych (z niewielkim
-    zapasem), bo w sparkline liczy się różnica między punktami, a nie odległość
-    od zera."""
+    """Mini-wykres liniowy bez osi i etykiet („iskra”) obok liczby. `wartosci`
+    chronologicznie; mniej niż 2 punkty → None. Skala Y dociśnięta do zakresu danych."""
     liczby = []
     for w in (wartosci or []):
         try:
@@ -662,17 +629,9 @@ def _kropka_legendy(kolor, tekst, obwodka=False):
 
 
 def wykres_kosztu_skumulowanego(page: ft.Page, dane, wysokosc=210, od_daty=None):
-    """Krzywa sumy narastającej: gruba „Razem” na pierwszym planie, pod nią trzy
-    cienkie serie kategorii, a na niej znaczniki większych wydatków.
-
-    Oś X to DNI od startu, a nie numer wpisu — dwa tankowania w jednym tygodniu
-    i pół roku ciszy mają na tej krzywej wyglądać INACZEJ, bo właśnie po to się
-    na nią patrzy.
-
-    `od_daty` przycina WIDOK, nie rachunek: wartości zostają narastające od
-    zakupu, więc przy krótkim zakresie krzywa wchodzi w kadr wysoko, a nie
-    zaczyna się od zera. Inaczej „ostatnie 3 miesiące” pokazywałyby trzeci
-    wykres wydatków miesięcznych, a nie sumę narastającą."""
+    """Suma narastająca: gruba „Razem”, trzy cienkie serie kategorii, znaczniki
+    większych wydatków. Oś X to DNI od startu, nie numer wpisu. `od_daty` przycina
+    WIDOK, nie rachunek — krzywa wchodzi w kadr wysoko."""
     punkty = list(dane.get("punkty") or [])
     dni_wyroznione = {w["dzien"] for w in (dane.get("wyroznione") or [])}
 
@@ -852,12 +811,8 @@ PROG_DROZENIA = 15.0
 
 
 def pasek_okna_kroczacego(page: ft.Page, state):
-    """Długość okna kroczącego nad wykresem kosztu na 1000 km.
-
-    To NIE jest pasek zakresu widoku: chipy zmieniają tu sposób LICZENIA
-    każdego punktu, a nie wycinek osi. Oś pokazuje zawsze całą historię, dla
-    której okno jest pełne — przy krótszym oknie krzywa jest dłuższa i bardziej
-    nerwowa, przy dłuższym krótsza i gładsza."""
+    """Długość okna kroczącego nad wykresem kosztu na 1000 km — zmienia sposób LICZENIA
+    punktu, nie wycinek osi (oś zawsze pokazuje całą historię z pełnym oknem)."""
     auto_id = getattr(state, "auto_id", None)
     aktualne = db.pobierz_okno_kroczace(auto_id)
 
@@ -872,12 +827,9 @@ def pasek_okna_kroczacego(page: ft.Page, state):
 
 
 def krzywa_1000_w_jednostce(dane, jednostka=None):
-    """Wynik db.koszt_na_1000km przeliczony na 1000 jednostek z Ustawień.
-
-    Kopia z kluczem „jednostka” — drugie wywołanie na tym samym wyniku niczego
-    już nie mnoży, więc karta, wykres i kafelek mogą wołać ją bez umawiania się,
-    kto przelicza. Koszty „razem” (suma w oknie) i procenty zostają, bo nie są
-    liczone na dystans; kilometry w oknie zamieniają się w mile."""
+    """Wynik db.koszt_na_1000km przeliczony na 1000 jednostek z Ustawień. Kopia z
+    kluczem „jednostka” — drugie wywołanie nic już nie mnoży. Sumy „razem” i procenty
+    bez zmian; km w oknie → mile."""
     j = jednostka_dystansu() if jednostka is None else jednostka
     if not dane:
         return dane
@@ -909,12 +861,8 @@ def krzywa_1000_w_jednostce(dane, jednostka=None):
 
 
 def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
-    """Krzywa kosztu na 1000 km w oknie kroczącym: gruba „Razem”, trzy cienkie
-    serie kategorii, przerywana linia średniej życiowej i znacznik w szczycie.
-
-    Oś pionowa zaczyna się w ZERZE, a nie tuż pod najniższym punktem. Obcięta
-    oś robi z dziesięcioprocentowej zmiany urwisko — a to jest wykres, na
-    którego podstawie sprzedaje się auto."""
+    """Koszt na 1000 km w oknie kroczącym: gruba „Razem”, cienkie kategorie, przerywana
+    średnia życiowa, znacznik szczytu. Oś pionowa od ZERA (obcięta wyolbrzymia zmianę)."""
     dane = krzywa_1000_w_jednostce(dane) or {}
     j = dane.get("jednostka", "km")
     punkty = dane.get("punkty") or []
@@ -1111,12 +1059,8 @@ def pasek_lat_rdr(page: ft.Page, state):
 
 
 def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
-    """Dwie krzywe na jednej osi miesięcy: wybrany rok grubą linią, poprzedni
-    przerywaną. Między nimi pionowe słupki różnicy — dzięki nim nie trzeba
-    czytać osi, żeby zobaczyć, gdzie i jak bardzo lata się rozchodzą.
-
-    Oś pionowa zaczyna się w ZERZE. Przy dwóch krzywych obcięta oś kłamie
-    podwójnie: nie tylko wyolbrzymia zmianę, ale i odległość między latami."""
+    """Dwie krzywe na osi miesięcy: wybrany rok grubą linią, poprzedni przerywaną,
+    między nimi słupki różnicy. Oś pionowa od ZERA."""
     biezacy = list(dane.get("biezacy") or [])
     poprzedni = list(dane.get("poprzedni") or [])
     znane_b = [w for w in biezacy if w is not None]
@@ -1312,13 +1256,9 @@ def _tekst_roznicy(dane, jedn):
 
 def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11,
                     tekst_bez_trendu=None, ikona_bez_trendu=None):
-    """Mały „chip” trendu: strzałka + procent zmiany. `wzrost_zly=True` znaczy,
-    że rosnąca wartość jest zła (koszty, spalanie) i dostaje kolor czerwony.
-    Zwraca ft.Row gotowy do wstawienia pod wartością na kafelku.
-
-    `tekst_bez_trendu` i `ikona_bez_trendu` podmieniają wariant neutralny, gdy
-    zmiany NIE DA SIĘ policzyć — kokpit mówi wtedy „Za wcześnie na trend”
-    z ikoną informacji, zamiast udawać płaski trend napisem „Brak trendu”."""
+    """Chip trendu: strzałka + procent zmiany; `wzrost_zly=True` — wzrost na czerwono
+    (koszty, spalanie). Zwraca ft.Row. `tekst_bez_trendu` i `ikona_bez_trendu` —
+    wariant, gdy zmiany NIE DA SIĘ policzyć („Za wcześnie na trend”)."""
     try:
         zmiana = float(zmiana_proc)
     except (TypeError, ValueError):
@@ -1350,12 +1290,9 @@ def znacznik_trendu(zmiana_proc, prog=5, wzrost_zly=True, rozmiar=11,
 
 
 def pasek_postepu(etykieta_lewa, etykieta_prawa, procent, kolor, wysokosc=8, scena=None):
-    """Wspólny 'wiersz postępu': etykieta + wartość nad kolorowym ProgressBar.
-    procent: 0.0-1.0 (spoza zakresu jest przycinane). Wydzielone z _pasek_porownania
-    (porownanie_view.py). Karta podzespołu w Serwisie ma dwa liczniki naraz, więc
-    rysuje je `liczniki_interwalu` niżej — każdy z własnym paskiem.
-
-    `scena` (utils.ScenaWejscia) każe paskowi wypełnić się przy wejściu od zera."""
+    """Wiersz postępu: etykieta + wartość nad ProgressBar; procent 0.0–1.0 (przycinany).
+    Karta podzespołu ma dwa liczniki — `liczniki_interwalu`. `scena` wypełnia pasek od
+    zera przy wejściu."""
     scena = scena or ScenaWejscia(wlaczona=False)
     scena.nastepny_wiersz()
     return ft.Column([
@@ -1379,16 +1316,10 @@ ROLA_STATUSU_INTERWALU = {"przeterminowane": "critical", "pilne": "warning", "ok
 
 
 def liczniki_interwalu(stan, scena=None, page=None):
-    """Oba liczniki interwału podzespołu obok siebie — kilometry z lewej, czas
-    z prawej. Kolejność jest stała, żeby na liście kart oko wiedziało, gdzie
-    czego szukać; to, który licznik przyjdzie PIERWSZY, mówi znacznik „najpierw”.
-    Przestawiane kolumny kazałyby czytać każdą kartę od nowa.
-
-    Każdy licznik ma własny pasek zużycia interwału w kolorze swojego statusu:
-    trzy tysiące kilometrów zapasu wyglądają inaczej obok dwóch tygodni do
-    terminu niż obok pół roku. Oba paski ruszają w jednym kroku kaskady, bo to
-    jeden wiersz listy. `stan` to wynik db.oblicz_stan_interwalu; bez liczników
-    zwraca None."""
+    """Oba liczniki interwału obok siebie — km z lewej, czas z prawej (stała kolejność);
+    pierwszy do końca dostaje znacznik „najpierw”. Każdy ma pasek w kolorze swojego
+    statusu; oba w jednym kroku kaskady. `stan` z db.oblicz_stan_interwalu; bez
+    liczników None."""
     liczniki = [stan[rodzaj] for rodzaj in ("km", "czas") if (stan or {}).get(rodzaj)]
     if not liczniki:
         return None
@@ -1431,13 +1362,10 @@ def liczniki_interwalu(stan, scena=None, page=None):
 
 
 def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="ostatni rok"):
-    """Heatmapa aktywności w stylu GitHub 'contributions': siatka kwadracików
-    (kolumna = tydzień, wiersz = dzień tygodnia) pokazująca, w które dni z
-    ostatniego roku pojawiło się jakiekolwiek zdarzenie w dzienniku auta.
-    `daty_zdarzen`: dowolna iterowalna surowych dat tekstowych (DD.MM.YYYY);
-    kilka zdarzeń tego samego dnia jest sumowanych. Używane przez /timeline.
-    `tygodnie` i `opis_okresu` idą z chipów zakresu nad mapą — siatka i jej
-    podpis muszą mówić o tym samym okresie, inaczej podpis kłamie."""
+    """Heatmapa aktywności w stylu GitHub (kolumna = tydzień, wiersz = dzień tygodnia)
+    dla /timeline. `daty_zdarzen` — surowe daty (DD.MM.YYYY), zdarzenia jednego dnia
+    sumowane. `tygodnie` i `opis_okresu` z chipów zakresu — siatka i podpis o tym samym
+    okresie."""
     liczba_wg_dnia = {}
     for data_str in daty_zdarzen:
         d = parsuj_date(data_str)
@@ -1488,11 +1416,8 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="o
 
         kolumny_tygodni.append(ft.Column(komorki, spacing=3))
 
-    # Odwracamy kolejność kolumn — najnowszy tydzień ma być widoczny od razu
-    # (po lewej), bez przewijania w prawo, żeby go zobaczyć.
-    # Rok kwadracików nie zmieści się na żadnym telefonie, więc mapa MUSI jechać
-    # w bok — dostaje więc widoczny suwak z własnym marginesem, zamiast paska,
-    # który pojawiał się dopiero w trakcie przewijania i leżał na komórkach.
+    # Najnowszy tydzień po lewej (widoczny bez przewijania); rok kwadracików musi jechać
+    # w bok — z widocznym suwakiem na własnym marginesie.
     siatka = pasek_przewijany(list(reversed(kolumny_tygodni)), spacing=3,
                               wyrownanie=ft.CrossAxisAlignment.START)
 

@@ -44,13 +44,8 @@ KATEGORIE_EKSPORTU = {
 
 
 def _folder_assets():
-    """Katalog `assets/` projektu — ten sam, który Flet pakuje do aplikacji.
-
-    Po rozbiciu `db.py` na pakiet `os.path.dirname(__file__)` wskazywał już
-    `db/`, więc czcionki leżące tam, gdzie zawsze (`assets/` w korzeniu), przestały
-    być widoczne i PDF po cichu wracał do Helvetiki bez polskich znaków.
-    `db/assets/` zostaje jako drugi kandydat dla tych, którzy przenieśli tam
-    czcionki po rozbiciu."""
+    """Katalog `assets/` w korzeniu projektu (ten, który Flet pakuje); `db/assets/` jako
+    drugi kandydat. Bez czcionek PDF po cichu wraca do Helvetiki bez polskich znaków."""
     pakiet = os.path.dirname(os.path.abspath(__file__))
     kandydaci = [os.path.join(os.path.dirname(pakiet), "assets"), os.path.join(pakiet, "assets")]
     return next((k for k in kandydaci if os.path.exists(os.path.join(k, "DejaVuSans.ttf"))), kandydaci[0])
@@ -82,14 +77,11 @@ def _kolumny_rozbicia(koszt, robocizna, z_magazynu):
 
 
 def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
-    """
-    Zbiera dane pojazdu do eksportu wg wybranych kategorii (klucze z KATEGORIE_EKSPORTU),
-    opcjonalnie przycięte do zakresu [od_data, do_data] (obiekty date, oba mogą być None).
-    Magazyn, zestawy opon, lista Do zrobienia, definicje podzespołów (zadania),
-    wydatki cykliczne, warsztaty i tagi to "stany aktualne" — eksportują się zawsze
-    w całości, niezależnie od zakresu dat. Zakresowi podlegają tylko tankowania,
-    historia, wizyty, inne koszty, odczyty przebiegu i przejazdy z ewidencji.
-    """
+    """Dane pojazdu do eksportu wg kategorii z KATEGORIE_EKSPORTU, opcjonalnie w
+    zakresie [od_data, do_data] (date albo None). Zakres tnie tylko tankowania,
+    historię, wizyty, inne koszty, odczyty przebiegu i przejazdy; stany aktualne
+    (magazyn, opony, Do zrobienia, zadania, cykliczne, warsztaty, tagi) idą zawsze w
+    całości."""
     wynik = {}
     if not auto_id or not kategorie:
         return wynik
@@ -337,11 +329,9 @@ def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
     koszt_inne = sum(float(i[1] or 0) for i in inne)
     razem = koszt_paliwo + koszt_serwis + koszt_inne
 
-    # Dystans i zużycie wyłącznie z wpisów ze stanem licznika — wpis bez niego
-    # (import z samym dystansem) stawał na początku z zerem i robił z całego
-    # licznika auta „przejechany dystans”. Zużycie liczymy dla JEDNEGO źródła
-    # energii (podstawowego dla auta), żeby litry i kWh plug-ina nie trafiły
-    # do jednej sumy, a elektryk nie dostał „spalania” w l/100km.
+    # Dystans i zużycie tylko z wpisów ze stanem licznika (wpis bez niego robił z całego
+    # licznika „przejechany dystans”). Zużycie dla JEDNEGO, podstawowego źródła energii
+    # — litry i kWh plug-ina się nie sumują.
     z_licznikiem = sorted((t for t in tankowania if int(t[3] or 0) > 0), key=lambda t: int(t[3]))
     dystans = 0
     if len(z_licznikiem) >= 2:
@@ -397,11 +387,9 @@ def generuj_eksport_csv(dane_eksportu) -> tuple[bytes, str]:
 
 
 class _RaportPDF(FPDF if FPDF is not None else object):
-    """Wrapper na FPDF z automatycznym doborem czcionki: jeśli w assets/ jest
-    DejaVuSans(.ttf/-Bold.ttf), używa jej (pełne wsparcie polskich znaków).
-    W przeciwnym razie używa wbudowanej Helvetiki i transliteruje diakrytyki (metoda t()).
-    orientation: "L" (poziomo, domyślnie — pasuje do szerokich tabel w zwykłym
-    raporcie) albo "P" (pionowo — używane przez tryb paszportu pojazdu)."""
+    """FPDF z doborem czcionki: DejaVuSans z assets/ (polskie znaki), inaczej Helvetica
+    z transliteracją (`t()`). orientation: „L” (domyślnie, szerokie tabele) albo „P”
+    (paszport pojazdu)."""
     def __init__(self, orientation="L"):
         super().__init__(orientation=orientation, unit="mm", format="A4")
         self.set_auto_page_break(auto=True, margin=15)

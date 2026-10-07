@@ -13,10 +13,8 @@ from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_cze
 
 
 def aktualizuj_wiele_zdjec_karoserii(ids_list, strefa=None, typ_porownania=None, opis=None):
-    """Masowa edycja wspólnych pól (strefa / typ zdjęcia / opis) dla wielu zdjęć
-    karoserii naraz — używane przez zbiorczą edycję zaznaczonych zdjęć w galerii.
-    Pole pozostawione jako None NIE jest zmieniane (stąd pusty opis trzeba
-    przekazać jako pusty string, jeśli faktycznie ma zostać wyczyszczony)."""
+    """Masowa edycja wspólnych pól (strefa / typ / opis) zaznaczonych zdjęć karoserii.
+    None = bez zmian; pusty opis trzeba podać jako pusty napis."""
     if not ids_list:
         return 0
 
@@ -44,11 +42,8 @@ def aktualizuj_wiele_zdjec_karoserii(ids_list, strefa=None, typ_porownania=None,
 
 
 def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
-    """Montuje zestaw opon na wskazanej osi. Zestaw montowany na całym aucie
-    ('Wszystkie') wyklucza wszystkie pozostałe. Zestaw montowany na pojedynczej
-    osi koliduje TYLKO z innym zestawem zajmującym tę samą oś (albo z zestawem
-    'Wszystkie') — dzięki temu można mieć osobny, asymetryczny komplet
-    jednocześnie z przodu i z tyłu."""
+    """Montuje zestaw opon na osi. 'Wszystkie' wyklucza pozostałe; zestaw na jednej osi
+    koliduje tylko z tą samą osią albo 'Wszystkie' (asymetryczne komplety przód/tył)."""
     if os_montazu not in OSIE_MONTAZU:
         os_montazu = "Wszystkie"
 
@@ -93,15 +88,10 @@ def _wolno_usunac(tabela, dane):
 
 
 def usun_z_cofnieciem(tabela, rekord_id):
-    """Usuwa pojedynczy rekord i zwraca {"cofnij", "finalizuj", "dane"}.
-
-    cofnij() wstawia rekord z powrotem z tymi samymi wartościami — ale pod
-    NOWYM id (wstawiamy kolumny bez `id`, patrz kolumny_bez_id). Zostaje
-    `zdalne_id`, więc synchronizacja rozpoznaje w nim ten sam rekord, a części
-    z magazynu podpięte do wpisu serwisowego są przemapowane na nowe id.
-    Dla tabel z załącznikiem plik NIE jest fizycznie kasowany od razu — zostaje
-    przeniesiony do folderu odroczonych i wraca na miejsce przy cofnięciu, albo
-    znika dopiero w finalizuj()."""
+    """Usuwa rekord i zwraca {"cofnij", "finalizuj", "dane"}. cofnij() wstawia go pod
+    NOWYM id (kolumny_bez_id), z tym samym `zdalne_id` (sync rozpozna ten sam rekord);
+    części z magazynu przemapowane. Załącznik idzie do folderu odroczonych — wraca przy
+    cofnięciu albo znika w finalizuj()."""
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -142,13 +132,9 @@ def usun_z_cofnieciem(tabela, rekord_id):
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id=?", (rekord_id,))
 
-    # Nagrobek dostaje przypisanie do pojazdu (patrz db/synchronizacja), żeby
-    # usunięcie z auta A nie próbowało się wysłać przy synchronizacji auta B —
-    # a przy pojeździe „tylko do podglądu” nie wysłało się w ogóle. Historia
-    # nie ma własnej kolumny auto_id, więc jedzie tym samym JOIN-em co przy
-    # sprawdzaniu uprawnień: nagrobek bez pojazdu nie daje się odfiltrować
-    # przy synchronizacji przyrostowej i wraca w każdym cyklu, aż licznik
-    # MAKS_PROB_NAGROBKA go ucisza.
+    # Nagrobek z pojazdem (db/synchronizacja) — usunięcie z auta A nie leci przy
+    # synchronizacji auta B, a przy „tylko podglądzie” wcale. Historia bez auto_id —
+    # przez JOIN jak przy uprawnieniach.
     auto_nagrobka = _auto_wiersza(tabela, dane)
     if zdalny_id_usuniety:
         zarejestruj_nagrobek(tabela, zdalny_id_usuniety, auto_nagrobka)
@@ -232,12 +218,8 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
         ids_list = [d["id"] for d in dane_lista]
         placeholders = ",".join("?" for _ in ids_list)
 
-    # Do którego pojazdu należy każdy z usuwanych wierszy — dokładnie tak samo
-    # jak w ścieżce pojedynczej. Ścieżka zbiorcza zostawiała tu NULL, a nagrobek
-    # bez pojazdu nie daje się odfiltrować przy synchronizacji przyrostowej:
-    # wraca w każdym cyklu i dopiero MAKS_PROB_NAGROBKA (5) go ucisza — po
-    # pięciu nieudanych podejściach. Wynik JOIN-u dla historii zapamiętujemy,
-    # bo zaznaczenie zbiorcze to zwykle kilkadziesiąt wpisów spod kilku zadań.
+    # Pojazd każdego usuwanego wiersza jak w ścieżce pojedynczej (nagrobek z NULL
+    # wracałby co cykl do MAKS_PROB_NAGROBKA); JOIN historii zapamiętany.
     auta_zadan = {}
 
     def _auto_nagrobka(dane):

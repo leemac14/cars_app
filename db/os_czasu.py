@@ -17,16 +17,10 @@ def _km(przebieg, jednostka):
 
 
 def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float | None, str | None, str, str | None, str | None]]:
-    """Zbiorcza, chronologiczna lista zdarzeń pojazdu ze wszystkich modułów
-    (tankowania, historia serwisowa, wizyty zbiorcze, inne koszty, galeria
-    karoserii, odczyty przebiegu) — używana przez widok /timeline ("dziennik
-    życia auta"). Wpisy historii powiązane z wizytą zbiorczą są pomijane
-    (reprezentuje je już sama wizyta), analogicznie do eksportu danych.
-    Zwraca listę krotek: (id_timeline, typ, data, tytul, opis, kwota, zalacznik,
-    trasa, dodane_przez, notatka). 'dodane_przez' zasila filtr autorstwa przy
-    pojeździe współdzielonym; zdjęcia karoserii nie mają tej kolumny, więc trafia
-    tam None. 'notatka' to krótka uwaga wpisu — dziennik życia auta bez niej
-    gubiłby dokładnie ten kontekst, po który się do niego wraca."""
+    """Chronologiczne zdarzenia pojazdu ze wszystkich modułów dla /timeline: krotki
+    (id_timeline, typ, data, tytul, opis, kwota, zalacznik, trasa, dodane_przez,
+    notatka). Pozycje historii z wizyty zbiorczej pomijane (jak w eksporcie); zdjęcia
+    karoserii mają dodane_przez = None."""
     if not auto_id:
         return []
 

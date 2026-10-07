@@ -25,14 +25,10 @@ class AppState:
         # od zera. Kopiuje wszystko poza datą, załącznikiem i zużyciem magazynu.
         self.duplikuj_zrodlo_wizyta = None
         self.wybrane_zadanie_nazwa = ""
-        # „Widziane” w dzwonku nie mieszka już w stanie: liczy się osobno dla
-        # każdego powiadomienia i jest zapisywane w bazie, per pojazd (patrz
-        # db.powiadomienia) — inaczej każdy zimny start telefonu zapalałby
-        # odznakę na wszystkim od nowa.
-        # Pojazd, dla którego odliczanie liczb na kokpicie już zagrało. Kokpit
-        # przebudowuje się przy każdej zmianie zakładki i po wyjściu z dowolnego
-        # ekranu — bez tego znacznika animacja wejścia grałaby kilkanaście razy
-        # na sesję i z powitania zrobiłaby się zwłoka przy odczycie.
+        # „Widziane” w dzwonku jest w bazie per powiadomienie i pojazd
+        # (db.powiadomienia), nie w stanie. Poniżej: pojazd, dla którego animacja liczb
+        # kokpitu już zagrała — kokpit przebudowuje się często, a animacja ma zagrać
+        # raz.
         self.kokpit_animacja_dla = None
         # Ustawienia → „Ułóż kafelki kokpitu” tylko przełącza ekran; tryb
         # układania włącza sam kokpit, gdy zobaczy tę flagę (i od razu ją gasi).

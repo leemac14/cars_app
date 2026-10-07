@@ -1,12 +1,6 @@
-"""Pobieranie przyrostowe — pytamy o to, co zmieniło się od ostatniego razu.
-
-Jedna decyzja na całą aplikację: czy serwer zna kolumnę znacznika. Gdy nie zna,
-`_wylacz_delte` zapamiętuje to raz i pakiet po cichu wraca do pełnego
-pobierania — użytkownik nie widzi błędu, bo z jego punktu widzenia nic się
-nie stało.
-
-`_delta_dostepna` jest ŚWIADOMIE nieujęte w `__all__` — patrz komentarz niżej.
-"""
+"""Pobieranie przyrostowe. Gdy serwer nie zna kolumny znacznika, `_wylacz_delte`
+zapamiętuje to raz i pakiet po cichu wraca do pełnego pobierania. `_delta_dostepna`
+ŚWIADOMIE poza `__all__` — komentarz niżej."""
 
 import db
 import log

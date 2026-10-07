@@ -1,15 +1,8 @@
-"""„Leasing i kredyt” — harmonogram rat pojazdu (M-22).
-
-Ekran odpowiada na pytanie, na które rata jako zwykły wydatek cykliczny nie
-umiała: ile jeszcze zostało do spłaty. Każda umowa to karta — do spłaty, pasek
-zapłaconych rat, najbliższa płatność, ostatnia rata, wykup, odsetki zapłacone
-i do zapłaty, kapitał do spłaty — a pod nią rozwijany harmonogram z rozbiciem
-każdej raty na kapitał i odsetki. Liczy wszystko db.harmonogram_umowy, ten sam
-rachunek, co podgląd w formularzu, kafelek „Do spłaty” i Karta pojazdu.
-
-„Zapłacono” płaci KOLEJNĄ pozycję harmonogramu (db.oznacz_zaplacony_wydatek_cykliczny
-→ db.zaplac_rate), z kosztem w Innych kosztach i z „Cofnij”.
-"""
+"""„Leasing i kredyt” (M-22): karta umowy (do spłaty, pasek zapłaconych, najbliższa
+płatność, ostatnia rata, wykup, odsetki, kapitał) i rozwijany harmonogram z rozbiciem
+rat. Liczy db.harmonogram_umowy (jak formularz, kafelek „Do spłaty” i Karta pojazdu).
+„Zapłacono” płaci KOLEJNĄ pozycję (db.oznacz_zaplacony_wydatek_cykliczny →
+db.zaplac_rate) z kosztem w Innych kosztach i „Cofnij”."""
 
 from datetime import datetime
 
@@ -367,24 +360,14 @@ class RatyView(ft.View):
         )
 
     def _nota(self):
-        return ft.Container(
-            padding=utils.SPACING["md"],
-            **utils.powierzchnia(self._page, "blok"),
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.Icons.INFO_OUTLINE, size=15, color=ft.Colors.ON_SURFACE_VARIANT),
-                    utils.podpis("Jak liczę raty i odsetki"),
-                ], spacing=6),
-                ft.Text(
-                    "Raty idą co miesiąc, tego samego dnia co pierwsza. Przy racie z umowy oprocentowanie "
-                    "wynika z raty i kwoty finansowania, więc odsetki to wszystko, co zapłacisz, minus "
-                    "kapitał (przy leasingu: wartość auta minus opłata wstępna). Wykup albo rata balonowa "
-                    "to ostatnia płatność, w terminie ostatniej raty — dopiero ona zamyka umowę. "
-                    "„Zapłacono” zapisuje kolejną płatność w Innych kosztach (kategoria „Cykliczne”), "
-                    "a dzwonek przypomina o następnej.",
-                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                ),
-            ], spacing=4),
+        return utils.nota_o_liczeniu(
+            self._page, "Jak liczę raty i odsetki",
+            "Raty idą co miesiąc, tego samego dnia co pierwsza. Przy racie z umowy oprocentowanie "
+            "wynika z raty i kwoty finansowania, więc odsetki to wszystko, co zapłacisz, minus "
+            "kapitał (przy leasingu: wartość auta minus opłata wstępna). Wykup albo rata balonowa "
+            "to ostatnia płatność, w terminie ostatniej raty — dopiero ona zamyka umowę. "
+            "„Zapłacono” zapisuje kolejną płatność w Innych kosztach (kategoria „Cykliczne”), "
+            "a dzwonek przypomina o następnej.",
         )
 
     # ================= AKCJE =================

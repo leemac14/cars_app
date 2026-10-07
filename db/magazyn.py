@@ -16,10 +16,9 @@ from .ceny_czesci import zachowaj_zakup_pozycji
 from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
 
 
-# Zużycie części z magazynu ma dwa nośniki: wizytę zbiorczą i pojedynczy wpis
-# serwisowy. Tabele są lustrzane, więc cała logika (pobranie, oddanie na stan,
-# potrącenie) siedzi w jednym rdzeniu sparametryzowanym nazwą tabeli i kolumną
-# wiążącą — zamiast dwóch kopii, które z czasem by się rozjechały.
+# Zużycie części z magazynu ma dwa nośniki: wizytę zbiorczą i pojedynczy wpis. Tabele są
+# lustrzane, więc logika siedzi w jednym rdzeniu sparametryzowanym nazwą tabeli i
+# kolumną wiążącą.
 POWIAZANIA_MAGAZYNU = {
     "wizyty": ("wizyta_czesci_magazynu", "wizyta_id"),
     "historia": ("historia_czesci_magazynu", "historia_id"),
@@ -37,12 +36,10 @@ def _pobierz_uzyte_czesci(zrodlo, rekord_id):
 
 
 def _przywroc_czesci(zrodlo, rekord_id, conn=None):
-    """Oddaje do magazynu wykorzystane wcześniej części i usuwa powiązania.
-    Zwraca listę zdalne_id usuniętych powiązań — WYWOŁUJĄCY musi je
-    zarejestrować jako nagrobki (zarejestruj_nagrobek) DOPIERO PO
-    zamknięciu/commicie bieżącej transakcji (conn). Rejestracja w środku
-    otwartej transakcji otworzyłaby drugie połączenie do tego samego pliku
-    SQLite i mogłaby zakleszczyć bazę."""
+    """Oddaje do magazynu wykorzystane części i usuwa powiązania. Zwraca zdalne_id
+    usuniętych powiązań — WYWOŁUJĄCY rejestruje je jako nagrobki (zarejestruj_nagrobek)
+    DOPIERO PO commicie `conn`; rejestracja w otwartej transakcji otworzyłaby drugie
+    połączenie i mogłaby zakleszczyć bazę."""
     tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
     usuniete_zdalne_id = []
 
@@ -119,17 +116,12 @@ def rozlicz_czesci_z_magazynu_wpisu(historia_id, uzyte, conn=None):
 
 
 # ============================================================================
-#  KOSZT ZUŻYCIA
+# KOSZT ZUŻYCIA
 # ============================================================================
-# Część z magazynu jest kupiona wcześniej, ale jej koszt „wydarza się” dopiero
-# wtedy, gdy ląduje w aucie. Dlatego doliczamy go przy ZUŻYCIU, nie przy
-# zakupie — i zapisujemy wprost w `historia.cena` albo `wizyty.koszt_calkowity`.
-# Statystyki, budżety, eksport i raporty czytają te dwie kolumny w kilkunastu
-# miejscach; każde z nich widzi pełny koszt serwisu bez jednej poprawki.
-#
-# Ile z tej kwoty przyszło z magazynu, pamięta powiązanie zużycia (kolumna
-# `koszt`). Formularz odejmuje to przy edycji, żeby w polu kosztu stała sama
-# usługa — inaczej każdy kolejny zapis doliczałby części od nowa.
+# Koszt części z magazynu doliczamy przy ZUŻYCIU, wprost do `historia.cena` albo
+# `wizyty.koszt_calkowity` — wszystkie statystyki widzą pełny koszt bez poprawek. Część
+# z magazynu pamięta powiązanie zużycia (`koszt`); formularz odejmuje ją przy edycji,
+# żeby nie doliczać drugi raz.
 
 
 def cena_jednostkowa_z_zakupu(koszt_zakupu, ilosc) -> float | None:
@@ -225,11 +217,9 @@ def suma_kosztu_zuzycia(wycenione) -> float:
 
 
 def srednia_cena_jednostkowa(pozycje) -> float | None:
-    """Cena za jednostkę po zsypaniu kilku pozycji w jedną — średnia ważona stanem.
-
-    `pozycje` to [(ilosc, cena_jednostkowa)], pierwsza jest pozycją docelową.
-    Pozycje bez ceny nie zaniżają średniej: nie wiadomo, ile były warte, więc
-    nie udajemy, że nic. Gdy żadna nie ma nic na stanie, wygrywa pierwsza znana."""
+    """Cena za jednostkę po zsypaniu pozycji w jedną — średnia ważona stanem. `pozycje`
+    = [(ilosc, cena_jednostkowa)], pierwsza docelowa. Pozycje bez ceny nie zaniżają
+    średniej; bez stanu wygrywa pierwsza znana."""
     znane = []
     for ilosc, cena in pozycje or []:
         cena = _na_liczbe(cena)
@@ -244,12 +234,9 @@ def srednia_cena_jednostkowa(pozycje) -> float | None:
 
 
 def pobierz_zuzycie_rekordow(zrodlo, rekord_ids) -> dict[int, dict[str, Any]]:
-    """Zużycie z magazynu dla kart na listach wizyt i wpisów:
-    {rekord_id: {"pozycje": [{"nazwa", "ilosc", "jednostka", "koszt"}], "koszt": float}}.
-
-    Jedno zapytanie na całą listę zamiast jednego na kartę. Celowo osobno od
-    zapytania o same wizyty — JOIN z podzespołami i częściami naraz zdublowałby
-    wiersze przy wizycie, która ma po kilka jednych i drugich."""
+    """Zużycie z magazynu dla kart list wizyt i wpisów: {rekord_id: {"pozycje": [{nazwa,
+    ilosc, jednostka, koszt}], "koszt": float}}. Jedno zapytanie na listę, osobno od
+    zapytania o wizyty (JOIN zdublowałby wiersze)."""
     tabela, kolumna = POWIAZANIA_MAGAZYNU[zrodlo]
     identyfikatory = [i for i in dict.fromkeys(rekord_ids or []) if i]
     wynik = {}
@@ -309,12 +296,9 @@ def _zdejmij_powiazania_czesci_wpisow(historia_ids):
 
 
 def _przywroc_powiazania_czesci_wpisow(wiersze, mapa_historia=None):
-    """Odwrotność _zdejmij_...: wstawia powiązania z powrotem (z oryginalnymi ID,
-    o ile wolne) i ponownie potrąca sztuki ze stanu magazynu.
-
-    mapa_historia przemapowuje historia_id: ścieżki cofania wstawiają wpis
-    serwisowy BEZ oryginalnego id (patrz kolumny_bez_id), więc po przywróceniu
-    zwykle ma on nowe ID i powiązanie wskazywałoby w próżnię."""
+    """Odwrotność _zdejmij_...: wstawia powiązania z powrotem (z oryginalnymi ID, o ile
+    wolne) i znów potrąca stan. mapa_historia przemapowuje historia_id — cofanie wstawia
+    wpis BEZ oryginalnego id (kolumny_bez_id)."""
     if not wiersze:
         return
     mapa_historia = mapa_historia or {}
@@ -613,13 +597,10 @@ def pobierz_historie_zuzycia(czesc_id) -> list[dict[str, Any]]:
 
 
 # ============================================================================
-#  SEZONOWA ZMIANA OPON
+# SEZONOWA ZMIANA OPON
 # ============================================================================
-# Zmiana opon to jedyne cykliczne przypomnienie, którego wykonanie ZMIENIA STAN
-# w bazie: po niej na aucie stoi drugi komplet. Dopóki było zwykłym wpisem
-# w kalendarzu, magazyn opon i tak trzeba było poprawić ręcznie w drugim
-# miejscu — a że nikt tego nie robił, aplikacja przez pół roku twierdziła, że
-# auto jeździ na zimówkach w lipcu.
+# Jedyne cykliczne przypomnienie, którego wykonanie ZMIENIA STAN: po nim na aucie stoi
+# drugi komplet w magazynie opon.
 
 
 def _docelowy_sezon(zamontowany_sezon, dzis=None):
@@ -675,15 +656,9 @@ def pobierz_stan_opon(auto_id):
 
 
 def przelacz_zestaw_sezonowy(auto_id, docelowy_sezon=None):
-    """Zdejmuje obecny komplet i montuje ten z drugiego sezonu.
-
-    Zwraca słownik z opisem tego, co się stało (`ok`, `z`, `na`, `powod`) —
-    interfejs musi umieć powiedzieć „zmieniono z Zimowych na Letnie” ALBO
-    „nie ma czego zamontować”, a nie tylko cicho przesunąć termin.
-
-    Kandydatów rozstrzygamy po najgrubszym bieżniku: jeśli ktoś trzyma dwa
-    komplety letnich, na auto ma trafić ten lepszy, a nie ten z niższym ID.
-    """
+    """Zdejmuje obecny komplet i montuje ten z drugiego sezonu. Zwraca {ok, z, na,
+    powod}, żeby interfejs powiedział „z Zimowych na Letnie” albo „nie ma czego
+    zamontować”. Z kilku kandydatów wygrywa najgrubszy bieżnik."""
     stan = pobierz_stan_opon(auto_id)
     if not stan:
         return {"ok": False, "powod": "brak_zestawow"}

@@ -96,11 +96,8 @@ class MiksinZakladkiInne:
             po_filtrach = inne_po_filtrach
             utils.posortuj_liste(po_filtrach, self.state, "inne", opcje_sort)
 
-            # Menu kosztu składa się tak samo jak menu tankowania i wpisu
-            # serwisowego — słownikami przez pokaz_menu_kontekstowe. Ręcznie
-            # budowany BottomSheet robił to samo o kilkanaście linii dłużej
-            # (własne zamykanie arkusza przy każdej pozycji) i, co ważniejsze,
-            # nie dawał się przepuścić przez utils.odsiej_akcje.
+            # Menu kosztu jak menu tankowania i wpisu: słownikami przez
+            # pokaz_menu_kontekstowe (przechodzi przez utils.odsiej_akcje).
             def otworz_menu_i(iid, zalacznik=None, notatka=None):
                 def usun_koszt():
                     def wykonaj():

@@ -1,11 +1,7 @@
-"""Historia cen części, sklep i link przy pozycji magazynu (M-15).
-
-Wszystko, co pokazuje zakupy części z `db/ceny_czesci.py`: linijka „Wcześniej…”
-z chipem zmiany na karcie pozycji, podpowiedź ostatniej ceny przy nazwie
-w formularzu, arkusz „Historia cen” z mini-wykresem, okna „Kupiłem ponownie”
-i „Dopisz cenę” oraz pole sklepu z podpowiedziami. Moduł leży za `system`
-i `wykresy`, bo otwiera stronę produktu i rysuje iskrę ceny.
-"""
+"""Historia cen części, sklep i link przy pozycji magazynu (M-15): linijka „Wcześniej…”
+z chipem zmiany, podpowiedź ceny w formularzu, arkusz „Historia cen”, okna „Kupiłem
+ponownie” i „Dopisz cenę”, pole sklepu. Za `system` i `wykresy` (strona produktu, iskra
+ceny)."""
 
 from datetime import datetime
 
@@ -250,11 +246,10 @@ def _blok_wykresu(page: ft.Page, punkty):
 
 
 def pokaz_historie_cen(page: ft.Page, auto_id, czesc, po_zmianie=None):
-    """Arkusz „Historia cen” pozycji magazynu: iskra, zmiana od pierwszego
-    zakupu, najtańszy zakup i lista zakupów od najnowszego. Zakup z dziennika
-    da się usunąć (z cofnięciem) — bieżącą cenę pozycji poprawia się w jej
-    edycji. `czesc`: {"id", "nazwa", "jednostka", "link"}; `po_zmianie` —
-    przebudowa listy magazynu po usunięciu albo dopisaniu ceny."""
+    """Arkusz „Historia cen”: iskra, zmiana od pierwszego zakupu, najtańszy, lista od
+    najnowszego; zakup z dziennika usuwalny z cofnięciem (bieżącą cenę poprawia edycja
+    pozycji). `czesc`: {id, nazwa, jednostka, link}; `po_zmianie` — przebudowa listy
+    magazynu."""
     punkty = db.historia_cen_czesci(auto_id, czesc["nazwa"])
     wolno = wolno_zmieniac_rekord(auto_id, "ceny_czesci")
     bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
@@ -423,12 +418,9 @@ def dialog_dopisania_ceny(page: ft.Page, auto_id, nazwa, jednostka=None, po_zapi
 
 
 class OknoKupilemPonownie:
-    """Okno „Kupiłem ponownie”: ilość, koszt zakupu albo cena za jednostkę
-    (liczą się nawzajem przez ilość, jak w formularzu pozycji), sklep i data —
-    domyślnie dzisiaj. Nad polami ostatnia cena i najtańszy zakup, a przy
-    pozycji z linkiem przycisk do strony produktu: żeby porównać, zanim się
-    kupi. Zapis (db.kup_ponownie) dokłada ilość do stanu i ustawia cenę pozycji
-    na cenę tego zakupu."""
+    """Okno „Kupiłem ponownie”: ilość, koszt albo cena za jednostkę (liczą się
+    nawzajem), sklep, data (dziś); nad polami ostatnia i najtańsza cena, przy linku —
+    strona produktu. Zapis: db.kup_ponownie."""
 
     def __init__(self, page: ft.Page, auto_id, czesc, po_zapisie=None):
         self._page = page

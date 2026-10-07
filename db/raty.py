@@ -1,39 +1,19 @@
-"""Harmonogram leasingu i kredytu (M-22).
-
-Rata była wydatkiem cyklicznym bez końca i bez sumy: przypomnienie co miesiąc,
-„Zapłacone” dopisywało koszt i przesuwało termin o 30 dni — i tak w nieskończoność.
-Na pytanie „ile jeszcze zostało do spłaty” (połowa odpowiedzi na pytanie z N-13:
-zmieniać auto czy nie) nie było odpowiedzi.
-
-Wpis cykliczny rodzaju „leasing” albo „kredyt” niesie teraz umowę (kolumny
-z migracji 49): liczbę rat, dzień pierwszej raty, wykup (przy kredycie: ratę
-balonową), kwotę finansowania, a przy ratach malejących albo liczonych
-z oprocentowania — oprocentowanie. Z nich powstaje harmonogram: każda płatność
-z datą, kwotą, częścią kapitałową, odsetkami i saldem po niej.
-
-Zasady:
-  • raty idą co miesiąc, tego samego dnia co pierwsza (31. w krótszym miesiącu
-    to jego ostatni dzień — `dodaj_miesiace`);
-  • wykup to OSOBNA, ostatnia płatność, w terminie ostatniej raty — zapłacenie
-    ostatniej raty nie zamyka umowy, dopiero wykup;
-  • raty równe: stopę wyznacza to, co się naprawdę płaci — kapitał jest
-    wartością bieżącą rat i wykupu. Rata z umowy (z groszami zaokrąglonymi przez
-    bank albo z doliczonym ubezpieczeniem) daje więc odsetki, które się sumują:
-    wszystkie płatności minus kapitał. Rata liczona z oprocentowania daje tę
-    samą stopę, z dokładnością do zaokrąglenia raty do grosza;
-  • raty malejące (tylko kredyt): stała część kapitałowa — kapitał minus rata
-    balonowa, podzielone na raty — plus odsetki od salda;
-  • bez kwoty finansowania nie ma z czego policzyć odsetek: są wtedy tylko sumy
-    rat (do spłaty, zapłacono), a odsetki i saldo zostają None;
-  • `zaplacone_platnosci` to liczba zapłaconych pozycji harmonogramu od
-    początku — raty, a po nich wykup. Przesuwa ją „Zapłacone” (jedna pozycja
-    naraz, z kosztem w Innych kosztach), poprawia formularz umowy.
-
-`nastepna_data` wpisu (z niej żyją przypomnienia, kafel „Termin”, panel
-wydatków cyklicznych i starsza wersja aplikacji) to termin pierwszej
-niezapłaconej pozycji, a po spłacie pusty napis (kolumna jest NOT NULL) —
-przypomnienie znika samo, bo pustej daty nikt nie odlicza.
-"""
+"""Harmonogram leasingu i kredytu (M-22). Wpis cykliczny rodzaju „leasing”/„kredyt”
+niesie umowę (migracja 49): liczba rat, pierwsza rata, wykup (kredyt: rata balonowa),
+kwota finansowania, oprocentowanie (raty malejące lub liczone z oprocentowania).
+Harmonogram: każda płatność z datą, kwotą, kapitałem, odsetkami i saldem.
+- raty co miesiąc tego samego dnia (31. w krótszym miesiącu — ostatni dzień,
+  `dodaj_miesiace`);
+- wykup to OSOBNA, ostatnia płatność w terminie ostatniej raty — dopiero on zamyka
+  umowę;
+- raty równe: stopa z tego, co się płaci (kapitał = wartość bieżąca rat i wykupu), więc
+  odsetki = płatności − kapitał;
+- raty malejące (tylko kredyt): stała część kapitałowa + odsetki od salda;
+- bez kwoty finansowania tylko sumy rat; odsetki i saldo None;
+- `zaplacone_platnosci` — zapłacone pozycje od początku; przesuwa je „Zapłacone”,
+  poprawia formularz.
+`nastepna_data` = termin pierwszej niezapłaconej pozycji, po spłacie pusty napis
+(kolumna NOT NULL) — przypomnienie znika samo."""
 
 import sqlite3
 from datetime import datetime
@@ -244,26 +224,21 @@ def _szkielet(umowa) -> dict[str, Any]:
 
 
 def harmonogram_umowy(umowa, dzis=None) -> dict[str, Any]:
-    """Pełny harmonogram umowy (słownik wiersza `wydatki_cykliczne` albo pól
-    formularza) i to, co z niego wynika. Klucze:
-
-    * kompletna, powod — czy jest z czego liczyć (bez liczby rat, pierwszej
-      raty albo kwoty raty harmonogramu nie ma; powod mówi, czego brakuje);
-    * platnosci — lista pozycji {numer, rodzaj ("rata"/"wykup"), data, kwota,
-      kapital, odsetki, saldo (po tej płatności), zaplacona, po_terminie};
-      kapital, odsetki i saldo są None bez kwoty finansowania;
-    * liczba_rat, liczba_platnosci (raty + wykup), zaplacone (pozycje),
-      zaplacone_raty, zostalo_rat, wykup, wykup_zaplacony, udzial (0–1);
-    * nastepna (pierwsza niezapłacona pozycja albo None), zakonczona,
-      po_terminie (ile niezapłaconych po terminie);
-    * data_pierwszej_raty, data_ostatniej_raty (wykup płaci się w jej terminie);
-    * rata — kwota najbliższej raty (przy równych: każdej);
-    * suma_platnosci, zaplacono, do_splaty — same kwoty, zawsze przy komplecie;
-    * kwota_finansowana, oplata_wstepna (leasing), odsetki_razem,
-      odsetki_zaplacone, odsetki_do_zaplaty, kapital_do_splaty — None bez
-      kwoty finansowania;
-    * oprocentowanie (roczne, %), oprocentowanie_z ("umowa" — podane, "rata" —
-      wyliczone z raty), niespojna — raty z wykupem nie pokrywają kapitału."""
+    """Pełny harmonogram umowy (wiersz `wydatki_cykliczne` albo pola formularza).
+    Klucze:
+    - kompletna, powod (czego brakuje);
+    - platnosci — [{numer, rodzaj („rata”/„wykup”), data, kwota, kapital, odsetki,
+      saldo, zaplacona, po_terminie}]; kapital, odsetki, saldo None bez kwoty
+      finansowania;
+    - liczba_rat, liczba_platnosci, zaplacone, zaplacone_raty, zostalo_rat, wykup,
+      wykup_zaplacony, udzial (0–1);
+    - nastepna, zakonczona, po_terminie (ile zaległych); data_pierwszej_raty,
+      data_ostatniej_raty; rata (najbliższa);
+    - suma_platnosci, zaplacono, do_splaty (zawsze przy komplecie);
+    - kwota_finansowana, oplata_wstepna, odsetki_razem, odsetki_zaplacone,
+      odsetki_do_zaplaty, kapital_do_splaty (None bez kwoty finansowania);
+    - oprocentowanie (roczne, %), oprocentowanie_z („umowa”/„rata”), niespojna (raty z
+      wykupem nie pokrywają kapitału)."""
     dzis = dzis or datetime.now().date()
     wynik = _szkielet(umowa)
     n = wynik["liczba_rat"]
@@ -379,11 +354,9 @@ def sugerowane_zaplacone(data_pierwszej_raty, liczba_rat, dzis=None) -> int:
 # ==================== BAZA ====================
 
 def _stan_wpisu(umowa, harmonogram):
-    """(nastepna_data, kwota) wpisu po zmianie umowy. Termin — pierwsza
-    niezapłacona pozycja, po spłacie pusty napis (kolumna jest NOT NULL;
-    pustej daty nie odlicza ani dzwonek, ani starsza wersja aplikacji). Kwota —
-    rata: stała przy równych, przy malejących najbliższa (tyle zapłaci starsza
-    wersja aplikacji, która harmonogramu nie zna)."""
+    """(nastepna_data, kwota) wpisu po zmianie umowy: termin pierwszej niezapłaconej
+    pozycji, po spłacie pusty napis (NOT NULL); kwota — rata (przy malejących najbliższa
+    — tyle zapłaci starsza wersja aplikacji)."""
     nastepna = harmonogram["nastepna"]
     data = nastepna["data"].strftime("%d.%m.%Y") if nastepna else ""
     kwota = harmonogram["rata"] if harmonogram["kompletna"] else _kwota(umowa.get("kwota"))
@@ -436,12 +409,9 @@ def pobierz_raty(auto_id, dzis=None) -> list[dict[str, Any]]:
 
 
 def podsumowanie_rat(auto_id, dzis=None) -> dict[str, Any] | None:
-    """Wszystkie umowy pojazdu w jednej liczbie — kafelek, Karta pojazdu,
-    porównanie pojazdów. None, gdy pojazd nie ma żadnej umowy.
-
-    Sumy (do_splaty, odsetki, kapitał) liczą się z umów TRWAJĄCYCH. Odsetki
-    i kapitał są None, gdy choć jedna trwająca umowa nie ma kwoty finansowania
-    — suma z połowy umów udawałaby całość."""
+    """Wszystkie umowy pojazdu w jednej liczbie (kafelek, Karta pojazdu, porównanie);
+    None bez umów. Sumy z umów TRWAJĄCYCH; odsetki i kapitał None, gdy którejś brak
+    kwoty finansowania."""
     umowy = pobierz_raty(auto_id, dzis)
     if not umowy:
         return None
@@ -525,17 +495,12 @@ def zapisz_umowe_raty(auto_id, pola, wydatek_id=None, dzis=None) -> int | None:
 
 
 def zaplac_rate(conn, wydatek_id, auto_id, dzis=None) -> dict[str, Any] | None:
-    """„Zapłacone” przy racie: KOLEJNA pozycja harmonogramu trafia do Innych
-    kosztów (kwota z harmonogramu, nazwa z numerem raty), licznik zapłaconych
-    rośnie o jeden, a termin przypomnienia przechodzi na następną pozycję — po
-    wykupie znika. Data kosztu to termin raty, chyba że płaci się przed nim:
-    nadrabiane po kilku miesiącach raty lądują w swoich miesiącach, a nie
-    wszystkie w dzisiejszym.
-
-    Działa w transakcji wołającego (rejestry.oznacz_zaplacony_wydatek_cykliczny).
-    Zwraca słownik jak tamta funkcja plus `platnosc`, `liczba_rat`,
-    `zostalo_rat`, `do_splaty`, `zakonczona` i `cofnij` (dla cofnij_platnosc_raty).
-    Umowa bez kompletu danych albo już spłacona niczego nie zmienia."""
+    """„Zapłacone” przy racie: KOLEJNA pozycja harmonogramu → Inne koszty (kwota z
+    harmonogramu, nazwa z numerem), licznik +1, termin przechodzi na następną (po
+    wykupie znika). Data kosztu = termin raty, chyba że płaci się przed nim. W
+    transakcji wołającego (rejestry.oznacz_zaplacony_wydatek_cykliczny); zwraca jak ona
+    plus platnosc, liczba_rat, zostalo_rat, do_splaty, zakonczona i cofnij. Umowa
+    niekompletna lub spłacona — bez zmian."""
     dzis = dzis or datetime.now().date()
     umowa = wczytaj_umowe(wydatek_id, conn=conn)
     if not umowa:

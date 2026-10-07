@@ -1,51 +1,22 @@
-"""„Co przede mną” — wspólna oś przyszłości (N-02 w katalogu pomysłów).
+"""„Co przede mną” (N-02) — chronologiczna lista w oknie 30, 90 albo 365 dni:
+- dokumenty, limit przebiegu, koniec gwarancji napraw, okrągły przebieg — z
+  db.odliczania_pojazdu;
+- podzespoły — pierwsza wymiana stamtąd, kolejne przy wymianach w terminie (interwał
+  czasu albo km średnim przebiegiem — co pierwsze);
+- wydatki cykliczne — każde wystąpienie; po zaległym następne od dziś;
+- zmiana opon — z przypomnienia na przemian, bez niego podpowiedź z kalendarza
+  (MIESIACE_ZIMOWE);
+- leasing i kredyt — każda niezapłacona płatność z kwotą;
+- budżety — koniec bieżącego okresu (okno ruchome końca nie ma);
+- prognoza kosztu każdego miesiąca.
+Zaległe stoją na górze bez względu na okno (skończona gwarancja nie).
 
-Dziennik życia auta pokazuje przeszłość, dzwonek — tylko to, co już weszło
-w próg powiadomienia, a „Ile zostało do…” — po jednym odliczaniu na rzecz. Nie
-było miejsca, w którym widać cały rok do przodu: co, kiedy i za ile — a to
-pytanie zadawane przed urlopem i przed zakupem drugiego auta. Tu stoi jedna
-chronologiczna lista w oknie 30, 90 albo 365 dni:
-
-  • terminy dokumentów, limit przebiegu gwarancji, koniec gwarancji napraw
-    i okrągły przebieg — prosto z db.odliczania_pojazdu: te same dni, statusy
-    i prognozy co w „Ile zostało do…”;
-  • podzespoły — pierwsza wymiana też stamtąd, a kolejne dokładamy, zakładając
-    wymianę w terminie: co interwał czasu albo co interwał kilometrów
-    przeliczony średnim przebiegiem dziennym — co nadejdzie pierwsze;
-  • wydatki cykliczne — każde wystąpienie w oknie; po zaległym terminie
-    następne liczą się od dziś, bo tak przesuwa termin „Zapłacone”;
-  • sezonowa zmiana opon — z przypomnienia, na przemian na zimowe i letnie;
-    bez przypomnienia, przy komplecie letnim i zimowym — podpowiedź
-    z kalendarza (MIESIACE_ZIMOWE: zimowe od listopada, letnie od kwietnia);
-  • leasing i kredyt — każda niezapłacona płatność harmonogramu z jej kwotą
-    (raty malejące mają co miesiąc inną);
-  • budżety miesięczne i roczne — koniec bieżącego okresu: ile zostało albo
-    o ile przekroczony (okno „ostatnie 30 dni” końca nie ma);
-  • prognoza kosztu każdego miesiąca w oknie.
-
-Zaległe (termin minął, a sprawa wciąż czeka: polisa, rata, wymiana) stoją na
-górze bez względu na okno — to też jest „przede mną”. Skończona gwarancja już
-nie: po niej nie ma czego załatwić.
-
-PROGNOZA MIESIĄCA = bieżące + zaplanowane.
-
-  • zaplanowane — kwoty pozycji z tej listy, które wypadają w miesiącu:
-    wydatki cykliczne, raty, wymiany podzespołów po cenie ostatniej wymiany
-    (szacunek);
-  • bieżące — średnia miesięczna z ostatnich do 12 pełnych miesięcy (bieżący
-    wykluczony, miesiące sprzed pierwszego wpisu też — jak w prognoza_kosztow)
-    wszystkiego, czego NIE ma na liście jako pozycji zaplanowanej: paliwa
-    i prądu, innych kosztów, napraw spoza podzespołów z interwałem. Zapłacone
-    wydatki cykliczne (kategoria „Cykliczne” albo nazwa wpisu cyklicznego)
-    i wymiany podzespołów z interwałem wypadają z tej średniej, bo przyszłe
-    stoją na osi z kwotą — inaczej liczyłyby się dwa razy. Dwanaście miesięcy,
-    a nie sześć: polisa płacona raz w roku wchodzi do średniej dokładnie raz,
-    a nie podwójnie albo wcale.
-
-Miesiąc przecięty brzegiem okna (bieżący — od dziś, ostatni — do końca okna)
-dostaje część bieżących proporcjonalną do swoich dni, więc suma miesięcy to
-prognoza całego okna.
-"""
+PROGNOZA MIESIĄCA = bieżące + zaplanowane. Zaplanowane — kwoty pozycji z listy w
+miesiącu (wymiany po cenie ostatniej, szacunek). Bieżące — średnia z ≤ 12 pełnych
+miesięcy (bez bieżącego i sprzed pierwszego wpisu) wszystkiego, czego NIE ma na liście:
+zapłacone wpisy cykliczne (kategoria „Cykliczne” albo nazwa wpisu) i wymiany z
+interwałem wypadają, żeby nie liczyć dwa razy. Miesiąc przecięty brzegiem okna dostaje
+bieżące proporcjonalnie do dni."""
 
 import calendar
 from datetime import date as date_cls, datetime, timedelta
@@ -58,7 +29,7 @@ from .stale import (
     TYP_CYKLICZNY_OPONY,
 )
 from .polaczenie import polacz_baze
-from .pomocnicze import _na_liczbe, klucz_nazwy
+from .pomocnicze import _dodatnia, _na_liczbe, klucz_nazwy
 from .daty import warunek_zakresu_dat
 from .ustawienia import OKNO_PRZYSZLOSCI_DOMYSLNE, pobierz_prog_dni
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
@@ -101,15 +72,6 @@ KOLEJNOSC_RODZAJOW = {
     "dokument": 0, "rata": 1, "cykliczny": 2, "opony": 3, "podzespol": 4,
     "gwarancja_naprawy": 5, "gwarancja_km": 6, "budzet": 7, "przebieg": 8,
 }
-
-
-def _dodatnia(wartosc):
-    """Liczba całkowita > 0 albo None — puste pole i zero znaczą „nie ustawiono”."""
-    try:
-        liczba = int(float(wartosc))
-    except (TypeError, ValueError):
-        return None
-    return liczba if liczba > 0 else None
 
 
 def _liczba(wartosc):
@@ -589,33 +551,19 @@ def _pusta_os(dni_okna, dzis, koniec):
 
 
 def os_przyszlosci(auto_id, dni=None, dzis=None) -> dict[str, Any]:
-    """Wszystko, co pojazd ma przed sobą w oknie `dni` (domyślnie
-    OKNO_PRZYSZLOSCI_DOMYSLNE) dni od `dzis`. Słownik:
-
-    * dni, od, do — okno (do = od + dni);
-    * pozycje — lista od zaległych, dalej po dacie. Pozycja to słownik:
-      klucz, rodzaj ("dokument" / "gwarancja_km" / "gwarancja_naprawy" /
-      "podzespol" / "przebieg" / "cykliczny" / "opony" / "rata" / "budzet"),
-      ikona (klucz ikony), tytul (None przy nazwach zależnych od jednostki —
-      jak w odliczaniach), data, dni (ujemne: zaległa; None: kilometry po
-      terminie), zalegla, prognoza (data z kilometrów), najpozniej (data to
-      granica, nie termin), zakladana (kolejna wymiana przy wymianach
-      w terminie), sugestia (zmiana opon z kalendarza), kwota (None: bez
-      kwoty), szacunek (kwota to cena ostatniej wymiany), status ("po_terminie"
-      / "blisko" / "ok" / "info"), trasa albo akcja ("cykliczne" — panel
-      wydatków, "opony" — ekran opon), okres_dni (wpis cykliczny), platnosc
-      („rata 13 z 48”), budzet (stan z db.stan_budzetow), sezon (zmiana opon),
-      zrodlo (pozycja z db.odliczania_pojazdu), cel_km, zostalo_km;
-    * bez_daty — podzespoły i limity, których kilometrów bez średniego
-      przebiegu nie da się przełożyć na datę;
-    * miesiace — kawałki miesięcy w oknie: rok, miesiac, od, do, pelny,
-      biezacy, biezace (None bez pełnego miesiąca danych), zaplanowane, razem,
-      liczba pozycji, wydano (tylko bieżący: od pierwszego do dziś);
-    * srednia_miesieczna, miesiecy_bazowych — skąd bieżące;
-    * podsumowanie — liczba, zalegle (ile), kwota_zalegla, zaplanowane,
-      biezace (None bez średniej), razem.
-
-    Bez pojazdu i dla sprzedanego auta — pusta oś."""
+    """Wszystko w oknie `dni` (domyślnie OKNO_PRZYSZLOSCI_DOMYSLNE) od `dzis`; bez
+    pojazdu i dla sprzedanego — pusta oś. Słownik:
+    - dni, od, do;
+    - pozycje (zaległe, potem po dacie): klucz, rodzaj
+      („dokument”/„gwarancja_km”/„gwarancja_naprawy”/„podzespol”/„przebieg”/„cykliczny”/„opony”/„rata”/„budzet”),
+      ikona, tytul, data, dni, zalegla, prognoza, najpozniej, zakladana, sugestia,
+      kwota, szacunek, status, trasa albo akcja („cykliczne”, „opony”), okres_dni,
+      platnosc, budzet, sezon, zrodlo, cel_km, zostalo_km;
+    - bez_daty — km bez średniego przebiegu;
+    - miesiace: rok, miesiac, od, do, pelny, biezacy, biezace, zaplanowane, razem,
+      liczba, wydano;
+    - srednia_miesieczna, miesiecy_bazowych; podsumowanie: liczba, zalegle,
+      kwota_zalegla, zaplanowane, biezace, razem."""
     dzis = dzis or datetime.now().date()
     dni_okna = _dodatnia(dni) or OKNO_PRZYSZLOSCI_DOMYSLNE
     koniec = dzis + timedelta(days=dni_okna)

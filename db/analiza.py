@@ -22,22 +22,14 @@ from .pojazd import pobierz_dane_pojazdu
 
 
 # ==================== ANALIZA, PROGNOZY I BUDŻETY ====================
-# Ta sekcja odpowiada na pytania, na które sama tabela liczb nie odpowiada:
-# czy jest lepiej czy gorzej, ile to będzie kosztować do końca roku i czy zdążę
-# przed własnym limitem. Wszystko liczone z danych, które użytkownik już wpisał —
-# żadnych nowych obowiązków przy dodawaniu wpisu.
-# db.py nie zna Fleta (korzysta z niego też eksport PDF i synchronizacja), więc
-# obserwacje wracają stąd z KLUCZEM ikony i tonem, a nie z gotową kontrolką.
+# Liczone wyłącznie z wpisanych danych. db nie zna Fleta, więc obserwacje wracają z
+# KLUCZEM ikony i tonem, nie z kontrolką.
 
 OKRESY_BUDZETU = {"miesiac": "Miesięcznie", "30dni": "Ostatnie 30 dni", "rok": "Rocznie"}
 
 
-# Okres RUCHOMY: okno kończy się dzisiaj i przesuwa się z każdym dniem — najstarszy
-# dzień z niego wypada. Miesiąc kalendarzowy pasuje do pensji, ale nie do kosztów
-# auta: dwa tankowania i przegląd potrafią wypaść w jednym tygodniu na przełomie
-# miesiąca i w żadnym z nich nie wyglądać groźnie. Takie okno jest CAŁE za nami,
-# więc nie ma w nim czego prognozować ani ile „okresu minęło” — pasek pokazuje samą
-# sumę, bez znacznika upływu i bez daty przekroczenia.
+# Okres RUCHOMY: okno kończy się dzisiaj i przesuwa co dzień. Jest całe za nami, więc
+# bez prognozy, znacznika upływu i daty przekroczenia — pasek pokazuje samą sumę.
 OKRESY_RUCHOME = {"30dni"}
 DNI_OKNA_BUDZETU = 30
 
@@ -58,16 +50,10 @@ PROG_ISTOTNOSCI_TRENDU = 5.0
 PROG_DROZENIA_1000KM = 15.0
 
 
-# Sezon. Listopad zawsze wypadnie gorzej od września — zimna, krótkie trasy,
-# opony, dłuższe rozgrzewanie. Alarm, który zapala się co roku o tej samej porze,
-# przestaje być alarmem, więc zanim ogłosimy trend, odejmujemy tyle, ile ta sama
-# zmiana kalendarza dawała w poprzednich latach.
-#   TOLERANCJA — tankowania nie wypadają rok w rok tego samego dnia, więc okna
-#   sprzed roku poszerzamy w obie strony;
-#   MIN_ODCINKOW — jeden odcinek sprzed roku to anegdota, nie sezon;
-#   PROG_POKAZANIA — poniżej tego sezon jest tak mały, że zdanie o nim tylko
-#   zaśmieciłoby komunikat;
-#   MAX_LAT — dalej w przeszłość nie ma po co schodzić, a pętla musi się kończyć.
+# Sezon: zanim ogłosimy trend, odejmujemy zmianę, jaką ten sam kawałek kalendarza dawał
+# w poprzednich latach. TOLERANCJA — poszerzenie okien sprzed roku; MIN_ODCINKOW — mniej
+# to anegdota; PROG_POKAZANIA — mniejszy sezon nie trafia do zdania; MAX_LAT — granica
+# pętli.
 TOLERANCJA_SEZONU_DNI = 21
 MIN_ODCINKOW_SEZONU = 2
 PROG_POKAZANIA_SEZONU = 2.0
@@ -144,10 +130,9 @@ def zapisz_budzet(auto_id, kategoria, okres, kwota):
 
 
 def _granice_okresu(okres, dzis=None):
-    """(początek, koniec, dni_okresu, dni_minione) bieżącego okresu budżetu.
-    'dni_minione' liczy dzisiejszy dzień jako miniony — inaczej pierwszego dnia
-    okresu tempo wydatków dzieliłoby przez zero. Okno ruchome kończy się dzisiaj,
-    więc minione = całość — i właśnie dlatego nic w nim nie prognozujemy."""
+    """(początek, koniec, dni_okresu, dni_minione) bieżącego okresu budżetu. Dzisiejszy
+    dzień liczy się jako miniony (pierwszego dnia tempo nie dzieli przez zero); w oknie
+    ruchomym minione = całość, więc bez prognozy."""
     dzis = dzis or datetime.now().date()
     if okres in OKRESY_RUCHOME:
         poczatek = dzis - timedelta(days=DNI_OKNA_BUDZETU - 1)
@@ -167,13 +152,10 @@ def _granice_okresu(okres, dzis=None):
 
 
 def stan_budzetow(auto_id, dzis=None) -> list[dict[str, Any]]:
-    """Stan wykorzystania każdego ustawionego limitu. Dla każdego zwraca m.in.:
-    wydano, limit, procent, pozostalo, tempo (prognoza całego okresu przy
-    dotychczasowym tempie), 'ruchomy' (okno kończące się dzisiaj — bez prognozy),
-    status ('ok' / 'uwaga' / 'przekroczony') oraz
-    'dzien_przekroczenia' — datę, na którą wypada wyczerpanie limitu, jeśli
-    tempo się utrzyma. To ostatnie jest sednem: ostrzeżenie ma przyjść ZANIM
-    limit padnie, a nie w dniu, w którym już nic się nie da zrobić."""
+    """Stan każdego ustawionego limitu: wydano, limit, procent, pozostalo, tempo
+    (prognoza okresu), 'ruchomy' (bez prognozy), status ('ok' / 'uwaga' /
+    'przekroczony') i 'dzien_przekroczenia' — data wyczerpania limitu przy obecnym
+    tempie, żeby ostrzec ZANIM padnie."""
     budzety = pobierz_budzety(auto_id)
     if not budzety:
         return []
@@ -258,19 +240,11 @@ def _srednia_okna(seria_dat, od, do):
 
 
 def _sezonowosc_zmiany(seria_dat, tlo_od, tlo_do, ost_od, ost_do):
-    """Ile punktów procentowych dawało samo przejście przez ten sam kawałek
-    kalendarza w poprzednich latach.
-
-    Bierzemy oba okna — „tło” i „ostatnie odcinki” — cofamy je o rok, dwa, trzy
-    i liczymy na tamtych danych dokładnie tę samą zmianę. Średnia z tych zmian
-    to sezon: tyle zużycie rośnie na przełomie września i listopada co roku,
-    niezależnie od stanu auta. Okna poszerzamy o TOLERANCJA_SEZONU_DNI, ale nie
-    pozwalamy im na siebie zachodzić — ten sam odcinek po obu stronach
-    porównania ściągnąłby wynik do zera.
-
-    Zwraca (sezon_w_procentach, liczba_lat) albo (None, 0), gdy nie ma z czym
-    porównywać. Brak historii sprzed roku nie jest błędem: aplikacja działa
-    wtedy tak, jak działała zawsze."""
+    """Ile punktów procentowych dawało samo przejście przez ten kawałek kalendarza w
+    poprzednich latach: okna „tło” i „ostatnie odcinki” cofnięte o rok, dwa, trzy, ta
+    sama zmiana, średnia. Okna poszerzone o TOLERANCJA_SEZONU_DNI, ale nie mogą na
+    siebie zachodzić (ściągnęłyby wynik do zera). Zwraca (sezon_w_procentach,
+    liczba_lat) albo (None, 0) bez historii."""
     if not seria_dat:
         return None, 0
 
@@ -298,24 +272,11 @@ def _sezonowosc_zmiany(seria_dat, tlo_od, tlo_do, ost_od, ost_do):
 
 
 def analizuj_trend_spalania(auto_id, rodzaj=None, ostatnie=3, tlo=6):
-    """Porównuje zużycie z OSTATNICH odcinków ze średnią z odcinków
-    wcześniejszych i mówi, czy auto zaczęło palić więcej.
-
-    Odcinek = trasa między dwoma tankowaniami „do pełna” (patrz
-    pobierz_serie_spalania), bo tylko tam ilość paliwa odpowiada przejechanym
-    kilometrom. Świadomie NIE porównujemy „miesiąc do miesiąca”: przy dwóch
-    tankowaniach na miesiąc taki podział daje skoki rzędu 20%, które są
-    wyłącznie efektem tego, gdzie wypadła granica kalendarza.
-
-    Granica kalendarza to nie jedyna pułapka: samo porównanie września
-    z listopadem zawsze wyjdzie na wzrost, bo zima. Dlatego obok surowej zmiany
-    liczymy SEZON (`_sezonowosc_zmiany`) i to dopiero różnica po jego odjęciu
-    (`zmiana_po_sezonie`) decyduje o `kierunek` — alarm ma się zapalać, gdy auto
-    pali więcej, a nie gdy kalendarz pokazuje listopad. Bez danych sprzed roku
-    `sezon_proc` jest None, a wszystko działa jak wcześniej.
-
-    Zwraca None, dopóki nie ma czym porównywać (min. `ostatnie` + 2 odcinki) —
-    lepiej nie powiedzieć nic, niż ogłosić trend z dwóch pomiarów."""
+    """Czy auto zaczęło palić więcej: zużycie z OSTATNICH odcinków (od pełnego baku do
+    pełnego) kontra średnia wcześniejszych — nie miesiąc do miesiąca, bo granica
+    kalendarza daje skoki ~20%. O `kierunek` decyduje `zmiana_po_sezonie` (po odjęciu
+    `_sezonowosc_zmiany`); bez danych sprzed roku `sezon_proc` = None. None, dopóki
+    odcinków jest mniej niż `ostatnie` + 2."""
     if not auto_id:
         return None
 
@@ -420,13 +381,9 @@ def opis_sezonowosci_trendu(trend):
 
 
 def koszt_trendu_rocznie(auto_id, trend):
-    """Ile kosztuje (albo oszczędza) zmiana zużycia z analizuj_trend_spalania,
-    przeliczona na rok przy dotychczasowym przebiegu rocznym i ostatniej znanej
-    cenie jednostkowej. Procent robi wrażenie, ale dopiero złotówki na rok
-    odpowiadają na pytanie, czy warto jechać do mechanika.
-
-    Liczymy z różnicy PO odjęciu sezonu: zimowy skok wróci sam na wiosnę, więc
-    mnożenie go przez cały rok obiecywałoby koszt, którego nie będzie."""
+    """Roczny koszt (albo oszczędność) zmiany zużycia z analizuj_trend_spalania przy
+    dotychczasowym przebiegu rocznym i ostatniej cenie. Liczony z różnicy PO odjęciu
+    sezonu — zimowy skok wraca sam."""
     if not trend or trend["kierunek"] == "stabilnie":
         return None
 
@@ -460,17 +417,9 @@ def koszt_trendu_rocznie(auto_id, trend):
 # -------------------- ZASIĘG NA BAKU --------------------
 
 def pobierz_zasieg_na_baku(auto_id):
-    """Zasięg auta spalinowego: ile przejedzie na PEŁNYM baku i ile zostało
-    od ostatniego tankowania do pełna.
-
-    Ta druga liczba jest szacunkiem z licznika, nie odczytem z pływaka: bierzemy
-    kilometry przejechane od ostatniego pełnego baku i mnożymy przez rzeczywiste
-    zużycie, a dolewki zapisane po nim (tankowania bez „do pełna”) dodajemy do
-    stanu. Dlatego zwracamy też 'pewnosc' i 'dni_od_tankowania' — im starsze
-    tankowanie, tym większa szansa, że po drodze ktoś dolał paliwa bez wpisu.
-
-    Zwraca None, gdy nie podano pojemności baku albo nie da się policzyć
-    zużycia (mniej niż dwa tankowania „do pełna”)."""
+    """Zasięg auta spalinowego: na PEŁNYM baku i pozostały od ostatniego tankowania do
+    pełna — szacunek z licznika i zużycia plus dolewki zapisane po nim; stąd 'pewnosc' i
+    'dni_od_tankowania'. None bez pojemności baku albo bez dwóch tankowań do pełna."""
     if not auto_id:
         return None
 
@@ -576,13 +525,9 @@ def pobierz_zasieg_na_baku(auto_id):
 # -------------------- PROGNOZA KOSZTÓW --------------------
 
 def prognoza_kosztow(auto_id, dzis=None, miesiecy_bazowych=6):
-    """Ekstrapolacja wydatków do końca roku ze średniej z OSTATNICH PEŁNYCH
-    miesięcy. Bieżący miesiąc jest z podstawy wykluczony — 3. dnia miesiąca
-    zaniżałby średnią o dwie trzecie, a to właśnie na początku miesiąca ktoś
-    najczęściej zagląda w prognozę.
-
-    Zwraca None, gdy nie ma ani jednego pełnego miesiąca z wydatkami: prognoza
-    z jednego tankowania to nie prognoza, tylko losowa liczba."""
+    """Wydatki do końca roku ze średniej OSTATNICH PEŁNYCH miesięcy — bieżący miesiąc
+    poza podstawą (na początku miesiąca zaniżałby średnią). None bez pełnego miesiąca z
+    wydatkami."""
     if not auto_id:
         return None
 
@@ -671,13 +616,9 @@ PROG_PRAWIE = 0.9
 
 
 def _porownanie_dystansu(km):
-    """Zamienia przebieg w obraz („to prawie okrążenie Ziemi”). Bierzemy
-    największy dystans odniesienia, który mieści się w przejechanym — tak, żeby
-    porównanie zawsze brzmiało jak osiągnięcie, a nie jak wymówka.
-
-    „Prawie” tylko wtedy, gdy do następnego dystansu brakuje niewiele (90%).
-    Wcześniej „prawie przejazd do Berlina” dostawał ktoś, kto przejechał
-    650 km — czyli WIĘCEJ niż do Berlina."""
+    """Przebieg jako obraz („prawie okrążenie Ziemi”): największy dystans odniesienia
+    mieszczący się w przejechanym; „prawie” tylko, gdy do następnego brakuje niewiele
+    (90%)."""
     if not km or km <= 0:
         return None
     for i, (dystans, opis) in enumerate(_DYSTANSE_ODNIESIENIA):
@@ -724,12 +665,9 @@ def _km_w_okresie(historia_prz, od, do):
 
 
 def _wpisy_okresu(conn, auto_id, od, do):
-    """Wpisy kosztowe pojazdu z przedziału [od, do], obie granice włącznie —
-    zakres tnie SQL po `data_iso`, nie pętla po `parsuj_date`.
-
-    Reguła wizyty zbiorczej jak w `_wiersze_kosztow`: wizyta wchodzi w CAŁOŚCI,
-    a jej pozycje historii są pomijane. Każdy wiersz dostaje `dzien` (date) —
-    z niego biorą się słupki miesięcy w roku i dni w miesiącu."""
+    """Wpisy kosztowe pojazdu z [od, do] włącznie — zakres w SQL po `data_iso`. Wizyta
+    zbiorcza wchodzi w CAŁOŚCI, jej pozycje historii są pomijane (jak
+    `_wiersze_kosztow`); każdy wiersz ma `dzien` (date)."""
     warunek, parametry = warunek_zakresu_dat("data_iso", od, do)
     warunek_h, parametry_h = warunek_zakresu_dat("h.data_iso", od, do)
     c = conn.cursor()
@@ -819,14 +757,10 @@ def _najwiekszy_wydatek(wpisy):
 
 
 def _rachunek_okresu(auto_id, od, do, historia_prz):
-    """Część wspólna „Roku w pigułce” i „Miesiąca w pigułce” — wszystko, co
-    liczy się tak samo bez względu na długość okresu: koszty w rozbiciu,
-    kilometry, tankowania, ulubiona stacja, średnie zużycie, największy
-    wydatek. Rok i miesiąc dokładają tylko własny podział (słupki miesięcy albo
-    dni) i własne porównania. `wpisy_kosztow` to (dzień, kwota, kategoria)
-    do tego podziału — wołający zdejmuje je z wyniku.
-
-    None, gdy w okresie nie ma ani jednego wpisu kosztowego."""
+    """Część wspólna roku i miesiąca w pigułce: koszty w rozbiciu, kilometry,
+    tankowania, ulubiona stacja, średnie zużycie, największy wydatek. `wpisy_kosztow` —
+    (dzień, kwota, kategoria) do słupków; wołający zdejmuje je z wyniku. None bez wpisu
+    kosztowego."""
     with polacz_baze() as conn:
         wpisy = _wpisy_okresu(conn, auto_id, od, do)
     koszty = _koszty_wpisow(wpisy)
@@ -872,14 +806,9 @@ def _rachunek_okresu(auto_id, od, do, historia_prz):
 
 
 def podsumowanie_roku(auto_id, rok=None):
-    """Wszystko, co da się powiedzieć o jednym roku pojazdu: przejechane
-    kilometry, koszty w rozbiciu, najdroższy i najtańszy miesiąc, ulubiona
-    stacja, największy pojedynczy wydatek, średnie zużycie i porównanie z rokiem
-    poprzednim. Podstawa ekranu „Rok w pigułce” i generowanej z niego grafiki.
-    Część wspólną z „Miesiącem w pigułce” liczy `_rachunek_okresu`.
-
-    Zwraca None dla roku bez ani jednego wpisu — pusty ekran z sześcioma zerami
-    nie jest podsumowaniem."""
+    """Rok pojazdu dla „Roku w pigułce” i grafiki: kilometry, koszty, najdroższy i
+    najtańszy miesiąc, stacja, największy wydatek, zużycie, porównanie z poprzednim
+    rokiem (część wspólną liczy `_rachunek_okresu`). None dla roku bez wpisów."""
     if not auto_id:
         return None
     rok = int(rok or datetime.now().year)
@@ -957,19 +886,10 @@ _MIESIACE_DOPELNIACZ = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czer
                         "lipca", "sierpnia", "września", "października", "listopada", "grudnia"]
 
 def podsumowanie_miesiaca(auto_id, rok=None, miesiac=None):
-    """„Rok w pigułce” dla jednego miesiąca. Koszty w rozbiciu, kilometry,
-    tankowania, średnie zużycie, ulubioną stację i największy wydatek liczy ten
-    sam `_rachunek_okresu`, co w roku; miesiąc dokłada słupki dni i dwa
-    porównania: z poprzednim miesiącem i z tym samym miesiącem rok wcześniej.
-    Ten drugi omija sezon — styczeń zawsze wyjdzie drożej od września, bo zimą
-    auto więcej pali.
-
-    Miesiąc w toku porównuje się z TYMI SAMYMI dniami tamtych miesięcy (1.–15.
-    z 1.–15.) — z tego samego powodu, co rok w toku: niepełny okres zawsze
-    wychodziłby „taniej”. Dnia, którego tamten miesiąc nie ma (31 → luty),
-    nie przeskakujemy: liczy się do ostatniego dnia tamtego miesiąca.
-
-    Zwraca None dla miesiąca bez ani jednego wpisu."""
+    """„Rok w pigułce” dla miesiąca: `_rachunek_okresu` plus słupki dni i porównania z
+    poprzednim miesiącem i z tym samym miesiącem rok wcześniej. Miesiąc w toku porównuje
+    TE SAME dni (1.–15. z 1.–15.); dnia, którego tamten miesiąc nie ma (31 → luty), nie
+    przeskakujemy — liczy się do jego końca. None bez wpisów."""
     if not auto_id:
         return None
     dzis = datetime.now().date()
@@ -1056,11 +976,8 @@ def miesiace_z_danymi(auto_id) -> list[tuple[int, int]]:
 
 
 def wybierz_miesiac_pigulki(miesiace, rok=None, miesiac=None, dzis=None) -> tuple[int, int] | None:
-    """Który miesiąc pokazać. Ten z adresu, jeśli ma wpisy; inaczej ostatni
-    PEŁNY miesiąc z wpisami — grafikę robi się zwykle po zamknięciu miesiąca,
-    a 1 października bieżący miesiąc jest jeszcze prawie pusty. Bieżący
-    (albo późniejszy) wybieramy dopiero wtedy, gdy wcześniejszych nie ma.
-    `miesiace` to lista z `miesiace_z_danymi`."""
+    """Miesiąc z adresu, jeśli ma wpisy; inaczej ostatni PEŁNY miesiąc z wpisami, a
+    bieżący dopiero, gdy wcześniejszych nie ma. `miesiace` z `miesiace_z_danymi`."""
     if not miesiace:
         return None
     if rok and miesiac and (int(rok), int(miesiac)) in miesiace:
@@ -1071,14 +988,8 @@ def wybierz_miesiac_pigulki(miesiace, rok=None, miesiac=None, dzis=None) -> tupl
 
 
 # -------------------- KOSZT SKUMULOWANY --------------------
-# Słupki miesięczne uśredniają wrażenie: przegląd za cztery tysiące ląduje
-# w jednym słupku obok tankowań i po kwartale nie widać go wcale. Suma
-# narastająca niczego nie uśrednia — każdy wydatek zostaje na krzywej na
-# zawsze — więc jako jedyna pokazuje PRAWDZIWĄ skalę tego, co auto kosztuje.
-#
-# Oś ma od czego zacząć, bo karta pojazdu zna datę i cenę zakupu. Bez daty
-# zakupu krzywa startuje w pierwszym wpisie — i wołający dowiaduje się o tym
-# z `czy_od_zakupu`, żeby nie podpisać wykresu „od zakupu” wbrew prawdzie.
+# Suma narastająca pokazuje prawdziwą skalę wydatków. Bez daty zakupu krzywa startuje w
+# pierwszym wpisie — wołający wie o tym z `czy_od_zakupu`.
 
 # Ile razy wpis musi przebić medianę wpisu, żeby dostać własny znacznik.
 # Przy dwukrotności znacznik dostawało co drugie tankowanie do pełna; przy
@@ -1094,13 +1005,8 @@ PUNKTOW_ISKRY_SKUMULOWANEJ = 24
 
 
 def _wiersze_kosztow_z_opisem(conn, auto_id):
-    """To samo, co `_wiersze_kosztow`, tylko z nazwą wpisu: krzywa skumulowana
-    musi umieć powiedzieć, CO było tym skokiem w górę — sama kwota bez nazwy
-    zostawia użytkownika z pytaniem, po które tu przyszedł.
-
-    Reguła wizyty zbiorczej bez zmian: wizyta wchodzi w CAŁOŚCI, a należące do
-    niej pozycje historii są pomijane, żeby ten sam koszt nie policzył się
-    dwa razy."""
+    """Jak `_wiersze_kosztow`, ale z nazwą wpisu (krzywa mówi, CO było skokiem). Wizyta
+    zbiorcza w CAŁOŚCI, bez jej pozycji historii."""
     c = conn.cursor()
     wiersze = []
     c.execute("SELECT data, kwota, stacja FROM tankowania WHERE auto_id=?", (auto_id,))
@@ -1122,17 +1028,10 @@ def _wiersze_kosztow_z_opisem(conn, auto_id):
 
 
 def koszt_skumulowany(auto_id, z_cena_zakupu=True, dzis=None) -> dict[str, Any]:
-    """Suma narastająca wydatków na pojazd — dzień po dniu, od zakupu.
-
-    `z_cena_zakupu` decyduje, czy krzywa startuje od kwoty zakupu (pełny
-    rachunek za posiadanie), czy od zera (sama eksploatacja). Bez daty albo bez
-    ceny zakupu nie ma czego postawić na starcie, więc start jest zerowy
-    niezależnie od flagi.
-
-    Auto sprzedane ma rachunek ZAMKNIĘTY na dniu sprzedaży — dokładnie tak jak
-    w `pobierz_metryki_pojazdu`, żeby koszt dzienny sprzedanego auta nie malał
-    sam z siebie z każdym kolejnym dniem po sprzedaży. Cena sprzedaży wraca
-    osobno, bo to jedyna pozycja w tym rachunku, która go OBNIŻA."""
+    """Suma narastająca wydatków pojazdu dzień po dniu. `z_cena_zakupu`: start od ceny
+    zakupu albo od zera (bez daty lub ceny zakupu — zawsze od zera). Sprzedane auto ma
+    rachunek ZAMKNIĘTY na dniu sprzedaży (jak `pobierz_metryki_pojazdu`); cena sprzedaży
+    wraca osobno."""
     pusty = {
         "punkty": [], "wyroznione": [], "iskra": [],
         "start": None, "czy_od_zakupu": False,
@@ -1266,12 +1165,7 @@ def koszt_skumulowany(auto_id, z_cena_zakupu=True, dzis=None) -> dict[str, Any]:
 
 
 # -------------------- ROK DO ROKU NA JEDNEJ OSI --------------------
-# Porównanie rok do roku istniało dotąd jako ZDANIE („drożej o 23%”) i liczba
-# w podsumowaniu roku. Obie odpowiadają na pytanie „o ile”, żadna na pytanie
-# „od kiedy” — a to drugie jest zwykle ważniejsze, bo wskazuje zdarzenie:
-# miesiąc, w którym zaczął się abonament, wymiana rozrządu albo dłuższe dojazdy.
-# Dwie krzywe na jednej osi miesięcy idą razem do tego miesiąca i od niego się
-# rozchodzą.
+# Dwie krzywe na jednej osi miesięcy pokazują, OD KIEDY lata się rozeszły.
 
 WIELKOSCI_RDR = {
     "razem": ("Koszty razem", "waluta", True),
@@ -1373,15 +1267,10 @@ def _miesiecznie(seria, wielkosc):
 
 
 def koszty_rok_do_roku(auto_id, rok=None, wielkosc="razem", narastajaco=True, dzis=None) -> dict[str, Any]:
-    """Dwie krzywe — wybrany rok i poprzedni — na jednej osi miesięcy.
-
-    `narastajaco` decyduje o postaci: suma od stycznia (wtedy widać MIESIĄC,
-    w którym lata się rozeszły) albo wartości miesięczne (wtedy widać, czy skok
-    był jednorazowy). Miesiąc rozjazdu liczy się zawsze z krzywych narastających
-    — w postaci miesięcznej byłby tylko najwyższym słupkiem.
-
-    Rok w toku kończy się na bieżącym miesiącu, a procent liczy się wobec tych
-    SAMYCH miesięcy roku poprzedniego: styczeń–maj kontra styczeń–maj."""
+    """Dwie krzywe (wybrany i poprzedni rok) na osi miesięcy; `narastajaco` — suma od
+    stycznia albo wartości miesięczne. Miesiąc rozjazdu zawsze z krzywych narastających.
+    Rok w toku kończy się na bieżącym miesiącu, procent wobec tych SAMYCH miesięcy roku
+    poprzedniego."""
     dzien = dzis or datetime.now().date()
     etykieta, jednostka, wzrost_zly = WIELKOSCI_RDR.get(wielkosc) or WIELKOSCI_RDR["razem"]
     if wielkosc not in WIELKOSCI_RDR:
@@ -1489,10 +1378,8 @@ def koszty_rok_do_roku(auto_id, rok=None, wielkosc="razem", narastajaco=True, dz
 
 
 # -------------------- SILNIK OBSERWACJI --------------------
-# Jedno miejsce, w którym liczby zamieniają się w zdania. Każda reguła zwraca
-# obserwację z WAGĄ; kokpit bierze najważniejszą, zakładka Analiza wszystkie.
-# Reguła, która nie ma nic sensownego do powiedzenia, nie zwraca nic — cisza
-# jest lepsza niż „wszystko w normie” powtarzane przy każdym uruchomieniu.
+# Liczby → zdania. Każda reguła zwraca obserwację z WAGĄ (kokpit bierze najważniejszą,
+# Analiza wszystkie) albo nic, gdy nie ma czego powiedzieć.
 
 def _obserwacja(klucz, ton, ikona, tytul, tekst, waga, trasa=None):
     return {"klucz": klucz, "ton": ton, "ikona": ikona, "tytul": tytul,

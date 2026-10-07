@@ -18,20 +18,13 @@ from .migracje import sprawdz_kopie_przed_wczytaniem, wersja_schematu_aplikacji,
 
 
 # ============================================================================
-#  MANIFEST KOPII ZAPASOWEJ
+# MANIFEST KOPII ZAPASOWEJ
 # ============================================================================
-# Wczytanie kopii było skokiem w ciemno: nie widać, z którego dnia jest plik,
-# ile w nim pracy ani czy po drodze nic się nie stało. Archiwum dostaje więc
-# `manifest.json` — wersję schematu, liczbę wpisów, sumę kontrolną bazy i bilans
-# załączników — a import pokazuje to, zanim ruszy cokolwiek na dysku.
-#
-# Manifest dopisuje `zapisz_archiwum_kopii` (db/kopie.py) — to jedno miejsce, w którym
-# powstaje archiwum kopii ręcznej i automatycznej, więc obie go mają.
-#
-# Podgląd NIE czyta liczb z manifestu. Liczy je z samej bazy w archiwum, więc
-# działa tak samo dla kopii zrobionych przed manifestem i dla gołych plików .db.
-# Manifest służy do sprawdzenia, czy to, co leży w środku, jest tym, co eksport
-# zapisał — a nie do opisywania zawartości.
+# Archiwum dostaje `manifest.json` (wersja schematu, liczba wpisów, suma kontrolna bazy,
+# bilans załączników), dopisywany w `zapisz_archiwum_kopii` (db/kopie.py) — więc ma go
+# kopia ręczna i automatyczna. Podgląd NIE czyta liczb z manifestu, tylko z bazy w
+# archiwum (działa też dla starych kopii i gołych .db); manifest służy do sprawdzenia,
+# czy zawartość jest tą, którą zapisał eksport.
 
 NAZWA_MANIFESTU = "manifest.json"
 FORMAT_MANIFESTU = 1
@@ -99,12 +92,9 @@ def _wpisy_pojazdu(polaczenie, auto_id):
 
 
 def podsumowanie_bazy(sciezka) -> dict | None:
-    """Co leży w pliku bazy: schemat, wpisy (razem i wg tabel), pojazdy z liczbą
-    wpisów i data ostatniego wpisu. None = plik nie do odczytania.
-
-    „Wpis” znaczy to samo co w koszu (KOSZ_TABELE_LICZONE): historia pracy, nie
-    konfiguracja — tagi, warsztaty i pakiety nie zawyżają liczby, którą człowiek
-    czyta jako „tyle mojego czasu tu leży”. Plik otwieramy tylko do odczytu."""
+    """Co leży w pliku bazy: schemat, wpisy (razem i wg tabel), pojazdy z liczbą wpisów,
+    data ostatniego wpisu; None = nieczytelny. „Wpis” jak w koszu (KOSZ_TABELE_LICZONE)
+    — bez konfiguracji. Plik tylko do odczytu."""
     try:
         polaczenie = _otworz_do_odczytu(sciezka)
     except (sqlite3.Error, ValueError, OSError):
@@ -182,13 +172,9 @@ def zbuduj_manifest_kopii(sciezka_bazy, zalaczniki=None) -> dict:
 
 
 def dopisz_manifest_kopii(archiwum, sciezka_bazy) -> dict | None:
-    """Dopisuje `manifest.json` do archiwum, w którym leży już baza i foldery
-    załączników (bilans załączników liczy się z tego, co faktycznie spakowano).
-
-    Manifest to metadane o kopii, nie jej treść — jego błąd nie ma prawa
-    zatrzymać kopii. Gdy nie da się go policzyć, wpis w logu i archiwum zostaje
-    bez manifestu: wczytuje się dokładnie jak kopia sprzed tej zmiany. Zapis
-    (writestr) jest już poza tą osłoną — brak miejsca na dysku to błąd kopii."""
+    """Dopisuje `manifest.json` do archiwum z bazą i załącznikami (bilans z faktycznie
+    spakowanych). Błąd liczenia manifestu nie zatrzymuje kopii (log, archiwum bez
+    manifestu); błąd zapisu (writestr) — już tak."""
     try:
         manifest = zbuduj_manifest_kopii(sciezka_bazy, _zalaczniki_w_archiwum(archiwum))
     except Exception:
@@ -215,13 +201,9 @@ def _z_manifestu(manifest, *klucze):
 
 
 def sprawdz_manifest(manifest, suma_bazy, podsumowanie, zalaczniki) -> list[str]:
-    """Rozbieżności między manifestem a tym, co naprawdę leży w archiwum.
-    Pusta lista = zgodne.
-
-    Liczbę wpisów i schemat porównujemy WYŁĄCZNIE przy niezgodnej sumie, jako
-    szczegół. Przy zgodnej sumie plik bazy jest bit w bit tym, który widział
-    eksport, a rozbieżność liczb wynikałaby tylko z tego, że inna wersja
-    aplikacji liczy wpisy po swojemu — czyli z fałszywego alarmu."""
+    """Rozbieżności manifestu z zawartością archiwum; pusta lista = zgodne. Wpisy i
+    schemat porównujemy TYLKO przy niezgodnej sumie — przy zgodnej to fałszywy alarm
+    innej wersji aplikacji."""
     uwagi = []
 
     oczekiwana = _z_manifestu(manifest, "baza", "sha256")
@@ -352,17 +334,12 @@ def _podsumowanie_do_podgladu(podglad, sciezka_bazy):
 
 
 def podglad_kopii(sciezka) -> dict:
-    """Co jest w kopii, zanim import cokolwiek nadpisze. Nie rzuca wyjątków:
-    nieczytelny plik wraca jako podgląd z `nieczytelna=True` i powodem w `uwagi`.
-
-    Klucze: plik, rodzaj ("zip" albo "baza"), manifest (czy archiwum ma manifest
-    z sumą kontrolną do porównania), utworzono (ISO) i data_z_manifestu
-    (False = data z pliku), schemat
-    i schemat_aplikacji, wpisy, wpisy_wg_tabel, pojazdy [{nazwa, wpisy}],
-    ostatni_wpis (ISO), zalaczniki {liczba, rozmiar} (None dla gołego .db),
-    obecna {wpisy, pojazdy} — stan bazy, którą import zastąpi, uwagi
-    (niezgodności z manifestem, czerwone w oknie), odmowa (powód, gdy kopia jest
-    z nowszej wersji aplikacji) i nieczytelna."""
+    """Co jest w kopii, zanim import cokolwiek nadpisze. Nie rzuca: nieczytelny plik →
+    `nieczytelna=True` i powód w `uwagi`. Klucze: plik, rodzaj („zip”/„baza”), manifest,
+    utworzono, data_z_manifestu, schemat, schemat_aplikacji, wpisy, wpisy_wg_tabel,
+    pojazdy [{nazwa, wpisy}], ostatni_wpis, zalaczniki {liczba, rozmiar} (None dla .db),
+    obecna {wpisy, pojazdy}, uwagi (czerwone w oknie), odmowa (kopia z nowszej wersji),
+    nieczytelna."""
     sciezka = str(sciezka)
     podglad = {
         "plik": os.path.basename(sciezka),

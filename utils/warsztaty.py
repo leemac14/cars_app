@@ -1,13 +1,6 @@
-"""Karta warsztatu: telefon, adres, „Zadzwoń” i „Pokaż na mapie”.
-
-Warsztat to miejsce, do którego się dzwoni i jedzie, a nie takie, o którym się
-czyta — dlatego karta kończy się dwoma przyciskami, a wizyty są na niej tylko
-podpisem pod nazwą. Rysują ją dwa miejsca: ekran „Warsztaty” i panel otwierany
-z wiersza warsztatu na karcie wizyty; formularz woła się z obu. Jedna definicja,
-żeby panel i lista nie rozjechały się przy pierwszej poprawce.
-
-Dane kart liczy db.pobierz_karty_warsztatow, zapis robi db.zapisz_warsztat.
-"""
+"""Karta warsztatu: telefon, adres, „Zadzwoń” i „Pokaż na mapie” — dla ekranu
+„Warsztaty” i panelu z karty wizyty (jedna definicja). Dane:
+db.pobierz_karty_warsztatow, zapis: db.zapisz_warsztat."""
 
 import flet as ft
 

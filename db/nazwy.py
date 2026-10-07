@@ -11,12 +11,11 @@ from .przebieg import przelicz_wszystkie_zadania
 
 
 # ============================================================================
-#  NORMALIZACJA NAZW
+# NORMALIZACJA NAZW
 # ============================================================================
-# Klucz porównawczy (`klucz_nazwy`) i pisownia do zapisu (`normalizuj_nazwe`)
-# mieszkają w `pomocnicze` — tu jest to, co z nich korzysta: dopasowanie
-# wpisanej nazwy do istniejącej i scalanie duplikatów. Klucz służy WYŁĄCZNIE
-# do porównywania — w bazie zostaje pisownia użytkownika.
+# `klucz_nazwy` i `normalizuj_nazwe` są w `pomocnicze`; tu dopasowanie do istniejącej
+# nazwy i scalanie duplikatów. Klucz WYŁĄCZNIE do porównań — w bazie zostaje pisownia
+# użytkownika.
 
 # Gdzie normalizacja obowiązuje: tabela -> (kolumna z nazwą, etykieta dla UI).
 # Kolejność steruje kolejnością sekcji w narzędziu scalania duplikatów.
@@ -52,11 +51,9 @@ def dopasuj_istniejaca_nazwe(auto_id, tabela, nazwa):
 
 
 def znajdz_duplikaty_nazw(auto_id) -> list[dict[str, Any]]:
-    """Grupy nazw, które po normalizacji są tym samym, a w bazie siedzą jako
-    osobne wiersze. Zwraca listę słowników gotowych do pokazania w Ustawieniach:
-    {tabela, etykieta, klucz, kanoniczna, warianty:[(id, nazwa, ile_uzyc)]}.
-    Kanoniczna to wariant użyty najczęściej — przy remisie ten o najniższym ID
-    (czyli najstarszy), żeby wynik był powtarzalny."""
+    """Grupy nazw równych po normalizacji, a zapisanych osobno, do pokazania w
+    Ustawieniach: {tabela, etykieta, klucz, kanoniczna, warianty: [(id, nazwa,
+    ile_uzyc)]}. Kanoniczna — najczęściej użyta, przy remisie najstarsza (najniższe ID)."""
     if not auto_id:
         return []
 
@@ -118,13 +115,9 @@ PRZEPIECIA_PRZY_SCALANIU = {
 
 
 def scal_duplikaty_nazw(auto_id, tabela, id_docelowy, ids_zrodlowe):
-    """Zlewa warianty w jeden wpis: przepina powiązania na wpis docelowy,
-    a same duplikaty kasuje. Zwraca liczbę scalonych pozycji.
-
-    Magazyn ma dodatkowo stan ilościowy — sztuki z duplikatów DOLICZAMY do
-    pozycji docelowej, bo fizycznie leżą w tym samym pudełku, tylko były
-    zapisane pod dwiema pisowniami. Tagi i warsztaty żyją w polach tekstowych
-    innych tabel, więc tam podmieniamy nazwę zamiast ID."""
+    """Zlewa warianty w jeden wpis: przepina powiązania na docelowy i kasuje duplikaty;
+    zwraca liczbę scalonych. Magazyn DOLICZA stan duplikatów do docelowej; tagi i
+    warsztaty (pola tekstowe) podmieniamy po nazwie."""
     ids_zrodlowe = [i for i in (ids_zrodlowe or []) if i and i != id_docelowy]
     if not auto_id or not tabela or not id_docelowy or not ids_zrodlowe:
         return 0
@@ -228,15 +221,10 @@ TABELE_Z_TAGAMI = ("tankowania", "wizyty", "inne_koszty")
 
 
 def przepisz_tag_we_wpisach(c, auto_id, stara_nazwa, nowa_nazwa=None):
-    """Podmienia (albo, z `nowa_nazwa=None`, wymazuje) tag w tekstowej liście
-    tagów każdego wpisu pojazdu. Zwraca liczbę zmienionych wpisów.
-
-    Dopasowanie po `klucz_nazwy`, tak samo jak przy kolorowaniu: wpis bywa
-    zapisany inną pisownią niż tag w słowniku („myjnia” przy „MYJNIA”), a stare
-    porównanie znak w znak (plus LIKE, który w SQLite nie zna wielkości polskich
-    liter) zostawiało takie wpisy ze starą nazwą po zmianie i po usunięciu tagu.
-    Element listy, nie fragment tekstu — tag „UB” nie zjada „UBEZPIECZENIE”.
-    Po podmianie duplikaty znikają: zmiana „A” na „B” we wpisie z „A,B” daje „B”."""
+    """Podmienia (z `nowa_nazwa=None` — wymazuje) tag w liście tagów każdego wpisu
+    pojazdu; zwraca liczbę zmienionych. Dopasowanie po `klucz_nazwy` (jak przy kolorach;
+    LIKE w SQLite nie zna wielkości polskich liter), po elemencie listy, nie fragmencie
+    („UB” nie zjada „UBEZPIECZENIE”); duplikaty po podmianie znikają."""
     klucz_starej = klucz_nazwy(stara_nazwa)
     if not klucz_starej:
         return 0

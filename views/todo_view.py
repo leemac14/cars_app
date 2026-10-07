@@ -27,11 +27,8 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self.uzyj_wirtualizacji = False
         # ------------------------------------------------------
 
-        # Ekran ma DWIE listy o różnym cyklu życia: „Do zrobienia”, gdzie pozycja
-        # znika po wykonaniu, i checklisty, które odhacza się przed każdym
-        # wyjazdem i zeruje po powrocie. Trzymanie ich razem zamieniałoby listę
-        # planów w rytuał przepisywania tych samych dziesięciu punktów — ale
-        # pasek nad nimi ma zostawać na miejscu, a nie przeładowywać ekran.
+        # Dwie listy o różnym cyklu życia: „Do zrobienia” (pozycja znika po wykonaniu) i
+        # checklisty (odhaczane i zerowane); pasek nad nimi zostaje na miejscu.
         self.pasek_podzakladek = ft.Container(content=self._pasek_podzakladek())
         self.przelacznik = utils.PrzelacznikEkranow(
             self._zawartosc_podzakladki(), wlaczony=db.czy_animacje_interfejsu()

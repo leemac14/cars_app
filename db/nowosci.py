@@ -1,28 +1,14 @@
-"""„Co nowego” — wydania aplikacji i to, które z nich ten telefon już pokazał.
-
-Przy tempie zmian tego projektu druga osoba współdzieląca pojazd nie miała jak
-zauważyć, że doszły role, checklisty albo archiwum sprzedanych aut — a funkcja,
-o której nikt nie wie, nie istnieje. Po aktualizacji aplikacja raz otwiera
-ekran z wydaniami, których ten telefon jeszcze nie pokazywał (`main.py`,
+"""„Co nowego” — wydania aplikacji i to, które z nich ten telefon już pokazał; po
+aktualizacji aplikacja raz otwiera niewidziane wydania (`main.py`,
 `views/co_nowego_view.py`).
-
-Trzy decyzje, które warto znać:
-
-1. **Wersja to data wydania**: `RRRR.M.D`, drugie wydanie tego samego dnia
-   `RRRR.M.D.2`. Najnowsze wydanie z listy JEST wersją aplikacji
-   (`WERSJA_APLIKACJI`); ta sama liczba stoi w `pyproject.toml` jako
-   `[project] version` (Android pokazuje ją w informacjach o aplikacji),
-   a zgodności pilnuje `tests/test_co_nowego.py`. Nowa funkcja to NOWE wydanie
-   na górze listy, nigdy dopisek do istniejącego — telefon, który tamto wydanie
-   już pokazał, dopisanej pozycji by nie zobaczył.
-2. **„Widziane” to jedna wersja** w ustawieniach (`nowosci_widziane`): ekran
-   pokazuje wydania od niej nowsze. Klucz należy do urządzenia — wczytanie
-   kopii z drugiego telefonu go nie podmienia (db/kopie.py).
-3. **Telefon bez zapamiętanej wersji** (pierwszy start z tym ekranem) odgaduje
-   ją ze schematu bazy sprzed migracji — patrz `wersja_dla_schematu`. Świeża
-   instalacja nie pokazuje nic: dla niej wszystko jest nowe, a nic nie jest
-   zmianą.
-"""
+1. Wersja = data wydania `RRRR.M.D` (drugie tego dnia `RRRR.M.D.2`); najnowsze wydanie
+JEST `WERSJA_APLIKACJI`, ta sama liczba w `pyproject.toml` (`[project] version`),
+zgodności pilnuje `tests/test_co_nowego.py`. Nowa funkcja = NOWE wydanie na górze, nigdy
+dopisek do istniejącego.
+2. „Widziane” to jedna wersja w ustawieniach (`nowosci_widziane`), należy do urządzenia
+(nie podmienia jej wczytanie kopii).
+3. Telefon bez zapamiętanej wersji odgaduje ją ze schematu sprzed migracji
+(`wersja_dla_schematu`); świeża instalacja nie pokazuje nic."""
 
 from datetime import date
 
@@ -33,20 +19,14 @@ from .ustawienia import (
 )
 
 
-# Wydania od NAJNOWSZEGO. Pozycja: `tytul`, `opis` (jedno–dwa zdania językiem
-# użytkownika, bez nazw z kodu i bez samotnego skrótu jednostki dystansu —
-# ekran w milach go nie zniesie, patrz tests/test_jednostka_dystansu.py),
-# `ekran` (id z utils.nawigacja.EKRANY: przycisk „Pokaż” i podpis „gdzie to
-# jest”; tylko ekrany z trasą albo zakładką, nie akcje) i `ikona` (nazwa
-# z ft.Icons; bez niej — ikona ekranu). Pozycja bez ekranu jest kompletna sama
-# w sobie (np. coś, co po prostu działa lepiej).
-#
-# `schemat` stoi tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat
-# bazy, przy którym telefon ma na pewno CAŁE wydanie — czyli pierwsza migracja
-# wprowadzona ostatnią zmianą wydania albo po niej (1 października migracja 46
-# przyszła z kolejką paragonów, a Miesiąc w pigułce już po niej, więc to
-# wydanie ma 47). Nowym wydaniom niepotrzebny: każdy telefon, który ich
-# doczeka, ma już zapamiętaną wersję.
+# Wydania od NAJNOWSZEGO. Pozycja: `tytul`, `opis` (1–2 zdania językiem użytkownika, bez
+# nazw z kodu i bez samotnego skrótu jednostki dystansu —
+# tests/test_jednostka_dystansu.py), `ekran` (id z utils.nawigacja.EKRANY z trasą albo
+# zakładką, nie akcja) i `ikona` (z ft.Icons; bez niej — ikona ekranu). Pozycja bez
+# ekranu też jest kompletna.
+
+# `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
+# telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
     {"wersja": "2026.10.8", "pozycje": [
         {"tytul": "Co przede mną", "ikona": "EVENT_NOTE", "ekran": "co-przede-mna",
@@ -289,14 +269,9 @@ def wydania_po(wersja) -> list[dict]:
 
 
 def wersja_dla_schematu(schemat):
-    """Najnowsze wydanie, które telefon ze schematem bazy `schemat` ma na pewno
-    w całości (`schemat` wydania nie wyższy od niego), albo None — schemat
-    starszy od wszystkich wydań z listy.
-
-    Dokładność kończy się na migracjach: telefon ze schematem 46 może mieć
-    kolejkę paragonów bez Miesiąca w pigułce, więc dostanie oba — ekran woli
-    pokazać jedną rzecz drugi raz, niż schować tę, której nikt jeszcze nie
-    widział."""
+    """Najnowsze wydanie, które telefon ze schematem `schemat` ma na pewno w całości,
+    albo None (schemat starszy od wszystkich). W razie wątpliwości lepiej pokazać coś
+    drugi raz niż schować."""
     try:
         schemat = int(schemat)
     except (TypeError, ValueError):
@@ -309,14 +284,10 @@ def wersja_dla_schematu(schemat):
 
 
 def przygotuj_nowosci_po_starcie(schemat_przed):
-    """Raz przy starcie, zaraz po migracjach: telefon, który nie ma jeszcze
-    zapamiętanej wersji, dostaje ją teraz. Zwraca wersję, od której liczą się
-    nowości (do logu).
-
-    `schemat_przed` to schemat bazy SPRZED migracji, przeczytany w `main.py`
-    przed `init_db()`: 0 — bazy nie było (świeża instalacja, nic nie jest
-    zmianą), None — baza była, ale jej schematu nie dało się przeczytać
-    (pokaż wszystko), liczba — odgadnij z niej (`wersja_dla_schematu`)."""
+    """Raz przy starcie, po migracjach: telefon bez zapamiętanej wersji dostaje ją
+    teraz; zwraca wersję, od której liczą się nowości. `schemat_przed` (czytany w
+    `main.py` przed `init_db()`): 0 — świeża instalacja, None — nieczytelny (pokaż
+    wszystko), liczba — odgadnij (`wersja_dla_schematu`)."""
     zapisana = pobierz_widziana_wersje()
     if zapisana is not None:
         return zapisana

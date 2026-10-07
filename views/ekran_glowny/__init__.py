@@ -63,14 +63,10 @@ class MainView(
         self._przelacznik_pojazdow = None  # ustawiane w buduj_naglowek_auta (showroom aut)
         # --------------------------------------
         # --- CZTERY ZAKŁADKI = CZTERY POWODY, DLA KTÓRYCH SIĘ TU WCHODZI ---
-        # Wcześniej dwie z czterech („Paliwo” i „Inne”) były tym samym pytaniem
-        # — ile to kosztowało — rozbitym na dwie listy, a ekran startowy
-        # (widżety kokpitu) nie miał własnego miejsca i doklejał się do Serwisu.
-        # Teraz: Kokpit = „co się dzieje z autem”, Serwis = „co trzeba zrobić”,
-        # Koszty = „ile to kosztuje”, Analiza = „jak to wygląda w czasie”.
-        # Referencję do samego paska trzymamy, bo zakładkę zmienia się teraz także
-        # spoza niego (kafelki kokpitu) — a wtedy zaznaczenie trzeba przestawić
-        # ręcznie, skoro ekran nie powstaje od nowa.
+        # Kokpit — co się dzieje z autem, Serwis — co trzeba zrobić, Koszty — ile
+        # kosztuje, Analiza — jak wygląda w czasie. Referencja do paska, bo zakładkę
+        # zmienia się też spoza niego (kafelki kokpitu) i zaznaczenie trzeba przestawić
+        # ręcznie.
         self.pasek_zakladek = ft.NavigationBar(
             destinations=[
                 ft.NavigationBarDestination(icon=ft.Icons.SPACE_DASHBOARD_OUTLINED, selected_icon=ft.Icons.SPACE_DASHBOARD, label="Kokpit"),
@@ -140,13 +136,8 @@ class MainView(
         self.przelacz_zakladke(int(e.control.selected_index))
 
     def _zawartosc_zakladki(self):
-        """Zawartość aktywnej zakładki jako JEDNA kontrolka — to ona jedzie przez
-        przełącznik.
-
-        Budowa jest ODROCZONA: najpierw idzie szkielet, treść dolicza się chwilę
-        później (patrz utils.zbuduj_etapami). Lista tankowań z pięciu lat to
-        kilkaset kontrolek — bez tego zakładka przez ułamek sekundy pokazuje
-        pustkę, a pustka wygląda tak samo jak zepsuty ekran."""
+        """Zawartość aktywnej zakładki jako JEDNA kontrolka (jedzie przez przełącznik).
+        Budowa ODROCZONA — najpierw szkielet (utils.zbuduj_etapami)."""
         self._scena_zakladki = self._nowa_scena_zakladki()
 
         def zbuduj():
@@ -196,12 +187,9 @@ class MainView(
         return utils.szkielet_ekranu(self._page, karty=4)
 
     def _po_zbudowaniu_zakladki(self):
-        """Przycisk dodawania zależy od zakładki, a powstaje razem z jej treścią —
-        czyli już PO tym, jak widok trafił na ekran. Trzeba go więc dostawić.
-
-        Bez pętli zdarzeń treść buduje się jeszcze w konstruktorze, zanim widok
-        stanie się widokiem — wtedy nie ma czego dostawiać, bo `self.fab` i tak
-        pojedzie do `super().__init__`."""
+        """Przycisk dodawania powstaje z treścią zakładki, czyli PO wpięciu widoku —
+        trzeba go dostawić. Bez pętli zdarzeń treść powstaje w konstruktorze i
+        `self.fab` jedzie do `super().__init__`."""
         if not self._gotowy:
             return
         self.floating_action_button = self.fab
@@ -211,14 +199,9 @@ class MainView(
             log.polkniety("dostawienie przycisku dodawania po zbudowaniu zakładki")
 
     def _nowa_scena_zakladki(self):
-        """Każda zakładka animuje się po swojemu, więc scenę dobiera się do niej,
-        a nie odwrotnie.
-
-        Kokpit odlicza LICZBY, wspólnym ruchem i tylko przy starcie aplikacji albo
-        po zmianie pojazdu (patrz _czy_animowac_kokpit). Serwis i Analiza to listy
-        PASKÓW — tam sens niesie kaskada: paski ruszają jeden po drugim, więc
-        widać, który dojechał dalej. Koszty nie mają czego animować, dostają więc
-        scenę wyłączoną i nie płacą za nic."""
+        """Scena dobrana do zakładki: Kokpit odlicza LICZBY wspólnym ruchem, tylko przy
+        starcie i zmianie pojazdu (_czy_animowac_kokpit); Serwis i Analiza — kaskada
+        PASKÓW; Koszty — scena wyłączona."""
         zakladka = int(self.state.zakladka or 0)
 
         if zakladka == 0:
@@ -240,12 +223,9 @@ class MainView(
         return utils.ScenaWejscia(wlaczona=False)
 
     def _wyczysc_stan_zakladki(self):
-        """Stan, który przy przebudowie ekranu zerował konstruktor: tryb
-        zaznaczania, referencje kart, wirtualizacja list i cały stan kokpitu.
-
-        Bez tego zaznaczanie zaczęte w Serwisie przeszłoby na Koszty i skasowało
-        nie te wpisy, co trzeba — a to jest dokładnie ta klasa błędu, którą
-        przebudowa całego widoku dotąd maskowała."""
+        """Stan, który zerował konstruktor przy przebudowie: zaznaczanie, referencje
+        kart, wirtualizacja list, stan kokpitu. Bez tego zaznaczenie z Serwisu
+        przeszłoby na Koszty i skasowało nie te wpisy."""
         self.tryb_zaznaczania = False
         self.zaznaczone_id = set()
         self.tabela_cel = ""
@@ -276,15 +256,8 @@ class MainView(
             log.polkniety("odświeżenie szuflady po zmianie zakładki")
 
     def przelacz_zakladke(self, zakladka, podzakladka=None):
-        """Zmiana zakładki BEZ przebudowy całego ekranu.
-
-        Dotąd każde dotknięcie dolnego paska szło przez router: powstawał nowy
-        MainView, z nowym nagłówkiem auta, nowym paskiem górnym i nową szufladą.
-        Cztery zakładki wyglądały wtedy jak cztery ekrany podstawiane pod ten sam
-        pasek — choć jedyne, co naprawdę miało się zmienić, to zawartość.
-
-        Teraz nagłówek i oba paski ZOSTAJĄ, a zawartość ustępuje miejsca nowej
-        przez przełącznik. Przy okazji jest to po prostu mniej pracy."""
+        """Zmiana zakładki BEZ przebudowy ekranu: nagłówek i oba paski zostają, zmienia
+        się tylko zawartość (przez przełącznik)."""
         zakladka = int(zakladka or 0)
         stara = (int(self.state.zakladka or 0),
                  int(getattr(self.state, "koszty_podzakladka", 0) or 0))
@@ -332,22 +305,10 @@ class MainView(
         log.zapisz(f"zakładka: {nowa[0]}/{nowa[1]}")
 
     def odswiez_w_miejscu(self):
-        """Przelicza ZAWARTOŚĆ bieżącej zakładki, nie ruszając reszty ekranu.
-
-        Dotąd zmiana sortowania i filtra szła przez router: `page.views.clear()`
-        i budowa wszystkiego od nowa — nagłówka auta, obu pasków, szuflady
-        i listy. Ekran wracał przez to na samą górę, bo nowa lista nie wie nic
-        o starej, a przewijana jest CAŁA strona, nie tylko lista.
-
-        Tutaj strona zostaje ta sama, więc pozycja przewijania zostaje sama
-        z siebie — bez zapamiętywania, bez `scroll_to` i bez czekania na układ.
-        Wymienia się tylko zawartość zakładki, tak samo jak przy przełączaniu
-        między zakładkami (patrz `przelacz_zakladke`), tyle że bez przesunięcia:
-        nic się nie przesuwa w bok, bo nigdzie nie idziemy.
-
-        Nagłówka auta NIE przebudowujemy: sortowanie i filtr nie zmieniają ani
-        nazwy pojazdu, ani przebiegu. Akcja, która zmienia dane pojazdu, nadal
-        idzie przez router."""
+        """Przelicza ZAWARTOŚĆ bieżącej zakładki bez ruszania reszty — pozycja
+        przewijania zostaje sama (bez `scroll_to`). Jak `przelacz_zakladke`, ale bez
+        przesunięcia. Nagłówka auta NIE przebudowujemy; akcje zmieniające dane pojazdu
+        idą przez router."""
         if not self.przelacznik_zakladek:
             utils.przejdz(self._page, "/")
             return
@@ -439,10 +400,7 @@ class MainView(
 
     # ================= KOSZTY — TANKOWANIA I POZOSTAŁE WYDATKI =================
     def buduj_koszty(self):
-        """Paliwo i „inne” to były dwie zakładki na jedno pytanie: ile to auto
-        kosztuje. Rozdzielone zajmowały połowę dolnego paska i zmuszały do
-        przeskakiwania tam i z powrotem przy porównywaniu wydatków z jednego
-        miesiąca. Teraz to jedna zakładka z przełącznikiem — a zwolnione miejsce
+        """Jedna zakładka Koszty (paliwo i „inne” z przełącznikiem) — zwolnione miejsce
         dostał Kokpit."""
         def zmien(idx):
             db.zapamietaj_podzakladke_kosztow(int(idx))

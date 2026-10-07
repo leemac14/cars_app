@@ -1,13 +1,7 @@
-"""Robocizna i części: pola kosztu w formularzu wizyty i wpisu serwisowego,
-dopiski na kartach list i karta w Analizie.
-
-Jedna kwota nie odpowiada na pytanie, czy drogi jest warsztat, czy części —
-a od tego zależy, czy szukać innego mechanika, czy kupować części samemu.
-Dlatego dwa pola zamiast jednego, a przełącznik zostawia jedną kwotę dla
-rachunku bez podziału i dla wpisów sprzed tej zmiany, dopóki ktoś ich nie
-rozbije. W bazie ląduje koszt całkowity i robocizna (NULL = bez podziału);
-części to reszta, więc rozbicie zawsze się sumuje (patrz db.rozbicie_kosztu).
-"""
+"""Robocizna i części: pola kosztu w formularzach wizyty i wpisu, dopiski na kartach,
+karta w Analizie. Przełącznik zostawia jedną kwotę dla rachunku bez podziału. W bazie
+koszt całkowity i robocizna (NULL = bez podziału), części to reszta
+(db.rozbicie_kosztu)."""
 
 import db
 import flet as ft
@@ -76,14 +70,10 @@ def _napraw(n):
 
 
 def karta_robocizny_i_czesci(page: ft.Page, rozbicie, porownania=(), scena=None):
-    """Karta Analizy: ile z kosztu napraw to robocizna, ile części na rachunku,
-    a ile części z własnego magazynu (db.pobierz_rozbicie_napraw), pod spodem
-    warsztaty i podzespoły z częściami raz z warsztatu, raz z magazynu
-    (db.porownaj_czesci_wlasne). Paski idą przez `scena` jak reszta zakładki.
-
-    Naprawy bez podziału stoją osobnym zdaniem, nie paskiem: ich kwoty nie da
-    się przypisać do żadnego składnika, a w pasku „inne” zlałyby się z tym,
-    o co tu pytamy."""
+    """Karta Analizy: robocizna, części na rachunku i z magazynu
+    (db.pobierz_rozbicie_napraw), pod spodem warsztaty i porównanie części z warsztatu i
+    magazynu (db.porownaj_czesci_wlasne); paski przez `scena`. Naprawy bez podziału —
+    osobnym zdaniem, nie paskiem."""
     w = symbol_waluty()
     wiersze = []
     razem = rozbicie["razem"]
@@ -158,18 +148,11 @@ def _kwota_do_pola(kwota):
 
 
 class KosztNaprawy:
-    """Pola kosztu naprawy razem z linijką podsumowania.
-
-    `koszt`, `robocizna` i `doliczone` opisują zapisany rekord (przy edycji)
-    albo źródło duplikatu: koszt całkowity, zapisaną robociznę (None = bez
-    podziału) i to, co z kosztu przyszło z magazynu. Nowy rekord przychodzi
-    bez nich i od razu dostaje podział. Rekord bez podziału otwiera się jedną
-    kwotą — przełączenie przenosi ją do części, a wpisywana robocizna schodzi
-    z niej, dopóki ktoś nie poprawi części ręcznie. Dzięki temu rozbicie
-    starej wizyty to wpisanie jednej liczby, a nie przepisywanie dwóch.
-
-    Formularz wstawia `kontrolki()`, do wykrywania zmian bierze `migawka()`,
-    a przy zapisie woła `sprawdz()`."""
+    """Pola kosztu naprawy z linijką podsumowania. `koszt`, `robocizna` (None = bez
+    podziału) i `doliczone` (z magazynu) opisują zapisany rekord albo źródło duplikatu;
+    nowy rekord od razu z podziałem. Rekord bez podziału otwiera się jedną kwotą —
+    przełączenie przenosi ją do części, a robocizna z niej schodzi. Formularz:
+    `kontrolki()`, `migawka()`, `sprawdz()`."""
 
     def __init__(self, page: ft.Page, zuzycie=None, koszt=None, robocizna=None, doliczone=0.0,
                  etykieta_kwoty="Całkowity koszt naprawy"):

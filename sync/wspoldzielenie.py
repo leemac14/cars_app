@@ -1,14 +1,6 @@
-"""Włączenie i wyłączenie współdzielenia: kody, dołączanie, odłączanie.
-
-Moduł jest NAJWYŻEJ w pakiecie, choć intuicja podpowiada odwrotnie. Powód jest
-jeden: `utworz_udostepniony_pojazd` i `dolacz_po_kodzie` kończą pełnym
-przebiegiem synchronizacji, więc muszą znać `przebieg`. Odwrócenie tej
-zależności wymagałoby importu w środku funkcji — a założenie pakietu jest
-takie, że zależności idą w jedną stronę i widać je w nagłówku pliku.
-
-Czytane od góry układa się to zresztą sensownie: najpierw jest przebieg
-synchronizacji, a dopiero potem operacja, która ten przebieg zamawia.
-"""
+"""Kody, dołączanie i odłączanie. NAJWYŻEJ w pakiecie, bo `utworz_udostepniony_pojazd` i
+`dolacz_po_kodzie` kończą pełnym przebiegiem (`przebieg`) — zależności idą w jedną
+stronę."""
 
 import re
 
@@ -74,16 +66,10 @@ def utworz_udostepniony_pojazd(auto_id, nazwa):
 
 
 def utworz_kody_rol(auto_id, odswiez=False):
-    """Zakłada (albo odtwarza) dwa dodatkowe kody zaproszenia: dla współautora
-    i dla podglądu. Kody są LOSOWE, a nie wyprowadzone z kodu pełnego —
-    gdyby były jego wariantem („P-A1B2C3”), gość z podglądu odgadłby kod pełny
-    w dwie sekundy i cała rola byłaby dekoracją.
-
-    Wymaga funkcji `zarejestruj_kod_dostepu` po stronie Supabase (plik
-    supabase/role_wspoldzielenia.sql). Bez niej rzuca wyjątkiem, a ekran
-    Współdzielenia pokazuje, co trzeba dograć — kod pełny działa niezależnie.
-
-    Zwraca {"wspolautor": kod, "podglad": kod}."""
+    """Zakłada (albo odtwarza) kody współautora i podglądu — LOSOWE, nie wyprowadzone z
+    pełnego. Wymaga `zarejestruj_kod_dostepu` w Supabase
+    (supabase/role_wspoldzielenia.sql); bez niej rzuca (kod pełny działa). Zwraca
+    {"wspolautor": kod, "podglad": kod}."""
     wspolny_id, kod_pelny = czy_udostepniony(auto_id)
     if not wspolny_id:
         raise ValueError("Ten pojazd nie jest współdzielony.")
@@ -134,11 +120,9 @@ def uniewaznij_kody_rol(auto_id):
 
 
 def _unikalna_nazwa_pojazdu(cur, nazwa_bazowa):
-    """Zwraca nazwę pojazdu różną (bez rozróżniania wielkości liter) od już
-    istniejących w tabeli samochody. Używane WYŁĄCZNIE przy dołączaniu do
-    współdzielonego pojazdu kodem (patrz dolacz_po_kodzie) — przy kolizji
-    nazwy zawsze dopisujemy odróżnik, zamiast kiedykolwiek próbować
-    "dopasować się" pod istniejący, prywatny wiersz."""
+    """Nazwa pojazdu różna (bez wielkości liter) od istniejących — tylko przy dołączaniu
+    kodem: przy kolizji dopisujemy odróżnik, nigdy nie dopasowujemy do istniejącego
+    wiersza."""
     cur.execute("SELECT LOWER(nazwa) FROM samochody")
     zajete = {r[0] for r in cur.fetchall()}
     if nazwa_bazowa.lower() not in zajete:
@@ -153,13 +137,9 @@ def _unikalna_nazwa_pojazdu(cur, nazwa_bazowa):
 
 
 def _dolacz_z_rola(klient, kod):
-    """Zamienia wpisany kod na (pojazd_id, nazwa, rola).
-
-    Najpierw pyta o kod ROLOWY (`dolacz_do_pojazdu_z_rola` — funkcja z pliku
-    supabase/role_wspoldzielenia.sql). Gdy jej nie ma albo kod nie jest kodem
-    roli, wraca do dotychczasowego `dolacz_do_pojazdu`, który zna wyłącznie kod
-    pełny. Dzięki temu aplikacja po aktualizacji działa tak samo, zanim SQL
-    zostanie wgrany — tylko role są wtedy niedostępne."""
+    """Kod → (pojazd_id, nazwa, rola). Najpierw `dolacz_do_pojazdu_z_rola`
+    (supabase/role_wspoldzielenia.sql); bez niej albo dla kodu pełnego —
+    `dolacz_do_pojazdu`."""
     try:
         wynik = klient.rpc("dolacz_do_pojazdu_z_rola", {"p_kod": kod}).execute()
         if wynik.data:
@@ -186,14 +166,9 @@ def dolacz_po_kodzie(kod):
     with db.polacz_baze() as conn:
         cur = conn.cursor()
 
-        # WAŻNE — bezpieczeństwo danych: NIGDY nie dopasowujemy po nazwie do
-        # istniejącego lokalnego pojazdu. Dwa różne auta o tej samej, popularnej
-        # nazwie (np. dwie "Škoda Octavia" różnych osób) mogłyby się przez to
-        # przypadkiem zlać w jeden wiersz — a zaraz potem synchronizuj_wszystko()
-        # poniżej wypchnęłoby CAŁĄ dotychczasową, prywatną historię lokalnego
-        # auta (tankowania, serwis, koszty...) do CUDZEGO współdzielonego
-        # pojazdu. Dołączenie po kodzie zawsze tworzy NOWY wiersz; przy kolizji
-        # nazwy dopisujemy odróżnik.
+        # WAŻNE: NIGDY nie dopasowujemy po nazwie do istniejącego lokalnego pojazdu —
+        # dwie „Škoda Octavia” zlałyby się, a synchronizacja wypchnęłaby prywatną
+        # historię do CUDZEGO auta. Dołączenie zawsze tworzy NOWY wiersz.
         cur.execute("SELECT COUNT(*) FROM samochody WHERE LOWER(nazwa)=LOWER(?)", (nazwa_zdalna,))
         kolizja_nazwy = cur.fetchone()[0] > 0
         nazwa = _unikalna_nazwa_pojazdu(cur, nazwa_zdalna) if kolizja_nazwy else nazwa_zdalna

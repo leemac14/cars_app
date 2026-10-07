@@ -1,22 +1,11 @@
-"""Gwarancja na wykonaną naprawę — dwa limity przy wpisie historii serwisowej.
+"""Gwarancja na wykonaną naprawę: wpis historii (też pozycja wizyty zbiorczej) niesie
+`gwarancja_data` (DD.MM.RRRR) i `gwarancja_przebieg` (licznik w km); kończy ją to, co
+przyjdzie pierwsze.
 
-Gwarancja na całe auto siedzi w terminach pojazdu, ale to gwarancja na CZĘŚĆ
-decyduje, czy za powtórną wymianę płaci się drugi raz — a przy sprzedaży auta
-jest argumentem. Wpis historii (także pozycja wizyty zbiorczej) niesie dwa
-limity: `gwarancja_data` (DD.MM.RRRR, jak data wpisu) i `gwarancja_przebieg`
-(stan licznika w km, do którego gwarancja obowiązuje). Kończy ją to, co
-przyjdzie pierwsze — tak jak gwarancję producenta.
-
-Tu i tylko tu liczy się:
-  • stan jednej gwarancji (`stan_gwarancji`) — ile zostało, czy już minęła
-    i czy weszła w próg przypomnienia (te same progi, co podzespoły);
-  • gwarancje pojazdu (`gwarancje_pojazdu`) — po jednej na podzespół, z jego
-    OSTATNIEJ wymiany. Część z wcześniejszej wymiany w aucie już nie siedzi,
-    więc jej gwarancja niczego nie chroni. Kolejność wymian ta sama, co
-    w `aktualizuj_najnowszy_wpis`: data, potem licznik;
-  • słowa („gwarancja jeszcze 8 miesięcy”) — wspólne dla kart, dzwonka,
-    „Ile zostało do…” i paszportu PDF, żeby wszędzie brzmiały tak samo.
-"""
+Tu i tylko tu: stan jednej gwarancji (`stan_gwarancji`, progi jak podzespoły), gwarancje
+pojazdu (`gwarancje_pojazdu` — po jednej na podzespół, z jego OSTATNIEJ wymiany;
+kolejność wymian jak w `aktualizuj_najnowszy_wpis`: data, potem licznik) i słowa
+(„gwarancja jeszcze 8 miesięcy”) wspólne dla kart, dzwonka, „Ile zostało do…” i PDF."""
 
 import calendar
 import sqlite3
@@ -26,7 +15,7 @@ from typing import Any
 from date import parsuj_date
 
 from .polaczenie import polacz_baze
-from .pomocnicze import liczba_z_odmiana
+from .pomocnicze import _dodatnia, liczba_z_odmiana
 from .ustawienia import pobierz_moje_imie, pobierz_prog_dni, pobierz_prog_km
 from .jednostki import tekst_dystansu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
@@ -60,15 +49,6 @@ def _data(wartosc):
         return wartosc
     dzien = parsuj_date(wartosc)
     return None if dzien == datetime.min.date() else dzien
-
-
-def _dodatnia(wartosc):
-    """Liczba całkowita > 0 albo None — puste pole i zero znaczą „nie ustawiono”."""
-    try:
-        liczba = int(float(wartosc))
-    except (TypeError, ValueError):
-        return None
-    return liczba if liczba > 0 else None
 
 
 def dodaj_miesiace(dzien, miesiace) -> date:
@@ -122,26 +102,13 @@ def czas_slownie(od, do) -> str:
 def stan_gwarancji(koniec, limit_km, data_wymiany=None, przebieg_wymiany=None,
                    aktualny_przebieg=None, sredni_dzienny=None, dzis=None,
                    prog_dni=None, prog_km=None) -> dict[str, Any] | None:
-    """Stan gwarancji jednej naprawy albo None, gdy naprawa gwarancji nie ma.
-
-    `koniec` — data końca (tekst jak w bazie albo date), `limit_km` — stan
-    licznika w km. Nieczytelna data i limit ≤ 0 znaczą „nie ustawiono”.
-
-    Słownik:
-      * koniec (date|None), limit_km (int|None), data_wymiany (date|None),
-        przebieg_wymiany (int|None);
-      * dni — do końca terminu (ujemne: minął), None bez daty;
-      * zostalo_km — do limitu przy dzisiejszym liczniku (ujemne: przekroczony),
-        None bez limitu albo bez znanego przebiegu; dni_km i data_km —
-        prognoza dojechania do limitu ze średniego przebiegu dziennego;
-      * dni_do_konca — do końca wynikowego (bliższy z terminu i prognozy),
-        pierwsze — który limit skończy się pierwszy ("data" / "przebieg");
-      * wygasla — minął termin ALBO przekroczono limit, powod — co ją
-        zakończyło; blisko_przez — który limit wszedł w próg przypomnienia;
-      * status — "ok" / "blisko" / "po_terminie";
-      * udzial — jaka część okresu gwarancji minęła (0–1), None bez początku.
-
-    Dzień końca jeszcze się liczy (jak termin dokumentu, który „mija dziś”)."""
+    """Stan gwarancji naprawy albo None, gdy jej nie ma. `koniec` — data (tekst lub
+    date), `limit_km` — licznik w km; nieczytelna data i limit ≤ 0 to „nie ustawiono”.
+    Klucze: koniec, limit_km, data_wymiany, przebieg_wymiany; dni (ujemne: minął);
+    zostalo_km (ujemne: przekroczony), dni_km, data_km (prognoza ze średniego
+    przebiegu); dni_do_konca, pierwsze („data”/„przebieg”); wygasla, powod,
+    blisko_przez; status („ok”/„blisko”/„po_terminie”); udzial (0–1). Dzień końca
+    jeszcze się liczy."""
     koniec_d = _data(koniec)
     limit = _dodatnia(limit_km)
     if koniec_d is None and limit is None:
@@ -232,13 +199,10 @@ def klucz_gwarancji(koniec, limit_km) -> tuple[str | None, int | None]:
 
 
 def przesun_gwarancje(koniec, limit_km, data_zrodla, przebieg_zrodla, nowa_data, nowy_przebieg) -> dict[str, Any]:
-    """Gwarancja duplikatu: ten sam OKRES od nowej wymiany, nie ta sama data.
-
-    Zwraca {"koniec": tekst|None, "limit_km": int|None, "miesiace": int|None,
-    "dystans_km": int|None}. Dwa ostatnie to okres, który formularz trzyma przy
-    wymianie — zmiana jej daty albo licznika przesuwa wtedy gwarancję dalej.
-    Gwarancji bez czytelnej daty albo licznika źródła nie da się przesunąć,
-    więc duplikat jej nie dostaje (stara data kłamałaby już od pierwszego dnia)."""
+    """Gwarancja duplikatu: ten sam OKRES od nowej wymiany, nie ta sama data. Zwraca
+    {koniec, limit_km, miesiace, dystans_km} — dwa ostatnie formularz trzyma, by zmiana
+    daty lub licznika wymiany przesuwała gwarancję. Bez czytelnej daty albo licznika
+    źródła duplikat gwarancji nie dostaje."""
     wynik = {"koniec": None, "limit_km": None, "miesiace": None, "dystans_km": None}
     koniec_d, start, nowa = _data(koniec), _data(data_zrodla), _data(nowa_data)
     if koniec_d and start and nowa and koniec_d > start:
@@ -386,13 +350,10 @@ def _klucz_konca(gwarancja):
 
 def gwarancje_pojazdu(auto_id, dzis=None, tylko_aktywne=True, aktualny_przebieg=None,
                       sredni_dzienny=None, prog_dni=None, prog_km=None) -> list[dict[str, Any]]:
-    """Gwarancje napraw pojazdu — po jednej na podzespół, z jego OSTATNIEJ
-    wymiany — od tej, która skończy się najwcześniej.
-
-    Pozycja to stan_gwarancji() plus: historia_id, zadanie_id, wizyta_id,
-    nazwa (podzespołu), data i przebieg wymiany (jak w bazie) oraz wykonawca.
-    `tylko_aktywne=False` dokłada gwarancje, które już minęły. Licznik, średni
-    przebieg i progi można podać, gdy wołający i tak je ma."""
+    """Gwarancje napraw pojazdu — po jednej na podzespół, z jego OSTATNIEJ wymiany — od
+    najwcześniej kończącej się. Pozycja = stan_gwarancji() + historia_id, zadanie_id,
+    wizyta_id, nazwa, data i przebieg wymiany, wykonawca. `tylko_aktywne=False` dokłada
+    minione; licznik, średni przebieg i progi można podać z zewnątrz."""
     if not auto_id:
         return []
     ostatnie = {}

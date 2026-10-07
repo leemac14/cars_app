@@ -14,11 +14,9 @@ def pobierz_ustawienie(klucz, domyslna=None):
         return w[0] if w else domyslna
 
 
-# Klucze, które pamiętają wyłącznie STAN INTERFEJSU: gdzie użytkownik skończył,
-# jak ułożył kafelki, czego ostatnio szukał. Ich zapis nie zmienia żadnej liczby
-# policzonej z bazy, więc nie unieważnia pamięci metryk (patrz db/pamiec.py).
-# Router zapisuje pozycję startową przy przejściach między ekranami — gdyby to
-# czyściło pamięć, kokpit liczyłby się od nowa po każdym powrocie.
+# Klucze samego STANU INTERFEJSU (pozycja, układ kafelków, ostatnie wyszukiwania): ich
+# zapis nie unieważnia pamięci metryk (db/pamiec.py) — router zapisuje pozycję przy
+# każdym przejściu.
 USTAWIENIA_INTERFEJSU = frozenset({
     "ostatni_pojazd",
     "ostatnia_zakladka",
@@ -75,10 +73,8 @@ def zapisz_tryb_motywu(tryb):
 
 
 def pobierz_czysta_czern():
-    """Czy tryb ciemny ma używać czystej czerni (#000000) zamiast ciemnych
-    szarości. Osobne ustawienie, a nie czwarty tryb motywu — dzięki temu działa
-    też wtedy, gdy tryb „system” sam przełączy telefon na ciemny. Na ekranach
-    OLED czarny piksel jest po prostu zgaszony, więc to realnie mniej prądu."""
+    """Czysta czerń (#000000) w trybie ciemnym — osobne ustawienie, nie czwarty tryb
+    motywu, więc działa też z trybem „system”."""
     return pobierz_ustawienie("czysta_czern", "0") == "1"
 
 
@@ -87,13 +83,9 @@ def zapisz_czysta_czern(wlaczona):
 
 
 def czy_animacje_interfejsu():
-    """Czy interfejs ma się ruszać: odliczanie liczb na kokpicie i przejścia
-    między zakładkami. JEDNO ustawienie na oba, bo to jedna decyzja — kto gasi
-    ruch, gasi go w całej aplikacji, a nie efekt po efekcie.
-
-    Domyślnie włączone. Stary klucz `animacje_kokpitu` czytamy nadal, dopóki
-    nikt nie dotknie przełącznika: pierwsza wersja obejmowała tylko kokpit i nie
-    ma powodu, żeby aktualizacja włączyła ruch komuś, kto go zgasił."""
+    """Ruch interfejsu (liczby na kokpicie, przejścia zakładek) — JEDNO ustawienie na
+    całość, domyślnie włączone. Stary klucz `animacje_kokpitu` czytamy, dopóki nikt nie
+    ruszy przełącznika."""
     w = pobierz_ustawienie("animacje_interfejsu")
     if w is None:
         w = pobierz_ustawienie("animacje_kokpitu", "1")
@@ -105,14 +97,10 @@ def zapisz_animacje_interfejsu(wlaczone):
 
 
 def czy_chowac_puste_kafelki():
-    """Czy kafelek kokpitu, który nie ma nic do powiedzenia, ma zniknąć z siatki,
-    zamiast pokazywać myślnik: budżet bez ustawionego limitu, zasięg EV w aucie
-    spalinowym, checklista, której nie ma, pusty magazyn.
-
-    JEDNO ustawienie na całą aplikację, nie per pojazd: to sposób czytania
-    kokpitu, a nie własność auta — a `USTAWIENIA_PER_POJAZD` ma zostać krótka
-    (migawka kosza zapisuje ją po NAZWIE funkcji). Domyślnie włączone: kafelek,
-    który regularnie milczy, uczy oko, żeby przestało czytać całą siatkę."""
+    """Czy kafelek bez treści (budżet bez limitu, zasięg EV w spalinowym, brak
+    checklisty, pusty magazyn) ma zniknąć zamiast myślnika. JEDNO ustawienie na
+    aplikację — `USTAWIENIA_PER_POJAZD` ma zostać krótka (kosz zapisuje ją po NAZWIE
+    funkcji). Domyślnie włączone."""
     return (pobierz_ustawienie("chowaj_puste_kafelki", "1") or "1") == "1"
 
 
@@ -133,11 +121,9 @@ def zapisz_zapamietywanie_wyszukiwan(wlaczone):
     zapisz_ustawienie("historia_wyszukiwan", "1" if wlaczone else "0")
 
 
-# ---- „Co nowego” (listę wydań i całą logikę trzyma db/nowosci.py) ----
-# Oba klucze należą do URZĄDZENIA, nie do danych: kopia z drugiego telefonu nie
-# może przynieść cudzej „widzianej wersji”, bo pokazałaby nowości jeszcze raz
-# albo schowała te, których ten telefon nie widział. Wczytanie kopii odkłada je
-# i przywraca po przedrostku, razem z ustawieniami kopii (patrz db/kopie.py).
+# ---- „Co nowego” (wydania i logika w db/nowosci.py) ----
+# Oba klucze należą do URZĄDZENIA: wczytanie kopii odkłada je i przywraca po przedrostku
+# (db/kopie.py).
 PRZEDROSTEK_USTAWIEN_NOWOSCI = "nowosci_"
 KLUCZ_NOWOSCI_WIDZIANE = "nowosci_widziane"
 KLUCZ_NOWOSCI_PO_AKTUALIZACJI = "nowosci_po_aktualizacji"
@@ -167,15 +153,9 @@ def zapisz_pokazywanie_nowosci_po_aktualizacji(wlaczone):
 
 
 def czy_skumulowany_z_cena_zakupu():
-    """Czy krzywa kosztu skumulowanego startuje od ceny zakupu, czy od zera.
-
-    JEDNO ustawienie na całą aplikację, nie per pojazd: to decyzja o tym, na co
-    się patrzy — „ile mnie kosztowało to auto” kontra „ile kosztuje jeżdżenie
-    nim” — a nie cecha konkretnego samochodu. Domyślnie włączone, bo bez ceny
-    zakupu krzywa nie pokazuje pełnej skali wydatku, a po to się ją rysuje.
-
-    Pojazd bez daty albo bez ceny zakupu nie ma czego postawić na starcie —
-    wtedy krzywa i tak rusza od zera, niezależnie od tej flagi."""
+    """Czy krzywa kosztu skumulowanego startuje od ceny zakupu, czy od zera — JEDNO
+    ustawienie na aplikację, domyślnie włączone. Bez daty lub ceny zakupu krzywa i tak
+    rusza od zera."""
     return (pobierz_ustawienie("skumulowany_z_cena_zakupu", "1") or "1") == "1"
 
 
@@ -385,11 +365,8 @@ KOKPIT_WIDGETY = {
 KOKPIT_WIDGETY_DOMYSLNE = ["akcja_tankowanie", "akcja_licznik", "akcja_paragon", "koszt_miesiac", "termin", "wykres"]
 
 
-# Kokpit ustawia się osobno dla każdego pojazdu — auto służbowe i prywatne
-# rzadko potrzebują tych samych kafelków. Klucz per auto to "kokpit_widgety_<id>";
-# dopóki go nie ma, pojazd DZIEDZICZY wspólny układ spod "kokpit_widgety".
-# Dzięki temu aktualizacja nie ruszyła nikomu kokpitu, a auto bez własnego
-# układu podąża za zmianami wspólnego.
+# Kokpit per pojazd: klucz „kokpit_widgety_<id>”; bez niego pojazd DZIEDZICZY wspólny
+# układ „kokpit_widgety”.
 def _klucz_kokpitu(auto_id=None):
     return f"kokpit_widgety_{int(auto_id)}" if auto_id else "kokpit_widgety"
 
@@ -416,11 +393,8 @@ def _odczytaj_kolejnosc_kokpitu(zapisane):
 
 
 def pobierz_widgety_kokpitu(auto_id=None) -> list[str]:
-    """Zwraca listę ID widżetów kokpitu wybranych przez użytkownika (patrz
-    MainView._buduj_kokpit) — W KOLEJNOŚCI, W JAKIEJ ZOSTAŁY ZAPISANE, bo tę
-    kolejność użytkownik ustawia sam, przeciągając kafelki w trybie edycji
-    kokpitu. Najpierw szuka układu WŁASNEGO dla pojazdu, potem wspólnego, a na
-    końcu wraca do trzech podstawowych widżetów."""
+    """ID kafelków kokpitu W ZAPISANEJ KOLEJNOŚCI (ustawianej przeciąganiem): układ
+    własny pojazdu, potem wspólny, na końcu trzy podstawowe."""
     zapisane = pobierz_ustawienie(_klucz_kokpitu(auto_id)) if auto_id else None
     if zapisane is None:
         zapisane = pobierz_ustawienie("kokpit_widgety")
@@ -430,10 +404,9 @@ def pobierz_widgety_kokpitu(auto_id=None) -> list[str]:
 
 
 def zapisz_widgety_kokpitu(lista_id, auto_id=None):
-    """Zapisuje ZESTAW oraz KOLEJNOŚĆ widżetów kokpitu — lista wchodzi tu już
-    ułożona tak, jak ma wyglądać siatka kokpitu. Duplikaty i nieznane ID odpadają.
-    Z auto_id zapis odpina pojazd od wspólnego układu; bez niego zmienia układ
-    wspólny (i tym samym wszystkie auta, które nadal go dziedziczą)."""
+    """Zapisuje ZESTAW i KOLEJNOŚĆ kafelków (duplikaty i nieznane ID odpadają). Z
+    auto_id odpina pojazd od wspólnego układu; bez — zmienia wspólny (i dziedziczące
+    auta)."""
     poprawne, widziane = [], set()
     for w in lista_id:
         if w in KOKPIT_WIDGETY and w not in widziane:
@@ -450,19 +423,13 @@ def _klucz_widzianych_powiadomien(auto_id):
 
 
 # --------------------- ZAKRES CZASU WYKRESÓW ---------------------
-# Każdy wykres pyta o swój zakres osobno (chipy nad wykresem, patrz
-# utils.pasek_zakresu_czasu), ale wszystkie zakresy JEDNEGO pojazdu siedzą
-# w jednym kluczu ustawień. Inaczej każdy nowy wykres dokładałby funkcję do
-# USTAWIENIA_PER_POJAZD, a migawka kosza zapisuje je po NAZWIE funkcji —
-# ta lista ma zostać krótka i stabilna.
+# Zakresy wszystkich wykresów JEDNEGO pojazdu w jednym kluczu — żeby nie dokładać
+# funkcji do USTAWIENIA_PER_POJAZD (kosz zapisuje je po NAZWIE).
 ZAKRES_WYKRESU_DOMYSLNY = 12
 ZAKRESY_WYKRESU = (3, 6, 12, 0)  # miesiące wstecz; 0 = cała historia
 
-# Okno kroczące wykresu „koszt na 1000 km”. To NIE jest zakres widoku, tylko
-# długość okna, w którym liczy się jeden punkt krzywej — dlatego ma własne
-# wartości (24 miesiące) i własny domyślny rok: krótsze okno reaguje szybciej,
-# dłuższe wygładza sezon. Siedzi w tym samym zapisanym wierszu, co zakresy
-# wykresów, żeby nie dokładać funkcji do USTAWIENIA_PER_POJAZD.
+# Okno kroczące wykresu „koszt na 1000 km” — długość okna jednego punktu, nie zakres
+# widoku (własne wartości i domyślny rok). W tym samym wierszu co zakresy wykresów.
 OKNA_1000KM = (6, 12, 24)
 OKNO_1000KM_DOMYSLNE = 12
 KLUCZ_OKNA_1000KM = "okno1000"
@@ -535,10 +502,8 @@ def zapisz_zakres_wykresu(auto_id, klucz, miesiace):
     )
 
 
-# „Co przede mną” (db.os_przyszlosci): ile dni do przodu pokazuje oś. Jedno
-# okno na całą aplikację, nie na pojazd — to horyzont planowania („do urlopu”,
-# „cały rok”), a nie cecha auta. Sama pamięć interfejsu: liczby z bazy od niej
-# nie zależą, więc zapis nie unieważnia pamięci metryk (USTAWIENIA_INTERFEJSU).
+# „Co przede mną”: ile dni do przodu pokazuje oś — jedno okno na aplikację; pamięć
+# interfejsu (USTAWIENIA_INTERFEJSU), zapis nie unieważnia metryk.
 OKNA_PRZYSZLOSCI = (30, 90, 365)
 OKNO_PRZYSZLOSCI_DOMYSLNE = 90
 KLUCZ_OKNA_PRZYSZLOSCI = "okno_przyszlosci"
@@ -559,13 +524,11 @@ def zapisz_okno_przyszlosci(dni):
 
 
 # ============================================================================
-#  EWIDENCJA PRZEBIEGU — tryb, stawka kilometrówki, dane do raportu
+# EWIDENCJA PRZEBIEGU — tryb, stawka kilometrówki, dane do raportu
 # ============================================================================
-# Tryb i stawka należą do pojazdu na TYM telefonie, oba w jednym wierszu
-# („tryb=kilometrowka;stawka=1.15”) — jedna funkcja klucza w
-# USTAWIENIA_PER_POJAZD zamiast dwóch (migawka kosza zapisuje je po nazwie).
-# Imię, adres i pracodawca do nagłówka kilometrówki to dane OSOBY, nie auta —
-# wspólne dla wszystkich pojazdów.
+# Tryb i stawka należą do pojazdu na TYM telefonie, w jednym wierszu
+# („tryb=kilometrowka;stawka=1.15”) — jedna funkcja klucza w USTAWIENIA_PER_POJAZD.
+# Imię, adres i pracodawca to dane OSOBY, wspólne dla pojazdów.
 
 def _klucz_ewidencji(auto_id):
     return f"ewidencja_{int(auto_id)}"
@@ -627,11 +590,9 @@ def zapisz_dane_osoby_ewidencji(osoba="", adres="", pracodawca=""):
         zapisz_ustawienie(KLUCZE_DANYCH_OSOBY[pole], " ".join(str(wartosc or "").split()))
 
 
-# Ustawienia przywiązane do KONKRETNEGO pojazdu — przenoszone razem z nim do
-# kosza i z powrotem (ID po przywróceniu może się zmienić, patrz
-# przywroc_auto_z_kosza), żeby nie zostawały w bazie jako sieroty.
-# Migawka kosza zapisuje je pod NAZWĄ funkcji budującej klucz — zmiana nazwy
-# którejś z nich zgubiłaby to ustawienie w pojazdach, które już leżą w koszu.
+# Ustawienia przywiązane do KONKRETNEGO pojazdu — jadą z nim do kosza i z powrotem (ID
+# może się zmienić). Migawka kosza zapisuje je pod NAZWĄ funkcji klucza — nie zmieniać
+# nazw.
 USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien, _klucz_zakresow_wykresow, _klucz_ewidencji]
 
 
@@ -659,10 +620,8 @@ def _przywroc_ustawienia_pojazdu(auto_id, dane):
 
 
 # ---------------------- AUTOMATYCZNA SYNCHRONIZACJA ----------------------
-# Do tej pory synchronizacja ruszała wyłącznie po zapisie formularza albo
-# z przycisku. Kto tylko OGLĄDAŁ współdzielony pojazd — a przy roli „tylko
-# podgląd” to jedyne, co robi — nie zobaczyłby cudzych zmian, dopóki sam
-# czegoś nie kliknął.
+# Także bez zapisu — inaczej oglądający (rola „tylko podgląd”) nie widziałby cudzych
+# zmian.
 INTERWAL_AUTO_SYNC_MINUTY = 15
 MIN_INTERWAL_AUTO_SYNC_MINUTY = 5
 

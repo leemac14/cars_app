@@ -1,15 +1,6 @@
-"""Animacja wejścia: liczby dojeżdżające do wartości, wskaźniki rosnące od zera.
-
-Kokpit jest pierwszym, co widać po uruchomieniu aplikacji. Krótki ruch przy
-wejściu robi z niego moment, a nie ekran — ale tylko pod warunkiem, że jest
-KRÓTKI i JEDNORAZOWY. Animacja w pętli albo trwająca sekundę zamienia się
-w opóźnienie odczytu: liczba jest wtedy nieczytelna dłużej, niż trwa spojrzenie
-na kafelek.
-
-Wszystkie kafelki jadą na JEDNYM zegarze (`ScenaWejscia`). Osobny timer na
-kafelek dałby osiemnaście animacji rozjeżdżających się w czasie, a każda z nich
-osobno budziłaby pętlę zdarzeń — na telefonie widać to jako szarpanie.
-"""
+"""Animacja wejścia: liczby dojeżdżające do wartości, wskaźniki od zera — KRÓTKA i
+JEDNORAZOWA. Wszystkie kafelki na JEDNYM zegarze (`ScenaWejscia`) — osobne timery
+szarpałyby na telefonie."""
 
 import asyncio
 import flet as ft
@@ -64,12 +55,8 @@ MAKS_OPOZNIENIA_KASKADY_MS = 360
 
 
 def pierwsze_pokazanie(state, klucz, auto_id=None):
-    """Czy animacja wejścia ma zagrać na tym ekranie, czy już grała.
-
-    Zwraca True TYLKO za pierwszym razem — i od razu zapisuje, że zagrało, więc
-    wołający nie musi niczego odhaczać. Znacznik siedzi w stanie aplikacji, czyli
-    żyje do zamknięcia programu; zmiana pojazdu liczy się jak nowy ekran, bo to
-    zupełnie inne dane."""
+    """True TYLKO za pierwszym razem (od razu zapisuje, że zagrało). Znacznik w stanie
+    aplikacji; zmiana pojazdu liczy się jak nowy ekran."""
     pokazane = getattr(state, "animacje_pokazane", None)
     if pokazane is None:
         return True
@@ -100,12 +87,8 @@ def _petla_w_tym_watku():
 
 
 def _petla_dziala(page):
-    """Czy jest pętla zdarzeń, w której animacja ma szansę w ogóle pojechać.
-
-    Bez niej `page.run_task` tworzy korutynę, której nikt nie odbiera — tak
-    dzieje się przy budowaniu widoków bez okna (testy) — a kafelki zostałyby na
-    zawsze z zerami stanu początkowego. Niepewność rozstrzygamy więc na korzyść
-    ODCZYTU: nie ma pętli, nie ma animacji, są za to od razu właściwe liczby."""
+    """Czy jest pętla zdarzeń. Bez niej (testy) korutyny nikt nie odbierze, więc: brak
+    pętli = brak animacji i od razu właściwe liczby."""
     if _petla_w_tym_watku():
         return True
     # Sięgnięcie do wnętrza Fleta jest tu świadome i osłonięte: gdy ta droga
@@ -120,14 +103,9 @@ def _petla_dziala(page):
 
 
 class ScenaWejscia:
-    """Zbiór torów animacji jednego ekranu, odtwarzany raz — przy wejściu.
-
-    Kafelek nie wie nic o animacji: prosi scenę o kontrolkę (`liczba`,
-    `wskaznik`, `wysokosc`), a scena zapamiętuje, jak tę kontrolkę prowadzić od
-    stanu początkowego do docelowego. Scena wyłączona (`wlaczona=False`) zwraca
-    te same kontrolki od razu w stanie docelowym — dzięki temu w kodzie kafelków
-    nie ma ani jednego „jeśli animacje włączone”.
-    """
+    """Tory animacji jednego ekranu, odtwarzane raz przy wejściu. Kafelek prosi scenę o
+    kontrolkę (`liczba`, `wskaznik`, `wysokosc`); scena wyłączona (`wlaczona=False`)
+    zwraca je od razu w stanie docelowym."""
 
     def __init__(self, wlaczona=True, czas_ms=None, kaskada=False):
         self.wlaczona = bool(wlaczona)
@@ -164,12 +142,8 @@ class ScenaWejscia:
             self._kontrolki.append(kontrolka)
 
     def nastepny_wiersz(self):
-        """Otwiera kolejny element listy — od tej chwili rejestrowane tory
-        startują o krok później od poprzednich.
-
-        Woła to sam komponent (pasek terminu, pasek budżetu), więc ekran z listą
-        pasków dostaje kaskadę bez jednej dodatkowej linijki u siebie. W scenie
-        bez kaskady metoda nic nie robi."""
+        """Kolejny element listy — następne tory startują o krok później (kaskada). Woła
+        to sam komponent; bez kaskady nic nie robi."""
         if not self.kaskada:
             return 0
         self._opoznienie = min(self._wierszy * KROK_KASKADY_MS, MAKS_OPOZNIENIA_KASKADY_MS)
@@ -188,11 +162,9 @@ class ScenaWejscia:
             self._zapamietaj(k)
 
     def skok(self, ustaw_poczatek, ustaw_koniec, *kontrolki):
-        """Tor dla kontrolek, które Flet animuje SAM (`Container.animate`):
-        stan początkowy ustawiamy przy budowie, docelowy — jedną zmianą na
-        starcie sceny, a płynne przejście dokłada już Flutter. Taniej niż
-        liczyć klatki pośrednie w Pythonie, więc tak robimy wszędzie, gdzie
-        kontrolka to potrafi."""
+        """Tor dla kontrolek animowanych przez Flet (`Container.animate`): stan
+        początkowy przy budowie, docelowy jedną zmianą na starcie — przejście robi
+        Flutter."""
         if not self.czynna:
             ustaw_koniec()
             return
@@ -202,15 +174,9 @@ class ScenaWejscia:
             self._zapamietaj(k)
 
     def liczba(self, wartosc, formatuj, od=0.0, **pola):
-        """Główna liczba kafelka jako ft.Text, który przy wejściu odlicza od `od`
-        do `wartosc`. `formatuj` dostaje wartość pośrednią i zwraca CAŁY napis —
-        z jednostką i separatorami — więc kafelek nie musi wiedzieć nic
-        o animacji, a animacja nic o walucie.
-
-        Uwaga na jednostki odwrotne (km/l, mpg): wołający ma podać liczbę JUŻ
-        przeliczoną na to, co widać na ekranie. Animowanie l/100km i formatowanie
-        na km/l dałoby odliczanie w złą stronę, a start od zera — dzielenie przez
-        zero."""
+        """Główna liczba kafelka (ft.Text) odliczająca od `od` do `wartosc`; `formatuj`
+        zwraca CAŁY napis. Jednostki odwrotne (km/l, mpg): podaj liczbę JUŻ przeliczoną
+        na ekranową (inaczej odliczanie w złą stronę i dzielenie przez zero)."""
         try:
             cel = float(wartosc)
         except (TypeError, ValueError):
@@ -367,18 +333,9 @@ class ScenaWejscia:
 
 
 class PrzelacznikEkranow:
-    """Jedna zawartość ustępuje drugiej: przenikanie plus przesunięcie w kierunku
-    ruchu.
-
-    Cztery zakładki przełącza się dziesiątki razy dziennie. Płynne przejście robi
-    z nich JEDNĄ aplikację; twarda podmiana — cztery ekrany podstawiane pod ten
-    sam pasek.
-
-    Flet daje w `AnimatedSwitcher` tylko FADE, SCALE i ROTATION, więc
-    przesunięcie dokładamy sami: opakowanie startuje z `offset` i dojeżdża do
-    zera własnym `animate_offset`. Wychodzi to lepiej niż gotowy slide — obie
-    części przejścia rysuje Flutter, a Python nie liczy tu ani jednej klatki.
-    """
+    """Przejście zawartości: przenikanie plus przesunięcie w kierunku ruchu.
+    `AnimatedSwitcher` daje tylko FADE/SCALE/ROTATION, więc przesunięcie robi opakowanie
+    z `offset` i `animate_offset` — obie części rysuje Flutter."""
 
     def __init__(self, zawartosc, wlaczony=True, czas_ms=CZAS_PRZEJSCIA_MS):
         self.wlaczony = bool(wlaczony)

@@ -8,15 +8,10 @@ import utils
 
 
 class MigawkaView(ft.View):
-    """„Paragon na później” (M-08) — aparat z jednym dużym spustem.
-
-    Zdjęcie od razu staje się szkicem w kolejce „Do wpisania” (data i godzina
-    z chwili migawki). Pod podglądem pojawia się wtedy panel z trzema polami na
-    zapas — rodzaj, licznik, krótki opis — ale nic w nim nie jest wymagane:
-    kto nie ma czasu, chowa telefon, a szkic i tak czeka.
-
-    Aparat to flet-camera (Android, iOS). Na komputerze kontrolka nie działa,
-    więc ekran proponuje wybór zdjęć z dysku — tą samą drogą, co „Z galerii”."""
+    """„Paragon na później” (M-08): migawka od razu staje się szkicem w „Do wpisania”
+    (data i godzina migawki); panel z rodzajem, licznikiem i opisem jest opcjonalny.
+    Aparat to flet-camera (Android, iOS); na komputerze wybór zdjęć z dysku, jak „Z
+    galerii”."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page

@@ -6,14 +6,8 @@ import utils
 
 
 class PojazdView(ft.View):
-    """Pełna karta pojazdu. Zastępuje wysuwany panel „Specyfikacja”, który przy
-    komplecie danych rozciągał się na trzy ekrany przewijania i nie dawał się
-    ani przeszukać, ani skopiować.
-
-    Układ idzie za tym, PO CO się tu wchodzi: najpierw tożsamość (to auto, ta
-    tablica), potem liczby opisujące je jako całość, potem terminy — jedyna
-    rzecz z tego ekranu, która potrafi kosztować mandat. Dalej rachunek
-    posiadania, dane techniczne, ubezpieczenie i ściągawka do sklepu."""
+    """Pełna karta pojazdu w kolejności „po co się wchodzi”: tożsamość, liczby
+    całościowe, terminy, rachunek posiadania, dane techniczne, ubezpieczenie, ściągawka."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page
@@ -280,12 +274,9 @@ class PojazdView(ft.View):
     # ================= NAJLEPSZA OFERTA OC/AC =================
 
     def _wiersz_oferty(self, jest_polisa):
-        """Notatka „najlepsza oferta OC/AC” albo None, gdy nie ma czego pokazać.
-
-        Z notatką: zwykły wiersz danych (z kopiowaniem i datą zapisu) i ołówek
-        do zmiany w okienku, bez wchodzenia do formularza auta. Bez notatki
-        zachęta do jej dopisania pojawia się tylko tam, gdzie jest polisa, której
-        termin kiedyś przyjdzie — i tylko komuś, kto może ją zapisać."""
+        """Notatka „najlepsza oferta OC/AC” albo None. Z notatką — wiersz danych
+        (kopiowanie, data) i ołówek do szybkiej zmiany; bez niej zachęta tylko przy
+        polisie z terminem i tylko dla mogących zapisać."""
         mozna_zmieniac = not self.podglad
         if self.oferta:
             wiersz = utils.wiersz_danych(
@@ -462,10 +453,8 @@ class PojazdView(ft.View):
     # ================= LEASING I KREDYT =================
 
     def _leasing_i_kredyt(self):
-        """Umowy rat pojazdu w jednej karcie (db.podsumowanie_rat): ile zostało
-        do spłaty, kapitał, odsetki i ostatnia rata. Wartość dziś minus kapitał
-        do spłaty to połowa odpowiedzi na pytanie „zmieniać auto?” — tyle zostaje
-        po sprzedaży i spłacie umowy. Auto bez umowy tej karty nie ma."""
+        """Umowy rat w jednej karcie (db.podsumowanie_rat): do spłaty, kapitał, odsetki,
+        ostatnia rata. Auto bez umowy tej karty nie ma."""
         stan = db.podsumowanie_rat(self.state.auto_id)
         if not stan:
             return None
@@ -583,15 +572,10 @@ class PojazdView(ft.View):
             vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     def _sprawdz_w_cepik(self, e=None):
-        """Historia Pojazdu znajduje auto po trzech danych, a schowek mieści
-        jedną rzecz naraz. Stąd okienko-ściągawka: trzy wartości w kolejności
-        formularza, dotknięcie kopiuje, a następna do skopiowania jest
-        wyróżniona. Okienko zostaje otwarte pod przeglądarką i czeka po powrocie.
-
-        Przy komplecie pierwszy krok dzieje się sam: numer rejestracyjny
-        (pierwsze pole) trafia do schowka i otwiera się strona. Przy braku strona
-        sama się nie otwiera — lepiej dowiedzieć się o nim tutaj, obok
-        „Uzupełnij”, niż w połowie formularza."""
+        """Okienko-ściągawka do Historii Pojazdu: trzy wartości w kolejności formularza,
+        dotknięcie kopiuje, następna wyróżniona; zostaje otwarte pod przeglądarką. Przy
+        komplecie numer rejestracyjny od razu do schowka i otwarcie strony; przy braku
+        strona się nie otwiera."""
         pola = db.pola_historii_pojazdu(self.dane)
         skopiowane = set()
         lista = ft.Column(spacing=utils.SPACING["xs"], tight=True)

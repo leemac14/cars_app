@@ -222,11 +222,9 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         obraz_po = ft.Image(src=utils.abs_zalacznik(zal_po), width=SZER, height=WYS, fit="cover")
         obraz_przed = ft.Image(src=utils.abs_zalacznik(zal_przed), width=SZER, height=WYS, fit="cover")
 
-        # "Okienko ujawnienia": kontener o zmiennej szerokości = pozycja suwaka.
-        # Obraz "przed" w środku ma PEŁNY rozmiar (SZER x WYS) i jest przypięty
-        # (left=0, top=0) w Stacku — wystaje poza węższe okienko i zostaje
-        # PRZYCIĘTY (nie przeskalowany) do widocznej części. Standardowa
-        # technika sliderów porównawczych "przed/po".
+        # „Okienko ujawnienia”: kontener o szerokości = pozycja suwaka; obraz „przed” w
+        # PEŁNYM rozmiarze, przypięty (left=0, top=0) w Stacku, PRZYCINANY (nie
+        # skalowany) — klasyczny slider „przed/po”.
         warstwa_przed = ft.Container(
             width=pozycja_startowa, height=WYS,
             clip_behavior=ft.ClipBehavior.HARD_EDGE,

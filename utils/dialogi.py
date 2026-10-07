@@ -20,12 +20,9 @@ def pokaz_komunikat(page: ft.Page, wiadomosc, kolor=KOLOR_STATUS["ok"]):
 
 
 def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5, wiadomosc_bledu=None):
-    """wynik_usuwania to słownik zwrócony przez db.usun_z_cofnieciem().
-
-    None znaczy, że nic nie zostało usunięte — bo rekordu już nie ma albo bo
-    rola przy tym pojeździe na to nie pozwala (patrz db/usuwanie._wolno_usunac).
-    Wypisywanie wtedy „Pomyślnie usunięto...” na czerwono mówiło coś dokładnie
-    odwrotnego do tego, co się stało."""
+    """wynik_usuwania — słownik z db.usun_z_cofnieciem(). None = nic nie usunięto
+    (rekordu nie ma albo rola nie pozwala — db/usuwanie._wolno_usunac); wtedy bez
+    komunikatu o sukcesie."""
     if not wynik_usuwania:
         return pokaz_komunikat(
             page,
@@ -62,11 +59,9 @@ def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5, 
 
 
 def z_opoznieniem(page: ft.Page, funkcja, opoznienie=0.25):
-    """Owija handler on_change pola wyszukiwania tak, by faktyczne wywołanie
-    funkcja(e) nastąpiło dopiero po 'opoznienie' sekundach ciszy od ostatniego
-    wciśnięcia klawisza — zapobiega przeliczaniu filtra (albo, w /szukaj,
-    zapytania do bazy) przy KAŻDYM pojedynczym znaku, gdy lista ma setki wpisów.
-    Użycie: on_change=utils.z_opoznieniem(self._page, moja_funkcja_filtrujaca)"""
+    """Owija on_change pola wyszukiwania: funkcja(e) rusza po 'opoznienie' s ciszy od
+    ostatniego klawisza (nie przy każdym znaku). Użycie:
+    on_change=utils.z_opoznieniem(self._page, funkcja)."""
     stan = {"licznik": 0}
 
     def on_change(e):
@@ -150,21 +145,23 @@ def zamknij_dno(page: ft.Page, bottom_sheet):
     zamknij_dialog(page, bottom_sheet)
 
 
+def _zamknij_i_wykonaj(page: ft.Page, bs, akcja):
+    """Klik w pozycję menu: najpierw zamyka arkusz, potem woła akcję (także async)."""
+    async def wrapper(e):
+        zamknij_dno(page, bs)
+        if akcja:
+            wynik = akcja()
+            if asyncio.iscoroutine(wynik):
+                await wynik
+    return wrapper
+
+
 def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
     """
     Tworzy i wyświetla ujednolicone menu kontekstowe (BottomSheet).
     Automatycznie zamyka menu przed wykonaniem podpiętej akcji (wspiera sync i async).
     """
     bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE))
-
-    def opakuj_akcje(akcja_docelowa):
-        async def wrapper(e):
-            zamknij_dno(page, bs)
-            if akcja_docelowa:
-                res = akcja_docelowa()
-                if asyncio.iscoroutine(res):
-                    await res
-        return wrapper
 
     elementy_menu = [
         ft.Text(tytul, weight="bold", size=18, color=ft.Colors.PRIMARY),
@@ -184,7 +181,7 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
             ft.ListTile(
                 leading=ft.Icon(ikona, color=kolor) if ikona else None,
                 title=ft.Text(tekst, color=kolor),
-                on_click=opakuj_akcje(akcja)
+                on_click=_zamknij_i_wykonaj(page, bs, akcja)
             )
         )
 
@@ -193,29 +190,10 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
 
 
 def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str | None = None):
-    """Menu z pozycjami POGRUPOWANYMI w rozwijane sekcje (BottomSheet).
-
-    Płaskie menu z kilkunastoma pozycjami zmusza do czytania wszystkiego, żeby
-    znaleźć jedną rzecz — a przy okazji stawia obok siebie sąsiadów, którzy nic
-    wspólnego nie mają (kalkulator trasy i dziennik pojazdu). Tu widać kilka
-    nagłówków; szczegóły pokazują się dopiero po rozwinięciu sekcji.
-
-    grupy: lista słowników
-        {"tytul": str, "ikona": ikona Material, "otwarta": bool,
-         "pozycje": [{"ikona", "tekst", "opis", "akcja", "kolor", "odznaka"}]}
-    Grupa bez pozycji jest pomijana, więc wołający może budować listę warunkowo
-    (np. sekcja współdzielenia tylko dla pojazdu udostępnionego).
-    """
+    """Menu z pozycjami w rozwijanych sekcjach (BottomSheet). grupy: [{"tytul", "ikona",
+    "otwarta": bool, "pozycje": [{ikona, tekst, opis, akcja, kolor, odznaka}]}]; grupa
+    bez pozycji jest pomijana (lista może być budowana warunkowo)."""
     bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
-
-    def opakuj_akcje(akcja_docelowa):
-        async def wrapper(e):
-            zamknij_dno(page, bs)
-            if akcja_docelowa:
-                wynik = akcja_docelowa()
-                if asyncio.iscoroutine(wynik):
-                    await wynik
-        return wrapper
 
     def zbuduj_pozycje(poz):
         kolor = poz.get("kolor") or ft.Colors.ON_SURFACE
@@ -239,7 +217,7 @@ def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str |
             padding=ft.Padding(10, 10, 10, 10),
             border_radius=RADIUS["sm"],
             ink=True,
-            on_click=opakuj_akcje(poz.get("akcja")),
+            on_click=_zamknij_i_wykonaj(page, bs, poz.get("akcja")),
             content=ft.Row([
                 ft.Icon(poz.get("ikona"), size=20, color=poz.get("kolor") or ft.Colors.PRIMARY),
                 ft.Column(tresc, spacing=1, tight=True, expand=True),
@@ -296,11 +274,8 @@ def pokaz_menu_grupowane(page: ft.Page, tytul: str, grupy: list, podtytul: str |
 
 
 def pokaz_ostrzezenie(page: ft.Page, tytul, tresc, ikona=ft.Icons.WARNING_AMBER):
-    """Modalne okno z jednym przyciskiem — do rzeczy, których nie wolno przegapić.
-
-    Snackbar znika po kilku sekundach i nadaje się do potwierdzeń („Zapisano").
-    Odmowa wczytania kopii zapasowej potwierdzeniem nie jest: człowiek ma się
-    dowiedzieć, CZEMU nic się nie stało, i mieć czas to przeczytać."""
+    """Modalne okno z jednym przyciskiem — do rzeczy, których nie wolno przegapić (np.
+    odmowa wczytania kopii); snackbar jest do potwierdzeń."""
     dlg = ft.AlertDialog(
         modal=True,
         shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
@@ -347,16 +322,9 @@ def przejdz(page: ft.Page, trasa: str):
 
 
 def odswiez_ekran(page: ft.Page):
-    """Odświeża BIEŻĄCY ekran, nie ruszając stosu widoków.
-
-    `przejdz(page, page.route)` — używane dotąd przy zmianie sortowania, filtra
-    i po akcjach na wpisach — robi `page.views.clear()` i buduje wszystko od
-    nowa: nagłówek auta, oba paski, szufladę i listę. Efekt uboczny jest taki,
-    że ekran wraca na samą górę, bo nowa lista nie wie nic o starej.
-
-    Ekran, który potrafi odświeżyć samego siebie, wystawia `odswiez_w_miejscu()`
-    — wtedy wołamy jego metodę i nikt niczego nie przebudowuje. Reszta ekranów
-    dostaje starą drogę, więc to jest rozszerzenie, a nie zamiana."""
+    """Odświeża BIEŻĄCY ekran bez ruszania stosu. Ekran z `odswiez_w_miejscu()` odświeża
+    się sam (zostaje w miejscu); reszta idzie starą drogą `przejdz(page, page.route)` —
+    pełna przebudowa i powrót na górę."""
     widok = None
     try:
         widok = page.views[-1] if page.views else None

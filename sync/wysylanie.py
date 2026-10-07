@@ -15,19 +15,10 @@ from .pomocnicze import _hash_zawartosci, _paczki, _zapytanie_tabeli
 
 
 def _zgodny_z_zapamietanym(dane, zapamietany, dopisane=()):
-    """Czy treść rekordu to wciąż to, co zapamiętał `zdalny_hash`.
-
-    Kolumna z `dopisane` (patrz KONFIGURACJA_SYNC), dopóki jest pusta, nie
-    zmienia rekordu: hash sprzed jej dopisania liczył się bez tego klucza.
-    Bez tej tolerancji każdy wiersz tabeli wyglądałby po aktualizacji na
-    zmieniony, a porównanie z wersją w chmurze — na konflikt.
-
-    Dopisywano je w różnych wersjach, więc hash bywa „pomiędzy”: wpis
-    zsynchronizowany po dojściu robocizny, a przed gwarancją, ma pusty klucz
-    `koszt_robocizny`, ale kluczy gwarancji nie ma wcale. Dlatego próbujemy
-    bez KAŻDEGO zestawu pustych dopisanych kolumn, a nie tylko bez wszystkich
-    naraz. Fałszywej zgodności to nie daje: hash zgadza się tylko z treścią,
-    z której go policzono."""
+    """Czy treść rekordu to wciąż to, co zapamiętał `zdalny_hash`. Pusta kolumna z
+    `dopisane` nie zmienia rekordu (hash sprzed dopisania był bez niej). Hash bywa
+    „pomiędzy” wersjami, więc próbujemy bez KAŻDEGO zestawu pustych dopisanych kolumn;
+    fałszywej zgodności to nie daje."""
     dane = dane or {}
     if _hash_zawartosci(dane) == zapamietany:
         return True

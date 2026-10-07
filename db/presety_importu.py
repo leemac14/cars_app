@@ -1,24 +1,12 @@
-"""Gotowe presety importu z innych aplikacji: Fuelio, Drivvo, aCar, Simply Auto.
+"""Presety importu z innych aplikacji: Fuelio, Drivvo, aCar, Simply Auto. `TYPY_IMPORTU`
+(import_csv) mówi, CO da się zaimportować; preset — JAK wygląda plik aplikacji (sekcje,
+kolumny, formaty). Wynik to zwykłe tabele z gotowym mapowaniem, więc dalej działa ten
+sam mechanizm co przy ręcznym dopasowaniu.
 
-`TYPY_IMPORTU` (import_csv) opisuje, CO da się zaimportować: pola, walidację,
-deduplikację i zapis. Preset opisuje, JAK wygląda plik konkretnej aplikacji —
-w których sekcjach leżą tankowania, wydatki i serwis, jak nazywają się
-kolumny, w jakim formacie są daty, jednostki i flagi. Wynikiem są zwykłe
-tabele (nagłówki + wiersze) z gotowym mapowaniem kolumn, więc dalej działa
-dokładnie ten sam mechanizm walidacji i zapisu co przy ręcznym dopasowaniu,
-a człowiek może każde dopasowanie poprawić.
-
-Czego plik nie mówi wprost, preset wylicza i dopisuje jako nową kolumnę
-z opisem w nawiasie: datę z trzech kolumn albo w formacie z nagłówka pliku,
-litry z galonów, „do pełna” z flagi „częściowe”, źródło energii z kodu
-paliwa, nazwę kategorii z jej numeru. Liczby wyliczone są zapisane z kropką
-dziesiętną i bez separatora tysięcy.
-
-Formaty plików (sprawdzone na prawdziwych eksportach tam, gdzie się dało —
-patrz claude/presety-importu.md): Fuelio i Drivvo dzielą plik na sekcje
-znacznikami z „#”, aCar nazwami sekcji w osobnym wierszu, a Simply Auto
-trzyma wszystko w jednej tabeli z kolumną „Record Type”.
-"""
+Czego plik nie mówi wprost, preset dopisuje jako kolumnę z opisem w nawiasie (data z
+trzech kolumn, litry z galonów, „do pełna” z flagi, energia z kodu paliwa, kategoria z
+numeru); liczby wyliczone z kropką, bez separatora tysięcy. Formaty:
+claude/presety-importu.md."""
 
 from collections import Counter
 from datetime import date
@@ -173,15 +161,10 @@ def _nowy_wynik(aplikacja):
 
 
 def _czesc(wynik, typ, zrodlo, naglowki, wiersze, numery, kolumny, wyliczone=()):
-    """Dokłada do wyniku część pliku gotową dla `TYPY_IMPORTU[typ]`.
-
-    kolumny: {pole: indeks kolumny w `naglowki` albo None};
-    wyliczone: [(pole, nagłówek, funkcja(wiersz) -> str)] — dopisywane na
-    końcu każdego wiersza, a mapowanie pola wskazuje nową kolumnę.
-
-    Gdy preset nie znalazł kolumny dla pola wymaganego (plik z nowszej wersji
-    aplikacji, z innym układem), brakujące pola dopasowuje zwykły mechanizm po
-    nazwach nagłówków — i mówi o tym w uwagach, żeby człowiek to sprawdził."""
+    """Dokłada część pliku gotową dla `TYPY_IMPORTU[typ]`. kolumny: {pole: indeks w
+    `naglowki` albo None}; wyliczone: [(pole, nagłówek, funkcja(wiersz) -> str)]
+    dopisywane na końcu wiersza. Brak kolumny wymaganej → dopasowanie po nazwach
+    nagłówków i uwaga dla człowieka."""
     if not wiersze:
         return
     naglowki = list(naglowki)
@@ -292,10 +275,9 @@ _PUSTA_SEKCJA = ("", [], [], [])
 
 
 # ==================== FUELIO ====================
-# Kopia CSV z Fuelio (Fuelio/backup-csv, na Dysku Google także jako
-# vehicle-N-sync.csv.zip): „## Vehicle” (jednostki, format daty, zbiorniki),
-# „## Log” (tankowania), „## CostCategories” + „## Costs” (koszty z numerem
-# kategorii), dalej m.in. „## FavStations” i „## Category”.
+# Kopia CSV (Fuelio/backup-csv, na Dysku Google vehicle-N-sync.csv.zip): „## Vehicle”
+# (jednostki, format daty, zbiorniki), „## Log” (tankowania), „## CostCategories” + „##
+# Costs”, dalej m.in. „## FavStations”, „## Category”.
 
 
 def _to_fuelio(wiersze):
@@ -472,12 +454,10 @@ def _fuelio_koszty(wynik, sekcje, kolejnosc):
 
 
 # ==================== DRIVVO ====================
-# Eksport CSV z Drivvo (wersja Pro): sekcje „##Vehicle”, „##Refuelling”,
-# „##Expense”, „##Service” (w hiszpańskim eksporcie „#Reabastecimiento”,
-# „#Servicio”). Nagłówki kolumn i wartości („Yes” / „Tak” / „Sí”) są
-# tłumaczone razem z interfejsem, więc kolumny bierzemy z POZYCJI — tych
-# samych, na których od lat opiera się konwerter Fuelio (FuelioImport) —
-# i sprawdzamy, czy pod tymi pozycjami naprawdę są daty i liczby.
+# Eksport CSV (Pro): sekcje „##Vehicle”, „##Refuelling”, „##Expense”, „##Service” (po
+# hiszpańsku „#Reabastecimiento”, „#Servicio”). Nagłówki i wartości są tłumaczone, więc
+# kolumny bierzemy z POZYCJI (jak konwerter FuelioImport) i sprawdzamy, czy są tam daty
+# i liczby.
 
 _SEKCJE_DRIVVO = {
     "tankowania": {"refuelling", "refueling", "reabastecimiento", "reabastecimientos", "abastecimento",
@@ -571,11 +551,9 @@ def _rozbierz_drivvo(wiersze, pojazd=None):
 
 
 # ==================== aCar ====================
-# Eksport rekordów CSV z aCar: sekcje nazwane w osobnym wierszu („Fill-Up
-# Records”, „Service Records”, „Expense Records”, także „Vehicles”, „Trip
-# Records”), w każdej kolumna „Vehicle” — w jednym pliku bywa kilka aut.
-# Aplikacja amerykańska: daty MM/DD/RRRR, liczby „12,345” i „$45.67”,
-# jednostka dystansu i objętości w kolumnach obok wartości.
+# Sekcje nazwane w osobnym wierszu („Fill-Up Records”, „Service Records”, „Expense
+# Records”, „Vehicles”, „Trip Records”), w każdej kolumna „Vehicle” (kilka aut w pliku).
+# Daty MM/DD/RRRR, liczby „12,345” i „$45.67”, jednostki w kolumnach obok.
 
 _SEKCJE_ACAR = {
     "fill-up records": "tankowania", "fillup records": "tankowania", "fill up records": "tankowania",
@@ -702,10 +680,9 @@ def _rozbierz_acar(wiersze, pojazd=None):
 
 
 # ==================== SIMPLY AUTO ====================
-# Fuel_Log.csv z kopii Simply Auto: jedna tabela dla wszystkich pojazdów
-# („Vehicle ID”) i rodzajów wpisów („Record Type”: 0 tankowanie, 1 serwis,
-# 2 wydatek), data w trzech kolumnach Day / Month / Year, „Partial Tank” = 1
-# przy tankowaniu niepełnym. Opis serwisu i wydatku w „Record Desc”.
+# Fuel_Log.csv: jedna tabela dla pojazdów („Vehicle ID”) i rodzajów („Record Type”: 0
+# tankowanie, 1 serwis, 2 wydatek), data w Day / Month / Year, „Partial Tank” = 1 przy
+# niepełnym, opis w „Record Desc”.
 
 
 def _to_simply_auto(wiersze):
@@ -832,16 +809,11 @@ def rozpoznaj_aplikacje(wiersze) -> str | None:
 
 
 def rozbierz_plik_importu(aplikacja, wiersze, pojazd=None) -> dict:
-    """Plik z danej aplikacji (surowe wiersze z `wczytaj_wiersze_csv`)
-    rozłożony na części gotowe do importu:
-
-    {"czesci": [{"typ", "zrodlo", "naglowki", "wiersze", "numery", "mapowanie"}],
-     "pominiete": [(powód, liczba)], "jednostka": "km" | "mi" | None,
-     "pojazdy": [(klucz, etykieta, liczba)], "pojazd": klucz | None,
-     "nazwa_pojazdu": str | None, "uwagi": [str]}
-
-    `pojazdy` ma więcej niż jedną pozycję tylko przy pliku z kilkoma autami —
-    wtedy części zawierają wpisy wybranego (`pojazd` albo najczęstszego)."""
+    """Plik aplikacji (surowe wiersze z `wczytaj_wiersze_csv`) rozłożony na części do
+    importu: {"czesci": [{typ, zrodlo, naglowki, wiersze, numery, mapowanie}],
+    "pominiete": [(powód, liczba)], "jednostka": "km"|"mi"|None, "pojazdy": [(klucz,
+    etykieta, liczba)], "pojazd", "nazwa_pojazdu", "uwagi"}. Przy kilku autach części
+    mają wpisy wybranego (`pojazd` albo najczęstszego)."""
     wynik = PRESETY_IMPORTU[aplikacja]["rozbierz"](wiersze, pojazd)
     wynik["pominiete"] = wynik["pominiete"].most_common()
     return wynik

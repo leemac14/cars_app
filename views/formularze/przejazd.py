@@ -1,16 +1,8 @@
-"""Formularz przejazdu w ewidencji przebiegu (N-01).
-
-Jedno miejsce na nowy przejazd, jego poprawkę, powtórzenie („Powtórz dziś”)
-i trasę powrotną (skąd i dokąd zamienione miejscami). Przejazd wypełnia się
-ręcznie albo z zapisanej trasy — tej samej, którą zna kalkulator podróży —
-a podpowiedzi z historii (miejsca, cele, kierowcy, kilometry ostatniego takiego
-przejazdu) oszczędzają pisania.
-
-Kilometry wpisuje się w jedną stronę z przełącznikiem „tam i z powrotem”, jak
-w kalkulatorze; do bazy trafia CAŁY przejazd. Opcjonalny stan licznika po
-przejeździe liczy kilometry sam (od poprzedniego znanego stanu) i staje się
-kolejnym źródłem historii licznika.
-"""
+"""Formularz przejazdu w ewidencji (N-01): nowy, poprawka, „Powtórz dziś” i powrót
+(skąd/dokąd zamienione). Wypełnienie ręcznie albo z zapisanej trasy (jak w
+kalkulatorze), podpowiedzi z historii. Km w jedną stronę z przełącznikiem „tam i z
+powrotem” — do bazy idzie CAŁY przejazd. Opcjonalny licznik po przejeździe liczy km sam
+i jest źródłem historii licznika."""
 
 from datetime import date, datetime
 

@@ -1,18 +1,8 @@
-"""„Co przede mną”: słowa i kontrolki osi przyszłości (db.os_przyszlosci).
-
-Liczby liczy warstwa danych, tu składa się z nich zdania i wiersze — tak jak
-dla „Ile zostało do…” (utils/pojazd.py). Pozycje, które przyszły z odliczań
-(dokumenty, gwarancje, podzespoły, okrągły przebieg), mówią tymi samymi
-słowami co tamta lista (opis_odliczania, podpis_odliczania), żeby ten sam termin
-nie brzmiał w dwóch miejscach inaczej.
-
-Wiersz osi to kalendarz, nie odliczanie: z lewej dzień miesiąca dużą cyfrą
-i dzień tygodnia, z prawej nazwa, kwota i jedno zdanie. Kolor mówi to samo, co
-wszędzie: czerwony — po terminie albo ponad budżet, pomarańczowy — w progu
-przypomnienia, niebieski — informacja (okrągły przebieg, podpowiedź zmiany
-opon). Zwykły termin ma kolor akcentu, a założona kolejna wymiana — zwykły
-tekst: to rachunek „jeśli wszystko w terminie”, a nie termin.
-"""
+"""„Co przede mną”: słowa i kontrolki osi przyszłości (liczby z db.os_przyszlosci).
+Pozycje z odliczań mówią tymi samymi słowami co „Ile zostało do…” (opis_odliczania,
+podpis_odliczania). Wiersz to kalendarz: dzień miesiąca i tygodnia z lewej, nazwa, kwota
+i zdanie z prawej. Kolor jak wszędzie (czerwony, pomarańczowy, niebieski — informacja);
+zwykły termin w akcencie, zakładana kolejna wymiana — zwykłym tekstem."""
 
 import flet as ft
 

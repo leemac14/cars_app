@@ -1,12 +1,6 @@
-"""Warstwa danych aplikacji — baza SQLite, logika domenowa, eksport i import.
-
-Pakiet powstał z rozbicia jednego pliku db.py. Moduły są ułożone od najmniej
-zależnych do najbardziej: `stale`, `pamiec` i `polaczenie` nie zależą od
-niczego poza sobą, `migracje` (init_db) prawie na końcu, bo dotyka wszystkiego;
-za nią `manifest_kopii` (manifest i podgląd kopii), która czyta kosz i wersję schematu. Cały
-interfejs jest re-eksportowany tutaj, więc `import db` i `db.cokolwiek(...)`
-działa jak dawniej.
-"""
+"""Warstwa danych: SQLite, logika domenowa, eksport i import. Moduły ułożone od najmniej
+zależnych (`stale`, `pamiec`, `polaczenie`) do najbardziej (`migracje`, za nią
+`manifest_kopii`); całość re-eksportowana tutaj, więc działa `db.cokolwiek(...)`."""
 
 # Ten plik istnieje po to, żeby scalić moduły pakietu w jedną przestrzeń nazw —
 # gwiazdki i „nieużywane” importy są tu zamierzone.

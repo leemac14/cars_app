@@ -9,19 +9,11 @@ from .synchronizacja import zarejestruj_nagrobek
 
 
 # ============================================================================
-#  CHECKLISTY
+# CHECKLISTY
 # ============================================================================
-# Czym się różnią od listy „Do zrobienia”: pozycja z Do zrobienia znika po
-# wykonaniu (zamienia się we wpis serwisowy albo w wizytę), a checklista jest
-# WIELOKROTNEGO UŻYTKU — te same dziesięć punktów odhacza się przed każdą
-# dłuższą trasą i zeruje po powrocie. Trzymanie tego w do_zrobienia wymagałoby
-# co wyjazd przepisywania dziesięciu pozycji od nowa, a lista rzeczy do
-# załatwienia zamieniłaby się w rytuał.
-#
-# Stąd osobne tabele: `checklisty` (nagłówek) + `checklisty_pozycje` (punkty ze
-# stanem odhaczenia i kolejnością). Odhaczenie żyje w pozycji, bo to stan
-# BIEŻĄCEGO przejścia listy, a nie historia — historii przejść świadomie nie
-# zapisujemy, wystarczy `ostatnie_uzycie` w nagłówku.
+# W odróżnieniu od „Do zrobienia” — WIELOKROTNEGO UŻYTKU: odhacza się przed trasą i
+# zeruje po powrocie. Tabele `checklisty` (nagłówek, `ostatnie_uzycie`) i
+# `checklisty_pozycje` (stan odhaczenia, kolejność); historii przejść nie zapisujemy.
 
 
 def pobierz_checklisty(auto_id) -> list[dict[str, Any]]:
@@ -64,32 +56,6 @@ def pobierz_checklisty(auto_id) -> list[dict[str, Any]]:
             "procent": (zrobione / len(moje) * 100) if moje else 0.0,
         })
     return wynik
-
-
-def pobierz_checkliste(checklista_id):
-    """Pojedyncza checklista — do formularza edycji."""
-    if not checklista_id:
-        return None
-    with polacz_baze() as conn:
-        c = conn.cursor()
-        c.execute("SELECT id, auto_id, nazwa, opis, ostatnie_uzycie FROM checklisty WHERE id=?", (checklista_id,))
-        w = c.fetchone()
-        if not w:
-            return None
-        c.execute(
-            "SELECT id, tresc, odhaczone, kolejnosc FROM checklisty_pozycje "
-            "WHERE checklista_id=? ORDER BY kolejnosc, id",
-            (checklista_id,)
-        )
-        pozycje = [
-            {"id": p[0], "tresc": str(p[1] or ""), "odhaczone": bool(p[2]), "kolejnosc": int(p[3] or 0)}
-            for p in c.fetchall()
-        ]
-    return {
-        "id": w[0], "auto_id": w[1], "nazwa": str(w[2] or ""), "opis": str(w[3] or ""),
-        "ostatnie_uzycie": w[4], "pozycje": pozycje,
-        "razem": len(pozycje), "zrobione": sum(1 for p in pozycje if p["odhaczone"]),
-    }
 
 
 def _oczysc_pozycje(pozycje):
@@ -250,7 +216,6 @@ __all__ = [
     "aktualizuj_checkliste",
     "dodaj_checkliste",
     "odhacz_cala_checkliste",
-    "pobierz_checkliste",
     "pobierz_checklisty",
     "podsumowanie_checklist",
     "przelacz_pozycje_checklisty",

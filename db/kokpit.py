@@ -1,26 +1,11 @@
-"""Metryki kokpitu — dane wszystkich kafelków zebrane w jednym miejscu.
+"""Metryki kokpitu w jednym miejscu: `METRYKI_KOKPITU` — JAK liczy się metryka,
+`METRYKI_KAFELKOW` — CZEGO potrzebuje kafelek, `metryki_kokpitu()` — wszystko dla
+włączonych kafelków jednym wywołaniem, z pamięcią (db/pamiec.py) pod kluczem: metryka +
+pojazd + znacznik zmian + dzień. Powrót na kokpit bez zapisu nie pyta bazy; metryka
+wspólna liczy się raz.
 
-Kafelki pytały bazę każdy osobno i przy każdej przebudowie ekranu: komplet
-kafelków to ponad sto wejść do bazy, a na ekran główny wraca się po każdej
-czynności. Teraz:
-
-* `METRYKI_KOKPITU` mówi, JAK liczy się każda metryka,
-* `METRYKI_KAFELKOW` mówi, CZEGO potrzebuje każdy kafelek,
-* `metryki_kokpitu()` zbiera wszystko dla włączonych kafelków jednym
-  wywołaniem, a pamięć (db/pamiec.py) trzyma wynik pod kluczem: metryka +
-  pojazd + znacznik ostatniej zmiany danych + dzień.
-
-Powrót na kokpit bez żadnego zapisu po drodze nie pyta więc bazy o żadną
-liczbę. Metryka wspólna kilku kafelków liczy się raz: koszty miesięczne dla
-„Kosztu w mies.” i „Wydatków 6 mies.”, porównanie dla „Kosztu / km”
-i spalania. Kondycję i listę powiadomień pamięta już sama warstwa danych
-(pobierz_rozbicie_kondycji, pobierz_powiadomienia) — przy jednym wejściu na
-ekran główny liczyły je osobno kafelki, nagłówek pojazdu, dzwonek i porównanie.
-
-Każda metryka woła funkcje danych PO NAZWIE w chwili liczenia (lambda, nie
-gotowa referencja) — test, który podmienia funkcję danych we wszystkich
-modułach, podmienia ją wtedy także tutaj.
-"""
+Metryki wołają funkcje danych PO NAZWIE (lambda, nie referencja) — wtedy podmiana w
+testach działa też tutaj."""
 
 import calendar
 import time
@@ -188,12 +173,8 @@ def metryka_kokpitu(auto_id, nazwa) -> Any:
 
 
 def metryki_kokpitu(auto_id, widgety) -> dict[str, Any]:
-    """Dane podanych kafelków naraz: {nazwa metryki: wartość}.
-
-    Metryka wspólna kilku kafelków liczy się raz, a policzona wcześniej i nie
-    unieważniona zapisem — wcale. Gdy trzeba było coś policzyć, w logu zostaje
-    jedna linijka z czasem: tylko tak widać, ile kokpit kosztuje NA TYM
-    telefonie i jak często pamięć musi liczyć od nowa."""
+    """Dane podanych kafelków: {nazwa metryki: wartość}. Wspólna metryka liczy się raz,
+    nieunieważniona — wcale; po liczeniu w logu zostaje linijka z czasem."""
     potrzebne = []
     for wid in widgety:
         for nazwa in METRYKI_KAFELKOW.get(wid, ()):

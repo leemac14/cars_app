@@ -111,14 +111,9 @@ def _kropka_tagu(kolor, wyszarzona=False):
 
 def _zbuduj_popup_filtra(page: ft.Page, state, klucz_stanu, opcje, etykieta,
                          ikona_aktywna, ikona_nieaktywna, liczniki=None, kolory_opcji=None):
-    """Generyczna metoda budująca przycisk filtra z menu rozwijanym.
-
-    `liczniki` (opcja → ile wpisów zostanie po jej wybraniu) dopisuje liczbę
-    przy każdej opcji i przy włączonym filtrze na samym chipie. Bez nich chip
-    wygląda jak dawniej.
-
-    `kolory_opcji` (opcja → kolor tagu albo None) stawia kółko w kolorze przy
-    każdej opcji, a włączony filtr maluje chip kolorem wybranego tagu."""
+    """Przycisk filtra z menu rozwijanym. `liczniki` (opcja → ile wpisów zostanie)
+    dopisuje liczby przy opcjach i na włączonym chipie; `kolory_opcji` (opcja → kolor
+    tagu albo None) — kółka przy opcjach i kolor włączonego chipa."""
     aktualny_filtr = state.filtry.setdefault(klucz_stanu, WSZYSTKO)
     if aktualny_filtr not in opcje:
         aktualny_filtr = WSZYSTKO
@@ -209,33 +204,6 @@ def _chip_filtra(page: ft.Page, state, rodzaj, klucz_stanu, lista_danych, pole,
     )
 
 
-def przycisk_filtrowania_rok(page: ft.Page, state, klucz_stanu, lista_danych, index_daty,
-                             liczniki=None):
-    return _chip_filtra(page, state, "rok", klucz_stanu, lista_danych, index_daty,
-                        liczniki=liczniki)
-
-
-def przycisk_filtrowania_kategoria(page: ft.Page, state, klucz_stanu, lista_danych, index_pola,
-                                   etykieta="Tagi", liczniki=None):
-    return _chip_filtra(page, state, "kategoria", klucz_stanu, lista_danych, index_pola,
-                        etykieta=etykieta, liczniki=liczniki)
-
-
-def przycisk_filtrowania_autora(page: ft.Page, state, klucz_stanu, lista_danych, pole,
-                                liczniki=None):
-    """Filtr „Autor” obok Typ/Rok/Miesiąc. Opcje: Wszystko · Tylko moje ·
-    każda osoba, która cokolwiek dodała. Przy dwóch domownikach działa jak
-    przełącznik „tylko moje”, przy trzech od razu widać też konkretną osobę."""
-    return _chip_filtra(page, state, "autor", klucz_stanu, lista_danych, pole,
-                        liczniki=liczniki, moje=db.pobierz_moje_imie())
-
-
-def przycisk_filtrowania_miesiac(page: ft.Page, state, klucz_stanu, lista_danych, index_daty,
-                                 liczniki=None):
-    return _chip_filtra(page, state, "miesiac", klucz_stanu, lista_danych, index_daty,
-                        liczniki=liczniki)
-
-
 def filtruj_po_roku(lista_danych, state, klucz_stanu, index_daty):
     filtr = state.filtry.get(klucz_stanu, WSZYSTKO)
     if filtr == WSZYSTKO:
@@ -280,23 +248,12 @@ FILTROWANIE = {
 
 
 def pasek_filtrow(page: ft.Page, state, dane, specyfikacje):
-    """Chipy jednego paska filtrów plus dane przepuszczone przez nie wszystkie.
-
-    `specyfikacje` to krotki `(rodzaj, klucz_stanu, pole)` albo
-    `(rodzaj, klucz_stanu, pole, etykieta)`, w kolejności wyświetlania;
-    rodzaj: „rok”, „miesiac”, „kategoria”, „tag” (kategoria w kolorach
-    tagów), „autor”. Zwraca listę chipów (do
-    wsadzenia w `ft.Row(scroll=ADAPTIVE)`, razem z przyciskiem sortowania) i
-    listę po filtrach — dzięki temu opis filtra stoi w jednym miejscu, a nie
-    raz przy budowie chipa i drugi raz przy filtrowaniu.
-
-    Liczniki są KRZYŻOWE: przy opcji stoi liczba wpisów, które zostaną po jej
-    wybraniu, przy pozostałych filtrach ustawionych tak jak teraz. Dlatego
-    liczy CAŁY pasek naraz — pojedynczy chip liczyłby na surowej liście i
-    obiecywał wpisy, których po sąsiednim filtrze już nie ma.
-
-    Opcje biorą się z listy NIEfiltrowanej, żeby menu nie skakało przy każdej
-    zmianie sąsiada; te bez pokrycia dostają „(0)” i przestają być klikalne."""
+    """Chipy paska filtrów plus dane po wszystkich filtrach. `specyfikacje` — krotki
+    `(rodzaj, klucz_stanu, pole[, etykieta])` w kolejności wyświetlania; rodzaj: „rok”,
+    „miesiac”, „kategoria”, „tag” (kategoria w kolorach tagów), „autor”. Chipy do
+    `ft.Row(scroll=ADAPTIVE)` z przyciskiem sortowania. Liczniki KRZYŻOWE (przy
+    pozostałych filtrach), więc liczy cały pasek naraz; opcje z listy NIEfiltrowanej,
+    bez pokrycia — „(0)” i nieklikalne."""
     spec = [(s[0], s[1], s[2], s[3] if len(s) > 3 else None) for s in specyfikacje]
     moje = db.pobierz_moje_imie() if any(r == "autor" for r, _, _, _ in spec) else ""
     mapa_tagow = (db.mapa_kolorow_tagow(getattr(state, "auto_id", None))
@@ -357,8 +314,4 @@ __all__ = [
     "filtruj_po_roku",
     "filtruj_po_tagu",
     "pasek_filtrow",
-    "przycisk_filtrowania_autora",
-    "przycisk_filtrowania_kategoria",
-    "przycisk_filtrowania_miesiac",
-    "przycisk_filtrowania_rok",
 ]

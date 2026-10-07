@@ -22,13 +22,9 @@ def pobierz_tagi(auto_id) -> list[tuple[int, str, str]]:
 
 
 def mapa_kolorow_tagow(auto_id) -> dict[str, str]:
-    """{klucz_nazwy(tag): kolor} — do kolorowania tagów na listach wpisów.
-
-    Klucz, a nie sama nazwa, bo wpis trzyma tagi jako TEKST, a ten bywa
-    zapisany inaczej niż w słowniku: przy „myjnia” wpisanym do istniejącego
-    „MYJNIA” dodaj_tag nie zakłada drugiego tagu, ale wpis dostaje pisownię
-    z klawiatury. Szukany po nazwie taki tag wypadał ze słownika i udawał
-    domyślny niebieski. Do wyszukania koloru: `kolor_tagu(mapa, nazwa)`."""
+    """{klucz_nazwy(tag): kolor} do kolorowania tagów na listach. Klucz, bo wpis trzyma
+    tag jako TEKST i bywa w innej pisowni niż słownik. Kolor wyszukuje `kolor_tagu(mapa,
+    nazwa)`."""
     return {klucz_nazwy(nazwa): kolor for _, nazwa, kolor in pobierz_tagi(auto_id)}
 
 
@@ -39,10 +35,8 @@ def kolor_tagu(mapa, nazwa) -> str | None:
 
 
 def pierwszy_wolny_kolor_tagu(auto_id) -> str:
-    """Kolor dla nowego tagu: pierwszy z KOLEJNOSC_KOLOROW_TAGOW, którego nie ma
-    jeszcze żaden tag pojazdu. Wcześniej każdy nowy tag startował jako
-    „Niebieski” i zwykle tak zostawał — stąd lista wpisów, na której wszystkie
-    tagi wyglądały tak samo. Gdy paleta się skończy, kolory idą od nowa po kolei."""
+    """Kolor nowego tagu: pierwszy z KOLEJNOSC_KOLOROW_TAGOW nieużyty w pojeździe; po
+    wyczerpaniu palety od nowa."""
     tagi = pobierz_tagi(auto_id)
     zajete = {kolor for _, _, kolor in tagi}
     for kolor in KOLEJNOSC_KOLOROW_TAGOW:
@@ -82,11 +76,9 @@ def usun_tag_ze_slownika(auto_id, tag_id, nazwa):
 
 
 def edytuj_tag_w_slowniku(auto_id, tag_id, stara_nazwa, nowa_nazwa, nowy_kolor):
-    """Aktualizuje nazwę/kolor taga i kaskadowo podmienia ją w tekstowych
-    wpisach. Zwraca False (i niczego nie zmienia), gdy nowa nazwa to tylko
-    inna pisownia INNEGO tagu tego pojazdu — dwa tagi o jednym kluczu nie
-    dałyby się odróżnić ani w filtrze, ani przy kolorowaniu. Do połączenia
-    dwóch tagów służy narzędzie scalania duplikatów."""
+    """Zmienia nazwę/kolor tagu i kaskadowo podmienia nazwę we wpisach. False (bez
+    zmian), gdy nowa nazwa to inna pisownia INNEGO tagu pojazdu — do łączenia jest
+    scalanie duplikatów."""
     nowa_nazwa = normalizuj_nazwe(nowa_nazwa)
     if not nowa_nazwa:
         return False

@@ -130,12 +130,11 @@ def baner_kopii(page: ft.Page, stan, po_kopii=None):
 
 
 # ============================================================================
-#  PODGLĄD KOPII PRZED WCZYTANIEM
+# PODGLĄD KOPII PRZED WCZYTANIEM
 # ============================================================================
-# Wczytanie kopii było skokiem w ciemno: nie widać, z którego dnia jest plik, ile
-# w nim pracy ani czy nie jest uszkodzony. Okno pokazuje to, zanim cokolwiek
-# zostanie nadpisane — dla pliku wybranego ręcznie i dla kopii z listy
-# w Ustawieniach. Dane liczy db.podglad_kopii (db/manifest_kopii.py).
+# Okno z datą, zawartością i stanem kopii, zanim cokolwiek zostanie nadpisane — dla
+# pliku wybranego ręcznie i z listy w Ustawieniach. Dane: db.podglad_kopii
+# (db/manifest_kopii.py).
 
 # Nazwa typu wpisu w podglądzie, w odmianie jeden / kilka / wiele. Każda tabela
 # z db.KOSZ_TABELE_LICZONE musi tu być — pilnuje tego tests/test_manifest_kopii.py.
@@ -289,12 +288,9 @@ def _blok_sprawdzenia(podglad):
 
 
 def pokaz_podglad_kopii(page: ft.Page, podglad, po_potwierdzeniu):
-    """Modalne okno „Wczytać tę kopię?” z zawartością kopii (db.podglad_kopii).
-
-    Przy niezgodności z manifestem albo pliku nie do odczytania uwagi są czerwone,
-    a przycisk to „Wczytaj mimo to”: uszkodzona kopia bywa jedyną, jaką ktoś ma,
-    więc nie zamykamy jej na stałe — wymagamy tylko świadomego kroku. Kopia
-    z nowszej wersji aplikacji tu nie trafia (odmowa idzie osobnym oknem)."""
+    """Modalne „Wczytać tę kopię?” z zawartością (db.podglad_kopii). Niezgodność z
+    manifestem albo nieczytelny plik → czerwone uwagi i „Wczytaj mimo to” (świadomy
+    krok, nie blokada). Kopia z nowszej wersji tu nie trafia (osobne okno odmowy)."""
     z_uwagami = bool(podglad["uwagi"])
     kolor_tytulu = KOLOR_STATUS["warning"] if z_uwagami else ft.Colors.PRIMARY
 

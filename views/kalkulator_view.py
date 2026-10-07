@@ -75,10 +75,8 @@ class KalkulatorTrasyView(ft.View):
         self.e_dodatkowe = ft.TextField(label=f"Opłaty (autostrady, winiety) ({utils.symbol_waluty()})", value="0", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
 
         # --- Zapisane trasy ---
-        # Trasy się powtarzają: „do teściów” to zawsze te same 180 km, ta sama
-        # ekipa i ta sama winieta. Szablon zapamiętuje WYŁĄCZNIE te parametry —
-        # spalanie i cena paliwa zostają wyliczone z aktualnych tankowań, żeby
-        # trasa zapisana rok temu nie liczyła po zeszłorocznych cenach.
+        # Szablon pamięta WYŁĄCZNIE parametry trasy; spalanie i cena paliwa zawsze z
+        # aktualnych tankowań.
         self.rzad_tras = ft.Row(spacing=6, run_spacing=6, wrap=True,
                                 vertical_alignment=ft.CrossAxisAlignment.CENTER)
         self.karta_tras = ft.Container(

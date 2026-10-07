@@ -14,12 +14,8 @@ class ZaznaczanieGrupowe:
     i ewentualne przeliczenia różnią się w zależności od widoku)."""
 
     def dostosuj_wysokosc_listy(self):
-        """Metoda wywoływana przy zdarzeniu on_resized ekranu.
-        Dynamicznie przelicza wysokość dla wszystkich list wirtualizowanych w widoku.
-
-        Liczy DOKŁADNIE tak samo jak dopasuj_wysokosc_listy przy budowie widoku
-        (bierze pod uwagę liczbę kart), więc obrót ekranu nie przywraca pustego
-        prostokąta pod krótką listą."""
+        """Na on_resized ekranu przelicza wysokość wszystkich list wirtualizowanych —
+        DOKŁADNIE jak dopasuj_wysokosc_listy (z liczbą kart)."""
         if not getattr(self, "uzyj_wirtualizacji", False):
             return
 
@@ -47,14 +43,9 @@ class ZaznaczanieGrupowe:
             pass
 
     def zapomnij_listy_kart(self):
-        """Kasuje atrybuty `lista_kart*` i `wszystkie_karty*` po liście, która
-        właśnie zeszła z ekranu.
-
-        Zostawione wskazywałyby kontrolki spoza drzewa strony, a
-        `dostosuj_wysokosc_listy` przy obrocie ekranu woła na nich `update()` —
-        jeden taki wyjątek przerywa dopasowanie WSZYSTKICH list, także tej, którą
-        widać. Dopóki każda zmiana zakładki budowała widok od zera, problem nie
-        istniał: atrybuty znikały razem z obiektem."""
+        """Kasuje `lista_kart*` i `wszystkie_karty*` po liście, która zeszła z ekranu —
+        inaczej `dostosuj_wysokosc_listy` przy obrocie woła `update()` na kontrolkach
+        spoza strony, a jeden wyjątek przerywa dopasowanie wszystkich list."""
         for nazwa in [n for n in list(vars(self)) if n.startswith(("lista_kart", "wszystkie_karty"))]:
             delattr(self, nazwa)
 
@@ -68,14 +59,9 @@ class ZaznaczanieGrupowe:
         self.update()
 
     def wolno_zmieniac_zaznaczone(self):
-        """Czy pasek zaznaczania ma w ogóle pokazywać akcje zmieniające dane
-        (kosz, a w widokach pochodnych także edycję zbiorczą).
-
-        Pytamy o samą rolę, bez tabeli: przy roli podglądu grupowe usuwanie
-        odbije się o db i nie skasuje niczego, więc ikona obiecywałaby coś,
-        czego nie ma. Współautorowi zostaje — zaznaczenie zbiorcze wolno mu
-        mieć mieszane, a usun_wiele_z_cofnieciem kasuje to, do czego ma prawo,
-        i melduje, ile cudzych wpisów pominął."""
+        """Czy pasek zaznaczania pokazuje akcje zmieniające dane. Pytanie o samą rolę:
+        podglądowi nie (db i tak nic nie skasuje); współautorowi tak —
+        usun_wiele_z_cofnieciem kasuje jego wpisy i melduje pominięte cudze."""
         auto_id = getattr(getattr(self, "state", None), "auto_id", None)
         return wolno_zmieniac_rekord(auto_id)
 

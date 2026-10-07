@@ -1,20 +1,11 @@
-"""Kolumna `data_iso` — sortowalna kopia daty wpisu (migracja 44).
-
-`data` zostaje w formacie aplikacji (DD.MM.RRRR): ją widzi użytkownik, ją
-wysyła synchronizacja i ją drukuje eksport. Obok leży `data_iso` (RRRR-MM-DD),
-którą SQLite umie posortować i porównać zakresem, z indeksem
-(auto_id, data_iso). Wartość to zawsze `date.na_iso(data)` — nigdy nic innego.
-
-Kto zapisuje `data`, zapisuje też `data_iso`:
-- jawny SQL (formularze, import CSV, `db/*`) — w tym samym INSERT albo UPDATE;
-  pilnuje tego audyt w `tests/test_data_iso.py`;
-- wiersz jako słownik (rekord z chmury, migawka z kosza) — `uzupelnij_date_iso`;
-- kopia całego wiersza (cofnięcie usunięcia) — `data_iso` jedzie razem z `data`.
-
-Wyzwalacze SQLite załatwiłyby to w jednym miejscu, ale schemat parsuje się przy
-każdym `polacz_baze()`, a budowa ekranu głównego otwiera około pięćdziesięciu
-połączeń — z wyzwalaczami trwała ponad dwa razy dłużej.
-"""
+"""Kolumna `data_iso` (RRRR-MM-DD, migracja 44) — sortowalna kopia `data` (DD.MM.RRRR:
+tę widzi użytkownik, synchronizacja i eksport); indeks (auto_id, data_iso). Wartość
+zawsze `date.na_iso(data)`. Kto zapisuje `data`, zapisuje też `data_iso`:
+- jawny SQL — w tym samym INSERT/UPDATE (audyt `tests/test_data_iso.py`);
+- wiersz jako słownik (chmura, kosz) — `uzupelnij_date_iso`;
+- kopia całego wiersza — `data_iso` jedzie z `data`.
+Bez wyzwalaczy SQLite — z nimi budowa ekranu głównego (~50 połączeń) trwała ponad 2×
+dłużej."""
 
 from date import na_iso
 
@@ -47,12 +38,9 @@ def przelicz_daty_iso(conn, tabele=TABELE_Z_DATA_ISO) -> int:
 
 
 def warunek_zakresu_dat(kolumna, od_data=None, do_data=None) -> tuple[str, list]:
-    """Dopisek do WHERE zawężający `kolumna` (RRRR-MM-DD) do [od_data, do_data],
-    obie granice włącznie, każda może być None. Zwraca (" AND …", parametry).
-
-    Bez żadnej granicy — ("", []): wpis bez czytelnej daty zostaje w wyniku.
-    Z którąkolwiek — wypada, bo NULL nie spełnia porównania. Dokładnie tak
-    zachowywał się filtr w Pythonie, który ten warunek zastępuje."""
+    """Dopisek do WHERE: `kolumna` (RRRR-MM-DD) w [od_data, do_data] włącznie, granice
+    mogą być None; zwraca (" AND …", parametry). Bez granic — ("", []) i wpis bez daty
+    zostaje; z granicą — wypada (NULL)."""
     warunek, parametry = "", []
     if od_data:
         warunek += f" AND {kolumna} >= ?"

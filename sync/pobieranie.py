@@ -1,10 +1,5 @@
-"""Ściągnięcie zmian z chmury i wpisanie ich lokalnie — kierunek „stamtąd tu".
-
-`_zastosuj_rekord` jest lustrzanym odbiciem `_wypchnij_tabele` i ma ten sam
-ciężar gatunkowy: to on decyduje, czy przyjęta wersja nadpisze lokalną.
-Osobny moduł od wysyłania, bo obie strony wolno czytać niezależnie —
-przy błędzie synchronizacji pierwsze pytanie brzmi „w którą stronę".
-"""
+"""Ściągnięcie zmian z chmury („stamtąd tu”). `_zastosuj_rekord` — lustro
+`_wypchnij_tabele`: decyduje, czy przyjęta wersja nadpisze lokalną."""
 
 import db
 import sqlite3
@@ -16,11 +11,9 @@ from .wysylanie import _zgodny_z_zapamietanym
 
 
 def _pobierz_rekordy(klient, wspolny_id, tabela, znacznik=None, tylko_id=None):
-    """Rekordy jednej tabeli z chmury. Przy podanym znaczniku pobiera tylko to,
-    co zmieniło się od ostatniego razu — z porównaniem `>=`, a nie `>`, żeby
-    rekord zapisany w tej samej sekundzie co poprzedni odczyt nie wypadł
-    z synchronizacji na zawsze. Ponowne przetworzenie znanego rekordu nic nie
-    kosztuje: hasze się zgadzają i pętla go pomija."""
+    """Rekordy jednej tabeli z chmury; ze znacznikiem tylko zmienione — porównanie `>=`,
+    nie `>` (rekord z tej samej sekundy nie wypada). Ponowne przetworzenie znanego
+    rekordu pomija zgodny hash."""
     if tylko_id is not None:
         rekordy = []
         for paczka in _paczki(list(tylko_id)):
@@ -61,14 +54,9 @@ def _zastosuj_rekord(konfig, rekord, auto_id, znane):
     dane = rekord["dane"] or {}
     nowy_hash = _hash_zawartosci(dane)
 
-    # Bierzemy WYŁĄCZNIE pola, które faktycznie są w zdalnym rekordzie.
-    # Klucza brakuje tylko wtedy, gdy rekord wypchnęła STARSZA wersja
-    # aplikacji, nieznająca tej kolumny — a wtedy `dane.get()` zwracałoby
-    # None i wyczyściłoby wartość lokalnie. Przy notatkach oznaczałoby to
-    # ciche skasowanie ręcznie wpisanego tekstu tylko dlatego, że druga
-    # osoba nie zaktualizowała jeszcze aplikacji. Celowe wyczyszczenie pola
-    # po drugiej stronie wygląda inaczej — klucz JEST, tylko z null — więc
-    # nadal się propaguje.
+    # WYŁĄCZNIE pola obecne w zdalnym rekordzie: brak klucza = rekord ze STARSZEJ wersji
+    # aplikacji, a `dane.get()` wyczyściłoby wartość lokalną. Celowe wyczyszczenie
+    # przychodzi jako klucz z null.
     wartosci = {nazwa: dane.get(nazwa) for nazwa in kolumny if nazwa in dane}
     for pole_fk, tabela_fk in fk.items():
         zdalny_fk = dane.get(f"{pole_fk}_zdalne")
@@ -102,11 +90,8 @@ def _zastosuj_rekord(konfig, rekord, auto_id, znane):
                     return 0
         # -------------------------------------------------------------------------
 
-        # Tabele z naturalnym kluczem (dziś: budżety, z UNIQUE na
-        # kategoria+okres) nie mogą po prostu wstawić rekordu z chmury —
-        # trafiłyby w istniejący lokalny wiersz i wywróciły synchronizację
-        # na indeksie. Zamiast tego PRZEJMUJEMY ten wiersz: nadpisujemy jego
-        # wartości i przypinamy do niego zdalne id.
+        # Tabele z naturalnym kluczem (budżety: UNIQUE kategoria+okres) PRZEJMUJĄ
+        # istniejący lokalny wiersz zamiast wstawiać nowy.
         klucz_scalania = konfig.get("klucz_scalania")
         if klucz_scalania and all(k in wartosci for k in klucz_scalania):
             warunki = " AND ".join(f"{k}=?" for k in klucz_scalania)
@@ -176,12 +161,8 @@ def _pobierz_tabele(klient, wspolny_id, auto_id, konfig, znacznik=None, tylko_id
 
 
 def _synchronizuj_info_pojazdu(klient, wspolny_id, auto_id, rola=None):
-    """Karta pojazdu (marka, VIN, polisa, wiadomość statusu...) jako jeden rekord.
-
-    Współautor MOŻE ją zmieniać — to wspólny dowód rejestracyjny auta, a mieszka
-    w nim m.in. wiadomość statusu („zatankowany do pełna”), czyli dokładnie to,
-    po co zaprasza się drugą osobę. Podgląd wyłącznie czyta: nie zakłada rekordu
-    i nigdy nie wysyła swojej wersji."""
+    """Karta pojazdu jako jeden rekord. Współautor MOŻE ją zmieniać (m.in. wiadomość
+    statusu); podgląd tylko czyta — nie zakłada rekordu i nic nie wysyła."""
     rola = rola or db.ROLA_WLASCICIEL
     tylko_czytam = (rola == db.ROLA_PODGLAD)
     with db.polacz_baze() as conn:

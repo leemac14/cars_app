@@ -5,15 +5,10 @@ import utils
 
 
 class DoWpisaniaView(ft.View):
-    """„Do wpisania” (M-08) — kolejka paragonów sfotografowanych na później.
-
-    Każdy szkic to zdjęcie z datą i tym, co dopisano po migawce (rodzaj, licznik,
-    opis). Przycisk rodzaju otwiera formularz z datą, zdjęciem w załączniku
-    i podglądem paragonu na górze; po zapisie szkic znika, a formularz wraca
-    tutaj, dopóki coś jeszcze czeka. Kolejność: od najstarszego — w tej samej
-    kolejności licznik rośnie w tankowaniach.
-
-    Dane: db/szkice.py. Pola, miniatury i migawka: utils/szkice.py."""
+    """„Do wpisania” (M-08) — kolejka paragonów od najstarszego. Przycisk rodzaju
+    otwiera formularz z datą, zdjęciem i podglądem paragonu; po zapisie szkic znika, a
+    formularz wraca tutaj, dopóki coś czeka. Dane: db/szkice.py; pola, miniatury,
+    migawka: utils/szkice.py."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page

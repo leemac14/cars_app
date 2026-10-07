@@ -117,12 +117,9 @@ NAJWYZSZY_POZIOM = 3
 
 
 def tlo_karty(page: ft.Page = None, poziom=1):
-    """Tło powierzchni na zadanym stopniu drabinki.
-
-    W wariancie czystej czerni drabinka startuje od niemal czerni i rośnie
-    ledwie kilkoma stopniami szarości — na czarnym tle nawet 6% bieli to już
-    wyraźnie widoczna powierzchnia, a cały sens trybu OLED polega na tym, żeby
-    jak najwięcej pikseli zostało zgaszonych."""
+    """Tło powierzchni na zadanym stopniu drabinki. W czystej czerni drabinka zaczyna od
+    niemal czerni i rośnie ledwie kilkoma stopniami (OLED: jak najwięcej zgaszonych
+    pikseli)."""
     if czy_czysta_czern(page):
         udzial = DRABINKA_OLED.get(poziom)
     else:
@@ -153,11 +150,8 @@ def tlo_stanu(page: ft.Page = None, stan=None):
 
 
 def cien_karty(page: ft.Page = None, poziom="md"):
-    """Miękki, 'unoszący' cień w duchu Material 3 — WYŁĄCZNIE w trybie jasnym.
-    W trybie ciemnym cień jest ledwo czytelny na ciemnym tle i tylko brudzi
-    interfejs, dlatego zwracamy None — tam różnicujemy powierzchnie wyłącznie
-    jaśniejszym `bgcolor` (patrz `powierzchnia` niżej). Każdy poziom to
-    dwie warstwy (blisko + rozlana), jak w prawdziwych cieniach Material 3."""
+    """Cień Material 3 (dwie warstwy) — WYŁĄCZNIE w jasnym motywie; w ciemnym None, a
+    powierzchnie różnicuje jaśniejszy `bgcolor` (`powierzchnia`)."""
     if _czy_ciemny(page):
         return None
     warstwy = {
@@ -191,33 +185,17 @@ def obramowanie_karty(page: ft.Page = None):
     return ft.Border.all(1, ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE))
 
 
-# Ramka, wypełnienie, zaokrąglenie i cień to cztery sposoby powiedzenia „to jest
-# osobny obiekt". Użyte na wszystkim naraz spłaszczają hierarchię: jeśli każda
-# karta krzyczy tak samo głośno, to ważna karta niczym się nie wyróżnia.
-#
-# Dlatego powierzchnia opisuje się DWOMA rzeczami, a nie zestawem pól:
-#
-#   rola  — czym ten prostokąt JEST;
-#   stan  — jak głośno ma o sobie mówić.
-#
+# Powierzchnię opisują DWIE rzeczy: rola (czym prostokąt JEST) i stan (jak głośno mówi).
 # Role:
-#   "karta"  — leży na tle ekranu i mieści w sobie blok treści. Jasny motyw:
-#              delikatne tło + cień, który ją unosi. Ciemny: cienia nie widać,
-#              więc krawędź robi tło o stopień mocniejsze. OLED: tło minimalne,
-#              krawędź robi hairline'owa ramka.
-#   "kafel"  — jeden z wielu małych prostokątów w siatce (kokpit). To samo tło,
-#              ale BEZ cienia: siedemnaście cieni obok siebie to szum, a odstępy
-#              w siatce i tak już mówią, gdzie kończy się jeden kafel.
-#   "blok"   — kawałek WEWNĄTRZ karty. Samo tło o stopień wyżej od rodzica, bez
-#              cienia i bez ramki, mniejszy promień. Blok jest już w karcie, więc
-#              cień pod cieniem i promień 20 w promieniu 20 powtarzają informację,
-#              którą oko dostało sekundę wcześniej.
+# - „karta” — na tle ekranu; jasny: tło + cień, ciemny: tło o stopień mocniejsze, OLED:
+#   minimalne tło + cienka ramka;
+# - „kafel” — w siatce (kokpit): tło BEZ cienia;
+# - „blok” — WEWNĄTRZ karty: tło o stopień wyżej od rodzica, bez cienia i ramki,
+#   mniejszy promień.
 ROLE_POWIERZCHNI = ("karta", "kafel", "blok")
 
-# Stany, które SAME podnoszą powierzchnię o stopień (klucze z KOLOR_STATUS).
-# Kolor mówi „po terminie", a poziom sprawia, że kafel naprawdę wystaje z siatki
-# — bez tego kafel wymagający reakcji wygląda dokładnie tak samo jak kafel
-# z zasięgiem, a kokpit przestaje odpowiadać na pytanie „gdzie mam patrzeć".
+# Stany (klucze z KOLOR_STATUS), które SAME podnoszą powierzchnię o stopień — kafel
+# wymagający reakcji wystaje z siatki.
 STANY_PODNOSZACE = frozenset({"critical", "warning"})
 
 
@@ -234,12 +212,9 @@ def poziom_karty(page: ft.Page = None):
 
 def powierzchnia(page: ft.Page = None, rola="karta", stan=None, cien="sm",
                  poziom_rodzica=None):
-    """Gotowy zestaw {bgcolor, shadow, border, border_radius} do rozpakowania (**)
-    w Containerze. Rola decyduje o wszystkich czterech naraz — właśnie po to, żeby
-    nie dało się złożyć powierzchni z cieniem, ramką i trzema promieniami naraz.
-
-    `poziom_rodzica` podaje się TYLKO dla bloku leżącego w karcie podniesionej
-    stanem — żeby blok wszedł stopień wyżej od NIEJ, a nie od zwykłej karty."""
+    """{bgcolor, shadow, border, border_radius} do rozpakowania (**) w Containerze; rola
+    decyduje o wszystkich czterech naraz. `poziom_rodzica` TYLKO dla bloku w karcie
+    podniesionej stanem."""
     baza = poziom_karty(page)
     podniesiony = stan in STANY_PODNOSZACE
 
@@ -263,10 +238,7 @@ def powierzchnia(page: ft.Page = None, rola="karta", stan=None, cien="sm",
     }
 
 
-# Tło toru paska postępu. JEDNA wartość na całą aplikację: pasek budżetu, pasek
-# terminu i pasek checklisty pokazują to samo — ile z czegoś minęło — więc nie ma
-# powodu, żeby ich tory różniły się jasnością. Wcześniej chodziły w dwóch
-# odcieniach (0,08 i 0,12), zależnie od tego, kto pisał dany ekran.
+# Tło toru paska postępu — JEDNA wartość dla pasków budżetu, terminu i checklisty.
 UDZIAL_TLA_TORU = 0.12
 
 
@@ -286,12 +258,8 @@ def tlo_odznaki(page: ft.Page = None):
 
 
 def stan_z_koloru(kolor):
-    """Stan podnoszący odczytany z koloru, którym element i tak już się posługuje.
-
-    Kafle liczą swój kolor same (termin, bieżnik, budżet, magazyn) — i to on jest
-    jedynym miejscem, w którym wiedzą, jak bardzo jest źle. Zamiast dokładać drugi,
-    równoległy opis stanu, czytamy ten, który już istnieje: dzięki temu kolor
-    treści i kolor powierzchni nie mogą się rozjechać."""
+    """Stan podnoszący odczytany z koloru, którym element już się posługuje — kolor
+    treści i powierzchni nie mogą się rozjechać."""
     for nazwa in STANY_PODNOSZACE:
         if kolor == KOLOR_STATUS.get(nazwa):
             return nazwa
@@ -319,25 +287,16 @@ def _mieszaj_kolory(kolor_a, kolor_b, udzial):
     return tuple(int(round(k * 255)) for k in colorsys.hsv_to_rgb(h, s, v))
 
 
-# Ile miejsca zostawić POD treścią na pasek przewijania. Suwak Fleta rysuje się
-# przy dolnej krawędzi przewijanego obszaru, więc bez tej rezerwy leży na
-# kafelkach — a bez suwaka w ogóle nie widać, że pasek da się przesunąć, i myszą
-# nie ma czego złapać (Flutter nie pozwala przeciągać zawartości kursorem).
+# Rezerwa POD treścią na suwak przewijania — inaczej leży na kafelkach (a bez suwaka
+# myszą nie da się przewinąć).
 MIEJSCE_NA_SUWAK = 16
 
 
 def pasek_przewijany(kontrolki, spacing=10, miejsce_na_suwak=MIEJSCE_NA_SUWAK,
                      wyrownanie=ft.CrossAxisAlignment.CENTER):
-    """Poziomy pasek z widocznym, chwytalnym suwakiem, który NIE nachodzi na treść.
-
-    Wzorzec przeniesiony z ekranu porównania pojazdów, gdzie sprawdził się przy
-    szerokich tabelach: treść siedzi w kontenerze z dolnym paddingiem WEWNĄTRZ
-    przewijanego wiersza, więc suwak ląduje w tym marginesie, a nie na kaflach.
-
-    Używać tylko tam, gdzie zawartość naprawdę musi jechać w bok (mapa cieplna,
-    pasek kart sekcji). Paski filtrów i chipów lepiej ZAWIJAĆ — wtedy nie ma
-    czego przewijać i nic nie ginie za krawędzią. Kokpit z tego zrezygnował:
-    kafelki chowające się za krawędzią zamieniono na siatkę (ResponsiveRow)."""
+    """Poziomy pasek z chwytalnym suwakiem, który NIE nachodzi na treść (padding
+    wewnątrz przewijanego wiersza). Tylko dla treści, która musi jechać w bok (mapa
+    cieplna, karty sekcji); kokpit to siatka (ResponsiveRow)."""
     if not kontrolki:
         return ft.Container()
     return ft.Row(
@@ -350,18 +309,11 @@ def pasek_przewijany(kontrolki, spacing=10, miejsce_na_suwak=MIEJSCE_NA_SUWAK,
 
 
 def pasek_zawijany(kontrolki, spacing=6, run_spacing=6):
-    """Pasek małych kontrolek, który zamiast jechać w bok ZAWIJA się do drugiej
-    linijki.
-
-    NIE dla chipów filtrów i sortowania. `wrap=True` to we Flutterze `Wrap`,
-    które daje dziecku maxWidth równe szerokości paska — a chip zbudowany na
-    `PopupMenuButton` nie ma własnej szerokości i bierze wtedy wszystko, co
-    dostanie. Każdy filtr ląduje w osobnej linijce. Paski filtrów robi się przez
-    `ft.Row(controls=…, scroll=ft.ScrollMode.ADAPTIVE, spacing=8)` — tak wygląda
-    każdy inny ekran w tej aplikacji.
-
-    Zostaje dla kontrolek o własnej szerokości: przycisków z tekstem i chipów
-    ekranów w szufladzie."""
+    """Pasek kontrolek ZAWIJANY do następnej linijki — dla kontrolek z własną
+    szerokością (przyciski z tekstem, chipy ekranów w szufladzie). NIE dla chipów
+    filtrów i sortowania: `Wrap` daje dziecku pełną szerokość, a chip na
+    `PopupMenuButton` bierze wszystko (każdy filtr w osobnej linii). Paski filtrów:
+    `ft.Row(controls=…, scroll=ft.ScrollMode.ADAPTIVE, spacing=8)`."""
     if not kontrolki:
         return ft.Container()
     return ft.Row(kontrolki, spacing=spacing, run_spacing=run_spacing, wrap=True,

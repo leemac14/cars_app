@@ -1,23 +1,8 @@
-"""Saldo współdzielonego auta: kto ile zapłacił, kto komu ile jest winien
-i rozliczenia, które to saldo zerują.
-
-Saldo liczy się ZAWSZE z całej podpisanej historii, a rozliczenie jest
-migawką, nie datą odcięcia: zapamiętuje, ile każda osoba miała na plusie albo
-na minusie w chwili „Rozliczone”, i dokładnie tę kwotę się potem odejmuje.
-Data rozliczenia dzieli historię na okresy tylko po to, żeby każdy okres
-dzielił się po równo między osoby, które wtedy dzieliły auto — lista tych
-osób zostaje zapisana w rozliczeniu, więc późniejszy nowy domownik nie
-dostaje rachunku za zamknięte okresy.
-
-Skutek, dla którego to tak wygląda: wpis sprzed rozliczenia dopisany,
-poprawiony albo usunięty po nim — zapomniana myjnia, literówka w kwocie,
-tankowanie, które z drugiego telefonu doszło dzień później — nie przepada,
-tylko pojawia się w bieżącym saldzie jako korekta. Przy dacie odcięcia
-zniknąłby z rachunku bez śladu.
-
-Kwoty liczą się w groszach (int): suma sald ma wynosić dokładnie zero, a po
-rozliczeniu saldo ma być zerowe co do grosza, nie 0,0000001.
-"""
+"""Saldo współdzielonego auta: kto ile zapłacił, kto komu ile jest winien i rozliczenia,
+które je zerują. Saldo ZAWSZE z całej podpisanej historii; rozliczenie to migawka sald,
+nie data odcięcia — późniejsza zmiana starego wpisu trafia do bieżącego salda jako
+korekta. Data rozliczenia dzieli historię na okresy dzielone po równo między uczestników
+zapisanych w rozliczeniu. Kwoty w groszach (int) — suma sald dokładnie zero."""
 
 import json
 import uuid
@@ -90,12 +75,8 @@ def _wydatki(conn, auto_id, warianty):
 
 
 def _rozliczenia(conn, auto_id, warianty=None):
-    """Wszystkie rozliczenia pojazdu w kolejności dat, z flagą `liczy_sie`.
-
-    Dwa rozliczenia z tym samym poprzednikiem powstały niezależnie — zwykle
-    dwie osoby kliknęły „Rozliczone” każda u siebie, zanim telefony się
-    wymieniły danymi. Liczy się tylko pierwsze zapisane; drugie wyzerowałoby
-    to samo saldo jeszcze raz i odwróciło je na drugą stronę."""
+    """Rozliczenia pojazdu po datach z flagą `liczy_sie`: z dwóch o tym samym
+    poprzedniku (dwa telefony przed synchronizacją) liczy się tylko pierwsze zapisane."""
     warianty = warianty if warianty is not None else {}
     c = conn.cursor()
     c.execute(
@@ -175,18 +156,11 @@ def _policz_okres(pozycje, uczestnicy, saldo):
 
 
 def _policz(podpisane, aktywne, moje=None, do_dnia=None):
-    """Saldo w groszach z całej historii minus migawki rozliczeń.
-
-    `aktywne` — rozliczenia, które się liczą, w kolejności dat. `do_dnia` liczy
-    tak, jakby okres otwarty kończył się tego dnia: z tego powstaje migawka
-    nowego rozliczenia (wpis z późniejszą datą zostaje w nowym saldzie).
-
-    Uczestnicy okresu otwartego: uczestnicy ostatniego rozliczenia, każdy, kto
-    w tym okresie płacił, i ja — o ile przy tym aucie w ogóle coś dopisuję.
-    Ten, kto nic jeszcze nie zapłacił, też ponosi swoją część; bez tego jedna
-    osoba płacąca za wszystko wychodziłaby „kwita”. Płacący liczą się z CAŁEGO
-    okresu, także zza `do_dnia`: Ola, która pierwszy raz tankowała wczoraj,
-    dzieli auto także w rozliczeniu z datą sprzed tygodnia."""
+    """Saldo w groszach: cała historia minus migawki `aktywne`. `do_dnia` — okres
+    otwarty kończy się tego dnia (migawka nowego rozliczenia). Uczestnicy okresu
+    otwartego: uczestnicy ostatniego rozliczenia, każdy płacący w okresie (z CAŁEGO
+    okresu, także zza `do_dnia`) i ja, jeśli coś przy aucie dopisuję; niepłacący też
+    ponosi swoją część."""
     granice = [r["data"] for r in aktywne]
     okresy = [[] for _ in range(len(granice) + 1)]
     placacy_otwartego = set()
@@ -267,17 +241,11 @@ def _stan(conn, auto_id, do_dnia=None):
 # ============================================================================
 
 def saldo_rozliczen(auto_id, do_dnia=None) -> dict[str, Any]:
-    """Saldo pojazdu na dziś — albo takie, jakie wyzeruje rozliczenie z datą
-    `do_dnia` (podgląd w oknie „Rozliczone”).
-
-    {"osoby": [{"klucz", "osoba", "zaplacil", "przypada", "korekta", "saldo"}],
-     "przelewy": [{"od", "do", "kwota"}], "od_dnia": date | None,
-     "suma", "na_osobe", "uczestnikow", "bez_podpisu", "kwota_bez_podpisu",
-     "korekty", "rozliczen"}
-
-    `zaplacil` i `przypada` dotyczą okresu od ostatniego rozliczenia;
-    `korekta` to reszta salda — zmiany we wpisach z okresów już zamkniętych.
-    Saldo dodatnie: tej osobie inni oddają; ujemne: ta osoba oddaje. Kwoty
+    """Saldo na dziś albo po rozliczeniu z datą `do_dnia` (podgląd): {"osoby": [{klucz,
+    osoba, zaplacil, przypada, korekta, saldo}], "przelewy": [{od, do, kwota}],
+    "od_dnia", "suma", "na_osobe", "uczestnikow", "bez_podpisu", "kwota_bez_podpisu",
+    "korekty", "rozliczen"}. `zaplacil` i `przypada` — od ostatniego rozliczenia;
+    `korekta` — zmiany w okresach zamkniętych. Saldo dodatnie: tej osobie oddają. Kwoty
     w złotych."""
     pusty = {"osoby": [], "przelewy": [], "od_dnia": None, "suma": 0.0, "na_osobe": 0.0,
              "uczestnikow": 0, "bez_podpisu": 0, "kwota_bez_podpisu": 0.0,
@@ -321,12 +289,9 @@ def saldo_rozliczen(auto_id, do_dnia=None) -> dict[str, Any]:
 
 
 def pobierz_rozliczenia(auto_id) -> list[dict[str, Any]]:
-    """Historia rozliczeń, najnowsze na górze:
-    [{"id", "data", "przelewy": [{"od", "do", "kwota"}], "notatka",
-      "dodane_przez", "liczy_sie", "do_cofniecia"}].
-
-    Cofnąć można tylko ostatnie liczące się rozliczenie — wcześniejsze są
-    podstawą późniejszych — oraz każde równoległe, które i tak się nie liczy."""
+    """Historia rozliczeń od najnowszego: [{id, data, przelewy, notatka, dodane_przez,
+    liczy_sie, do_cofniecia}]. Cofnąć można ostatnie liczące się i każde równoległe
+    (nieliczące się)."""
     if not auto_id:
         return []
     with polacz_baze() as conn:

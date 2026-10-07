@@ -22,12 +22,10 @@ def bez_emoji(tekst):
     return re.sub(r"\s+", " ", _WZORZEC_EMOJI.sub("", str(tekst or ""))).strip()
 
 
-# Ten sam mechanizm, co klucz_stacji dla stacji paliw, tylko zastosowany szerzej:
-# „Filtr oleju”, „filtr Oleju” i „filtr oleju ” to jedna nazwa, a nie trzy
-# osobne pozycje w magazynie, w tagach, wśród warsztatów i podzespołów.
-# Klucz służy WYŁĄCZNIE do porównywania — w bazie zostaje pisownia użytkownika.
-# Mieszka tutaj, a nie w `nazwy` (scalanie duplikatów), bo grupuje też historię
-# cen części, którą czyta analiza — a ta ładuje się przed `nazwy`.
+# Jak klucz_stacji, ale szerzej: „Filtr oleju”, „filtr Oleju” i „filtr oleju ” to jedna
+# nazwa (magazyn, tagi, warsztaty, podzespoły). Klucz WYŁĄCZNIE do porównań — w bazie
+# zostaje pisownia użytkownika. Tutaj, a nie w `nazwy`, bo używa go też analiza
+# (ładowana przed `nazwy`).
 def klucz_nazwy(tekst):
     """Klucz porównawczy nazwy: bez emoji, bez wielkości liter, ze scalonymi
     białymi znakami i bez interpunkcji na brzegach."""
@@ -49,6 +47,15 @@ def _liczba_lub_none(tekst):
     return wartosc if (wartosc and wartosc > 0) else None
 
 
+def _dodatnia(wartosc):
+    """Liczba całkowita > 0 albo None — puste pole i zero znaczą „nie ustawiono”."""
+    try:
+        liczba = int(float(wartosc))
+    except (TypeError, ValueError):
+        return None
+    return liczba if liczba > 0 else None
+
+
 def parsuj_int_bezpiecznie(wartosc, domyslna=0):
     try:
         return int(wartosc)
@@ -62,12 +69,9 @@ SEPARATOR_TYSIECY = " "
 
 
 def _na_liczbe(wartosc):
-    """float albo None. Przyjmuje liczby i teksty zapisane po polsku ('1 234,56',
-    '45,20 zł') — tym samym parserem, co import CSV, żeby jedna wartość nie
-    czytała się różnie zależnie od tego, kto ją formatuje.
-
-    None znaczy „to nie jest liczba". Decyzję, co wtedy pokazać, podejmuje
-    wołający: ekran woli zero, eksport — pustą komórkę."""
+    """float albo None („to nie liczba”). Przyjmuje też polskie teksty ('1 234,56',
+    '45,20 zł') tym samym parserem co import CSV; co pokazać przy None, decyduje
+    wołający."""
     if isinstance(wartosc, bool):
         return float(wartosc)
     if isinstance(wartosc, (int, float)):
@@ -82,14 +86,8 @@ def _na_liczbe(wartosc):
 
 
 def liczba_na_tekst(wartosc, decimale=2, separator_tysiecy=""):
-    """JEDYNE miejsce, w którym liczba zamienia się w tekst.
-
-    Zaokrąglenie, przecinek dziesiętny i separator tysięcy siedzą tu raz —
-    wcześniej ekran, eksport i generator grafiki miały po własnej kopii tych
-    trzech linijek. Zaokrąglenia akurat się zgadzały, ale zgadzały się
-    przypadkiem: nic ich nie trzymało razem.
-
-    Zwraca None, gdy wejście nie jest liczbą (patrz `_na_liczbe`)."""
+    """JEDYNE miejsce, w którym liczba zamienia się w tekst (zaokrąglenie, przecinek,
+    separator tysięcy). None, gdy wejście nie jest liczbą (`_na_liczbe`)."""
     liczba = _na_liczbe(wartosc)
     if liczba is None:
         return None
@@ -105,11 +103,8 @@ def liczba_na_tekst(wartosc, decimale=2, separator_tysiecy=""):
 
 
 def formatuj_liczba_eksport(wartosc, decimale=2):
-    """Liczba do pliku eksportu: przecinek dziesiętny, bez separatora tysięcy.
-
-    Brak wartości daje PUSTĄ komórkę, nie zero — w arkuszu to są dwie różne
-    rzeczy, a suma kolumny z dopisanymi zerami kłamie o średniej. Tekst, który
-    nie jest liczbą, przechodzi bez zmian: w eksporcie bywają kolumny opisowe."""
+    """Liczba do pliku eksportu: przecinek, bez separatora tysięcy. Brak wartości →
+    PUSTA komórka, nie zero; tekst nieliczbowy przechodzi bez zmian."""
     if wartosc is None or wartosc == "":
         return ""
     tekst = liczba_na_tekst(wartosc, decimale)

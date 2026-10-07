@@ -95,15 +95,9 @@ def kontrast(kolor_a, kolor_b):
 
 
 def kolory_chipa_tagu(kolor):
-    """(tło, napis) chipa tagu w pełnym kolorze albo None, gdy koloru nie znamy.
-
-    `kolor` to nazwa z palety („Czerwony”) albo #RRGGBB. Napis — biały albo
-    prawie czarny, ten z WIĘKSZYM kontrastem: przy czerwonym, niebieskim
-    i zielonym wygrywa ciemny, przy indygo i fiolecie biały. Reguła zamiast
-    listy, żeby kolor spoza palety (#RRGGBB) też był czytelny.
-
-    None to sygnał dla chipa, że tag nie ma koloru — i ma tak wyglądać, zamiast
-    udawać niebieski, którego nikt nie wybrał."""
+    """(tło, napis) chipa tagu albo None (koloru nie znamy — chip bez koloru). `kolor` —
+    nazwa z palety albo #RRGGBB; napis biały albo prawie czarny, ten z WIĘKSZYM
+    kontrastem (reguła działa też dla #RRGGBB)."""
     tlo = HEX_KOLOROW.get(str(kolor or "").strip())
     if tlo is None and _hex_na_rgb(kolor) is not None:
         tlo = "#" + str(kolor).strip().lstrip("#").upper()
@@ -122,13 +116,8 @@ def bezpieczna_nazwa_pliku(tekst, domyslna="pojazd"):
 
 
 def formatuj_liczba(wartosc, decimale=2):
-    """Liczba na ekran: przecinek dziesiętny i spacja co trzy cyfry.
-
-    Zaokrąglanie i skład tekstu robi `db.liczba_na_tekst` — to samo, z którego
-    korzysta eksport i generator grafiki. Tutaj zostaje wyłącznie decyzja, co
-    pokazać, gdy wartości nie ma: ZERO, bo pusty kafelek na kokpicie myli
-    bardziej niż „0,00". Eksport w tej samej sytuacji zostawia pustą komórkę
-    i to jest różnica zamierzona, nie przeoczenie."""
+    """Liczba na ekran: przecinek i spacja co trzy cyfry (skład: `db.liczba_na_tekst`).
+    Brak wartości → ZERO (eksport daje pustą komórkę — różnica zamierzona)."""
     tekst = liczba_na_tekst(wartosc, decimale, SEPARATOR_TYSIECY)
     if tekst is None:
         tekst = liczba_na_tekst(0, decimale, SEPARATOR_TYSIECY)
@@ -145,17 +134,10 @@ FS = {
     "title": 16, "heading": 18, "display": 22,
 }
 
-# Kolor jest w tej aplikacji NOŚNIKIEM INFORMACJI, a nie dekoracją: czerwień
-# znaczy „po terminie”, bursztyn „zbliża się”, zieleń „w porządku”. Cała wartość
-# tego kodu stoi na jednym warunku — że ten sam odcień znaczy wszędzie to samo.
-# Wystarczy, że w trzech miejscach czerwień jest inna, a przestaje być kodem.
-#
-# Dlatego odcienie statusowe mieszkają TYLKO tutaj, a ekrany wołają je po nazwie
-# roli. Pilnuje tego audyt 8 w tests/audyty.py.
-#
-# Cztery role są dziś czerwone i to jest zamierzone: nazwa mówi, PO CO kolor stoi
-# w danym miejscu. Dzięki temu „odróżnij czerwień akcji usuwania od czerwieni
-# terminu” jest zmianą jednej linijki, a nie przeglądem stu miejsc.
+# Kolor jest NOŚNIKIEM INFORMACJI (czerwień — po terminie, bursztyn — zbliża się, zieleń
+# — w porządku), więc odcienie statusowe mieszkają TYLKO tutaj, a ekrany wołają je po
+# roli (audyt 8 w tests/audyty.py). Cztery role są czerwone celowo — nazwa mówi, PO CO
+# kolor stoi.
 KOLOR_STATUS = {
     # --- stan rzeczy w aucie ---
     "critical": ft.Colors.RED_700,            # już się wydarzyło: po terminie, zły stan
@@ -173,10 +155,8 @@ KOLOR_STATUS = {
 
 
 # ============== JEDNA RODZINA IKON (Material) ==============
-# W interfejsie nie używamy emoji — wyłącznie ft.Icons, żeby oznaczenia miały
-# jeden ciężar, jedną grubość kreski i podążały za kolorem motywu (emoji zawsze
-# zostaje w swojej palecie i w trybie ciemnym „krzyczy”). Warstwa danych (db.py)
-# nie zna Fleta, więc zwraca KLUCZE, a poniższe mapy tłumaczą je na ikony.
+# Bez emoji — wyłącznie ft.Icons. db nie zna Fleta, więc zwraca KLUCZE, a mapy niżej
+# tłumaczą je na ikony.
 
 IKONY_KOKPITU = {
     "koszt_miesiac": ft.Icons.ACCOUNT_BALANCE_WALLET,
@@ -213,12 +193,8 @@ IKONY_KOKPITU = {
 }
 
 
-# Sezony zestawów opon (db.SEZONY_OPON). Ta sama para ikon obsługuje kartę
-# zestawu w magazynie, kafelek kokpitu i komunikat po sezonowej zmianie, więc
-# „Zimowe” wyglądają wszędzie tak samo.
-# Umowy rat (db.TYPY_RAT): leasing to auto „wynajęte” do wykupu, kredyt — bank.
-# Te same ikony stoją w panelu wydatków cyklicznych, w dzwonku, na liście
-# „Ile zostało do…” i na ekranie „Leasing i kredyt”.
+# Sezony opon (db.SEZONY_OPON) i umowy rat (db.TYPY_RAT: leasing, kredyt) — te same
+# ikony wszędzie (magazyn, kokpit, dzwonek, „Ile zostało do…”, „Leasing i kredyt”).
 IKONY_UMOW_RAT = {
     "leasing": ft.Icons.CAR_RENTAL,
     "kredyt": ft.Icons.ACCOUNT_BALANCE,
@@ -239,11 +215,8 @@ KOLORY_SEZONU_OPON = {
 }
 
 
-# Klucze ikon obserwacji przychodzą z db.obserwacje_analityczne — warstwa
-# danych nie zna Fleta, więc mapowanie na konkretne ikony jest tutaj.
-# Źródła stanu licznika (db.ZRODLA_PRZEBIEGU) — ikona i kolor. Ten sam zestaw
-# obsługuje odznaki na kartach, punkty na wykresie i chipy w podsumowaniu, więc
-# „tankowanie” wygląda wszędzie tak samo.
+# Ikony obserwacji (klucze z db.obserwacje_analityczne) oraz ikona i kolor źródeł
+# licznika (db.ZRODLA_PRZEBIEGU) — wspólne dla kart, wykresu i chipów.
 IKONY_ZRODEL_PRZEBIEGU = {
     "odczyt": ft.Icons.SPEED,
     "tankowanie": ft.Icons.LOCAL_GAS_STATION,

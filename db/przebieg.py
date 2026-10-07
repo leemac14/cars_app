@@ -56,20 +56,11 @@ def pobierz_aktualny_przebieg(auto_id):
 
 
 def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
-    """Zwraca ostrzeżenie (str), jeśli nowy_przebieg nie pasuje do sąsiednich
-    w czasie wpisów tego auta: jest niższy niż najwyższy wpis z tej samej albo
-    wcześniejszej daty (np. brakująca cyfra), wyższy niż wpis z datą późniejszą,
-    albo oznaczałby nierealnie duży dzienny przebieg względem poprzedzającego
-    go wpisu (np. dodatkowa cyfra). Sprawdza tankowania, wizyty, odczyty,
-    przejazdy z ewidencji ze stanem licznika oraz pojedyncze wpisy w historii
-    (niepowiązane z wizytą zbiorczą — te powiązane odzwierciedla już przebieg
-    samej wizyty).
-
-    Porównujemy z sąsiadami W CZASIE, a nie z całą historią: paragon sprzed
-    miesiąca dopisany dziś ma legalnie niższy przebieg niż wczorajsze
-    tankowanie. Wpisy bez przebiegu (0 albo puste) nic o liczniku nie mówią
-    i są pomijane — wcześniej taki wpis z najnowszą datą robił za „ostatni
-    stan licznika” i każdy przebieg wyglądał przy nim na skok o cały licznik."""
+    """Ostrzeżenie (str), gdy nowy_przebieg nie pasuje do sąsiadów W CZASIE: niższy niż
+    najwyższy z tej samej lub wcześniejszej daty, wyższy niż wpis późniejszy albo z
+    nierealnym dziennym przebiegiem od poprzedniego. Źródła: tankowania, wizyty,
+    odczyty, przejazdy z licznikiem, wpisy historii spoza wizyty. Wpisy bez przebiegu (0
+    lub puste) pomijane."""
     if not auto_id or not nowy_przebieg or nowy_przebieg <= 0:
         return None
 
@@ -161,11 +152,8 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
 
 
 def sprawdz_czy_tankowanie_duplikat(auto_id, data_str, przebieg, kwota, wyklucz_id=None):
-    """Zwraca ostrzeżenie (str), jeśli dla tego pojazdu istnieje już tankowanie
-    z DOKŁADNIE tą samą datą, przebiegiem i kwotą — częsty efekt podwójnego
-    zapisu tego samego wpisu (np. dubel kliknięcia „Zapisz”). Analogicznie do
-    sprawdz_czy_przebieg_podejrzany: nie blokuje zapisu samodzielnie, tylko
-    sygnalizuje możliwy duplikat do potwierdzenia przez użytkownika."""
+    """Ostrzeżenie (str), gdy pojazd ma już tankowanie z DOKŁADNIE tą samą datą,
+    przebiegiem i kwotą (dubel „Zapisz”). Nie blokuje — prosi o potwierdzenie."""
     if not auto_id or not data_str:
         return None
 
@@ -192,11 +180,8 @@ def sprawdz_czy_tankowanie_duplikat(auto_id, data_str, przebieg, kwota, wyklucz_
 
 
 def sprawdz_czy_koszt_duplikat(auto_id, data_str, nazwa, kwota, wyklucz_id=None):
-    """Zwraca ostrzeżenie (str), jeśli dla tego pojazdu istnieje już inny koszt
-    z DOKŁADNIE tą samą datą, opisem i kwotą — częsty efekt podwójnego zapisu
-    tego samego wpisu (np. dubel kliknięcia „Zapisz”). Analogicznie do
-    sprawdz_czy_tankowanie_duplikat: nie blokuje zapisu samodzielnie, tylko
-    sygnalizuje możliwy duplikat do potwierdzenia przez użytkownika."""
+    """Ostrzeżenie (str), gdy pojazd ma już inny koszt z DOKŁADNIE tą samą datą, opisem
+    i kwotą. Nie blokuje — prosi o potwierdzenie."""
     if not auto_id or not data_str:
         return None
 
@@ -222,16 +207,9 @@ def sprawdz_czy_koszt_duplikat(auto_id, data_str, nazwa, kwota, wyklucz_id=None)
 
 
 def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7, punkty=None):
-    """Średni przebieg dzienny liczony na podstawie WSZYSTKICH źródeł przebiegu —
-    dokładnie tych samych, których używa pobierz_historie_przebiegu() (wykres
-    przebiegu w paszporcie PDF): tankowania, wizyty, pojedyncze wpisy historii
-    i ręczne odczyty. Wcześniej ta funkcja liczyła TYLKO z tankowań i odczytów
-    ręcznych — ktoś logujący wyłącznie wizyty serwisowe (bez tankowań w
-    aplikacji) zawsze dostawał None, a przez to znikały mu prognozy terminów
-    ("Zostanie ok. X dni") w powiadomieniach i na kartach podzespołów.
-
-    `punkty` — gotowy wynik pobierz_historie_przebiegu(), gdy wołający i tak
-    go ma (swiezosc_licznika); bez niego funkcja pobiera historię sama."""
+    """Średni przebieg dzienny ze WSZYSTKICH źródeł licznika — tych samych co
+    pobierz_historie_przebiegu() (tankowania, wizyty, wpisy historii, odczyty). `punkty`
+    — gotowa historia, gdy wołający już ją ma (swiezosc_licznika)."""
     if not auto_id:
         return None
 
@@ -255,12 +233,9 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7, punkty=None):
 
 
 def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
-    """Chronologiczna historia stanu licznika złożona ze wszystkich źródeł
-    (tankowania, wizyty, historia bez wizyty, ręczne odczyty, przejazdy
-    z ewidencji ze stanem licznika) — do wykresu
-    przebiegu w paszporcie pojazdu. Dla każdej daty zostaje zapisany najwyższy
-    zanotowany tego dnia przebieg; wynik jest posortowany chronologicznie.
-    Zwraca listę krotek (data_str, przebieg_int)."""
+    """Chronologiczna historia licznika ze wszystkich źródeł (tankowania, wizyty,
+    historia bez wizyty, odczyty, przejazdy z licznikiem) do wykresu w paszporcie; na
+    dzień najwyższy przebieg. Zwraca [(data_str, przebieg_int)]."""
     if not auto_id:
         return []
 
@@ -299,11 +274,8 @@ def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
 
 
 def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None, zrodlo=ZRODLO_ODCZYTU_DOMYSLNE):
-    """Zapisuje szybki, ręczny odczyt licznika (np. z deski rozdzielczej) w osobnym
-    dzienniku — bez tworzenia sztucznego tankowania czy wpisu serwisowego tylko po
-    to, by odświeżyć aktualny przebieg. Jeśli w danym dniu istnieje już odczyt,
-    aktualizuje go zamiast duplikować. Zwraca True, jeśli nadpisano istniejący
-    wpis z tego dnia, False, jeśli dodano zupełnie nowy."""
+    """Ręczny odczyt licznika w osobnym dzienniku; odczyt z tego samego dnia jest
+    nadpisywany. Zwraca True przy nadpisaniu, False przy nowym."""
     if not auto_id or not przebieg or przebieg <= 0:
         return False
     if not data_str:
@@ -326,40 +298,26 @@ def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None, zrodl
             )
             rekord_id, nadpisano = kursor.lastrowid, False
 
-    # Notatka POZA transakcją powyżej — zapisz_notatke otwiera własne połączenie
-    # i w środku otwartej transakcji potrafi zakleszczyć bazę (ten sam powód, co
-    # przy nagrobkach w formularzu wpisu).
-    # Pustej notatki celowo NIE zapisujemy: to ścieżka DODAWANIA, a przy trafieniu
-    # w istniejący odczyt z tego samego dnia wyczyściłaby notatkę, której formularz
-    # dodawania nawet nie pokazał. Kasowanie notatki idzie osobną drogą — przez
-    # edycję odczytu albo pozycję „Notatka” w jego menu.
+    # Notatka POZA transakcją — zapisz_notatke otwiera własne połączenie (w otwartej
+    # transakcji groziłoby zakleszczenie). Pustej celowo NIE zapisujemy: przy trafieniu
+    # w istniejący odczyt wyczyściłaby jego notatkę.
     if przytnij_notatke(notatka):
         zapisz_notatke("odczyty_przebiegu", rekord_id, notatka)
     return nadpisano
 
 
-# Ile razy średni dzienny przebieg musi zostać przekroczony, żeby uznać skok
-# licznika za podejrzany. Sześciokrotność bierze się stąd, że jeden wyjazd
-# wakacyjny potrafi dać 4-5× normy i NIE jest błędem — dopiero powyżej robi się
-# nieprawdopodobny. Dolny próg pilnuje aut jeżdżących mało: przy średniej
-# 3 km/dzień samo pomnożenie dałoby alarm po każdej wycieczce za miasto.
+# Krotność średniego dziennego przebiegu, od której skok licznika jest podejrzany
+# (wakacyjny wyjazd daje 4–5× i to nie błąd); dolny próg chroni auta jeżdżące mało.
 KROTNOSC_SKOKU_PRZEBIEGU = 6
 
 MIN_SKOK_PRZEBIEGU_NA_DZIEN = 400
 
 
 def pobierz_pelna_historie_przebiegu(auto_id) -> list[dict[str, Any]]:
-    """WSZYSTKIE znane stany licznika pojazdu, nie tylko ręczne odczyty.
-
-    Każde tankowanie, każda wizyta i każdy wpis serwisowy niosą przebieg — do tej
-    pory ta wiedza leżała rozrzucona po czterech ekranach, a historia licznika
-    pokazywała wyłącznie to, co ktoś wpisał osobno. Tutaj składamy jedno,
-    chronologiczne źródło prawdy o liczniku wraz z informacją, SKĄD każdy wpis
-    pochodzi i czy da się go stąd edytować.
-
-    Zwraca listę słowników posortowaną rosnąco po (data, przebieg), z policzonymi
-    już: dystansem od poprzedniego wpisu, liczbą dni, średnią dzienną na tym
-    odcinku i ewentualną anomalią ('cofka' albo 'skok')."""
+    """WSZYSTKIE znane stany licznika (tankowania, wizyty, wpisy serwisowe, odczyty) z
+    informacją, SKĄD pochodzą i czy da się je stąd edytować. Lista słowników rosnąco po
+    (data, przebieg) z dystansem i dniami od poprzedniego, średnią dzienną odcinka i
+    anomalią ('cofka'/'skok')."""
     if not auto_id:
         return []
 
@@ -521,23 +479,13 @@ def _zaokraglij_szacunek_km(km):
 
 
 def swiezosc_licznika(auto_id, dzis=None, aktualny_przebieg=None, sredni_dzienny=None) -> dict[str, Any] | None:
-    """Jak świeży jest stan licznika, z którego liczą się WSZYSTKIE prognozy
-    kilometrowe — interwały podzespołów, zasięg na baku, zużycie opon.
-
-    `dni` — ile dni minęło od ostatniego wpisu niosącego przebieg. To ten sam
-    wpis, który „Historia licznika” pokazuje jako ostatni (te same źródła
-    i te same filtry), więc dzwonek i tamten ekran nie powiedzą dwóch różnych
-    liczb. None = auto nie ma ani jednego przebiegu.
-
-    `nieswiezy` — dni doszły do progu z Ustawień albo przebiegu nie ma wcale,
-    a przypominanie jest włączone i auto nie jest sprzedane. `okres` — który to
-    już okres ciszy (1 = pierwszy); z każdego kolejnego dzwonek robi nowe
-    powiadomienie. `przebieg` — liczba, z której liczą prognozy
-    (pobierz_aktualny_przebieg). `przybylo_km` — ile mogło przybyć od tamtej
-    pory przy średnim tempie, w setkach km; None bez średniej.
-
-    `aktualny_przebieg` i `sredni_dzienny` może podać wołający, który je już
-    policzył (pobierz_powiadomienia). None tylko bez auta."""
+    """Świeżość stanu licznika, z którego liczą się WSZYSTKIE prognozy kilometrowe.
+    `dni` — od ostatniego wpisu z przebiegiem (tego samego, co ostatni w „Historii
+    licznika”; None bez przebiegu). `nieswiezy` — próg z Ustawień przekroczony albo brak
+    przebiegu, przypominanie włączone, auto niesprzedane. `okres` — numer okresu ciszy
+    (nowy = nowe powiadomienie); `przebieg` (pobierz_aktualny_przebieg); `przybylo_km` —
+    szacunek w setkach km albo None. `aktualny_przebieg` i `sredni_dzienny` może podać
+    wołający. None tylko bez auta."""
     if not auto_id:
         return None
     with polacz_baze() as conn:

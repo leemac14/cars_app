@@ -150,11 +150,8 @@ class FormularzAutoView(ft.View):
         self._typ_paliwa_przy_wejsciu = pal_val
         self.odrzucone_podzespoly = set()
         self.e_skrz = ft.Dropdown(label="Skrzynia biegów", options=[ft.DropdownOption(key=x, text=x) for x in ["Manualna", "Automatyczna"]], value=skrz_val, **utils.styl_dropdown())
-        # Nadwozie służy przede wszystkim ODZNACE w selektorze pojazdów: sylwetka
-        # w kolorze auta pozwala rozpoznać je bez czytania nazwy. Puste = ogólna
-        # ikona samochodu, więc pole jest w pełni opcjonalne.
-        # Bateria i zasięg mają sens tylko przy napędzie z prądem — przy diesla
-        # byłyby dwoma pustymi polami do przewinięcia.
+        # Nadwozie służy ODZNACE w selektorze (sylwetka w kolorze auta); puste = ogólna
+        # ikona. Bateria i zasięg tylko przy napędzie z prądem.
         def czy_naped_z_pradem(typ):
             return typ in db.TYPY_PALIWA_ELEKTRYCZNE or typ in db.TYPY_PALIWA_DWUZRODLOWE
 
@@ -311,11 +308,8 @@ class FormularzAutoView(ft.View):
             "Kolor interfejsu dla tego pojazdu", ft.Icons.PALETTE
         )
         # --- LISTA STARTOWA PODZESPOŁÓW (tylko nowy pojazd) ---
-        # Dotąd zakładała się po cichu przy zapisie i to wystarczało, bo była
-        # jedna, benzynowa. Odkąd skład zależy od napędu, trzeba go pokazać
-        # PRZED zapisem: inaczej użytkownik nie wie ani co dostał, ani czego
-        # w jego aucie brakuje. Odklikanie zostaje zapamiętane po kluczu nazwy,
-        # więc przełączenie napędu w tę i z powrotem go nie gubi.
+        # Skład zależy od napędu, więc pokazujemy go PRZED zapisem; odznaczenia
+        # zapamiętane po kluczu nazwy (przeżywają przełączanie napędu).
         self.pasek_podzespolow = ft.Container()
         self.podpis_podzespolow = ft.Text("", size=utils.FS["caption"],
                                           color=ft.Colors.ON_SURFACE_VARIANT)
@@ -599,14 +593,10 @@ class FormularzAutoView(ft.View):
                 if db.klucz_nazwy(poz[0]) not in self.odrzucone_podzespoly]
 
     def _zaproponuj_podzespoly_po_zmianie_napedu(self):
-        """Po zmianie typu paliwa w istniejącym aucie: propozycja dopisania
-        pozycji, których ten napęd wymaga, a pojazd ich nie ma.
-
-        Pyta, a nie dopisuje po cichu, bo to lista użytkownika. Niczego nie
-        usuwa — auto po demontażu instalacji gazowej ma prawo zachować historię
-        reduktora i butli. Dialog otwieramy PO przejściu na kokpit (dialog żyje
-        na page, nie w widoku), więc „Anuluj” zostawia użytkownika tam, gdzie
-        i tak by wylądował."""
+        """Po zmianie typu paliwa: propozycja dopisania brakujących podzespołów nowego
+        napędu. Pyta, nie dopisuje po cichu, i niczego nie usuwa. Dialog PO przejściu na
+        kokpit (żyje na page), więc „Anuluj” zostawia tam, gdzie i tak by się
+        wylądowało."""
         if not self.auto_id:
             return
         nowy = db.klucz_nazwy(self.e_pal.value)

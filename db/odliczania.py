@@ -1,33 +1,15 @@
-"""„Ile zostało do…” — wszystko, co w aucie ma koniec, na jednej liście.
-
-Dzwonek pokazuje tylko to, co już weszło w próg powiadomienia, Karta pojazdu —
-same dokumenty, zakładka Serwis — same podzespoły. Pytanie zadawane najczęściej
-po otwarciu aplikacji („ile jeszcze do przeglądu, do OC, do oleju?”) nie miało
-miejsca, w którym odpowiedź stoi w jednym rzędzie. Tu stoją: terminy dokumentów,
-limit przebiegu gwarancji, gwarancje napraw, każdy podzespół z interwałem
-i najbliższy okrągły przebieg — od najbliższego.
-
-Nic nie liczy się tu po swojemu. Dokumenty biorą dni i status z
-`terminy_pojazdu` (te same progi, co powiadomienia), podzespoły — z
-`oblicz_stan_interwalu` (ten sam licznik „najpierw”, co karta w Serwisie
-i dzwonek), gwarancje napraw — z `gwarancje_pojazdu` (ta sama ostatnia wymiana,
-co karta w Serwisie), prognozy dat — z tego samego średniego przebiegu
-dziennego. Nowy jest tylko pasek: jaka część okresu już minęła.
-
-  • dokument — rok przed terminem: OC, AC, assistance i przegląd odnawia się
-    co rok, a początku okresu baza nie trzyma;
-  • gwarancja producenta — od pierwszej rejestracji, a bez niej od zakupu; bez
-    żadnej z tych dat pasek nie ma początku (None) — zgadnięta długość
-    gwarancji kłamałaby bardziej niż brak paska;
-  • limit przebiegu gwarancji — od zera na liczniku;
-  • gwarancja naprawy — od dnia (albo licznika) wymiany; tylko ta, która
-    jeszcze trwa — po końcu nie ma już czego odliczać;
-  • podzespół — zużycie interwału licznika, który skończy się pierwszy;
-  • okrągły przebieg — od poprzedniej okrągłej liczby;
-  • leasing i kredyt — do ostatniej raty (wykup płaci się w jej terminie),
-    a pasek to część zapłaconych płatności umowy, nie czasu: zaległa rata
-    zostaje na nim widoczna (db/raty.py).
-"""
+"""„Ile zostało do…” — wszystko, co w aucie ma koniec, na jednej liście od najbliższego:
+dokumenty, limit przebiegu gwarancji, gwarancje napraw, podzespoły z interwałem, okrągły
+przebieg, leasing i kredyt. Nic nie liczy się tu po swojemu: `terminy_pojazdu`,
+`oblicz_stan_interwalu`, `gwarancje_pojazdu` i ten sam średni przebieg dzienny. Nowy
+jest tylko pasek (część minionego okresu):
+- dokument — rok przed terminem;
+- gwarancja producenta — od pierwszej rejestracji, bez niej od zakupu, bez obu None;
+- limit przebiegu — od zera; gwarancja naprawy — od wymiany, tylko trwająca;
+- podzespół — licznik, który skończy się pierwszy; okrągły przebieg — od poprzedniej
+  okrągłej liczby;
+- leasing i kredyt — do ostatniej raty, pasek = część zapłaconych płatności
+  (db/raty.py)."""
 
 import sqlite3
 from datetime import datetime, timedelta
@@ -37,6 +19,7 @@ from date import parsuj_date
 
 from .stale import KLUCZE_TERMINOW_Z_OFERTA, KM_W_MILI, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
+from .pomocnicze import _dodatnia
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km
 from .jednostki import dystans_z_km, jednostka_dystansu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
@@ -65,15 +48,6 @@ POCZATEK_REJESTRACJA = "rejestracja"
 POCZATEK_ZAKUP = "zakup"
 
 
-def _dodatnia(wartosc):
-    """Liczba całkowita > 0 albo None — puste pole i zero znaczą „nie ustawiono”."""
-    try:
-        liczba = int(float(wartosc))
-    except (TypeError, ValueError):
-        return None
-    return liczba if liczba > 0 else None
-
-
 def _rok_wczesniej(dzien):
     """Ten sam dzień rok wcześniej; 29 lutego cofa się na 28."""
     try:
@@ -92,12 +66,8 @@ def _udzial(poczatek, koniec, dzis):
 
 
 def _poczatek_gwarancji(dane, koniec):
-    """(data, skąd) początku gwarancji producenta albo (None, None).
-
-    Gwarancja rusza z dniem pierwszej rejestracji (wydania auta pierwszemu
-    właścicielowi) — auto kupione z drugiej ręki ma ją krótszą o tyle, ile już
-    jeździło. Data zakupu to zastępstwo dla aut kupionych nowych bez wpisanej
-    rejestracji. Data, która nie jest PRZED końcem gwarancji, to literówka."""
+    """(data, skąd) początku gwarancji producenta albo (None, None): pierwsza
+    rejestracja, a bez niej data zakupu. Data nie PRZED końcem gwarancji to literówka."""
     for kolumna, skad in (("data_pierwszej_rejestracji", POCZATEK_REJESTRACJA),
                           ("data_zakupu", POCZATEK_ZAKUP)):
         dzien = parsuj_date(dane.get(kolumna))
@@ -301,28 +271,15 @@ def _klucz_kolejnosci(pozycja):
 
 
 def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
-    """Wszystkie odliczania pojazdu od najbliższego. Pozycja to słownik:
-
-    * klucz, rodzaj ("dokument" / "gwarancja_km" / "gwarancja_naprawy" /
-      "podzespol" / "przebieg" / "rata"),
-      ikona (klucz ikony), tytul (None przy pozycjach, których nazwa zależy od
-      jednostki dystansu), trasa (dokąd prowadzi dotknięcie wiersza);
-    * dni — do końca (ujemne: po terminie; None: nie wiadomo, np. kilometry bez
-      średniego przebiegu albo już przekroczone), data (koniec; przy
-      kilometrach prognozowany), prognoza (czy data jest prognozą);
-    * zostalo_km — przy licznikach w kilometrach (ujemne: przekroczone),
-      cel_km i od_km — gdzie licznik się kończy i skąd liczy pasek;
-    * udzial — jaka część okresu minęła (0–1; None: okres bez początku),
-      poczatek i poczatek_z — skąd pasek dokumentu liczy okres;
-    * drugi — drugi licznik podzespołu (z db.oblicz_stan_interwalu) albo None;
-    * gwarancja — pełny stan gwarancji naprawy (z db.gwarancje_pojazdu) albo None;
-    * status — "po_terminie" / "blisko" / "ok" / "info" (okrągły przebieg);
-    * opis_oferty — zdanie z notatki „najlepsza oferta OC/AC” przy OC i AC;
-      gdzie indziej i bez notatki None;
-    * rata — harmonogram umowy (db.harmonogram_umowy) przy rodzaju "rata",
-      gdzie indziej None.
-
-    Sprzedane auto nie ma już czego odliczać — lista jest pusta."""
+    """Odliczania pojazdu od najbliższego; sprzedane auto — pusta lista. Klucze pozycji:
+    - klucz, rodzaj
+      („dokument”/„gwarancja_km”/„gwarancja_naprawy”/„podzespol”/„przebieg”/„rata”),
+      ikona, tytul (None, gdy nazwa zależy od jednostki), trasa;
+    - dni (ujemne: po terminie; None: nie wiadomo), data, prognoza;
+    - zostalo_km, cel_km, od_km; udzial (0–1, None bez początku), poczatek, poczatek_z;
+    - drugi (drugi licznik podzespołu), gwarancja (stan gwarancji naprawy), status
+      („po_terminie”/„blisko”/„ok”/„info”), opis_oferty (OC i AC), rata (harmonogram
+      umowy)."""
     if not auto_id:
         return []
     dane = pobierz_dane_pojazdu(auto_id)

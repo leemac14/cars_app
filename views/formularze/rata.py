@@ -1,18 +1,10 @@
-"""Formularz umowy leasingu albo kredytu (M-22).
-
-Jedno miejsce na nową umowę, jej poprawkę i PRZESTAWIENIE raty wpisanej dotąd
-jako zwykły wydatek cykliczny: ten sam wiersz `wydatki_cykliczne` dostaje
-rodzaj umowy i jej dane, więc przypomnienie, zapłacone już raty w Innych
-kosztach i synchronizacja zostają, jak były.
-
-Rata liczy się na trzy sposoby (pole „Jak liczyć raty”):
-  • rata z umowy — wpisana kwota; oprocentowanie wynika z niej i z kwoty
-    finansowania (bez kwoty są same sumy rat);
-  • rata z oprocentowania — rata równa liczona przez aplikację;
-  • raty malejące (tylko kredyt) — stała część kapitałowa plus odsetki od salda.
-Podgląd pod polami liczy harmonogram na bieżąco tym samym rachunkiem, co ekran
-„Leasing i kredyt” (db.harmonogram_umowy).
-"""
+"""Formularz umowy leasingu albo kredytu (M-22): nowa, poprawka i PRZESTAWIENIE zwykłego
+wydatku cyklicznego na umowę (ten sam wiersz `wydatki_cykliczne` — przypomnienie,
+zapłacone raty i sync zostają). Sposoby liczenia raty:
+- z umowy — wpisana kwota, oprocentowanie z niej i kwoty finansowania;
+- z oprocentowania — rata równa liczona przez aplikację;
+- malejące (tylko kredyt) — stała część kapitałowa + odsetki od salda.
+Podgląd liczy db.harmonogram_umowy (jak ekran „Leasing i kredyt”)."""
 
 from datetime import datetime
 

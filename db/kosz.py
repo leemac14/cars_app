@@ -23,13 +23,11 @@ def _upewnij_folder_kosza():
 
 
 # ============================================================================
-#  KOSZ NA USUNIĘTE POJAZDY
+# KOSZ NA USUNIĘTE POJAZDY
 # ============================================================================
-# Usunięcie auta nie kasuje już danych: cały pojazd (tabela samochody + wszystkie
-# tabele potomne) trafia jako migawka JSON do kosz_pojazdy, a fizyczne zdjęcia do
-# FOLDER_KOSZ. Snackbar "Cofnij" przywraca od razu; bez cofnięcia pojazd czeka w
-# koszu do ręcznego przywrócenia albo do wygaśnięcia retencji (patrz
-# pobierz_dni_kosza / posprzataj_kosz).
+# Usunięte auto (samochody + tabele potomne) trafia jako migawka JSON do kosz_pojazdy,
+# zdjęcia do FOLDER_KOSZ. „Cofnij” przywraca od razu; potem czeka do przywrócenia albo
+# końca retencji (pobierz_dni_kosza / posprzataj_kosz).
 
 # Kolejność MA ZNACZENIE przy odtwarzaniu — klucz obcy wymaga, żeby rodzic
 # istniał wcześniej: historia zależy od zadań i wizyt, wizyta_czesci_magazynu od
@@ -77,12 +75,9 @@ KOSZ_KLUCZE_OBCE = {
 }
 
 
-# Tabele, których zdalne odpowiedniki trzeba oznaczyć jako usunięte na serwerze.
-# CELOWO używane dopiero przy TRWAŁYM kasowaniu z kosza — dopóki auto siedzi w
-# koszu, u współdzielących nadal istnieje.
-# Lista MUSI pokrywać się z sync.KONFIGURACJA_SYNC — pilnuje tego
-# tests/test_schemat.py. Tabela synchronizowana, której tu brakuje, zostaje
-# u współdzielących na zawsze, bo nikt nie zgłasza jej usunięcia na serwer.
+# Tabele, których odpowiedniki na serwerze oznaczamy jako usunięte — CELOWO dopiero przy
+# TRWAŁYM kasowaniu z kosza. Lista MUSI pokrywać się z sync.KONFIGURACJA_SYNC
+# (tests/test_schemat.py); brakująca tabela zostałaby u współdzielących na zawsze.
 KOSZ_TABELE_SYNCHRONIZOWANE = [
     "zadania", "wizyty", "magazyn_czesci", "tankowania", "inne_koszty",
     "zestawy_opon", "odczyty_przebiegu", "warsztaty", "wydatki_cykliczne",
@@ -124,14 +119,10 @@ def _zrzut_tabeli_pojazdu(c, tabela, auto_id):
 
 
 def usun_auto_do_kosza(auto_id):
-    """Przenosi pojazd wraz z całą historią i zdjęciami do kosza.
-
-    Zwraca słownik zgodny z utils.pokaz_komunikat_cofnij: "cofnij" przywraca auto
-    natychmiast i zdejmuje je z kosza, a "finalizuj" (wywoływane po wygaśnięciu
-    snackbara) NIE kasuje już niczego — pojazd zostaje w koszu. Dodatkowo
-    "przywrocone_id" niesie ID pojazdu po cofnięciu (nie musi być tym samym, co
-    przed usunięciem), żeby interfejs mógł wrócić na właściwe auto.
-    """
+    """Przenosi pojazd z historią i zdjęciami do kosza. Zwraca słownik dla
+    utils.pokaz_komunikat_cofnij: „cofnij” przywraca auto i zdejmuje je z kosza,
+    „finalizuj” NIE kasuje niczego (auto zostaje w koszu); „przywrocone_id” — ID po
+    cofnięciu (może być inne)."""
     if not auto_id:
         return None
 
@@ -292,13 +283,9 @@ def liczba_w_koszu():
 
 
 def przywroc_auto_z_kosza(kosz_id):
-    """Przywraca pojazd z kosza. Zwraca ID przywróconego auta albo None.
-
-    ID rekordów odzyskujemy 1:1, kiedy tylko są wolne. Gdy któreś zdążył zająć
-    nowy wpis, rekord dostaje świeże ID, a wszystkie odwołania do niego są
-    przemapowane (KOSZ_KLUCZE_OBCE). Kolumn, których nie ma już w bieżącym
-    schemacie (migawka ze starszej wersji aplikacji), po prostu nie wstawiamy.
-    """
+    """Przywraca pojazd z kosza; zwraca ID albo None. ID rekordów 1:1, gdy wolne —
+    zajęte dostają nowe, a odwołania są przemapowane (KOSZ_KLUCZE_OBCE). Kolumn spoza
+    bieżącego schematu nie wstawiamy."""
     if not kosz_id:
         return None
 
@@ -320,11 +307,9 @@ def przywroc_auto_z_kosza(kosz_id):
         return None
     tabele = migawka.get("tabele") or {}
 
-    # Zdjęcia wracają na swoje stare ścieżki. Gdy któraś jest już zajęta, plik
-    # dostaje nową nazwę, a odwołanie w bazie jest podmieniane. Tak samo dawny
-    # wpis bezwzględny z innego urządzenia: plik wraca do TUTEJSZEGO folderu,
-    # więc odwołanie też się zmienia. Podmiana idzie w postaci względnej, jak
-    # każdy nowy zapis; wpis, który nadal trafia w plik, zostaje bit w bit.
+    # Zdjęcia wracają na stare ścieżki; zajęta albo bezwzględna z innego urządzenia →
+    # nowa nazwa w TUTEJSZYM folderze i podmiana odwołania (względnego). Wpis trafiający
+    # w plik zostaje bez zmian.
     podmiana = {}
     for para in pliki:
         try:

@@ -1,26 +1,9 @@
 """Waga pisma jako hierarchia: pogrubienie znaczy „wartość albo nagłówek”.
-
-`weight="bold"` bywało w tym projekcie domyślną wagą etykiet. Kiedy wszystko
-jest ważne, nic nie jest — a najbardziej boli to na kaflach kokpitu i kartach
-list, gdzie w małej przestrzeni stoi po pięć elementów i oko nie ma się o co
-zaczepić.
-
-Trzy role, trzy funkcje:
-
-* `etykieta` — NAZWA wartości („Dystans”, „Spalanie”). Zwykła waga, przygaszony
-  kolor, mały stopień. Nazwa ma się czytać dopiero wtedy, kiedy oko już znalazło
-  liczbę i pyta, czego dotyczy.
-* `wartosc` — sama LICZBA („412 km”). Pogrubiona, w zwykłym kolorze tekstu. To
-  jedyne miejsce w karcie, które ma przyciągać wzrok pierwsze.
-* `podpis` — reszta drugiego planu: data, stacja, notatka pod treścią. Wygląda
-  jak etykieta, ale nie stoi nad żadną liczbą.
-
-Zasada, której pilnuje `tests/test_typografia.py`: **pogrubienie nie chodzi
-w parze z ON_SURFACE_VARIANT**. Przygaszony kolor mówi „drugi plan”,
-pogrubienie mówi „pierwszy” — postawione razem znoszą się i zostaje sam szum.
-Nagłówki i wartości zostają pogrubione, ale w pełnym kolorze tekstu; etykiety
-zostają przygaszone, ale zwykłą wagą.
-"""
+- `etykieta` — NAZWA wartości: zwykła waga, przygaszony kolor, mały stopień;
+- `wartosc` — sama LICZBA: pogrubiona, pełny kolor;
+- `podpis` — reszta drugiego planu (data, stacja, notatka).
+Zasada (`tests/test_typografia.py`): pogrubienie NIE chodzi w parze z
+ON_SURFACE_VARIANT."""
 
 import flet as ft
 
@@ -63,12 +46,8 @@ def podpis(tekst, **nadpisania):
 
 
 def pole(nazwa, tresc, odstep=2, **nadpisania):
-    """Etykieta nad wartością — najczęstsza para w kartach list.
-
-    Istnieje nie dla skrócenia zapisu, tylko dlatego, że para zbudowana w jednym
-    miejscu nie rozjedzie się przy dopisywaniu kolejnej kolumny obok. Tu reguła
-    przestaje być umową, a staje się konstrukcją. `nadpisania` idą do wartości —
-    etykieta nie ma czego nadpisywać."""
+    """Etykieta nad wartością — para zbudowana w jednym miejscu, żeby się nie
+    rozjechała. `nadpisania` idą do wartości."""
     return ft.Column([etykieta(nazwa), wartosc(tresc, **nadpisania)], spacing=odstep)
 
 

@@ -62,13 +62,8 @@ def usun_auto(page: ft.Page, state):
 
 
 def sprzedaj_auto(page: ft.Page, state):
-    """Wyprowadza pojazd z aktywnego garażu bez kasowania czegokolwiek.
-
-    Dlaczego to NIE jest kosz: kosz trzyma migawkę JSON i istnieje po to, żeby
-    cofnąć pomyłkę. Sprzedane auto to nie pomyłka — jego historia ma zostać
-    czytelna i możliwa do wyeksportowania (rozliczenie z kupującym, gwarancje
-    na części, porównanie z następnym autem), a nie zamrożona w archiwum.
-    """
+    """Wyprowadza pojazd z aktywnego garażu bez kasowania. To NIE kosz (ten jest do
+    cofania pomyłek) — historia sprzedanego zostaje czytelna i eksportowalna."""
     if not state.auto_id:
         return
     auto_id = state.auto_id
@@ -138,15 +133,8 @@ def ikona_nadwozia(nadwozie):
 
 
 def odznaka_pojazdu(auto, rozmiar=40, kolor_nazwa=None):
-    """Krążek z sylwetką nadwozia w kolorze przypisanym do TEGO pojazdu.
-
-    Do tej pory każde auto w selektorze wyglądało identycznie i rozróżniało się
-    je dopiero po przeczytaniu nazwy. Sylwetka plus własny kolor dają rozpoznanie
-    jednym spojrzeniem, a gdy typ nadwozia nie jest uzupełniony, zostaje ogólna
-    ikona samochodu — czyli dokładnie to, co było.
-
-    `auto` to wiersz/słownik z kolumnami 'nadwozie' i (opcjonalnie) 'kolor_motywu'.
-    """
+    """Krążek z sylwetką nadwozia w kolorze TEGO pojazdu (bez typu nadwozia — ogólna
+    ikona). `auto` — wiersz/słownik z 'nadwozie' i opcjonalnie 'kolor_motywu'."""
     def pole(nazwa):
         try:
             return auto[nazwa]
@@ -310,13 +298,8 @@ def pokaz_panel_kondycji(page: ft.Page, state):
 # ==================== TOŻSAMOŚĆ POJAZDU ====================
 
 def tablica_rejestracyjna(nr_rej, wysokosc=30, on_click=None):
-    """Numer rejestracyjny narysowany jak prawdziwa tablica: niebieski pasek UE
-    z „PL” po lewej, czarny tekst na białym tle, ciemna ramka.
-
-    To nie jest ozdobnik bez funkcji. Rejestracja jest tym, po czym rozpoznaje
-    się auto w realnym świecie (parking, ubezpieczyciel, warsztat), a jako szary
-    tekst obok innych szarych tekstów po prostu ginęła. W tej formie znajduje ją
-    oko, zanim zacznie czytać."""
+    """Numer rejestracyjny jak prawdziwa tablica: niebieski pasek UE z „PL”, czarny
+    tekst na białym, ciemna ramka — rozpoznawalny zanim się go przeczyta."""
     numer = " ".join(str(nr_rej or "").split()).upper()
     if not numer:
         return ft.Container(width=0, height=0)
@@ -393,14 +376,9 @@ def opis_dni_terminu(dni):
 
 
 def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
-    """Wiersz terminu dokumentu z odliczaniem i paskiem. Pasek pokazuje, ile
-    z okna ostrzegawczego już minęło — wypełnia się dopiero, gdy termin wchodzi
-    w próg powiadomienia, więc „zielony i pusty” znaczy „jeszcze długo”.
-
-    To dobra decyzja, ale trudna do odczytania z jednego spojrzenia: pusty pasek
-    wygląda jak brak danych. `scena` (utils.ScenaWejscia) każe mu przy wejściu
-    wypełnić się od zera — wtedy widać, GDZIE się zatrzymał, a to jest cała
-    treść. Termin jeszcze odległy nie drgnie wcale i właśnie to o nim mówi."""
+    """Wiersz terminu dokumentu z odliczaniem i paskiem okna ostrzegawczego (wypełnia
+    się dopiero w progu powiadomienia). `scena` (utils.ScenaWejscia) wypełnia go od zera
+    przy wejściu."""
     scena = scena or ScenaWejscia(wlaczona=False)
     scena.nastepny_wiersz()
     kolor = KOLORY_STATUSU_TERMINU.get(termin["status"], ft.Colors.ON_SURFACE_VARIANT)
@@ -458,14 +436,9 @@ def kolor_odliczania(pozycja):
 
 
 def wiersz_odliczania(page: ft.Page, pozycja, j=None, scena=None):
-    """Wiersz „Ile zostało do…”: nazwa i data, pasek, pod nim ile zostało.
-
-    Układ ten sam, co pasek terminu na Karcie pojazdu, ale pasek mówi co innego:
-    jaka część OKRESU już minęła (rok polisy, interwał podzespołu, droga do
-    okrągłego przebiegu), więc rośnie przez cały okres, a nie dopiero w progu
-    powiadomienia. Na tej liście pytanie brzmi „ile zostało”, nie „czy już się
-    martwić”. Pozycja bez początku okresu (gwarancja bez daty rejestracji
-    i zakupu) nie ma paska wcale — pusty tor udawałby „jeszcze daleko”."""
+    """Wiersz „Ile zostało do…”: nazwa, data, pasek, ile zostało. Pasek to część
+    minionego OKRESU (rośnie cały okres, nie tylko w progu); pozycja bez początku okresu
+    nie ma paska."""
     scena = scena or ScenaWejscia(wlaczona=False)
     scena.nastepny_wiersz()
     kolor = kolor_odliczania(pozycja)
@@ -519,16 +492,10 @@ def wiersz_odliczania_kafla(page: ft.Page, pozycja, j=None, scena=None):
 
 
 def dialog_odczytu_przebiegu(page: ft.Page, auto_id, odczyt=None, po_zapisie=None):
-    """Okno „stan licznika”: data, przebieg i notatka. `odczyt` None znaczy nowy
-    wpis, słownik z pobierz_pelna_historie_przebiegu — edycję WŁASNEGO odczytu
-    (pozostałe wpisy mają swoje formularze i to tam się je poprawia).
-
-    Mieszka w utils, bo wołają je dwa miejsca: ekran „Historia licznika” i kafelek
-    akcji na kokpicie. Druga kopia tego formularza rozjechałaby się z pierwszą
-    przy pierwszej poprawce walidacji.
-
-    `po_zapisie` dostaje kontrolę po udanym zapisie: ekran licznika przeładowuje
-    się trasą, kokpit tylko przebudowuje to, co widać."""
+    """Okno „stan licznika”: data, przebieg, notatka. `odczyt` None — nowy; słownik z
+    pobierz_pelna_historie_przebiegu — edycja WŁASNEGO odczytu. W utils, bo wołają je
+    „Historia licznika” i kafelek kokpitu. `po_zapisie` dostaje kontrolę po udanym
+    zapisie."""
     edycja = odczyt is not None
     domyslna_data = odczyt["data"] if edycja else datetime.now().strftime("%d.%m.%Y")
     # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień,
@@ -599,12 +566,8 @@ def dialog_odczytu_przebiegu(page: ft.Page, auto_id, odczyt=None, po_zapisie=Non
 
 def baner_nieswiezego_licznika(page: ft.Page, auto_id, swiezosc, po_zapisie=None,
                                tresc=None, tekst_przycisku="Wpisz stan"):
-    """Pasek „licznik jest nieświeży” nad tym, co się z licznika liczy (zakładka
-    Serwis, Historia licznika). Jeden wygląd w obu miejscach, bo mówi to samo.
-
-    None, gdy licznik jest świeży albo auto nie ma jeszcze żadnego przebiegu —
-    tym drugim zajmują się dzwonek i pusty stan ekranu. Przycisk wpisu dostaje
-    tylko ten, kto może dopisywać; podgląd widzi samo ostrzeżenie."""
+    """Pasek „licznik jest nieświeży” (zakładka Serwis, Historia licznika). None przy
+    świeżym liczniku albo braku przebiegu; przycisk wpisu tylko dla mogących dopisywać."""
     if not swiezosc or not swiezosc.get("nieswiezy") or swiezosc.get("dni") is None:
         return None
     kolor = KOLOR_STATUS["warning"]

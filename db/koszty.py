@@ -47,12 +47,8 @@ def _wiersze_kosztow(conn, auto_id):
 # ---------------------------------------------------------------------------
 # Kategorie wewnątrz „Innych kosztów”
 # ---------------------------------------------------------------------------
-# Trzy wiadra budżetu (paliwo / serwis / inne) odpowiadają na pytanie „na co
-# idą pieniądze”, ale „inne” to worek, w którym mandat za prędkość leży obok
-# winiety, myjni i wymiany dywaników. Rozbicie poniżej pozwala wyciągnąć
-# z tego worka konkretną pozycję — przede wszystkim opłaty drogowe, bo one
-# rosną z KILOMETRAMI, a nie z wiekiem auta, i mieszanie ich z resztą zaciera
-# jedyny wniosek, jaki dałoby się z nich wyciągnąć.
+# Rozbicie worka „inne” — przede wszystkim opłaty drogowe, które rosną z KILOMETRAMI, a
+# nie z wiekiem auta.
 
 
 def etykieta_kategorii_innych(wartosc):
@@ -143,12 +139,9 @@ def siatka_miesiecy(liczba_miesiecy, dzisiaj=None):
 
 
 def pobierz_koszty_miesieczne_wg_kategorii(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, dict[str, float]]]:
-    """Koszty kolejnych miesięcy w ROZBICIU na kategorie budżetu (plus „razem”).
-
-    Zwraca [(rok, miesiac, {paliwo, serwis, inne, razem})] chronologicznie
-    rosnąco; miesiąc bez wydatków ma same zera, więc wołający nie musi sprawdzać
-    obecności klucza. Podstawa wykresu kosztu na 1000 km — tam cienkie krzywe
-    kategorii muszą leżeć w dokładnie tej samej siatce, co gruba krzywa razem."""
+    """Koszty kolejnych miesięcy w ROZBICIU na kategorie: [(rok, miesiac, {paliwo,
+    serwis, inne, razem})] rosnąco; miesiąc bez wydatków ma zera (ta sama siatka dla
+    krzywych kategorii i razem na wykresie kosztu na 1000 km)."""
     if not auto_id:
         return []
 
@@ -172,21 +165,16 @@ def pobierz_koszty_miesieczne_wg_kategorii(auto_id, liczba_miesiecy=6) -> list[t
 
 
 def pobierz_koszty_miesieczne(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, float]]:
-    """Suma kosztów (paliwo + serwis + inne) dla ostatnich `liczba_miesiecy`
-    miesięcy, włącznie z bieżącym — używane przez mini-wykres na dashboardzie
-    startowym (patrz MainView._buduj_kokpit). Zwraca listę (rok, miesiac, suma)
-    posortowaną chronologicznie rosnąco; miesiące bez wydatków mają sumę 0.0."""
+    """Suma kosztów (paliwo + serwis + inne) z ostatnich `liczba_miesiecy` miesięcy z
+    bieżącym: [(rok, miesiac, suma)] rosnąco, puste miesiące 0.0. Mini-wykres kokpitu."""
     return [(y, m, kwoty["razem"])
             for y, m, kwoty in pobierz_koszty_miesieczne_wg_kategorii(auto_id, liczba_miesiecy)]
 
 
 def pobierz_koszt_miesiaca_do_dnia(auto_id, rok, miesiac, do_dnia):
-    """Suma kosztów (paliwo + serwis + inne) dla danego miesiąca, ale TYLKO do
-    dnia `do_dnia` włącznie. Używane do uczciwego porównania 'ile wydałem w tym
-    miesiącu do dzisiaj' z analogicznym okresem poprzedniego miesiąca — zamiast
-    mylącego porównania niepełnego bieżącego miesiąca z CAŁYM poprzednim
-    (patrz MainView._buduj_kokpit -> widget_koszt_miesiac), które 2. dnia
-    miesiąca niemal zawsze pokazywało fałszywe "📉 Spada o 95%"."""
+    """Suma kosztów miesiąca TYLKO do dnia `do_dnia` włącznie — do uczciwego porównania
+    z tym samym okresem poprzedniego miesiąca (niepełny miesiąc kontra CAŁY dawał
+    fałszywe „spada o 95%”)."""
     if not auto_id:
         return 0.0
 
@@ -213,10 +201,8 @@ def klucz_stacji(nazwa):
 
 
 def pobierz_stacje_paliw(auto_id) -> list[str]:
-    """Słownik stacji budowany w locie z dotychczasowych tankowań pojazdu — bez
-    osobnej tabeli, bo dane już są w 'tankowania'. Warianty zapisu tej samej
-    stacji są scalane; jako kanoniczna wygrywa forma użyta najczęściej, a przy
-    remisie ostatnio użyta. Zwraca listę nazw posortowaną malejąco po liczbie
+    """Słownik stacji z dotychczasowych tankowań (bez osobnej tabeli). Warianty zapisu
+    scalane — wygrywa najczęstsza forma, przy remisie ostatnia. Malejąco po liczbie
     tankowań, przy remisie alfabetycznie."""
     if not auto_id:
         return []
@@ -257,19 +243,12 @@ def pobierz_stacje_paliw(auto_id) -> list[str]:
 
 
 def pobierz_trend_cen_paliwa(auto_id, od_data=None, rodzaj=None):
-    """Cena za litr (albo kWh) w czasie (do wykresu) oraz zestawienie średnich
-    cen per stacja (do rankingu „najtańsza stacja, na której tankowałeś”).
-    Uwzględnia tylko tankowania z dodatnią ilością; stacja jest opcjonalna —
-    wpisy bez niej trafiają do 'punkty', ale nie do rankingu 'stacje'.
-    `rodzaj` — jedno źródło energii; domyślnie podstawowe dla pojazdu (paliwo,
-    a u elektryka prąd). Hybryda plug-in bez tego filtra wrzucała do jednej
-    średniej złotówki za litr i za kWh, a „garaż” z ładowarką wygrywał ranking
-    stacji paliw o kilka złotych na „jednostce”.
-    `od_data` (zakres wybrany chipami nad wykresem) obcina OBA wyniki naraz —
-    krzywa cen i ranking stacji pod nią muszą mówić o tym samym okresie.
-    Zwraca {"punkty": [(data, cena_za_litr), ...] posortowane chronologicznie,
-    "stacje": [{"nazwa","srednia_cena","liczba_tankowan","ostatnia_cena","ostatnia_data"}, ...]
-    posortowane rosnąco po średniej cenie, "najtansza": pierwszy element stacje albo None}."""
+    """Cena jednostkowa w czasie i ranking stacji po średniej cenie. Tylko tankowania z
+    dodatnią ilością; wpis bez stacji idzie do 'punkty', nie do 'stacje'. `rodzaj` —
+    jedno źródło energii (domyślnie podstawowe; plug-in mieszałby litry z kWh).
+    `od_data` tnie OBA wyniki. Zwraca {"punkty": [(data, cena)], "stacje": [{nazwa,
+    srednia_cena, liczba_tankowan, ostatnia_cena, ostatnia_data}] rosnąco po średniej,
+    "najtansza": pierwsza albo None}."""
     if not auto_id:
         return {"punkty": [], "stacje": [], "najtansza": None}
 
@@ -332,16 +311,9 @@ def pobierz_trend_cen_paliwa(auto_id, od_data=None, rodzaj=None):
 # ---------------------------------------------------------------------------
 # Nietypowa cena w formularzu tankowania
 # ---------------------------------------------------------------------------
-# Cena za litr nie ma kolumny — to iloraz kwoty i ilości. Cyfra albo przecinek
-# za dużo lub za mało w jednym z pól formularza robi z niej liczbę dziesięć razy
-# za dużą albo za małą, a potem psuje średnią cenę, ranking stacji i spalanie.
-#
-# Porównanie z NAJBLIŻSZĄ z cen odniesienia, a nie z medianą: w jednym aucie
-# stoją obok siebie LPG i benzyna (ponad dwa razy drożej), a u elektryka garaż
-# i szybka ładowarka (nawet sześć razy). Mediana zapalałaby ostrzeżenie przy
-# każdej zmianie źródła; najbliższa cena milknie, gdy podobna trafiła się choć
-# raz. Próg trzykrotny łapie błędy rzędu wielkości, a przepuszcza zwykłe wahania
-# cen i pierwsze tankowanie gazu po samej benzynie.
+# Cena za litr to iloraz kwoty i ilości, więc literówka robi z niej liczbę 10× za dużą
+# lub za małą. Porównanie z NAJBLIŻSZĄ ceną odniesienia, nie z medianą (LPG obok
+# benzyny, garaż obok szybkiej ładowarki); próg trzykrotny łapie błędy rzędu wielkości.
 PROG_NIETYPOWEJ_CENY = 3.0
 # Ile wpisów z okolicy daty tankowania bierze udział w porównaniu.
 CENY_ODNIESIENIA = 10
@@ -349,11 +321,9 @@ CENY_ODNIESIENIA = 10
 
 def ceny_jednostkowe_w_poblizu(auto_id, data_str=None, rodzaj=None, wyklucz_id=None,
                                ile=CENY_ODNIESIENIA) -> list[float]:
-    """Ceny za litr (albo kWh) z `ile` wpisów tego samego źródła energii
-    najbliższych w czasie dacie `data_str` — wstecz i w przód, bo tankowanie
-    bywa dopisywane po tygodniach, a cena sprzed dwóch lat to inna cena. Bez
-    czytelnej daty — najnowsze wpisy. Tylko wpisy z dodatnią ilością i kwotą;
-    `wyklucz_id` — edytowany wpis, żeby nie był sam swoim odniesieniem."""
+    """Ceny jednostkowe z `ile` wpisów tego samego źródła energii najbliższych w czasie
+    `data_str` (wstecz i w przód); bez daty — najnowsze. Tylko dodatnia ilość i kwota;
+    `wyklucz_id` — edytowany wpis."""
     if not auto_id:
         return []
     domyslny = domyslny_rodzaj_energii(auto_id)
@@ -385,11 +355,9 @@ def ceny_jednostkowe_w_poblizu(auto_id, data_str=None, rodzaj=None, wyklucz_id=N
 
 
 def nietypowa_cena(cena, ceny_odniesienia, prog=PROG_NIETYPOWEJ_CENY) -> dict[str, Any] | None:
-    """Cena za litr (albo kWh), która odstaje co najmniej `prog` razy od KAŻDEJ
-    z cen odniesienia (ceny_jednostkowe_w_poblizu). None, gdy nie ma z czym
-    porównać albo cena mieści się w normie.
-    Wynik: {"cena", "odniesienie" — najbliższa z cen odniesienia, "krotnosc" —
-    ile razy (zawsze co najmniej `prog`), "wyzsza" — czy cena jest wyższa}."""
+    """Cena odstająca co najmniej `prog` razy od KAŻDEJ ceny odniesienia
+    (ceny_jednostkowe_w_poblizu) albo None. Wynik: {cena, odniesienie (najbliższa),
+    krotnosc (≥ prog), wyzsza}."""
     cena = _na_liczbe(cena)
     odniesienia = [c for c in map(_na_liczbe, ceny_odniesienia or []) if c and c > 0]
     if not cena or cena <= 0 or not odniesienia:
@@ -404,9 +372,8 @@ def nietypowa_cena(cena, ceny_odniesienia, prog=PROG_NIETYPOWEJ_CENY) -> dict[st
 # ---------------------------------------------------------------------------
 # Kto płacił: wydatki z podpisem autora
 # ---------------------------------------------------------------------------
-# Zestawienie miesiąca i saldo rozliczeń (db/rozliczenia.py) czytają wydatki
-# z tego samego źródła — inaczej „kto ile wydał” i „kto komu ile jest winien”
-# rozjechałyby się przy pierwszej nowej kategorii kosztów.
+# Zestawienie miesiąca i saldo (db/rozliczenia.py) czytają wydatki z tego samego źródła,
+# żeby się nie rozjechały.
 
 BEZ_PODPISU = "Nieprzypisane"
 
@@ -447,16 +414,10 @@ def _wydatki_z_autorem(conn, auto_id):
 
 
 def pobierz_podzial_kosztow(auto_id, rok, miesiac):
-    """Zestawienie 'kto ile wydał / przejechał' dla współdzielonego pojazdu w
-    danym miesiącu, na podstawie kolumny dodane_przez. Zwraca listę słowników
-    posortowaną malejąco po sumie wydatków:
-    [{"osoba", "paliwo", "serwis", "inne", "razem", "dystans_km", "tankowania"}, ...]
-    Uwaga: dystans_km to suma pola 'dystans' z tankowań DODANYCH przez daną
-    osobę w tym miesiącu — to przybliżenie ('kto tankował po ilu km'), nie
-    dokładny pomiar tego, kto faktycznie siedział za kierownicą. Wpisy bez
-    przypisanej osoby (sprzed tej funkcji) trafiają pod 'Nieprzypisane'.
-    Podpisy różniące się tylko wielkością liter albo spacjami to jedna osoba
-    (`klucz_osoby`)."""
+    """Kto ile wydał i przejechał we współdzielonym pojeździe w miesiącu (po
+    `dodane_przez`): [{osoba, paliwo, serwis, inne, razem, dystans_km, tankowania}]
+    malejąco po sumie. dystans_km to przybliżenie — suma 'dystans' z tankowań danej
+    osoby. Wpisy bez osoby → „Nieprzypisane”; podpisy porównuje `klucz_osoby`."""
     if not auto_id:
         return []
 
@@ -493,24 +454,16 @@ def pobierz_podzial_kosztow(auto_id, rok, miesiac):
 # ---------------------------------------------------------------------------
 # Robocizna i części
 # ---------------------------------------------------------------------------
-# Jedna kwota przy naprawie nie mówi, czy drogi jest warsztat, czy części —
-# a to decyduje, czy szukać innego mechanika, czy kupować części samemu.
-# W bazie leżą dwie liczby: koszt całkowity i robocizna (NULL = bez podziału).
-# Części z magazynu zna `koszt` przy zużyciu, a części na rachunku to reszta,
-# więc rozbicie sumuje się zawsze — patrz migracja 42.
+# W bazie koszt całkowity i robocizna (NULL = bez podziału); części z magazynu zna
+# `koszt` przy zużyciu, części na rachunku to reszta — rozbicie sumuje się zawsze
+# (migracja 42).
 
 def rozbicie_kosztu(koszt, robocizna=None, z_magazynu=0.0) -> dict[str, Any]:
-    """Koszt wizyty albo pojedynczego wpisu rozbity na robociznę, części na
-    rachunku i części z magazynu.
-
-    Części na rachunku to RESZTA po robociźnie i magazynie. Dzięki temu suma
-    zgadza się także wtedy, gdy koszt zmieniła starsza wersja aplikacji albo
-    zwrot pozycji wizyty na listę Do zrobienia (różnica schodzi najpierw
-    z części), a koszt usuniętej pozycji magazynu, który został w kwocie,
-    liczy się jako część — bo nią był.
-
-    Robocizna None to „bez podziału” — chyba że poza magazynem nie ma czego
-    dzielić: przy rachunku zero robocizny też nie było."""
+    """Koszt wizyty albo wpisu rozbity na robociznę, części na rachunku i części z
+    magazynu. Części na rachunku to RESZTA, więc suma zgadza się zawsze (koszt zmieniony
+    starszą wersją, zwrot pozycji; koszt usuniętej pozycji magazynu liczy się jako
+    część). Robocizna None = „bez podziału”, chyba że poza magazynem nie ma czego
+    dzielić."""
     razem = max(0.0, round(_na_liczbe(koszt) or 0.0, 2))
     magazyn = min(razem, max(0.0, round(_na_liczbe(z_magazynu) or 0.0, 2)))
     rachunek = round(razem - magazyn, 2)
@@ -567,18 +520,10 @@ def _rekordy_napraw(conn, auto_id):
 
 
 def pobierz_rozbicie_napraw(auto_id, od_data=None, do_data=None) -> dict[str, Any]:
-    """Robocizna, części na rachunku i części z magazynu w naprawach z okresu,
-    plus zestawienie warsztatów.
-
-    Sumy biorą WYŁĄCZNIE naprawy z podziałem — naprawa bez podziału wrzucona
-    w całości do którejś z kategorii przekłamałaby proporcję, o którą tu
-    chodzi. Liczy się ją osobno (`bez_podzialu`, `kwota_bez_podzialu`), żeby
-    było widać, ile porównanie pomija.
-
-    Warsztaty: tylko naprawy z czymś na rachunku. Średnia robocizna jest na
-    naprawę, a udział — w samym rachunku warsztatu, bez części z magazynu
-    (za nie warsztat nie wystawiał rachunku). Kolejność: najdroższa robocizna
-    na górze."""
+    """Robocizna, części na rachunku i z magazynu w naprawach z okresu, plus warsztaty.
+    Sumy tylko z napraw z podziałem; bez podziału liczone osobno (`bez_podzialu`,
+    `kwota_bez_podzialu`). Warsztaty: naprawy z rachunkiem; średnia robocizna na
+    naprawę, udział w samym rachunku (bez magazynu); najdroższa robocizna na górze."""
     wynik = {"robocizna": 0.0, "czesci": 0.0, "z_magazynu": 0.0, "razem": 0.0, "napraw": 0,
              "bez_podzialu": 0, "kwota_bez_podzialu": 0.0, "warsztaty": []}
     if not auto_id:
@@ -626,16 +571,11 @@ def pobierz_rozbicie_napraw(auto_id, od_data=None, do_data=None) -> dict[str, An
 
 
 def porownaj_czesci_wlasne(auto_id, od_data=None, do_data=None) -> list[dict[str, Any]]:
-    """Części tego samego podzespołu kupione przez warsztat i wzięte z własnego
-    magazynu: [{"zadanie_id", "nazwa", "z_warsztatu", "ile_z_warsztatu",
-    "wlasne", "ile_wlasnych", "roznica"}], największa różnica na górze.
-
-    Porównywalna jest tylko naprawa JEDNEGO podzespołu — koszt części wizyty
-    z kilkoma pozycjami nie da się przypisać żadnej z nich. Z warsztatu:
-    robocizna i części na rachunku, nic z magazynu. Własne: części wyłącznie
-    z magazynu, nic na rachunku. Naprawa mieszana nie mówi ani jednego, ani
-    drugiego, więc nie wchodzi wcale. Kwoty to średnie na naprawę; podzespół
-    trafia na listę dopiero z obiema stronami."""
+    """Części tego samego podzespołu z warsztatu kontra z własnego magazynu:
+    [{zadanie_id, nazwa, z_warsztatu, ile_z_warsztatu, wlasne, ile_wlasnych, roznica}],
+    największa różnica na górze. Tylko naprawy JEDNEGO podzespołu; z warsztatu = nic z
+    magazynu, własne = nic na rachunku, mieszane pomijane. Kwoty średnie; podzespół
+    dopiero z obiema stronami."""
     if not auto_id:
         return []
     with polacz_baze() as conn:

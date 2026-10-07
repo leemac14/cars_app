@@ -11,7 +11,7 @@ from .stale import (
 )
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
-from .pomocnicze import liczba_z_odmiana, oferta_w_jednej_linii, opis_terminu_dni, zdanie_oferty_oc_ac
+from .pomocnicze import _dodatnia, liczba_z_odmiana, oferta_w_jednej_linii, opis_terminu_dni, zdanie_oferty_oc_ac
 from .ustawienia import (
     _klucz_widzianych_powiadomien, pobierz_prog_dni, pobierz_prog_dni_dokumentu, pobierz_prog_km,
     pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie,
@@ -27,18 +27,11 @@ from .ewidencja import nazwa_miesiaca, przypomnienie_ewidencji, tekst_km_przejaz
 
 
 # ============================================================================
-#  INTERWAŁ PODZESPOŁU — DWA LICZNIKI, JEDEN TERMIN
+# INTERWAŁ PODZESPOŁU — DWA LICZNIKI, JEDEN TERMIN
 # ============================================================================
-# Interwał „15 000 km albo 12 miesięcy” to dwa liczniki biegnące naraz, a o tym,
-# kiedy jechać do warsztatu, decyduje ten, który skończy się PIERWSZY. Wcześniej
-# każdy licznik miał własny, niezależny próg: powiadomienie sklejało dwa powody
-# („Zostało 640 km • Zostało 20 dni”), datę musiał złożyć z nich sam użytkownik,
-# a licznik jeszcze spoza progu w ogóle się nie pokazywał — choć „3 000 km
-# zapasu” przy dwóch tygodniach do terminu znaczy co innego niż przy pół roku.
-#
-# Oba liczniki liczą się TUTAJ i tylko tutaj. Korzysta z tego powiadomienie
-# i karta podzespołu w zakładce Serwis, więc obie mówią to samo tymi samymi
-# liczbami.
+# „15 000 km albo 12 miesięcy” to dwa liczniki naraz; decyduje ten, który skończy się
+# PIERWSZY. Liczą się TYLKO tutaj — powiadomienie i karta podzespołu w Serwisie mówią te
+# same liczby.
 
 # Miesiąc interwału w dniach. Ta sama wartość, co od zawsze w tym liczeniu —
 # zmiana przesunęłaby termin wszystkim podzespołom naraz.
@@ -58,16 +51,6 @@ def _pole(wiersz, nazwa):
         return None
 
 
-def _dodatnia_liczba(wartosc):
-    """Liczba całkowita > 0 albo None. Zero i puste pole znaczą tu to samo:
-    „nie ustawiono” — tak samo traktował je dotychczasowy warunek `if z[...]`."""
-    try:
-        liczba = int(float(wartosc))
-    except (TypeError, ValueError):
-        return None
-    return liczba if liczba > 0 else None
-
-
 def _status_licznika(zostalo, prog):
     if zostalo < 0:
         return "przeterminowane"
@@ -76,36 +59,25 @@ def _status_licznika(zostalo, prog):
 
 def oblicz_stan_interwalu(zadanie, aktualny_przebieg, sredni_dzienny_przebieg=None,
                           prog_km=None, prog_dni=None, dzis=None) -> dict[str, Any]:
-    """Oba liczniki interwału podzespołu i to, który z nich nadejdzie pierwszy.
-
-    `zadanie` to wiersz tabeli `zadania` (sqlite3.Row albo słownik). Wynik:
-
-    * "km", "czas" — licznik albo None (interwał go nie ma albo brakuje przebiegu
-      czy daty ostatniej wymiany). Licznik to słownik: rodzaj, zostalo (km albo
-      dni; ujemne znaczy po terminie), interwal (km albo dni), zuzycie (część
-      interwału, która już minęła), prog, status, dni (ile dni do końca; przy
-      kilometrach prognoza ze średniego przebiegu albo None), data (koniec
-      licznika; przy kilometrach prognozowany), prognoza.
-    * "pierwsze" — "km", "czas" albo None, gdy nie ma żadnego licznika.
-    * "status" — najgorszy ze statusów liczników albo None.
-
-    Progi zostają dwa, bo są w różnych jednostkach i ustawia się je osobno —
-    ale rozstrzygają RAZEM: podzespół jest pilny, gdy KTÓRYKOLWIEK licznik wszedł
-    w swoje okno. Termin, który przyjdzie wcześniej, nie może zasłaniać tego,
-    o którym użytkownik kazał sobie przypomnieć z wyprzedzeniem.
-    """
+    """Oba liczniki interwału podzespołu (`zadanie` — wiersz `zadania`) i który
+    nadejdzie pierwszy.
+    - „km”, „czas” — licznik albo None: rodzaj, zostalo (ujemne: po terminie), interwal,
+      zuzycie, prog, status, dni, data, prognoza;
+    - „pierwsze” — „km”, „czas” albo None; „status” — najgorszy albo None.
+    Progi są dwa, ale rozstrzygają RAZEM: pilny, gdy KTÓRYKOLWIEK licznik wszedł w swoje
+    okno."""
     dzis = dzis or datetime.now().date()
     if prog_km is None:
         prog_km = pobierz_prog_km()
     if prog_dni is None:
         prog_dni = pobierz_prog_dni()
-    prog_km_z = _dodatnia_liczba(_pole(zadanie, "prog_km")) or int(prog_km)
-    prog_dni_z = _dodatnia_liczba(_pole(zadanie, "prog_dni")) or int(prog_dni)
+    prog_km_z = _dodatnia(_pole(zadanie, "prog_km")) or int(prog_km)
+    prog_dni_z = _dodatnia(_pole(zadanie, "prog_dni")) or int(prog_dni)
 
     km = None
-    interwal_km = _dodatnia_liczba(_pole(zadanie, "interwal_km"))
-    przebieg_wymiany = _dodatnia_liczba(_pole(zadanie, "przebieg"))
-    przebieg_teraz = _dodatnia_liczba(aktualny_przebieg)
+    interwal_km = _dodatnia(_pole(zadanie, "interwal_km"))
+    przebieg_wymiany = _dodatnia(_pole(zadanie, "przebieg"))
+    przebieg_teraz = _dodatnia(aktualny_przebieg)
     if interwal_km and przebieg_wymiany and przebieg_teraz:
         zostalo_km = przebieg_wymiany + interwal_km - przebieg_teraz
         # Prognoza dni tylko przed terminem i tym samym wzorem, co w tekstach
@@ -171,16 +143,10 @@ def oblicz_stan_interwalu(zadanie, aktualny_przebieg, sredni_dzienny_przebieg=No
 
 
 def pobierz_powiadomienia(auto_id, prog_km=None, prog_dni=None, pomin_wyciszone=True) -> list[dict[str, Any]]:
-    """Każde powiadomienie niesie 'klucz' — stabilny identyfikator (typ + ID
-    źródła), po którym rozpoznajemy je między odświeżeniami. Treść się do tego
-    nie nadaje, bo opis zmienia się z każdym dniem („Zostało 12 dni”).
-    pomin_wyciszone=False zwraca komplet, łącznie z odłożonymi — potrzebne
-    panelowi powiadomień do sekcji „Odkładane”.
-
-    Z progami z Ustawień wynik trzyma pamięć do najbliższego zapisu (patrz
-    db/pamiec.py) — kafelek „Termin”, dzwonek, kondycja i porównanie pytały
-    o tę samą listę osobno. Jawnie podany próg to podgląd „co by było”
-    i liczy się zawsze od nowa."""
+    """Każde powiadomienie ma 'klucz' — stabilny identyfikator (typ + ID źródła), nie
+    treść. pomin_wyciszone=False zwraca też odłożone (sekcja „Odkładane”). Z progami z
+    Ustawień wynik żyje w pamięci do zapisu (db/pamiec.py); jawny próg to podgląd
+    liczony zawsze od nowa."""
     if not auto_id:
         return []
     if prog_km is None and prog_dni is None:
@@ -256,11 +222,10 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
                         "status": s, "trasa": f"/auto/edytuj/{auto_id}",
                         "klucz": f"dokument:{klucz}",
                     }
-                    # Polisa się kończy — właśnie teraz przydaje się to, co
-                    # znalazło się przy poprzednim porównaniu. `oferta` to sam tekst
-                    # w jednej linii (kafel „Termin”), `opis_oferty` — całe zdanie
-                    # z datą zapisu (panel powiadomień). Sygnatura „widziane” liczy
-                    # się ze statusu, więc zmiana notatki nie zapala odznaki.
+                    # Kończąca się polisa przypomina ofertę z poprzedniego porównania:
+                    # `oferta` w jednej linii (kafel „Termin”), `opis_oferty` z datą
+                    # (panel). Sygnatura „widziane” ze statusu — zmiana notatki nie
+                    # zapala odznaki.
                     if klucz in KLUCZE_TERMINOW_Z_OFERTA:
                         oferta = oferta_w_jednej_linii(w["oferta_oc_ac"])
                         if oferta:
@@ -315,11 +280,9 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
             if d_wc == datetime.min.date():
                 continue
             zost_dni = (d_wc - dzis).days
-            # Próg dla wydatków cyklicznych jest dodatkowo ograniczony częścią
-            # ich WŁASNEGO okresu — inaczej pozycja płatna np. co 30 dni przy
-            # globalnym progu powiadomień 30 dni byłaby "pilna" przez CAŁY
-            # cykl, a kliknięcie "Zapłacone" (przesuwające termin o okres_dni)
-            # od razu wracałoby jako to samo powiadomienie.
+            # Próg wydatku cyklicznego ograniczony częścią jego WŁASNEGO okresu —
+            # inaczej pozycja co 30 dni przy progu 30 dni byłaby pilna przez cały cykl,
+            # a „Zapłacone” od razu wracałoby jako to samo powiadomienie.
             wlasny_prog = max(1, int(wc["okres_dni"] or 30) // 3)
             prog_efektywny = min(prog_dni, wlasny_prog)
             if zost_dni <= prog_efektywny:
@@ -392,17 +355,12 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
 
 
 # ============================================================================
-#  PRZYPOMNIENIE O ODCZYCIE LICZNIKA
+# PRZYPOMNIENIE O ODCZYCIE LICZNIKA
 # ============================================================================
-# Interwały podzespołów, zasięg na baku i zużycie opon liczą się z JEDNEJ
-# liczby — ostatniego znanego przebiegu. Miesiąc bez tankowania, wizyty, wpisu
-# serwisowego i odczytu to miesiąc, o który wszystkie te prognozy są w tyle.
-#
-# Dwa klucze. `klucz` ma numer okresu ciszy („licznik:2026-08-20:2”): w każdym
-# kolejnym okresie jest nowy, więc odznaka zapala się raz na okres, a nie tylko
-# raz. `klucz_drzemki` to cały cykl od ostatniego wpisu („licznik:2026-08-20”):
-# odłożenie na 30 dni trwa 30 dni, także gdy po drodze zacznie się nowy okres,
-# a nowy wpis z przebiegiem zaczyna nowy cykl bez starej drzemki.
+# Prognozy kilometrowe liczą się z ostatniego znanego przebiegu. `klucz` ma numer okresu
+# ciszy („licznik:2026-08-20:2”) — odznaka raz na okres; `klucz_drzemki` to cały cykl od
+# ostatniego wpisu („licznik:2026-08-20”) — drzemka trwa mimo nowego okresu, a nowy wpis
+# zaczyna cykl od nowa.
 
 
 def klucz_drzemki(powiadomienie):
@@ -437,13 +395,11 @@ def _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg=None, sredni_dzie
 
 
 # ============================================================================
-#  PARAGONY DO WPISANIA (kolejka szkiców, db/szkice.py)
+# PARAGONY DO WPISANIA (kolejka szkiców, db/szkice.py)
 # ============================================================================
-# Kokpit pokazuje baner od pierwszego szkicu; dzwonek odzywa się dopiero, gdy
-# najstarszy leży DNI_PRZYPOMNIENIA_SZKICU dni. Klucz to id najstarszego
-# szkicu: nowy paragon w kolejce nie zapala odznaki drugi raz, a wpisanie
-# najstarszego (gdy następny też jest stary) zapala ją dla następnego.
-# Drzemka trzyma się tego samego szkicu.
+# Baner na kokpicie od pierwszego szkicu, dzwonek dopiero, gdy najstarszy leży
+# DNI_PRZYPOMNIENIA_SZKICU dni. Klucz = id najstarszego szkicu (nowy paragon nie zapala
+# odznaki drugi raz); drzemka trzyma się tego szkicu.
 
 # Powiadomienia o DANYCH, nie o aucie — porównanie pojazdów ich nie liczy.
 TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice", "kopia", "ewidencja")
@@ -466,13 +422,10 @@ def _powiadomienie_o_szkicach(auto_id):
 
 
 # ============================================================================
-#  EWIDENCJA PRZEBIEGU (db/ewidencja.py)
+# EWIDENCJA PRZEBIEGU (db/ewidencja.py)
 # ============================================================================
-# W pierwszych dniach miesiąca rozlicza się poprzedni: kilometrówkę
-# z pracodawcą, potwierdzenie ewidencji do VAT. Przypomnienie stoi, dopóki
-# poprzedni miesiąc z przejazdami nie ma stanu licznika z ostatniego dnia
-# („Zamknij miesiąc” albo zwykły odczyt, tankowanie czy przejazd z licznikiem
-# tego dnia). Klucz to miesiąc — drzemka trzyma się jednego miesiąca.
+# Przypomnienie stoi, dopóki poprzedni miesiąc z przejazdami nie ma stanu licznika z
+# ostatniego dnia (z dowolnego źródła). Klucz to miesiąc.
 
 
 def _powiadomienie_o_ewidencji(auto_id, dzis):
@@ -490,13 +443,11 @@ def _powiadomienie_o_ewidencji(auto_id, dzis):
 
 
 # ============================================================================
-#  KOPIA ZAPASOWA (db/kopie.py)
+# KOPIA ZAPASOWA (db/kopie.py)
 # ============================================================================
-# Odzywa się razem z banerem na kokpicie: gdy od kopii minęło N dni, a kopia
-# automatyczna się nie udała albo jest wyłączona. Dotyczy urządzenia, nie auta,
-# więc stoi w dzwonku każdego pojazdu — i odłożona w jednym milknie we
-# wszystkich, inaczej przy dwóch autach trzeba by ją odkładać dwa razy. Klucz
-# to dzień ostatniej kopii: nowa kopia zaczyna nowy cykl bez starej drzemki.
+# Razem z banerem kokpitu: N dni od kopii, a automatyczna się nie udała albo jest
+# wyłączona. Dotyczy urządzenia, więc stoi przy każdym pojeździe, a odłożona milknie we
+# wszystkich. Klucz = dzień ostatniej kopii.
 
 
 def _odlozone_w_innym_pojezdzie(klucz, auto_id):
@@ -529,11 +480,10 @@ def _powiadomienie_o_kopii(auto_id):
 
 
 # ============================================================================
-#  ODKŁADANIE POWIADOMIEŃ („drzemka”)
+# ODKŁADANIE POWIADOMIEŃ („drzemka”)
 # ============================================================================
-# „Wiem o przeglądzie, zrobię go za dwa tygodnie” — wyciszenie JEDNEGO
-# przypomnienia na wybraną liczbę dni, bez oznaczania czegokolwiek jako wykonane
-# i bez ruszania samego terminu. Po upływie dni powiadomienie wraca samo.
+# Wyciszenie JEDNEGO przypomnienia na wybraną liczbę dni, bez oznaczania wykonania i bez
+# ruszania terminu.
 
 DNI_ODLOZENIA_OPCJE = [3, 7, 14, 30]
 
@@ -591,24 +541,12 @@ def pobierz_wyciszone_klucze(auto_id):
 
 
 # ============================================================================
-#  WIDZIANE — PER POWIADOMIENIE, NIE PER ZESTAW
+# WIDZIANE — PER POWIADOMIENIE, NIE PER ZESTAW
 # ============================================================================
-# Dzwonek porównywał kiedyś sygnaturę CAŁEGO zestawu powiadomień z tą, którą
-# użytkownik ostatnio widział. Skutek był dwojaki: zmiana jednego wpisu zapalała
-# odznakę na wszystkich naraz, a nowe, ważne powiadomienie wśród pięciu już
-# przeczytanych gasło tym samym kliknięciem co one — nic go nie wyróżniało.
-#
-# Teraz każde powiadomienie ma własną sygnaturę pod własnym kluczem
-# („podzespol:12”, „dokument:oc” — tymi samymi, co przy drzemce). Sygnaturą jest
-# STATUS, nie treść: opis zmienia się codziennie („zostało 12 dni” → „11 dni”)
-# i to nie jest powód, żeby wołać od nowa. Powodem jest pogorszenie — pilne,
-# które stało się przeterminowanym.
-#
-# Zapis siedzi w ustawieniach, osobno dla każdego pojazdu: na telefonie
-# większość otwarć aplikacji to zimny start, a stan trzymany tylko w pamięci
-# zapalałby po każdym z nich odznakę na wszystkim od nowa. Świadomie NIE jest
-# synchronizowany — to, co ja widziałem na swoim telefonie, nie mówi nic o tym,
-# co zobaczyła druga osoba.
+# Każde powiadomienie ma własną sygnaturę pod swoim kluczem („podzespol:12”,
+# „dokument:oc” — jak przy drzemce). Sygnaturą jest STATUS, nie treść: odznaka zapala
+# się przy pogorszeniu, nie przy codziennej zmianie opisu. Zapis w ustawieniach per
+# pojazd (przeżywa zimny start); świadomie NIE synchronizowany.
 
 
 def klucz_powiadomienia(powiadomienie):

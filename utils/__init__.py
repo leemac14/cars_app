@@ -1,11 +1,5 @@
-"""Warstwa wspólnych elementów interfejsu — wszystko, czego używa więcej niż
-jeden ekran.
-
-Pakiet powstał z rozbicia jednego pliku utils.py. Moduły idą od najmniej
-zależnych (`stale`, `format`) do tych, które składają się z pozostałych
-(`nawigacja`). Cały interfejs jest re-eksportowany tutaj, więc `import utils`
-i `utils.cokolwiek(...)` działa jak dawniej.
-"""
+"""Wspólne elementy interfejsu. Moduły od `stale`, `format` do `nawigacja`; całość
+re-eksportowana, więc działa `utils.cokolwiek(...)`."""
 
 # Ten plik istnieje po to, żeby scalić moduły pakietu w jedną przestrzeń nazw —
 # gwiazdki i „nieużywane” importy są tu zamierzone.

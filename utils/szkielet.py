@@ -1,20 +1,8 @@
-"""Szkielet ekranu: zarys kart pokazywany, zanim powstanie prawdziwa treść.
-
-Ekrany z wykresami i długimi listami robią po kilkanaście zapytań i budują setki
-kontrolek. Przez tę chwilę użytkownik nie widzi NIC — a pustka i zepsuty ekran
-wyglądają dokładnie tak samo. Zarys mówi „liczy się"; dopiero on odróżnia te dwie
-rzeczy.
-
-Dwie zasady, na których stoi ten moduł:
-
-1. **Ruch nie może zależeć od Pythona.** W chwili, gdy szkielet jest na ekranie,
-   pętla zdarzeń jest zablokowana budowaniem treści — żadna animacja sterowana
-   stąd nie miałaby kiedy pojechać. Dlatego każdy klocek szkieletu to
-   `ProgressBar` w trybie NIEOKREŚLONYM: pulsowanie rysuje Flutter po swojej
-   stronie i nic go nie zatrzyma.
-2. **Szkielet ma zniknąć sam.** `zbuduj_etapami` oddaje sterowanie na moment,
-   żeby zarys zdążył trafić na wyświetlacz, a potem podmienia go na treść.
-"""
+"""Szkielet ekranu: zarys kart, zanim powstanie treść (pustka wygląda jak awaria).
+1. Ruch nie zależy od Pythona: klocki to `ProgressBar` NIEOKREŚLONY (pętla jest zajęta
+budową treści).
+2. Szkielet znika sam: `zbuduj_etapami` oddaje sterowanie na moment i podmienia go na
+treść."""
 
 import asyncio
 import flet as ft
@@ -127,13 +115,8 @@ def szkielet_ekranu(page=None, kafle=0, wykres=False, karty=3, linie=2):
 
 
 def _pod_spodem(page, widok):
-    """Czy ten widok leży w stosie ekranów, ale NIE na wierzchu.
-
-    Router dokłada ekran główny pod każdy inny ekran, więc przy wejściu na Rok
-    w pigułce budują się oba. Ten pod spodem ustępuje pierwszeństwa: gdyby zaczął
-    liczyć pierwszy, zablokowałby pętlę, a użytkownik czekałby na ekran, którego
-    nie widzi. Widok, którego w stosie jeszcze nie ma (budowa bez okna), nie jest
-    „pod spodem” — nie ma na co czekać."""
+    """Czy widok jest w stosie, ale NIE na wierzchu (ekran główny pod innym) — wtedy
+    ustępuje pierwszeństwa. Widok spoza stosu (budowa bez okna) nie jest „pod spodem”."""
     if widok is None:
         return False
     try:
@@ -147,16 +130,9 @@ def _pod_spodem(page, widok):
 
 
 def zbuduj_etapami(page, szkielet, zbuduj_tresc, widok=None, po_zbudowaniu=None):
-    """Kontener, który najpierw pokazuje `szkielet`, a treść dobudowuje chwilę
-    później — już po tym, jak ekran trafi na wyświetlacz.
-
-    `zbuduj_tresc()` woła się DOKŁADNIE RAZ i musi zwrócić kontrolkę.
-    `po_zbudowaniu()` (opcjonalne) dostaje szansę poprawić to, co zależy od
-    treści, a leży poza nią — na przykład przycisk dodawania.
-
-    Bez działającej pętli zdarzeń (testy, budowa widoków bez okna) treść powstaje
-    od razu, synchronicznie. Szkielet jest ułatwieniem dla oka, nie zmianą tego,
-    co ekran w końcu pokazuje."""
+    """Kontener: najpierw `szkielet`, treść chwilę później. `zbuduj_tresc()` woła się
+    DOKŁADNIE RAZ i zwraca kontrolkę; `po_zbudowaniu()` (opcjonalne) poprawia to, co
+    zależy od treści. Bez pętli zdarzeń (testy) treść powstaje od razu."""
     kontener = ft.Container(content=szkielet)
 
     def _wstaw_tresc():

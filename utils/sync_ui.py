@@ -22,16 +22,10 @@ def _moment_ostatniej_synchronizacji():
 
 
 def tekst_ostatniej_synchronizacji(krotki=True):
-    """Względny opis czasu ostatniej udanej synchronizacji (zapisywanej lokalnie
-    przez sync.synchronizuj_wszystko).
-
-    Domyślnie forma KRÓTKA — sam czas, bez słowa „Zsynchronizowano” (przycisk
-    tuż nad etykietą i tak mówi, o co chodzi) i bez dopisku o kolejce offline.
-    Ten dopisek potrafił urosnąć do „Zsynchronizowano 15.08.2026 14:32 • 3
-    pojazdy czekają na wysłanie zmian” i rozpychał wiersz nagłówka, w którym
-    obok stoją inne przyciski; zaległości pokazuje teraz kropka na przycisku
-    (patrz przycisk_synchronizacji). Forma pełna została do tooltipów.
-    """
+    """Względny czas ostatniej udanej synchronizacji (zapis:
+    sync.synchronizuj_wszystko). Domyślnie KRÓTKA forma — sam czas, bez
+    „Zsynchronizowano” i bez kolejki (tę pokazuje kropka na przycisku); pełna — w
+    tooltipach."""
     moment = _moment_ostatniej_synchronizacji()
     if not moment:
         return "Nigdy" if krotki else "Nigdy nie synchronizowano"
@@ -107,12 +101,8 @@ def podsumowanie_odrzuconych(odrzucone, maks_nazw=2):
 
 
 def pokaz_dialog_konfliktow(page: ft.Page, konflikty, auto_id=None, po_zmianie=None):
-    """Pełna lista nadpisanych rekordów z ostatniej synchronizacji.
-
-    Gdy podano `auto_id`, okno pozwala też cofnąć nadpisanie: wersje z chmury
-    zostały zapamiętane w chwili wykrycia konfliktu (patrz
-    sync/konflikty.py), więc jest jeszcze co przywracać. Wcześniej
-    jedynym wyjściem był przycisk „Rozumiem” i ręczne przepisywanie danych."""
+    """Pełna lista nadpisanych rekordów z ostatniej synchronizacji; z `auto_id` można
+    cofnąć nadpisanie (wersje z chmury zapamiętane przy konflikcie — sync/konflikty.py)."""
     if not konflikty:
         return
 
@@ -204,14 +194,10 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
 
 
 def przycisk_synchronizacji(page: ft.Page, funkcja_sync, tekst="Synchronizuj", pokaz_czas=True):
-    """Spójny, dobrze widoczny przycisk szybkiej synchronizacji z chmurą — do użycia
-    w nagłówkach zakładek przy współdzielonych pojazdach. Zawsze pokazuje pełnoekranowy
-    dialog ładowania na czas operacji (patrz pokaz_ladowanie), w przeciwieństwie do
-    poprzednich, ledwo widocznych samych ikonek.
-    funkcja_sync: async callback bez argumentów wykonujący faktyczną synchronizację
-    (zwykle cienki wrapper na sync.synchronizuj_wszystko, patrz też
-    funkcja_szybkiej_synchronizacji) — sam odpowiada za komunikaty o sukcesie/błędzie.
-    pokaz_czas: dokleja pod przyciskiem małą etykietę 'Zsynchronizowano X temu'."""
+    """Przycisk szybkiej synchronizacji do nagłówków zakładek przy współdzielonych
+    pojazdach; zawsze z oknem ładowania. funkcja_sync — async callback bez argumentów
+    (zwykle przez funkcja_szybkiej_synchronizacji), sam pokazuje komunikaty. pokaz_czas
+    — etykieta „Zsynchronizowano X temu”."""
     # Szerokość CAŁEGO bloku jest z góry ograniczona: przycisk z podpisem stoi
     # w tym samym wierszu co tytuł sekcji i inne akcje, więc rozciągliwy tekst
     # potrafił zepchnąć sąsiadów poza ekran.
@@ -319,29 +305,6 @@ KOLORY_ROL = {
 }
 
 
-def odznaka_roli(auto_id, rozmiar=11):
-    """Mały znacznik roli do postawienia obok nazwy pojazdu. Dla właściciela
-    i pełnego dostępu jest pusty — to stan domyślny i nie ma o czym informować."""
-    try:
-        rola = db.rola_pojazdu(auto_id)
-    except Exception:
-        return ft.Container(width=0, height=0)
-    if rola in db.ROLE_Z_PELNYM_DOSTEPEM:
-        return ft.Container(width=0, height=0)
-
-    kolor = KOLORY_ROL.get(rola, ft.Colors.BLUE_GREY)
-    return ft.Container(
-        padding=ft.Padding(6, 2, 6, 2),
-        border_radius=RADIUS["pill"],
-        bgcolor=ft.Colors.with_opacity(0.14, kolor),
-        tooltip=db.OPISY_ROL.get(rola, ""),
-        content=ft.Row([
-            ft.Icon(IKONY_ROL.get(rola, ft.Icons.VISIBILITY), size=rozmiar + 1, color=kolor),
-            ft.Text(db.ETYKIETY_ROL.get(rola, rola), size=rozmiar, weight="bold", color=kolor, no_wrap=True),
-        ], spacing=4, tight=True),
-    )
-
-
 def pasek_roli(page: ft.Page, auto_id):
     """Pasek nad treścią ekranu, gdy pojazd nie jest w pełni mój. Bez niego
     „dlaczego nie ma przycisku dodawania” byłoby zagadką — przyciski po prostu
@@ -384,13 +347,9 @@ def wolno_zmieniac(auto_id, autor=None):
 
 
 def wolno_zmieniac_rekord(auto_id, tabela=None, rekord_id=None, autor=None):
-    """To samo pytanie co `wolno_zmieniac`, ale zadane o konkretny rekord.
-
-    Autora dobiera sobie samo (`db.czy_moge_edytowac_w_tabeli`), więc wołający
-    nie musi go mieć pod ręką — to jedno zapytanie w chwili otwarcia menu, czyli
-    raz na wpis, a nie raz na kartę listy. Tabela spoza `TABELE_Z_AUTOREM`
-    (podzespoły, magazyn, opony) i wywołanie bez tabeli wracają do pytania
-    o samą rolę."""
+    """Jak `wolno_zmieniac`, ale o konkretny rekord: autora dobiera samo
+    (`db.czy_moge_edytowac_w_tabeli`, raz przy otwarciu menu). Tabela spoza
+    `TABELE_Z_AUTOREM` albo brak tabeli — pytanie o samą rolę."""
     try:
         if tabela and rekord_id is not None and autor is None:
             return db.czy_moge_edytowac_w_tabeli(auto_id, tabela, rekord_id)
@@ -400,17 +359,9 @@ def wolno_zmieniac_rekord(auto_id, tabela=None, rekord_id=None, autor=None):
 
 
 def odsiej_akcje(auto_id, pozycje, tabela=None, rekord_id=None, autor=None):
-    """Zostawia w menu wpisu tylko to, co przy tej roli da się kliknąć.
-
-    Pozycja liczy się domyślnie jako zmieniająca dane; czytającą trzeba oznaczyć
-    `"czyta": True`. Odwrotnie pisałoby się wygodniej, ale akcja dopisana kiedyś
-    do menu bez flagi pokazywałaby się podglądowi i odbijała komunikatem — czyli
-    dokładnie to, co ta funkcja ma likwidować. Przycisk, który zawsze odmawia,
-    uczy, że aplikacja jest nieprzewidywalna, i sugeruje, że gdzieś jest sposób,
-    żeby jednak zadziałał.
-
-    Pusty wynik zastępuje jedna linijka z powodem: arkusz bez niczego wygląda
-    jak awaria, a nie jak odpowiedź."""
+    """Zostawia w menu wpisu tylko akcje dostępne przy tej roli. Domyślnie pozycja
+    ZMIENIA dane; czytającą oznacza `"czyta": True` (zapomniana flaga ukrywa, a nie
+    pokazuje). Pusty wynik zastępuje linijka z powodem."""
     pozycje = [p for p in pozycje if p]
     if wolno_zmieniac_rekord(auto_id, tabela, rekord_id, autor):
         return pozycje
@@ -433,13 +384,9 @@ def odsiej_akcje(auto_id, pozycje, tabela=None, rekord_id=None, autor=None):
 
 
 def zablokowane(page: ft.Page, auto_id, autor=None, pokaz=True):
-    """Jedno pytanie zadawane przed każdą akcją zmieniającą dane: „czy to jest
-    zabronione?”. Zwraca True i — domyślnie — tłumaczy dlaczego.
-
-    Sam interfejs nie jest zabezpieczeniem; twardą granicę stawia wyzwalacz
-    w Supabase, a druga warstwa siedzi w pakiecie sync/ (przy roli podglądu nic nie
-    jest wysyłane). To jest warstwa trzecia: żeby nie dało się kliknąć czegoś,
-    co i tak zostanie cofnięte."""
+    """„Czy to zabronione?” przed każdą akcją zmieniającą dane; True i domyślnie
+    wyjaśnienie. Trzecia warstwa (po wyzwalaczu w Supabase i pakiecie sync/) — żeby nie
+    dało się kliknąć czegoś, co i tak zostanie cofnięte."""
     if wolno_zmieniac(auto_id, autor):
         return False
     if pokaz:
@@ -492,13 +439,8 @@ async def synchronizuj_cicho(page: ft.Page, auto_id, odswiez=True):
 
 
 def uruchom_auto_synchronizacje(page: ft.Page, state):
-    """Cykliczne dociąganie zmian, dopóki aplikacja jest otwarta, plus jedno
-    dociągnięcie przy powrocie z tła.
-
-    Do tej pory synchronizacja ruszała wyłącznie po zapisie formularza albo
-    z przycisku — kto tylko OGLĄDAŁ współdzielony pojazd (a przy roli „tylko
-    podgląd” to jedyne, co robi) nie zobaczyłby cudzych zmian, dopóki sam
-    czegoś nie kliknął."""
+    """Cykliczne dociąganie zmian przy otwartej aplikacji i jedno przy powrocie z tła —
+    inaczej oglądający („tylko podgląd”) nie widziałby cudzych zmian."""
     if getattr(page, "_auto_sync_dziala", False):
         return
     page._auto_sync_dziala = True
@@ -520,13 +462,9 @@ def uruchom_auto_synchronizacje(page: ft.Page, state):
 
     page.run_task(_petla)
 
-    # Powrót z tła to najczęstszy moment, w którym dane są nieaktualne: telefon
-    # leżał w kieszeni, ktoś w tym czasie zatankował.
-    #
-    # run_task sprawdza `asyncio.iscoroutinefunction(handler)`, więc MUSI dostać
-    # prawdziwe `async def`. Lambda zwracająca korutynę jest odrzucana tak samo
-    # jak zwykła funkcja („handler must be a coroutine function") — myli to, bo
-    # `asyncio.create_task(lambda_zwracajaca_korutyne())` przechodzi bez problemu.
+    # Powrót z tła — najczęstszy moment nieaktualnych danych. run_task wymaga
+    # prawdziwego `async def` (`asyncio.iscoroutinefunction`); lambda zwracająca
+    # korutynę jest odrzucana.
     async def _dociagnij_w_tle():
         await synchronizuj_cicho(page, getattr(state, "auto_id", None))
 
@@ -558,7 +496,6 @@ __all__ = [
     "_moment_ostatniej_synchronizacji",
     "funkcja_szybkiej_synchronizacji",
     "odsiej_akcje",
-    "odznaka_roli",
     "pasek_roli",
     "podsumowanie_konfliktow",
     "podsumowanie_odrzuconych",

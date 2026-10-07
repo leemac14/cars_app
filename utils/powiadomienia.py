@@ -71,12 +71,9 @@ def komunikat_zmiany_opon(opony):
 
 
 def komunikat_po_wykonaniu(wynik, czy_koszt=True):
-    """Zdanie, które użytkownik zobaczy po odhaczeniu wpisu cyklicznego.
-
-    Przy sezonowej zmianie opon musi powiedzieć, CO SIĘ STAŁO Z DANYMI: albo
-    „zamontowano zimowe”, albo — jeśli drugiego kompletu nie ma w magazynie —
-    że termin przesunięto, ale opon nie zmieniono. Cicha zmiana albo ciche jej
-    pominięcie byłyby tu równie złe."""
+    """Zdanie po odhaczeniu wpisu cyklicznego. Przy zmianie opon mówi, co stało się z
+    DANYMI: „zamontowano zimowe” albo że termin przesunięto bez zmiany opon (brak
+    drugiego kompletu)."""
     if not isinstance(wynik, dict):
         return "Zapisano płatność i przesunięto termin." if czy_koszt else "Oznaczono jako wykonane i przesunięto termin."
 
@@ -566,14 +563,9 @@ RODZAJ_RATY_W_PANELU = "__raty__"
 
 
 def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
-    """Lekki panel (BottomSheet) do zarządzania wydatkami cyklicznymi pojazdu
-    (raty, abonamenty, ubezpieczenia ratalne) ORAZ zwykłymi przypomnieniami
-    cyklicznymi bez kosztu (np. "co miesiąc sprawdź ciśnienie w oponach") —
-    bez osobnej trasy, analogicznie do pokaz_panel_powiadomien().
-
-    `po_zamknieciu` woła ekran, spod którego panel otwarto, gdy arkusz się
-    zamknie: „Co przede mną” liczy wtedy oś od nowa, bo w panelu mogło się coś
-    zapłacić albo przesunąć termin, a pod arkuszem trasa się nie zmienia."""
+    """Panel (BottomSheet) wydatków cyklicznych pojazdu i przypomnień bez kosztu, bez
+    osobnej trasy (jak pokaz_panel_powiadomien()). `po_zamknieciu` — ekran pod spodem
+    przelicza się po zamknięciu (trasa pod arkuszem się nie zmienia)."""
     # Stała kolumna, której podmieniamy tylko `controls`. Podmiana całego
     # `bs.content` po każdej zmianie nie trafiała do już otwartego arkusza —
     # świeżo dodany wpis (np. sezonowa zmiana opon) pojawiał się dopiero po

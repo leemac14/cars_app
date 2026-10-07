@@ -6,17 +6,10 @@ import utils
 
 
 class WarsztatyView(ft.View):
-    """„Warsztaty” — karta każdego warsztatu pojazdu: telefon, adres, notatka
-    i dwa przyciski, „Zadzwoń” i „Pokaż na mapie” (M-05 w katalogu pomysłów).
-
-    Rejestr warsztatów był w bazie od sierpnia 2026, ale bez ekranu: formularze
-    zapisywały samą nazwę, więc telefonu i adresu nie miał kto wpisać, a przyciski
-    przy wyborze warsztatu w formularzu nigdy się nie pokazywały. Pod kartami stoją
-    nazwy, które są na wizytach, a karty nie mają (sprzed rejestru albo po
-    usunięciu karty) — jednym dotknięciem dostają kartę.
-
-    Dane liczy db.pobierz_karty_warsztatow, kartę i formularz rysuje
-    utils/warsztaty.py (ta sama karta otwiera się z listy wizyt)."""
+    """„Warsztaty” (M-05): karta każdego warsztatu — telefon, adres, notatka, „Zadzwoń”
+    i „Pokaż na mapie”; pod kartami nazwy z wizyt bez karty (jednym dotknięciem dostają
+    kartę). Dane: db.pobierz_karty_warsztatow; karta i formularz: utils/warsztaty.py (ta
+    sama karta z listy wizyt)."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page

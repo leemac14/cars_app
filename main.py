@@ -48,11 +48,9 @@ from views.raty_view import RatyView
 from views.ewidencja_view import EwidencjaPrzebieguView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
-# Router jest jedynym miejscem, przez które przechodzi KAŻDE otwarcie formularza,
-# więc jedno sprawdzenie tutaj zastępuje dwadzieścia rozsianych po widokach.
-# To warstwa wygody: twardą granicę stawia wyzwalacz w Supabase, a drugą — sync,
-# który przy roli podglądu nie wysyła nic. Tu chodzi o to, żeby nie dało się
-# nawet wejść w ekran, którego zapis i tak zostałby odrzucony.
+# Router to jedyna droga do formularzy, więc jedno sprawdzenie zastępuje dwadzieścia w
+# widokach. To wygoda — twardą granicę stawia wyzwalacz w Supabase, drugą sync (podgląd
+# nic nie wysyła).
 
 AKCJE_DODAWANIA = ("nowy", "nowa", "nowe")
 
@@ -353,11 +351,9 @@ def main(page: ft.Page):
             db.init_db()
             db.przywroc_ustawienia_kopii_urzadzenia(ustawienia_kopii)
 
-            # Kopia zrobiona na telefonie trzyma ścieżki załączników w formacie
-            # Androida (/data/user/0/<pakiet>/files/data/zalaczniki/...). Pliki
-            # przyjeżdżają w ZIP-ie i lądują w folderze załączników, ale ścieżki
-            # w bazie wskazują katalog, którego na tym urządzeniu nie ma — bez
-            # tego kroku import „się udaje”, a żadne zdjęcie się nie pokazuje.
+            # Kopia z telefonu ma ścieżki załączników Androida
+            # (/data/user/0/<pakiet>/files/data/zalaczniki/...) — bez tej naprawy import
+            # „się udaje”, a zdjęcia się nie pokazują.
             naprawione, brakujace_zalaczniki = db.napraw_sciezki_zalacznikow()
 
             app_state.auto_id = None
@@ -622,13 +618,10 @@ def main(page: ft.Page):
     def trasa_zmieniona(e):
         db.zainicjuj_domyslne_auto(app_state)
 
-        # Motyw przebudowujemy TYLKO gdy kolor faktycznie się zmienił (zapis
-        # ustawień, zmiana koloru pojazdu, przełączenie aktywnego auta, import
-        # bazy) — nie przy każdej nawigacji. Każdy pojazd może mieć własny
-        # kolor (db.pobierz_kolor_auta), z fallbackiem na globalny domyślny.
-        # Porównujemy z kolorem FAKTYCZNIE wgranym w page.theme, a nie z własnym
-        # licznikiem: podgląd palety w Ustawieniach zmienia motyw poza routerem,
-        # więc wyjście bez zapisu musi go cofnąć.
+        # Motyw przebudowujemy TYLKO przy faktycznej zmianie koloru (pojazd może mieć
+        # własny, db.pobierz_kolor_auta). Porównanie z kolorem wgranym w page.theme —
+        # podgląd palety w Ustawieniach zmienia motyw poza routerem, a wyjście bez
+        # zapisu musi go cofnąć.
         kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
         if (kolor_biezacy != kolor_motywu_zastosowany["nazwa"]
                 or kolor_biezacy != utils.ostatni_zastosowany_motyw()
@@ -877,12 +870,9 @@ def main(page: ft.Page):
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 page.views.append(FormularzDoZrobieniaView(page, app_state, utils.parsuj_int(segmenty[2], None)))
 
-        # Ekran ma zostać tam, gdzie był. Router przebudowuje CAŁY stos przy
-        # każdej zmianie sortowania, filtra i po każdej akcji na wpisie, więc
-        # bez tej jednej pętli każde odhaczenie zadania wyrzucało użytkownika
-        # na górę listy. Podpinamy tutaj, w jednym miejscu — ekran, który
-        # powstanie jutro, dostanie to samo bez dopisywania czegokolwiek
-        # u siebie (patrz utils.pozycja).
+        # Ekran zostaje tam, gdzie był: router przebudowuje CAŁY stos przy sortowaniu,
+        # filtrze i akcji na wpisie, więc pozycję przewijania podpinamy tu, raz dla
+        # wszystkich ekranów (utils.pozycja).
         for widok in page.views:
             utils.pamietaj_pozycje(page, app_state, widok,
                                    lambda w=widok: utils.klucz_ekranu(w, app_state))
@@ -930,13 +920,9 @@ def main(page: ft.Page):
     page.run_task(_nadgon_kolejke_sync)
 
     async def _kopia_w_tle():
-        """Automatyczna kopia zapasowa, jeśli od ostatniej minęło N dni
-        (db/kopie.py). Cała w wątku w tle, po pierwszym renderze — przy zdjęciach
-        archiwum to sekundy, a na nie nikt nie ma czekać.
-
-        Kokpit odświeża się tylko wtedy, gdy zmienił się baner zaległej kopii:
-        kopia się nie udała (baner wchodzi) albo udała się po wcześniejszym
-        błędzie (baner schodzi). Udana kopia po udanej nie rusza ekranu wcale."""
+        """Automatyczna kopia (db/kopie.py), jeśli minęło N dni — w wątku w tle po
+        pierwszym renderze. Kokpit odświeża się tylko, gdy zmienił się baner zaległej
+        kopii."""
         try:
             przed = await asyncio.to_thread(db.stan_kopii_zapasowej)
             if not przed["nalezna"]:
@@ -952,13 +938,9 @@ def main(page: ft.Page):
             log.polkniety("automatyczna kopia zapasowa")
 
     async def _porzadki_po_starcie():
-        """Sprzątanie przeniesione z init_db(): kosz, odroczone załączniki
-        i jednorazowa naprawa ścieżek.
-
-        `run_task` oddaje sterowanie dopiero, gdy pętla zdarzeń je dostanie —
-        czyli po wyjściu z main(), a więc po pierwszym renderze. Do tego samo
-        sprzątanie idzie na osobny wątek, żeby nie blokowało interfejsu nawet
-        wtedy, gdy w koszu leżą setki zdjęć."""
+        """Sprzątanie przeniesione z init_db() (kosz, odroczone załączniki, naprawa
+        ścieżek): `run_task` rusza po pierwszym renderze, a samo sprzątanie idzie na
+        osobny wątek."""
         try:
             with log.zmierz("porządki w tle"):
                 naprawione, brakujace = await asyncio.to_thread(db.porzadki_startowe)

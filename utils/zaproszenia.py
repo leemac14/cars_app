@@ -1,13 +1,7 @@
-"""Zaproszenie do współdzielonego pojazdu: kod QR do zeskanowania, zaproszenie
-wysłane dalej i kod wklejony ze schowka.
-
-Dołączenie polegało na przepisaniu kodu z jednego telefonu na drugi — akurat
-wtedy, gdy obie osoby stoją obok siebie, a kodów jest trzy (każda rola ma
-własny, losowy). Teraz zapraszający pokazuje QR z linkiem
-carsapp://app/dolacz/<KOD> (`sync.link_zaproszenia`), aparat drugiego telefonu
-otwiera nim aplikację na ekranie dołączania z wpisanym kodem, a dołącza dopiero
-dotknięcie „Dołącz”. Kod stoi też pod QR — dla aparatu, który linku nie otworzy.
-"""
+"""Zaproszenie do współdzielonego pojazdu: QR z linkiem carsapp://app/dolacz/<KOD>
+(`sync.link_zaproszenia`) otwiera aplikację na ekranie dołączania z wpisanym kodem
+(dołącza dopiero „Dołącz”), zaproszenie wysłane dalej i kod wklejony ze schowka. Kod
+stoi też pod QR."""
 
 import flet as ft
 

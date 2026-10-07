@@ -444,13 +444,8 @@ class UstawieniaView(ft.View):
         )
 
         # --- DZIENNIK BŁĘDÓW ---
-        # Karta jest domyślnie zwinięta, dopóki w logu nie ma ani jednego błędu.
-        # Sekcja diagnostyczna, która sama się otwiera przy każdym wejściu do
-        # Ustawień, uczy oko, żeby ją pomijać — a wtedy nie zadziała w dniu,
-        # w którym będzie potrzebna.
-        #
-        # Ikonę podaje się pozycyjnie: pole nazywa się `icon` albo `name`
-        # zależnie od wersji Fleta, a podmienia je potem utils.ustaw_ikone.
+        # Karta zwinięta, dopóki w logu nie ma błędu. Ikona pozycyjnie (pole `icon` albo
+        # `name` zależnie od wersji Fleta; podmienia utils.ustaw_ikone).
         self.ikona_logu = ft.Icon(ft.Icons.HISTORY, size=18)
         self.opis_logu = ft.Text(size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True)
         self.opis_ostatniego_bledu = ft.Text(
@@ -551,12 +546,9 @@ class UstawieniaView(ft.View):
     # ================= KOPIA ZAPASOWA =================
 
     def _karta_kopii(self):
-        """Karta „Kopia zapasowa”: rytm i folder kopii automatycznej, stan
-        ostatniej kopii, „Zrób kopię teraz” i lista kopii w folderze z „Wczytaj”.
-        Zwraca (karta, czy_wymaga_uwagi).
-
-        Zapisuje się od razu, bez „Zapisz ustawienia” — jak przełączniki
-        wyglądu: „Zrób kopię teraz” i lista mają działać na tym, co widać."""
+        """Karta „Kopia zapasowa”: rytm i folder kopii automatycznej, stan ostatniej,
+        „Zrób kopię teraz”, lista kopii z „Wczytaj”. Zapis od razu (bez „Zapisz
+        ustawienia”). Zwraca (karta, czy_wymaga_uwagi)."""
         stan = db.stan_kopii_zapasowej()
 
         self.e_kopia_auto = ft.Switch(

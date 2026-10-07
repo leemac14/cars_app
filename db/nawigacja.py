@@ -29,13 +29,11 @@ def _sparsuj_datetime(tekst):
 
 
 def pobierz_ostatnia_aktywnosc(auto_id, limit=5) -> list[tuple[str, str, str, datetime, str, str]]:
-    """Zwraca listę ostatnich zdarzeń (dodań i edycji) z tankowań, serwisu,
-    wizyt i innych kosztów — dla widżetu 'Ostatnia aktywność' w kokpicie
-    (patrz MainView._buduj_kokpit). Każde zdarzenie to krotka:
-    (opis, kto, kiedy_tekst, kiedy_sort, ikona, trasa). Dodanie i edycja tego
-    samego wpisu mogą pojawić się jako dwa osobne zdarzenia.
-    `ikona` to KLUCZ ("tankowanie" / "serwis" / "wizyta" / "inny_koszt"), który
-    warstwa UI tłumaczy na ft.Icons przez utils.IKONY_AKTYWNOSCI."""
+    """Ostatnie zdarzenia (dodania i edycje) z tankowań, serwisu, wizyt i innych kosztów
+    dla kafelka „Ostatnia aktywność”: krotki (opis, kto, kiedy_tekst, kiedy_sort, ikona,
+    trasa). Dodanie i edycja wpisu to dwa zdarzenia. `ikona` to KLUCZ
+    („tankowanie”/„serwis”/„wizyta”/„inny_koszt”) tłumaczony w UI przez
+    utils.IKONY_AKTYWNOSCI."""
     if not auto_id:
         return []
 
@@ -127,9 +125,8 @@ def pobierz_podzakladke_kosztow():
 
 
 # ============ PAMIĘĆ NAWIGACJI (rejestr ekranów żyje w utils.EKRANY) ============
-# Tu trzymamy tylko to, CZEGO użytkownik używa — sam katalog ekranów jest po
-# stronie UI, bo składa się z ikon Fleta. Rozdzielenie jest celowe: baza nie
-# musi wiedzieć, jak ekran wygląda, a UI nie musi wiedzieć, jak liczyć użycia.
+# Tu tylko to, CZEGO użytkownik używa; katalog ekranów (z ikonami Fleta) jest po stronie
+# UI.
 
 # Zestaw startowy skrótów: karta pojazdu i karoseria, bo nie leżą na żadnym
 # pasku sekcji, plus to, po co sięga się najczęściej. Użytkownik i tak zmienia
@@ -191,15 +188,9 @@ def pobierz_przypiete_ekrany() -> list[str]:
 
 
 def liczniki_nawigacji(auto_id):
-    """Odznaki przy pozycjach nawigacji — POLICZONE RAZ, jednym wejściem do bazy.
-    Szuflada, kafelki sekcji i pasek zakładek pokazują te same liczby, więc
-    liczenie ich osobno w każdym miejscu byłoby trzema zapytaniami o to samo.
-
-    Wynik trzyma pamięć (patrz db/pamiec.py) do najbliższego zapisu: ekran
-    główny pyta o odznaki przy każdym powrocie i przy każdej zmianie zakładki,
-    a zmieniają się one dopiero wtedy, gdy ktoś coś zapisze.
-
-    Zwraca słownik {ekran_id: liczba}; brak klucza = brak odznaki."""
+    """Odznaki nawigacji POLICZONE RAZ, jednym wejściem do bazy (szuflada, kafelki i
+    zakładki pokazują te same liczby); pamięć (db/pamiec.py) do najbliższego zapisu.
+    Zwraca {ekran_id: liczba}; brak klucza = brak odznaki."""
     if not auto_id:
         return {}
     return z_pamieci("liczniki_nawigacji", auto_id, lambda: _policz_liczniki_nawigacji(auto_id))
@@ -309,13 +300,9 @@ def pobierz_ostatni_pojazd():
 
 
 def pobierz_rejestracje_startowa() -> str:
-    """Numer rejestracyjny na ekran startowy: pojazdu, na którym aplikacja
-    stanęła ostatnio, a gdy takiego nie ma — pierwszego aktywnego w garażu.
-
-    Osobne, jedno zapytanie zamiast `zainicjuj_domyslne_auto`: ekran startowy
-    pojawia się ZANIM powstanie stan aplikacji i nie ma go wymuszać tylko po to,
-    żeby narysować tablicę. Pusty napis znaczy „nie ma czego pokazać" —
-    wywołujący zostaje wtedy przy nazwie aplikacji."""
+    """Numer rejestracyjny na ekran startowy: ostatnio używanego pojazdu albo pierwszego
+    aktywnego. Osobne zapytanie zamiast `zainicjuj_domyslne_auto` — ekran startowy jest
+    PRZED stanem aplikacji. Pusty napis = zostaje nazwa aplikacji."""
     ostatni = pobierz_ostatni_pojazd()
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -334,12 +321,9 @@ def pobierz_rejestracje_startowa() -> str:
 
 
 def zainicjuj_domyslne_auto(state):
-    """Ustala, na którym aucie stoi aplikacja.
-
-    Auto SPRZEDANE nadal da się tu podstawić — archiwum otwiera jego historię
-    przez zwykłe przełączenie state.auto_id i bez tego wyjątku wracalibyśmy
-    natychmiast na pierwsze auto z garażu. Sprzedany pojazd nie zostanie za to
-    NIGDY wybrany automatycznie: ani jako zapamiętany, ani jako awaryjny."""
+    """Ustala, na którym aucie stoi aplikacja. Sprzedane da się tu podstawić (archiwum
+    otwiera jego historię przez state.auto_id), ale NIGDY nie jest wybierane
+    automatycznie — ani jako zapamiętane, ani awaryjne."""
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute("SELECT id, nazwa, COALESCE(status, 'aktywny') FROM samochody ORDER BY nazwa")

@@ -177,12 +177,9 @@ def pokaz_na_mapie(page: ft.Page, adres):
 
 
 def otworz_strone(page: ft.Page, adres):
-    """Strona w przeglądarce jako OSOBNEJ aplikacji. Domyślny tryb otwiera ją
-    na Androidzie w karcie nad aplikacją — a z takiej karty nie da się wrócić
-    tutaj po kolejną rzecz do skopiowania bez zamknięcia jej razem z tym, co
-    już wpisano w formularz. Między osobnymi aplikacjami przełącza się tam
-    i z powrotem bez strat. Gdy przeglądarka się nie otworzy, adres ląduje
-    w schowku."""
+    """Strona w przeglądarce jako OSOBNA aplikacja (domyślnie Android otwiera kartę nad
+    aplikacją, a jej zamknięcie zabiera wpisany formularz). Gdy się nie otworzy — adres
+    do schowka."""
     if not adres:
         return
 

@@ -1,22 +1,11 @@
-"""Kolejka „do wpisania” (M-08): zdjęcie paragonu teraz, wpis wieczorem.
+"""Kolejka „do wpisania” (M-08): zdjęcie paragonu teraz, wpis później; od razu można
+dopisać rodzaj, licznik i opis.
 
-Największy wróg tej aplikacji to chwila przy dystrybutorze, kiedy nie ma czasu
-na formularz. Szkic obniża próg wejścia do jednego dotknięcia migawki: zdjęcie
-z datą (i godziną) trafia do kolejki, a formularz wypełnia się później, na
-kanapie. Zaraz po migawce można — nie trzeba — dopisać rodzaj wpisu, stan
-licznika (paragon go nie ma, a wieczorem nikt go nie pamięta) i krótki opis.
-
-Szkic leży w OSOBNEJ tabeli `szkice_wpisow`, a nie jako flaga przy tankowaniach
-i kosztach: wpis bez kwoty i litrów rozjechałby każdą statystykę, eksport
-i synchronizację, które ufają, że tankowanie ma liczby. Formularz uzupełniający
-zakłada zwykły wpis i w TEJ SAMEJ transakcji zamyka szkic (`zamknij_szkic`
-z `conn=`), a zdjęcie przechodzi na wpis bez kopiowania — ta sama ścieżka
-`zalaczniki/<nazwa>` trafia do kolumny `zalacznik` nowego wpisu.
-
-Szkice są lokalne: zdjęcia nie jadą do chmury (N-06), więc szkic u drugiej
-osoby byłby odsyłaczem do pliku, którego ona nie ma. Kosz pojazdu zabiera je
-razem z autem (`KOSZ_TABELE_POTOMNE`), a zdjęcie — jak każdy załącznik
-(`TABELE_Z_ZALACZNIKIEM`). Usuwanie z cofnięciem robi ogólne
+Szkic leży w OSOBNEJ tabeli `szkice_wpisow` (wpis bez kwot rozjechałby statystyki,
+eksport i sync). Formularz zakłada zwykły wpis i w TEJ SAMEJ transakcji zamyka szkic
+(`zamknij_szkic(conn=)`); zdjęcie przechodzi bez kopiowania (ta sama ścieżka
+`zalaczniki/<nazwa>`). Szkice są lokalne (zdjęcia nie jadą do chmury, N-06); kosz
+zabiera je z autem (`KOSZ_TABELE_POTOMNE`, `TABELE_Z_ZALACZNIKIEM`); usuwanie przez
 `usun_z_cofnieciem("szkice_wpisow", id)`."""
 
 import os
@@ -78,13 +67,9 @@ def _opis(wartosc):
 
 
 def czas_zdjecia(sciezka) -> datetime | None:
-    """Kiedy zdjęcie zrobiono — z EXIF (DateTimeOriginal, a bez niego DateTime).
-
-    Zdjęcie wybrane z galerii wieczorem ma mieć datę sprzed dystrybutora, nie
-    datę wyboru. Czas modyfikacji pliku się do tego nie nadaje: wybór pliku na
-    Androidzie kopiuje go do pamięci podręcznej, więc „modyfikacja” to chwila
-    kopiowania. Brak EXIF-u, zera w dacie albo data z przyszłości → None
-    (wywołujący bierze wtedy dzisiejszą)."""
+    """Kiedy zrobiono zdjęcie — z EXIF (DateTimeOriginal, potem DateTime); czas
+    modyfikacji się nie nadaje (Android kopiuje plik przy wyborze). Brak, zera albo
+    przyszłość → None (wołający bierze dziś)."""
     if Image is None or not sciezka:
         return None
     try:

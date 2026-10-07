@@ -6,12 +6,9 @@ import flet as ft
 
 
 # ==================== ZGODNOŚĆ Z WERSJAMI FLETA ====================
-# Kontrolki Fleta to dataclassy BEZ __slots__, więc `pole.cokolwiek = x` nigdy
-# nie rzuca wyjątku — zwyczajnie dokleja nowy, nikomu niepotrzebny atrybut.
-# Skutek: po zmianie nazwy pola między wersjami kod dalej „działa”, tylko efekt
-# przestaje być widoczny (komunikat błędu się nie pokazuje, ikona się nie
-# przełącza, napis na przycisku zostaje stary). Poniższe funkcje wybierają
-# nazwę pola na podstawie DEFINICJI klasy, więc trafiają zawsze.
+# Kontrolki Fleta to dataclassy BEZ __slots__: `pole.cokolwiek = x` nigdy nie rzuca,
+# tylko dokleja martwy atrybut (po zmianie nazwy pola efekt po cichu znika). Funkcje
+# niżej wybierają nazwę pola z DEFINICJI klasy.
 
 _CACHE_POL = {}
 

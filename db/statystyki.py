@@ -18,23 +18,13 @@ from .powiadomienia import pobierz_powiadomienia
 
 
 # ============================================================================
-#  KONDYCJA POJAZDU
+# KONDYCJA POJAZDU
 # ============================================================================
-# Kondycja ściska cały stan auta do JEDNEJ liczby 0-100, więc stoi wyłącznie na
-# proporcjach: każdy powód musi ważyć tyle, ile realnie znaczy dla właściciela.
-# Stąd trzy zasady, których trzyma się tabela niżej.
-#
-# 1. Waga to konsekwencja, nie kategoria. Przeterminowane OC albo przegląd to
-#    zakaz jazdy i brak ochrony przy szkodzie, więc bije mocniej (-30) niż
-#    przeterminowany filtr kabinowy (-10). Koniec gwarancji nie jest usterką
-#    auta, więc nie bije wcale.
-# 2. Sufit na każdą grupę. Bez niego auto z dwunastoma zaległymi podzespołami
-#    miałoby 0/100 dokładnie tak samo jak auto bez OC, bez przeglądu i na łysym
-#    bieżniku — a wskaźnik przestałby cokolwiek różnicować. Dlatego każda grupa
-#    ma własny limit i długa lista drobiazgów nie zjada całej skali.
-# 3. Dane to osobna grupa. Cisza w dzienniku i puste pola nie są usterką auta,
-#    tylko dziurą w wiedzy o nim: karzą lekko, ale karzą — 100/100 na aucie, do
-#    którego nikt nic nie wpisał od roku, to fałszywe „wszystko gra”.
+# Jedna liczba 0–100, więc tylko proporcje:
+# 1. Waga to konsekwencja: przeterminowane OC lub przegląd −30, filtr kabinowy −10,
+# koniec gwarancji — nic.
+# 2. Sufit na każdą grupę — długa lista drobiazgów nie zjada całej skali.
+# 3. Dane to osobna grupa: cisza i puste pola karzą lekko, ale karzą.
 
 KARY_KONDYCJI = {
     # Podzespoły z interwałem serwisowym (olej, filtry, rozrząd)
@@ -111,29 +101,13 @@ PRIORYTET_USTERKI = PRIORYTETY_DO_ZROBIENIA[0]
 
 
 def pobierz_rozbicie_kondycji(auto_id):
-    """Kondycja pojazdu wraz z ROZPISKĄ tego, co ją obniżyło. Sam wynik 0-100 nic
-    nie podpowiada; lista powodów mówi wprost, co poprawić najpierw.
-
-    Liczy: podzespoły po interwale, bieżnik zamontowanych opon, terminy
-    dokumentów (OC, przegląd, AC, assistance, gaśnica, apteczka), zaległe
-    usterki z „Do zrobienia”, nieścisłości w historii licznika oraz braki
-    i ciszę w danych. Magazyn i wydatki cykliczne kondycji NIE ruszają: pusta
-    półka i niezapłacony abonament nie są stanem auta.
-
-    Zwraca {"wynik": int|None, "odjete": int, "powody": [...], "grupy": {...}}.
-    Powód to {typ, kategoria, opis, szczegol, punkty, trasa, waga}, lista
-    posortowana malejąco po punktach. „grupy” to rozliczenie sufitów per
-    kategoria: {etykieta, sufit, surowe, punkty, przyciete} — dzięki niemu
-    rozpiska może powiedzieć wprost, że dziesięć drobiazgów policzono jako
-    tyle, ile wynosi limit grupy.
-
-    Powiadomienia bierzemy z pomin_wyciszone=False: odłożenie przypomnienia
-    („zrobię za dwa tygodnie”) nie naprawia auta, więc nie może podbijać wyniku.
-
-    Wynik trzyma pamięć do najbliższego zapisu (patrz db/pamiec.py): przy
-    jednym wejściu na ekran główny tę samą kondycję liczyły osobno kafelek,
-    nagłówek pojazdu (metryki pojazdu) i porównanie (koszt / km na kokpicie).
-    """
+    """Kondycja z ROZPISKĄ powodów. Liczy: podzespoły po interwale, bieżnik
+    zamontowanych opon, terminy dokumentów, zaległe usterki z „Do zrobienia”,
+    nieścisłości licznika, braki i ciszę w danych; magazyn i wydatki cykliczne NIE.
+    Zwraca {"wynik": int|None, "odjete", "powody": [{typ, kategoria, opis, szczegol,
+    punkty, trasa, waga}] malejąco, "grupy": {etykieta, sufit, surowe, punkty,
+    przyciete}}. Powiadomienia z pomin_wyciszone=False (drzemka nie naprawia auta).
+    Wynik w pamięci do zapisu (db/pamiec.py)."""
     if not auto_id:
         return {"wynik": None, "odjete": 0, "powody": [], "grupy": {}}
     return z_pamieci("rozbicie_kondycji", auto_id, lambda: _policz_rozbicie_kondycji(auto_id))
@@ -264,10 +238,8 @@ def _policz_rozbicie_kondycji(auto_id):
                   trasa="/do-zrobienia")
 
     # ---- Wiarygodność danych ----
-    # Historia licznika scala odczyty, tankowania, wizyty i wpisy serwisowe, więc
-    # jest jednocześnie miarą nieścisłości i tego, kiedy ostatnio cokolwiek
-    # zapisano. Liczymy ją tym samym wywołaniem, co ekran „Historia licznika”,
-    # żeby rozpiska i tamta lista nigdy nie mówiły dwóch różnych rzeczy.
+    # Tym samym wywołaniem co ekran „Historia licznika”, żeby rozpiska i lista mówiły to
+    # samo.
     podsumowanie = podsumowanie_historii_przebiegu(auto_id)
     if podsumowanie is None:
         if aktywny:
@@ -327,17 +299,10 @@ def oblicz_kondycje_pojazdu(auto_id):
 
 
 def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, float]]:
-    """Spalanie liczone ODCINKAMI między kolejnymi tankowaniami „do pełna” —
-    dokładnie ta sama metoda, co wykres trendu w Statystykach, tylko bez
-    uśredniania po miesiącach (jeden punkt = jeden odcinek między pełnymi
-    bakami). Używane przez sparkline przy kafelku „Śr. spalanie” w kokpicie.
-    Zwraca listę (data_tankowania_konczacego_odcinek, l/100km) chronologicznie,
-    przyciętą do ostatnich `limit` punktów (limit=None → wszystkie).
-
-    `rodzaj` zawęża liczenie do jednego źródła energii. Przy hybrydzie plug-in
-    to konieczność: mieszanie litrów z kilowatogodzinami w jednym odcinku dałoby
-    liczbę bez żadnego znaczenia. Brak `rodzaju` = wszystkie wpisy (auta
-    jednoźródłowe, gdzie nie ma czego mieszać)."""
+    """Spalanie ODCINKAMI między tankowaniami „do pełna” (jak trend w Statystykach, bez
+    uśredniania) dla sparkline „Śr. spalanie”: [(data końca odcinka, l/100km)]
+    chronologicznie, ostatnie `limit` punktów (None — wszystkie). `rodzaj` — jedno
+    źródło energii (konieczne przy plug-in); brak = wszystkie wpisy."""
     if not auto_id:
         return []
 
@@ -365,11 +330,8 @@ def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, fl
         key=lambda t: (t[0], t[2])
     )
 
-    # Granicą odcinka może być tylko pełny bak ZE STANEM LICZNIKA. Wpis bez
-    # przebiegu (import z samym dystansem) nie mówi, gdzie odcinek się kończy:
-    # jako granica dawał ujemny odcinek, a zaraz po nim odcinek „od zera”
-    # na cały licznik auta i spalanie bliskie zeru. Jego ilość i tak wchodzi
-    # do najbliższego odcinka, który zamknie pełny bak z licznikiem.
+    # Granicą odcinka jest tylko pełny bak ZE STANEM LICZNIKA; ilość z wpisu bez
+    # przebiegu wchodzi do najbliższego zamkniętego odcinka.
     pelne = [i for i, t in enumerate(tankowania) if t[4] and t[2] > 0]
     seria = []
     for a, b in zip(pelne, pelne[1:]):
@@ -384,30 +346,14 @@ def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, fl
 
 
 def pobierz_ciag_do_pelna(auto_id, data_str, przebieg=None, rodzaj=None, wyklucz_id=None) -> dict[str, Any]:
-    """Ciąg tankowań bez „do pełna”, do którego trafi wpis z dnia `data_str`
-    (licznik `przebieg`) — pod ostrzeżenie w formularzu tankowania.
-
-    Zużycie liczy się wyłącznie z odcinków zamkniętych dwoma tankowaniami „do
-    pełna” (pobierz_serie_spalania). Niepełne po drodze nie przepadają:
-    dopisują się do odcinka, który zamknie NASTĘPNY pełny bak, więc do tego
-    czasu zużycie za te kilometry czeka. Bez ostrzeżenia przy wpisie wychodziło
-    to dopiero jako dziura w statystykach — tygodnie później i bez wskazania,
-    który wpis ją zrobił.
-
-    Kolejność i źródło energii jak w pobierz_serie_spalania: po dacie, przy
-    remisie po przebiegu; `rodzaj` None = wszystkie wpisy. `przebieg` None =
-    wpis na końcu swojego dnia (formularz, zanim wpisano licznik).
-    `wyklucz_id` — edytowany wpis, żeby nie stał sam przed sobą.
-
-    Zwraca słownik:
-      niepelnych     — ile INNYCH tankowań bez „do pełna” jest w tym samym ciągu
-                       (przed wpisem od ostatniego pełnego baku i po nim, do
-                       najbliższego pełnego),
-      pelny_data     — data ostatniego pełnego baku przed wpisem albo None,
-      pelny_przebieg — jego licznik albo None,
-      najdalej       — najwyższy licznik wśród tych innych niepełnych albo None,
-      zamkniety      — czy po wpisie jest już tankowanie do pełna; wtedy odcinek
-                       jest zamknięty i nic nie czeka."""
+    """Ciąg tankowań bez „do pełna”, do którego trafi wpis z dnia `data_str` (licznik
+    `przebieg`) — ostrzeżenie w formularzu (niepełne czekają na NASTĘPNY pełny bak).
+    Kolejność i źródło jak w pobierz_serie_spalania; `przebieg` None = koniec dnia;
+    `wyklucz_id` — edytowany wpis. Zwraca:
+    - niepelnych — ile INNYCH niepełnych w tym ciągu;
+    - pelny_data, pelny_przebieg — ostatni pełny bak przed wpisem albo None;
+    - najdalej — najwyższy licznik wśród tych niepełnych albo None;
+    - zamkniety — po wpisie jest już pełny bak."""
     wynik = {"niepelnych": 0, "pelny_data": None, "pelny_przebieg": None,
              "najdalej": None, "zamkniety": False}
     if not auto_id:
@@ -454,11 +400,9 @@ def pobierz_ciag_do_pelna(auto_id, data_str, przebieg=None, rodzaj=None, wyklucz
 
 
 def pobierz_serie_dziennego_przebiegu(auto_id, limit=12, min_dni=7) -> list[tuple[str, float]]:
-    """Średni przebieg dzienny w kolejnych odcinkach czasu — punkty do sparkline
-    przy kafelku „Śr. dzienny” w kokpicie. Odcinki sklejamy tak, aby każdy miał
-    co najmniej `min_dni` dni; bez tego dwa odczyty licznika z sąsiednich dni
-    dawałyby skok w rodzaju „400 km/dzień” i wykres pokazywałby szum zamiast
-    tempa jazdy. Zwraca [(data_konca_odcinka, km_na_dzien)] chronologicznie."""
+    """Średni przebieg dzienny w kolejnych odcinkach (sparkline „Śr. dzienny”); odcinki
+    sklejane do co najmniej `min_dni` dni (inaczej szum). [(data końca odcinka,
+    km_na_dzien)] chronologicznie."""
     if not auto_id:
         return []
 
@@ -546,20 +490,11 @@ def pobierz_serie_kosztu_km(auto_id, liczba_miesiecy=6) -> list[tuple[int, int, 
 
 
 # ============================================================================
-#  KOSZT NA 1000 KM W OKNIE KROCZĄCYM
+# KOSZT NA 1000 KM W OKNIE KROCZĄCYM
 # ============================================================================
-# Roczna suma kosztów rośnie także wtedy, gdy po prostu jeździsz więcej —
-# i dlatego nie odpowiada na pytanie, czy auto DROŻEJE. Koszt na przejechany
-# dystans odpowiada, bo dzieli wydatek przez to, co się za niego dostało.
-#
-# Okno KROCZĄCE, a nie rok kalendarzowy: przegląd w grudniu i ten sam przegląd
-# w styczniu to dla właściciela ta sama rzecz, a w rozbiciu na lata wyglądają
-# jak dwa różne zjawiska. Okno kończy się w każdym kolejnym miesiącu, więc
-# punkt na krzywej mówi: „gdyby wtedy podsumować ostatnie N miesięcy, wyszłoby
-# tyle”.
-#
-# Na 1000 km, nie na kilometr: przy realnych kosztach na kilometr wychodzi
-# 0,73 zł i każda zmiana dzieje się na drugim miejscu po przecinku.
+# Koszt na dystans mówi, czy auto DROŻEJE (suma roczna rośnie też od samego jeżdżenia).
+# Okno kroczące, nie rok kalendarzowy; na 1000 km, bo na kilometr zmiany są na drugim
+# miejscu po przecinku.
 
 # Sufit długości osi. Dziesięć lat miesięcznych punktów to i tak więcej, niż
 # da się pokazać na telefonie, a pętla musi się kończyć.
@@ -567,17 +502,10 @@ MAKS_MIESIECY_1000KM = 120
 
 
 def koszt_na_1000km(auto_id, okno_miesiecy=OKNO_1000KM_DOMYSLNE, dzis=None) -> dict[str, Any]:
-    """Koszt eksploatacji na 1000 km liczony w oknie kroczącym, miesiąc po
-    miesiącu — krzywa, na której widać moment, w którym auto zaczyna drożeć.
-
-    Punkt powstaje dopiero wtedy, gdy CAŁE okno mieści się w danych: pierwszy
-    miesiąc z policzonymi kilometrami wyznacza początek. Inaczej najstarsze
-    punkty liczyłyby koszty przez niepełny dystans i krzywa zaczynałaby się od
-    fałszywego szczytu — dokładnie tam, gdzie oko szuka trendu.
-
-    Zwraca też `srednia_zyciowa` (ta sama liczba dla całej dostępnej historii),
-    `szczyt` (najdroższe okno), `zmiana_rdr` (ostatnie okno wobec okna sprzed
-    roku) i `iskra` do kafelka kokpitu."""
+    """Koszt eksploatacji na 1000 km w oknie kroczącym, miesiąc po miesiącu. Punkt
+    dopiero, gdy CAŁE okno mieści się w danych (bez fałszywego szczytu na starcie).
+    Zwraca też `srednia_zyciowa`, `szczyt`, `zmiana_rdr` (wobec okna sprzed roku) i
+    `iskra` dla kokpitu."""
     okno = max(1, int(okno_miesiecy or OKNO_1000KM_DOMYSLNE))
     pusty = {
         "punkty": [], "iskra": [], "okno": okno, "biezacy": None,
@@ -654,20 +582,10 @@ def koszt_na_1000km(auto_id, okno_miesiecy=OKNO_1000KM_DOMYSLNE, dzis=None) -> d
 
 
 def pobierz_statystyki_energii(auto_id) -> list[dict[str, Any]]:
-    """Zużycie i koszty rozbite NA KAŻDE ŹRÓDŁO ENERGII osobno.
-
-    Przy hybrydzie plug-in jedna uśredniona liczba nie mówi nic sensownego —
-    dopiero „6,1 l/100km na paliwie i 18,4 kWh/100km na prądzie” pozwala ocenić,
-    ile daje ładowanie zamiast tankowania. Auta jednoźródłowe dostają jedną
-    sekcję i wyglądają dokładnie jak dotąd.
-
-    Zwraca listę słowników (w kolejności rodzajow_energii_pojazdu):
-    {rodzaj, etykieta, jednostka, ilosc, koszt, liczba_wpisow, zuzycie,
-     dystans, koszt_km, cena_jednostkowa, ceny_ladowania}
-    gdzie 'zuzycie' jest w jednostce właściwej dla źródła (l/100km albo
-    kWh/100km), a 'dystans' to suma odcinków między pełnymi tankowaniami TEGO
-    źródła — czyli baza, na której zużycie faktycznie policzono.
-    """
+    """Zużycie i koszty NA KAŻDE ŹRÓDŁO ENERGII osobno (auta jednoźródłowe — jedna
+    sekcja). Lista w kolejności rodzajow_energii_pojazdu: {rodzaj, etykieta, jednostka,
+    ilosc, koszt, liczba_wpisow, zuzycie (l/100km albo kWh/100km), dystans (odcinki
+    między pełnymi TEGO źródła), koszt_km, cena_jednostkowa, ceny_ladowania}."""
     if not auto_id:
         return []
 
@@ -748,15 +666,8 @@ def pobierz_statystyki_energii(auto_id) -> list[dict[str, Any]]:
 
 
 def pobierz_udzial_energii(auto_id):
-    """Jak rozkłada się WYDATEK na energię między paliwo a prąd — sens ma
-    wyłącznie przy hybrydzie plug-in.
-
-    Świadomie liczymy udział KOSZTU, a nie kilometrów. Mając wyłącznie licznik
-    i ilości zatankowanej energii NIE DA SIĘ rozdzielić, ile kilometrów auto
-    przejechało na prądzie, a ile na paliwie — obie strony dzielą ten sam
-    przebieg. Udział kosztu jest policzalny, uczciwy i odpowiada na właściwe
-    pytanie: ile realnie oszczędza ładowanie zamiast tankowania.
-    """
+    """Udział paliwa i prądu w WYDATKU na energię (plug-in). Świadomie koszt, nie
+    kilometry — tych nie da się rozdzielić z samego licznika."""
     if not czy_pojazd_dwuzrodlowy(auto_id):
         return None
     statystyki = {s["rodzaj"]: s for s in pobierz_statystyki_energii(auto_id)}

@@ -31,22 +31,12 @@ class MiksinKokpitu:
 
     # ================= KOKPIT / DASHBOARD STARTOWY (siatka kafelków) =================
     def _buduj_kokpit(self):
-        """Mini-dashboard nad listą podzespołów, złożony z widżetów wybranych przez
-        użytkownika w Ustawieniach (patrz db.KOKPIT_WIDGETY / db.pobierz_widgety_kokpitu).
-        Renderowany jako siatka (ft.ResponsiveRow) z kafelkami w dwóch rozmiarach
-        — 1×1 i 2×1 — zamiast poziomej karuzeli, która chowała część kafelków za
-        krawędzią ekranu (patrz _kokpit_siatka).
-
-        Układ jest WŁASNOŚCIĄ POJAZDU: auto służbowe może mieć inne kafelki niż
-        prywatne. Pojazd bez własnego układu dziedziczy wspólny (patrz
-        db.pobierz_widgety_kokpitu)."""
-        # Odliczanie liczb przy wejściu na kokpit. Scenę dobiera i uruchamia
-        # MainView._nowa_scena_zakladki — tu tylko z niej korzystamy. JEDNA na całą
-        # przebudowę, żeby wszystkie kafelki ruszyły w tej samej chwili i stanęły
-        # razem; osobny timer na kafelek dałby osiemnaście animacji
-        # rozjeżdżających się w czasie. Scena wyłączona oddaje kontrolki od razu
-        # w stanie docelowym, więc poniżej nie ma ani jednego „jeśli animacje
-        # włączone”.
+        """Kokpit: siatka (ft.ResponsiveRow) kafelków wybranych w Ustawieniach
+        (db.KOKPIT_WIDGETY / db.pobierz_widgety_kokpitu), w rozmiarach 1×1 i 2×1
+        (_kokpit_siatka). Układ jest WŁASNOŚCIĄ POJAZDU; bez własnego — wspólny."""
+        # Scena odliczania (dobiera ją MainView._nowa_scena_zakladki) — JEDNA na
+        # przebudowę, żeby kafelki ruszyły i stanęły razem. Wyłączona oddaje kontrolki
+        # od razu w stanie docelowym.
         scena = self._scena_zakladki or utils.ScenaWejscia(wlaczona=False)
 
         wlaczone = db.pobierz_widgety_kokpitu(self.state.auto_id)
@@ -56,20 +46,15 @@ class MiksinKokpitu:
             return ft.Container()
 
         dzisiaj = datetime.now()
-        # Waluta i jednostka dystansu RAZ na przebudowę. Każda kwota na każdym
-        # kafelku pytała bazę o symbol waluty osobno — przy komplecie kafelków
-        # dwadzieścia kilka wejść do bazy po ten sam napis. Zmiana w Ustawieniach
-        # i tak przebudowuje cały ekran. Iskry zostają w km: pokazują tylko
-        # kształt, a ten od mnożenia przez stałą się nie zmienia.
+        # Waluta i jednostka dystansu RAZ na przebudowę (zmiana w Ustawieniach i tak
+        # przebudowuje ekran). Iskry zostają w km — pokazują tylko kształt.
         waluta = utils.symbol_waluty()
         j = utils.jednostka_dystansu()
 
         def metryka(nazwa):
-            """Dane kafelka z pamięci metryk (patrz db/kokpit.py) — liczone raz
-            dla wszystkich kafelków i trzymane do najbliższego zapisu. Słownik
-            wypełnia _zawartosc_kokpitu przy KAŻDEJ przebudowie siatki, więc
-            kafelek dołożony w trybie układania ma dane od razu, a nie dopiero
-            po ponownym wejściu na ekran."""
+            """Dane kafelka z pamięci metryk (db/kokpit.py), do najbliższego zapisu.
+            Słownik wypełnia _zawartosc_kokpitu przy KAŻDEJ przebudowie siatki (kafelek
+            dołożony w trybie układania ma dane od razu)."""
             return self._metryki_kokpitu[nazwa]
 
         def idz_do_statystyk(podzakladka=0):
@@ -128,24 +113,16 @@ class MiksinKokpitu:
             )
 
         def kafel_pusty(ikona, kolor_ikony, etykieta, wartosc, on_click):
-            """Kafelek, który nie ma o czym mówić: przy włączonym chowaniu znika
-            z siatki (None), przy wyłączonym wygląda dokładnie jak dotąd.
-
-            Chowanie obejmuje WYŁĄCZNIE pustkę typu „nie dotyczy / nieustawione”:
-            budżet bez limitu, opony, których nie ma w garażu. Kafelek, który
-            tylko czeka na dane („Za mało danych”), zostaje — jego pustka sama
-            się skończy, a do tego czasu jest zaproszeniem do wpisania czegoś,
-            a nie szumem."""
+            """Kafelek bez treści: przy włączonym chowaniu znika (None), inaczej wygląda
+            jak dotąd. Chowanie WYŁĄCZNIE dla „nie dotyczy / nieustawione”; „Za mało
+            danych” zostaje (zaprasza do wpisania)."""
             if self._chowaj_puste:
                 return None
             return kafel_wartosci(ikona, kolor_ikony, etykieta, wartosc, on_click)
 
         def stopka_iskry(podpis, chip=None):
-            """Dolny wiersz kafelka z iskrą: chip trendu po lewej, krótki podpis
-            po prawej. Jeden układ na wszystkie takie kafelki — wcześniej każdy
-            składał go u siebie i rozmiar tekstu, wyrównanie oraz odstęp
-            rozjeżdżały się między „Kosztem w mies.”, „Kosztem / 1000 km”
-            i resztą."""
+            """Dolny wiersz kafelka z iskrą: chip trendu z lewej, podpis z prawej —
+            jeden układ dla wszystkich takich kafelków."""
             wiersz = [chip] if chip is not None else []
             wiersz.append(ft.Text(
                 podpis, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
@@ -419,12 +396,8 @@ class MiksinKokpitu:
             )
 
         def widget_skumulowany():
-            """Suma narastająca jednym rzutem oka.
-
-            Bez chipa trendu — inaczej niż przy pozostałych kafelkach z iskrą.
-            Krzywa narastająca rośnie ZAWSZE, więc „rośnie o 12%" nie niosłoby
-            tu żadnej informacji; stopka mówi zamiast tego, od kiedy liczy się
-            rachunek i ile wychodzi na dzień."""
+            """Suma narastająca jednym rzutem oka — bez chipa trendu (krzywa rośnie
+            ZAWSZE); stopka mówi, od kiedy liczy się rachunek i ile wychodzi na dzień."""
             dane_skumulowane = metryka("skumulowany") or {}
             iskra = utils.sparkline(dane_skumulowane.get("iskra") or [],
                                     ft.Colors.PRIMARY, wysokosc=WYS_ISKRY)
@@ -1240,14 +1213,8 @@ class MiksinKokpitu:
             pass
 
     def _czy_animowac_kokpit(self):
-        """Odliczanie gra przy starcie aplikacji i po zmianie pojazdu — nie przy
-        każdym powrocie na kokpit.
-
-        Ekran startowy przebudowuje się przy KAŻDEJ zmianie zakładki i po wyjściu
-        z dowolnego ekranu. Animowanie za każdym razem zamieniłoby ruch „na
-        powitanie” w zwłokę przy odczycie już za dziesiątym przejściem tam
-        i z powrotem — a kokpit jest ekranem, na który się wraca, nie takim,
-        który się ogląda."""
+        """Odliczanie gra przy starcie aplikacji i po zmianie pojazdu — nie przy każdym
+        powrocie na kokpit."""
         if self.kokpit_edycja or not self.state.auto_id:
             return False
         if not db.czy_animacje_interfejsu():
@@ -1259,26 +1226,11 @@ class MiksinKokpitu:
         self._odswiez_kokpit()
 
     def _kokpit_siatka(self, wlaczone):
-        """Normalny tryb: siatka kafelków. Długie przytrzymanie dowolnego kafelka
-        (albo kafelek „Ułóż”) wchodzi w tryb układania.
-
-        Siatka zamiast poziomej karuzeli. Karuzela chowała część kafelków za
-        krawędzią ekranu, a Flutter nie przewija zawartości myszą — stąd brał się
-        wymuszony, zawsze widoczny suwak, który mówił tylko tyle, że coś tam
-        jeszcze jest. Siatka pokazuje wszystkie kafelki naraz i zamienia ruch
-        w bok na zwykłe przewijanie ekranu w dół.
-
-        Szerokość komórki liczy Flet, a nie my — z dokładnie tego powodu, co
-        w siatce skrótów (patrz _buduj_skroty): przy PIERWSZYM uruchomieniu
-        aplikacji `page.width` nie jest jeszcze znane, więc dzielenie szerokości
-        ekranu w Pythonie dawało jeden kafelek w wierszu aż do zmiany rozmiaru okna.
-
-        Rozmiar kafelka bierze się z szerokości, którą budowniczy sam sobie
-        zadeklarował: kafelek z iskrą, słupkami albo dłuższym tekstem prosił
-        o więcej niż SZER_KAFLA i dostaje 2×1, pozostałe 1×1. Nowy widżet nie
-        musi się więc dopisywać do żadnej listy rozmiarów, a kafelek, który bywa
-        i z iskrą, i bez niej („Wydatki tego miesiąca”), zmienia rozmiar razem
-        ze swoją zawartością."""
+        """Siatka kafelków (zamiast karuzeli, której Flutter nie przewija myszą); długie
+        przytrzymanie albo kafelek „Ułóż” — tryb układania. Szerokość komórki liczy Flet
+        (przy pierwszym starcie `page.width` jest nieznane). Rozmiar z szerokości
+        zadeklarowanej przez budowniczego: więcej niż SZER_KAFLA → 2×1, inaczej 1×1
+        (nowy kafelek nie dopisuje się do żadnej listy rozmiarów)."""
         kafelki = []
         self._kokpit_puste = []
         for wid in wlaczone:
@@ -1524,15 +1476,8 @@ class MiksinKokpitu:
 
     # ================= KOKPIT — ZAKŁADKA STARTOWA =================
     def buduj_kokpit_ekran(self):
-        """Ekran startowy dostał wreszcie własną zakładkę. Wcześniej widżety
-        kokpitu doklejały się nad listę podzespołów w Serwisie — przez co
-        pierwsze, co się widziało po uruchomieniu aplikacji, było pomieszaniem
-        „jak jest” z „co zrobić”, a żeby dojść do listy części trzeba było
-        przewinąć cały dashboard.
-
-        Kokpit odpowiada tylko na jedno pytanie: co się teraz dzieje z autem.
-        Nad nim kafel pojazdu z terminami, pod nim skróty do ekranów, które
-        użytkownik sam sobie wybrał."""
+        """Zakładka Kokpit: co się teraz dzieje z autem. Nad nim kafel pojazdu z
+        terminami, pod nim skróty wybrane przez użytkownika."""
         naglowek = utils.tytul_sekcji(ft.Icons.SPACE_DASHBOARD, "Kokpit")
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
         if wspolny_id:
@@ -1584,11 +1529,8 @@ class MiksinKokpitu:
         self.fab = self._buduj_fab_szybkich_akcji()
 
     def _buduj_skroty(self):
-        """Siatka skrótów. Sedno problemu, od którego zaczęła się przebudowa
-        nawigacji, brzmiało: „Rok w pigułce da się otworzyć z paru miejsc, ale
-        nigdy nie pamiętam, z których”. Odpowiedź jest taka, że ekran używany raz
-        na jakiś czas musi mieć STAŁE miejsce wybrane przez użytkownika — a nie
-        być rozsiany po menu kontekstowych."""
+        """Siatka skrótów — ekran używany rzadko ma STAŁE miejsce wybrane przez
+        użytkownika."""
         przypiete = [
             utils.EKRANY_WG_ID[eid] for eid in db.pobierz_przypiete_ekrany()
             if eid in utils.EKRANY_WG_ID
@@ -1617,18 +1559,10 @@ class MiksinKokpitu:
                 ),
             )
         else:
-            # Siatka, a nie karuzela: skróty mają być widoczne WSZYSTKIE naraz,
-            # inaczej znowu trzeba by szukać — tym razem przewijaniem w bok.
-            #
-            # Szerokość kafelka liczy Flet, a nie my. Poprzednia wersja dzieliła
-            # zgadniętą szerokość ekranu przez liczbę kolumn — a przy PIERWSZYM
-            # uruchomieniu aplikacji page.width nie jest jeszcze znane i kafelki
-            # wychodziły tak szerokie, że mieścił się jeden w wierszu. Dopiero
-            # zmiana rozmiaru okna przebudowywała widok poprawnie.
-            #
-            # ResponsiveRow rozdziela 12 kolumn wg RZECZYWISTEJ szerokości:
-            # col=4 → trzy kafelki w rzędzie na telefonie, cztery na tablecie,
-            # sześć na szerokim ekranie. Nic tu nie zależy od pomiaru w Pythonie.
+            # Siatka, nie karuzela — wszystkie skróty widoczne naraz. Szerokość liczy
+            # Flet: ResponsiveRow dzieli 12 kolumn wg RZECZYWISTEJ szerokości (col=4 →
+            # trzy na telefonie, cztery na tablecie, sześć na szerokim ekranie); przy
+            # pierwszym starcie `page.width` jest nieznane.
             tresc = ft.ResponsiveRow(
                 [
                     utils.kafel_skrotu(self._page, self.state, ekran, self.akcje_nawigacji,

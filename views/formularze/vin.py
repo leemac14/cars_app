@@ -5,13 +5,9 @@ import urllib.request
 
 
 def pobierz_dane_vin(vin: str) -> dict:
-    """
-    Pobiera dane pojazdu z darmowego, publicznego API NHTSA (vPIC) na podstawie VIN.
-    Funkcja jest SYNCHRONICZNA i blokująca — wywołuj ją wyłącznie przez
-    `await asyncio.to_thread(pobierz_dane_vin, vin)`, żeby nie zamrozić UI.
-    Zwraca słownik pól (Make, Model, ModelYear, DisplacementCC, EngineHP...).
-    W razie problemu rzuca wyjątek — obsługa błędów jest po stronie wywołującego.
-    """
+    """Dane pojazdu z publicznego API NHTSA (vPIC) po VIN. SYNCHRONICZNA i blokująca —
+    tylko przez `await asyncio.to_thread(pobierz_dane_vin, vin)`. Zwraca słownik pól
+    (Make, Model, ModelYear, DisplacementCC, EngineHP...); błąd rzuca wyjątkiem."""
     url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{urllib.parse.quote(vin)}?format=json"
     zapytanie = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
 
@@ -38,11 +34,9 @@ _ISO3779_KOD_ROKU = {
 
 
 def rok_produkcji_z_vin(vin: str):
-    """Dekoduje przybliżony rok produkcji z 10. znaku VIN. Kod roku powtarza się
-    w 30-letnim cyklu, więc cykl (np. 1994 czy 2024 dla znaku 'R') rozstrzygamy
-    umowną, powszechnie stosowaną konwencją: jeśli 7. znak VIN to litera —
-    nowszy cykl (2010+), jeśli cyfra — starszy (1980-2009).
-    Zwraca None, jeśli VIN ma nietypową długość albo 10. znak nie jest rozpoznany."""
+    """Przybliżony rok produkcji z 10. znaku VIN; cykl 30-letni rozstrzyga 7. znak
+    (litera — 2010+, cyfra — 1980–2009). None przy nietypowej długości albo nieznanym
+    znaku."""
     vin = (vin or "").strip().upper()
     if len(vin) != 17:
         return None
@@ -52,11 +46,9 @@ def rok_produkcji_z_vin(vin: str):
     return bazowy_rok + 30 if vin[6].isalpha() else bazowy_rok
 
 
-# --- Lokalne rozpoznawanie WMI (3 pierwsze znaki VIN) — działa offline, dla
-# KAŻDEGO regionu świata, w przeciwieństwie do NHTSA (patrz niżej), które zna
-# głównie modele kiedykolwiek sprzedawane w USA. Baza nie jest wyczerpująca —
-# światowy rejestr WMI liczy tysiące kodów (często kilka na jednego producenta,
-# wg fabryki/linii modelowej) — ale pokrywa najpopularniejsze marki w Europie.
+# --- Lokalne rozpoznawanie WMI (3 pierwsze znaki VIN) ---
+# Offline i dla każdego regionu (NHTSA zna głównie auta z rynku USA); baza niepełna, ale
+# obejmuje popularne marki w Europie.
 WMI_PRODUCENCI = {
     # Niemcy
     "WVW": "Volkswagen", "WV1": "Volkswagen", "WV2": "Volkswagen", "WV3": "Volkswagen",
@@ -111,11 +103,8 @@ REGION_WMI = {
 
 
 def dekoduj_wmi_lokalnie(vin: str):
-    """Rozpoznaje markę WYŁĄCZNIE na podstawie kodu WMI, bez zapytania do
-    internetu. Działa dla każdego auta zgodnego z normą VIN, niezależnie od
-    tego, czy model był kiedykolwiek sprzedawany w USA. Zwraca (marka, region)
-    — marka może być None, jeśli dokładny WMI nie jest w bazie (wtedy dostajesz
-    chociaż sam region)."""
+    """Marka WYŁĄCZNIE z kodu WMI, bez internetu. Zwraca (marka, region); marka None,
+    gdy WMI nie ma w bazie."""
     vin = (vin or "").strip().upper()
     if len(vin) != 17:
         return None, None

@@ -100,14 +100,10 @@ class SzukajView(ft.View):
         # czemu „marzec” pominął wpis ze słowem „marzec” w notatce.
         self.pasek_trybu = ft.Container(visible=False)
 
-        # Wyszukiwarka przestała być tylko przeglądarką WPISÓW. Najczęstszym
-        # pytaniem w rozrosłej aplikacji nie jest „ile zapłaciłem na Orlenie”,
-        # tylko „gdzie to było” — więc to samo pole odpowiada teraz na oba.
-        # Ekrany stoją NAD wpisami, bo kto wpisuje „budżet”, chce wejść na ekran
-        # budżetu, a nie przeczytać wpis, w którym padło to słowo. Ale „rozrząd”
-        # czy „olej” to słowa z danych: przy frazie od DLUGA_FRAZA_OD znaków,
-        # która trafiła we wpisy, ekran znaleziony tylko przez słowa pomocnicze
-        # schodzi POD wpisy (utils.rozstaw_ekrany). Trafienie w tytuł zostaje u góry.
+        # Wyszukiwarka znajduje też EKRANY. Ekrany stoją NAD wpisami, ale przy frazie od
+        # DLUGA_FRAZA_OD znaków trafiającej we wpisy ekran znaleziony tylko przez słowa
+        # pomocnicze schodzi POD wpisy (utils.rozstaw_ekrany); trafienie w tytuł zostaje
+        # u góry.
         self.sekcja_ekranow = ft.Column(spacing=8, visible=False)
         self.sekcja_ekranow_pod = ft.Column(spacing=8, visible=False)
 
@@ -342,12 +338,9 @@ class SzukajView(ft.View):
         # Kolory tagów raz na wyszukiwanie, a nie przy każdej karcie wyniku.
         self._mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id) if wyniki else {}
 
-        # Zapytanie z filtrem („>1000”, „marzec 2026”, „stacja:orlen”) nie jest
-        # nazwą ekranu — pokazywanie przy nim listy ekranów byłoby szumem. Sekcje
-        # trzeba wtedy jawnie schować: bez tego szybka zamiana „olej” na „450”
-        # zostawiała ekrany z poprzedniej frazy.
-        # Filtr z wynikami bywa celem sam w sobie: „marzec 2026” przegląda się
-        # w całości, nie otwierając żadnego wpisu — i to też warto pamiętać.
+        # Zapytanie z filtrem („>1000”, „marzec 2026”, „stacja:orlen”) chowa sekcje
+        # ekranów jawnie (inaczej zostawały ekrany z poprzedniej frazy). Filtr z
+        # wynikami też trafia do historii wyszukiwań.
         if filtr and wyniki:
             db.zanotuj_wyszukiwanie(zapytanie)
 
