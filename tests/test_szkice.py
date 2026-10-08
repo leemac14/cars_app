@@ -334,16 +334,18 @@ def test_tankowanie_ze_szkicu_bierze_date_zdjecie_licznik_i_opis(baza):
     assert widok.route == f"/tankowanie/nowe/szkic/{szkic_id}"
     assert widok.e_d.value == szkic["data"]
     assert widok.e_p.value == "101450" and widok.e_dys.value == "450"
-    assert widok.zalacznik_val == szkic["zalacznik"]
+    assert [p["sciezka"] for p in widok.pliki.pozycje] == [szkic["zalacznik"]]
     assert widok.k_notatka.value == "Orlen przy A2"
     assert "Paragon z " + szkic["data"] + ", 15:40" in _teksty(widok)
 
     widok.e_l.value, widok.e_k.value = "30", "195"
     widok.zapisz(None)
 
-    wpis = _wiersz("SELECT przebieg, dystans, zalacznik, data FROM tankowania WHERE auto_id=? AND przebieg=?",
+    wpis = _wiersz("SELECT id, przebieg, dystans, data FROM tankowania WHERE auto_id=? AND przebieg=?",
                    (auto_id, 101450))
-    assert wpis == (101450, 450.0, szkic["zalacznik"], szkic["data"])
+    assert wpis[1:] == (101450, 450.0, szkic["data"])
+    assert pomoce.pliki_wpisu("tankowania", wpis[0]) == [(szkic["zalacznik"], "paragon", None)], \
+        "zdjęcie szkicu to pierwszy plik wpisu — bez kopiowania"
     assert db.pobierz_szkic(szkic_id) is None
     assert os.path.exists(db.sciezka_pliku_zalacznika(szkic["zalacznik"]))
     assert trasy[-1] == "/do-wpisania", "w kolejce czeka jeszcze jeden paragon"
@@ -359,12 +361,14 @@ def test_koszt_ze_szkicu_ma_opis_jako_nazwe_i_ostatni_wraca_na_kokpit(baza):
     widok, trasy = _formularz(FormularzInneView, auto_id, szkic_id)
 
     assert widok.route == f"/inne/nowy/szkic/{szkic_id}"
-    assert (widok.e_d.value, widok.e_o.value, widok.zalacznik_val) == (szkic["data"], "Myjnia", szkic["zalacznik"])
+    assert (widok.e_d.value, widok.e_o.value) == (szkic["data"], "Myjnia")
+    assert [p["sciezka"] for p in widok.pliki.pozycje] == [szkic["zalacznik"]]
     widok.e_kw.value = "35"
     widok.zapisz(None)
 
-    assert _wiersz("SELECT nazwa, kwota, zalacznik FROM inne_koszty WHERE auto_id=?", (auto_id,)) == \
-        ("Myjnia", 35.0, szkic["zalacznik"])
+    koszt = _wiersz("SELECT id, nazwa, kwota FROM inne_koszty WHERE auto_id=?", (auto_id,))
+    assert koszt[1:] == ("Myjnia", 35.0)
+    assert [p[0] for p in pomoce.pliki_wpisu("inne_koszty", koszt[0])] == [szkic["zalacznik"]]
     assert db.pobierz_szkic(szkic_id) is None
     assert trasy[-1] == "/", "pusta kolejka — zwykły powrót formularza"
 
@@ -385,8 +389,9 @@ def test_wizyta_ze_szkicu_bierze_licznik_i_opis(baza):
     widok.koszt.e_kwota.value = "480"
     widok.zapisz(None)
 
-    assert _wiersz("SELECT przebieg, zalacznik, notatki FROM wizyty WHERE auto_id=? AND przebieg=102000",
-                   (auto_id,)) == (102000, szkic["zalacznik"], "Wymiana oleju u Janka")
+    wizyta = _wiersz("SELECT id, przebieg, notatki FROM wizyty WHERE auto_id=? AND przebieg=102000", (auto_id,))
+    assert wizyta[1:] == (102000, "Wymiana oleju u Janka")
+    assert [p[0] for p in pomoce.pliki_wpisu("wizyty", wizyta[0])] == [szkic["zalacznik"]]
     assert db.pobierz_szkic(szkic_id) is None
     # W kolejce został szkic z `utworz_pojazd`, więc formularz wraca do niej.
     assert trasy[-1] == "/do-wpisania"
@@ -403,7 +408,7 @@ def test_szkic_obcego_pojazdu_albo_edycja_nie_wypelnia_formularza(baza):
 
     from views.formularze import FormularzTankowanieView
     widok, _ = _formularz(FormularzTankowanieView, auto_id, szkic_id)
-    assert widok.szkic is None and widok.route == "/tankowanie/nowe" and widok.zalacznik_val is None
+    assert widok.szkic is None and widok.route == "/tankowanie/nowe" and widok.pliki.pozycje == []
 
 
 # ======================================================= trasy i ekrany

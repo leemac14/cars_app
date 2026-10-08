@@ -38,7 +38,6 @@ class FormularzWpisView(ft.View):
         self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
         koszt_zrodla, robocizna_zrodla = None, None
         notatka_val = ""
-        self.zalacznik_val = None  # <-- NOWE
         # Gwarancja naprawy: przy edycji ta zapisana, przy duplikacie — ten sam
         # OKRES od dzisiejszej wymiany (db.przesun_gwarancje), nie stara data.
         gwarancja = {"koniec": None, "limit_km": None, "miesiace": None, "dystans_km": None}
@@ -49,23 +48,21 @@ class FormularzWpisView(ft.View):
         if h_id or duplikuj_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, zalacznik, notatka, koszt_robocizny, gwarancja_data, gwarancja_przebieg FROM historia WHERE id=?", (h_id or duplikuj_id,))
+                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, notatka, koszt_robocizny, gwarancja_data, gwarancja_przebieg FROM historia WHERE id=?", (h_id or duplikuj_id,))
                 w = c.fetchone()
                 if w:
                     d_val, w_val = str(w[0] or ""), str(w[3] or "")
                     self.p_km = w[1] or None
-                    koszt_zrodla, robocizna_zrodla = float(w[2] or 0.0), w[7]
+                    koszt_zrodla, robocizna_zrodla = float(w[2] or 0.0), w[6]
                     if czy_opony and w[4]: kat_val = str(w[4])
-                    self.zalacznik_val = w[5]  # <-- NOWE
-                    notatka_val = str(w[6] or "")
-                    gwarancja.update(koniec=w[8], limit_km=w[9])
+                    notatka_val = str(w[5] or "")
+                    gwarancja.update(koniec=w[7], limit_km=w[8])
                     if duplikuj_id:
                         d_val = datetime.now().strftime("%d.%m.%Y")
-                        self.zalacznik_val = None
                         # Licznik duplikatu zostaje ze źródła (poprawia się go
                         # ręcznie), więc limit jedzie za polem: poprawka licznika
                         # przesunie go o tyle samo.
-                        gwarancja = db.przesun_gwarancje(w[8], w[9], w[0], w[1], d_val, w[1])
+                        gwarancja = db.przesun_gwarancje(w[7], w[8], w[0], w[1], d_val, w[1])
 
         # Magazyn części — ta sama karta, co przy wizycie zbiorczej. Koszt zużytych
         # części dolicza się do kosztu wpisu, więc w polach kosztu stoi sama usługa:
@@ -104,7 +101,8 @@ class FormularzWpisView(ft.View):
             visible=czy_opony,
             **utils.styl_dropdown()
         )
-        self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)  # <-- NOWE
+        # Duplikat zaczyna bez plików — faktura jest z tamtej wymiany.
+        self.pliki = utils.PolaZalacznikow(page, "historia", h_id)
         self.notatka_bazowa = (notatka_val or "").strip()
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 
@@ -115,7 +113,8 @@ class FormularzWpisView(ft.View):
             self.gwarancja.kontrolki(), "Gwarancja na naprawę", ft.Icons.GPP_GOOD,
             domyslnie_otwarte=bool(gwarancja["koniec"] or gwarancja["limit_km"]), page=page,
         )
-        k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / faktura)", ft.Icons.ATTACH_FILE)  # <-- NOWE
+        k2 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (paragon, faktura, zdjęcie części)", ft.Icons.ATTACH_FILE,
+                                    domyslnie_otwarte=bool(self.pliki.pozycje))
         k3 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
                                     domyslnie_otwarte=bool(notatka_val))
 
@@ -133,7 +132,7 @@ class FormularzWpisView(ft.View):
     def _migawka_formularza(self):
         return (
             self.e_d.value, self.e_p.value, self.koszt.migawka(), self.get_wykonawca(), self.e_kat.value,
-            self.k_notatka.value, self.zuzycie.migawka(), self.gwarancja.migawka(),
+            self.k_notatka.value, self.zuzycie.migawka(), self.gwarancja.migawka(), self.pliki.migawka(),
         )
 
     def _przebieg_km(self):
@@ -180,13 +179,10 @@ class FormularzWpisView(ft.View):
 
         kat = self.e_kat.value if self.e_kat.visible else None
 
-        przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
-        nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
-
         zdalne_id_czesci_do_nagrobka = []
-        with db.polacz_baze() as conn:
+        with self.pliki.zapis(), db.polacz_baze() as conn:
             if self.h_id:
-                conn.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, cena=?, koszt_robocizny=?, wykonawca=?, kategoria=?, zalacznik=?, gwarancja_data=?, gwarancja_przebieg=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, nowy_zalacznik, gw_koniec, gw_limit, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
+                conn.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, cena=?, koszt_robocizny=?, wykonawca=?, kategoria=?, gwarancja_data=?, gwarancja_przebieg=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, gw_koniec, gw_limit, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
                 historia_id = self.h_id
                 # Edycja: najpierw oddajemy do magazynu to, co ten wpis zdjął
                 # poprzednio, a dopiero potem potrącamy nowy zestaw. Inaczej
@@ -194,13 +190,13 @@ class FormularzWpisView(ft.View):
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wpisu(historia_id, conn=conn)
             else:
                 kursor = conn.cursor()
-                kursor.execute("INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, koszt_robocizny, wykonawca, kategoria, zalacznik, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, nowy_zalacznik, gw_koniec, gw_limit, db.pobierz_moje_imie()))
+                kursor.execute("INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, koszt_robocizny, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, gw_koniec, gw_limit, db.pobierz_moje_imie()))
                 historia_id = kursor.lastrowid
 
             db.rozlicz_czesci_z_magazynu_wpisu(historia_id, nowe_uzyte, conn=conn)
+            self.pliki.zapisz_w(conn, historia_id, self.state.auto_id)
 
         utils.zapisz_notatke_z_formularza("historia", historia_id, self.k_notatka.value, self.notatka_bazowa)
-        db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         # Nagrobki rejestrujemy PO commicie transakcji powyżej — zarejestruj_nagrobek
         # otwiera własne połączenie do SQLite i w środku otwartej transakcji

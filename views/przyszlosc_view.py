@@ -202,7 +202,7 @@ class PrzyszloscView(ft.View):
             return pozycja["trasa"]
         if pozycja["rodzaj"] in ("dokument", "gwarancja_km"):
             return "/pojazd"
-        if pozycja["rodzaj"] in ("przebieg", "gwarancja_naprawy", "rata", "budzet"):
+        if pozycja["rodzaj"] in ("przebieg", "gwarancja_naprawy", "rata", "budzet", "skarbiec"):
             return pozycja["trasa"]
         return None
 

@@ -47,7 +47,10 @@ def _zastosuj_rekord(konfig, rekord, auto_id, znane):
     if rekord.get("usuniete"):
         if lokalny:
             with db.polacz_baze() as conn:
+                pliki = db.usun_zalaczniki_rekordow(conn, tabela, [lokalny["id"]])
                 conn.execute(f"DELETE FROM {tabela} WHERE id=?", (lokalny["id"],))
+            for sciezka in pliki:
+                db.usun_plik_zalacznika(sciezka)
             return 1
         return 0
 

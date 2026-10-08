@@ -26,8 +26,10 @@ class MiksinZakladkiInne:
 
         # Pusta kategoria (wpisy sprzed słownika) czyta się jako „Ogólne” — inaczej
         # filtr pokazywałby bezimienną pozycję, a karta pusty chip.
+        pliki_wpisow = db.zalaczniki_pojazdu(self.state.auto_id, "inne_koszty")
         for w in baza_lista:
             w["kategoria"] = db.etykieta_kategorii_innych(w.get("kategoria"))
+            w["pliki"] = pliki_wpisow.get(w["id"], [])
 
         if not baza_lista:
             self.elementy.append(utils.ekran_braku_danych(
@@ -98,7 +100,7 @@ class MiksinZakladkiInne:
 
             # Menu kosztu jak menu tankowania i wpisu: słownikami przez
             # pokaz_menu_kontekstowe (przechodzi przez utils.odsiej_akcje).
-            def otworz_menu_i(iid, zalacznik=None, notatka=None):
+            def otworz_menu_i(iid, pliki=None, notatka=None):
                 def usun_koszt():
                     def wykonaj():
                         wynik = db.usun_z_cofnieciem("inne_koszty", iid)
@@ -106,16 +108,8 @@ class MiksinZakladkiInne:
                         utils.pokaz_komunikat_cofnij(self._page, "Usunięto koszt.", wynik)
                     utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten koszt?", wykonaj)
 
-                async def dodaj_zmien_zdj():
-                    await utils.szybkie_dodanie_zdjecia(self._page, "inne_koszty", iid, zalacznik, lambda: utils.przejdz(self._page, "/"))
-
-                pozycje = []
-                if zalacznik:
-                    pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True,
-                                    "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Koszt")})
-                    pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
-                else:
-                    pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/paragon)", "akcja": dodaj_zmien_zdj})
+                pozycje = utils.pozycje_menu_zalacznikow(self._page, "inne_koszty", iid, pliki, "Koszt",
+                                                         lambda: utils.przejdz(self._page, "/"))
 
                 pozycje.append(utils.pozycja_menu_notatki(
                     self._page, "inne_koszty", iid, notatka,
@@ -143,7 +137,7 @@ class MiksinZakladkiInne:
                         ft.Row([
                             utils.podpis(str(w.get('data')), expand=True),
                             ft.Row([
-                                utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Koszt"),
+                                utils.wskaznik_zalacznikow(self._page, w.get('pliki'), "Koszt"),
                                 ft.Text(f"-{cena_str}", weight="bold", color=utils.KOLOR_STATUS["cost"])
                             ], spacing=6)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -174,7 +168,7 @@ class MiksinZakladkiInne:
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_i))
 
                     self.karty_ref[iid] = kontener
-                    self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, zal=w.get('zalacznik'), nt=w.get('notatka'): otworz_menu_i(id_el, zal, nt), "inne_koszty")
+                    self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, pl=w.get('pliki'), nt=w.get('notatka'): otworz_menu_i(id_el, pl, nt), "inne_koszty")
 
                     karta_i = ft.Card(elevation=1, content=kontener)
                     tekst_szukaj = f"{w.get('data')} {w.get('nazwa')} {w.get('kategoria')} {cena_str} {w.get('notatka') or ''}".lower()

@@ -60,9 +60,9 @@ KOLUMNY_TECHNICZNE_SYNC = {"id", "auto_id", "zdalne_id", "zdalny_hash"}
 
 POZA_SYNC_SWIADOMIE = {
     # Zdjęcia nadal nie jadą do chmury (pomysł N-06, dług zapisany wprost
-    # w notatce o współdzieleniu). Kolumna `zalacznik` niesie ścieżkę do pliku,
-    # który istnieje wyłącznie na tym urządzeniu — wysłanie samej ścieżki dałoby
-    # drugiej osobie odsyłacz donikąd.
+    # w notatce o współdzieleniu). Dawna kolumna `zalacznik` wpisów (od wersji 51
+    # pusta, pliki są w lokalnej tabeli `zalaczniki`) niosła ścieżkę do pliku,
+    # który istnieje wyłącznie na tym urządzeniu.
     ("tankowania", "zalacznik"),
     ("wizyty", "zalacznik"),
     ("historia", "zalacznik"),
@@ -116,6 +116,15 @@ POZA_POJAZDEM_SWIADOMIE = {
 POZA_SCIEZKAMI_SWIADOMIE = {
     ("kosz_pojazdy", "pliki"),           # lista nazw plików migawki, w JSON
     ("kosz_pojazdy", "rozmiar_plikow"),  # liczba bajtów
+    ("dokumenty_pojazdu", "liczba_plikow"),  # ile plików ma telefon, który je dodał
+    # Dawny pojedynczy załącznik wpisu: migracja 51 przenosi go do `zalaczniki`
+    # i zeruje (stare migawki kosza przenosi przywrócenie) — w kolumnie nic nie zostaje.
+    ("tankowania", "zalacznik"),
+    ("wizyty", "zalacznik"),
+    ("historia", "zalacznik"),
+    ("inne_koszty", "zalacznik"),
+    ("zestawy_opon", "zalacznik"),
+    ("magazyn_czesci", "zalacznik"),
 }
 
 # Po tych cząstkach nazwy poznajemy kolumnę niosącą ścieżkę. Heurystyka, i to

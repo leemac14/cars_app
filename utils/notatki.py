@@ -97,7 +97,7 @@ def pole_notatki(wartosc="", page: ft.Page = None, label="Notatka (krótka uwaga
 
 def szybka_notatka(page: ft.Page, tabela, rekord_id, po_zapisie_callback=None, tytul="Notatka"):
     """Dopisanie/poprawienie notatki BEZ wchodzenia w edycję całego wpisu —
-    odpowiednik `szybkie_dodanie_zdjecia` dla tekstu. Po zapisie wypychamy
+    odpowiednik `szybkie_dodanie_zalacznikow` dla tekstu. Po zapisie wypychamy
     zmianę w tle, żeby uwaga dotarła do osób współdzielących pojazd."""
     biezaca, autor, data_notatki = db.pobierz_notatke(tabela, rekord_id)
 

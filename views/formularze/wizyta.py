@@ -16,7 +16,6 @@ class FormularzWizytyView(ft.View):
         d_val, wyk_val, not_val, podpiete = datetime.now().strftime("%d.%m.%Y"), "", "", set()
         # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
         self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
-        self.zalacznik_val = None
         tagi_val = ""
         kat_val = "Letnie"
         koszt_zrodla, robocizna_zrodla = None, None
@@ -40,14 +39,13 @@ class FormularzWizytyView(ft.View):
         if zrodlo_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, zalacznik, tagi, koszt_robocizny, gwarancja_data, gwarancja_przebieg FROM wizyty WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, tagi, koszt_robocizny, gwarancja_data, gwarancja_przebieg FROM wizyty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
-                if w: 
+                if w:
                     d_val, wyk_val, not_val = str(w[0] or ""), str(w[2] or ""), str(w[4] or "")
                     self.p_km = w[1] or None
-                    koszt_zrodla, robocizna_zrodla = float(w[3] or 0.0), w[7]
-                    self.zalacznik_val = w[5]
-                    tagi_val = str(w[6] or "")
+                    koszt_zrodla, robocizna_zrodla = float(w[3] or 0.0), w[6]
+                    tagi_val = str(w[5] or "")
                 c.execute("SELECT zadanie_id, kategoria, gwarancja_data, gwarancja_przebieg FROM historia WHERE wizyta_id=? ORDER BY id", (zrodlo_id,))
                 dane_h = c.fetchall()
                 podpiete = {r[0] for r in dane_h}
@@ -55,7 +53,7 @@ class FormularzWizytyView(ft.View):
                     if r[1]: kat_val = str(r[1])
                 gwarancje_pozycji = [db.klucz_gwarancji(r[2], r[3]) for r in dane_h]
                 if w:
-                    gwarancja_zrodla = db.klucz_gwarancji(w[8], w[9])
+                    gwarancja_zrodla = db.klucz_gwarancji(w[7], w[8])
         self._gwarancja_wizyty = gwarancja_zrodla if w_id else (None, None)
         rozne_gwarancje = any(g != self._gwarancja_wizyty for g in gwarancje_pozycji) if w_id else False
         gwarancja = {"koniec": self._gwarancja_wizyty[0], "limit_km": self._gwarancja_wizyty[1],
@@ -69,7 +67,6 @@ class FormularzWizytyView(ft.View):
             d_val = datetime.now().strftime("%d.%m.%Y")
             p_zrodla = self.p_km
             self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
-            self.zalacznik_val = None
             # Gwarancja duplikatu: ten sam OKRES od dzisiejszej wizyty, nie stara data.
             gwarancja = db.przesun_gwarancje(*gwarancja_zrodla, w[0] if w else None, p_zrodla, d_val, self.p_km)
 
@@ -77,7 +74,6 @@ class FormularzWizytyView(ft.View):
             # Data migawki, zdjęcie jako załącznik, licznik (jeśli wpisany po
             # zdjęciu — inaczej zostaje bieżący) i opis jako notatka wizyty.
             d_val = self.szkic["data"]
-            self.zalacznik_val = self.szkic["zalacznik"]
             not_val = self.szkic["opis"] or ""
             if self.szkic["przebieg"]:
                 self.p_km = self.szkic["przebieg"]
@@ -113,7 +109,8 @@ class FormularzWizytyView(ft.View):
         # gdy rachunek podziału nie ma. Duplikat przenosi też podział.
         self.koszt = utils.KosztNaprawy(page, self.zuzycie, koszt_zrodla, robocizna_zrodla, doliczone)
         self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
-        self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        # Paragon, faktura, zdjęcie wymienionej części; duplikat zaczyna bez plików.
+        self.pliki = utils.PolaZalacznikow(page, "wizyty", w_id, szkic=self.szkic)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.blad_czesci = ft.Text("", color=utils.KOLOR_STATUS["error"], size=13)
 
@@ -157,7 +154,8 @@ class FormularzWizytyView(ft.View):
             [self.e_d, self.e_p, self.k_wykonawca, *self.koszt.kontrolki(), self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
             "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True, page=page
         )
-        k1b = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
+        k1b = utils.karta_formularza([self.pliki.kontrolka], "Pliki (paragon, faktura, zdjęcie części)", ft.Icons.ATTACH_FILE,
+                                     domyslnie_otwarte=bool(self.pliki.pozycje))
         self.kolumna_czesci = ft.Column(self.chk_czesci, spacing=2)
         k2 = utils.karta_formularza([self.btn_pakiety, self.kolumna_czesci, self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
         k_gwarancja = utils.karta_formularza(
@@ -533,7 +531,7 @@ class FormularzWizytyView(ft.View):
             self.e_d.value, self.e_p.value, self.get_wykonawca(), self.koszt.migawka(), self.e_n.value,
             self.get_tagi(), self.e_kat_wizyty.value,
             tuple(chk.value for chk in self.chk_czesci),
-            self.zuzycie.migawka(), self.gwarancja.migawka(),
+            self.zuzycie.migawka(), self.gwarancja.migawka(), self.pliki.migawka(),
         )
 
     def _przebieg_km(self):
@@ -584,20 +582,18 @@ class FormularzWizytyView(ft.View):
             db.dodaj_warsztat(self.state.auto_id, wyk)
             
         wybrane_tagi = self.get_tagi()
-        przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
-        nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
 
         zdalne_id_historii_do_nagrobka = []
         zdalne_id_czesci_do_nagrobka = []
 
-        with db.polacz_baze() as conn:
+        with self.pliki.zapis(), db.polacz_baze() as conn:
             cur = conn.cursor()
             if self.w_id:
                 cur.execute("SELECT dodane_przez FROM wizyty WHERE id=?", (self.w_id,))
                 w_osoba = cur.fetchone()
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
                 nowa_gwarancja = db.klucz_gwarancji(gw_koniec, gw_limit)
-                cur.execute("UPDATE wizyty SET data=?, data_iso=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, zalacznik=?, tagi=?, gwarancja_data=?, gwarancja_przebieg=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, *nowa_gwarancja, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
+                cur.execute("UPDATE wizyty SET data=?, data_iso=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, tagi=?, gwarancja_data=?, gwarancja_przebieg=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, wybrane_tagi, *nowa_gwarancja, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
 
                 # Zostające pozycje POPRAWIAMY w miejscu (UPDATE), nie kasujemy —
                 # skasowanie gubiło cenę z Do zrobienia, notatkę i załącznik, a w
@@ -629,7 +625,7 @@ class FormularzWizytyView(ft.View):
             else:
                 osoba_wizyty = db.pobierz_moje_imie()
                 nowa_gwarancja = db.klucz_gwarancji(gw_koniec, gw_limit)
-                cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, zalacznik, tagi, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, nowy_zalacznik, wybrane_tagi, *nowa_gwarancja, osoba_wizyty))
+                cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, tagi, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, wybrane_tagi, *nowa_gwarancja, osoba_wizyty))
                 wizyta_id = cur.lastrowid
                 # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
                 if self.szkic:
@@ -639,7 +635,7 @@ class FormularzWizytyView(ft.View):
                     cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, osoba_wizyty))
  
             db.rozlicz_czesci_z_magazynu(wizyta_id, nowe_uzyte, conn=conn)
-        db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+            self.pliki.zapisz_w(conn, wizyta_id, self.state.auto_id)
 
         # WAŻNE: rejestrujemy nagrobki dopiero PO zamknięciu/commicie transakcji
         # `conn` powyżej — zarejestruj_nagrobek() otwiera własne połączenie do

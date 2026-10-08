@@ -9,7 +9,8 @@ jest tylko pasek (część minionego okresu):
 - podzespół — licznik, który skończy się pierwszy; okrągły przebieg — od poprzedniej
   okrągłej liczby;
 - leasing i kredyt — do ostatniej raty, pasek = część zapłaconych płatności
-  (db/raty.py)."""
+  (db/raty.py);
+- dokument ze skarbca z własną datą — od wystawienia, bez niej rok przed terminem."""
 
 import sqlite3
 from datetime import datetime, timedelta
@@ -27,6 +28,7 @@ from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu
 from .raty import pobierz_raty, slowo_wykupu
 from .powiadomienia import oblicz_stan_interwalu
 from .pojazd import oferta_oc_ac_pojazdu, pobierz_dane_pojazdu, terminy_pojazdu
+from .dokumenty import terminy_skarbca
 
 
 # Okrągły przebieg: co ile jednostek z Ustawień (km albo mil). 150 000 mil jest
@@ -125,6 +127,22 @@ def _dokumenty(auto_id, dane, dzis):
             udzial=udzial, poczatek=poczatek, poczatek_z=skad,
             status=termin["status"], trasa=f"/auto/edytuj/{auto_id}",
             opis_oferty=oferta["zdanie"] if oferta and termin["klucz"] in KLUCZE_TERMINOW_Z_OFERTA else None,
+        ))
+    return wynik
+
+
+def _dokumenty_skarbca(auto_id, dzis):
+    wynik = []
+    for d in terminy_skarbca(auto_id, dzis):
+        koniec = parsuj_date(d["waznosc"])
+        poczatek = parsuj_date(d["data_wystawienia"]) if d["data_wystawienia"] else None
+        if poczatek is None or poczatek == datetime.min.date() or poczatek >= koniec:
+            poczatek = _rok_wczesniej(koniec)
+        wynik.append(_pozycja(
+            klucz=f"skarbiec:{d['id']}", rodzaj="skarbiec", ikona=d["rodzaj"], tytul=d["tytul_pelny"],
+            dni=d["dni"], data=koniec, poczatek=poczatek,
+            udzial=1.0 if d["dni"] < 0 else _udzial(poczatek, koniec, dzis),
+            status=d["status"], trasa="/dokumenty",
         ))
     return wynik
 
@@ -273,7 +291,7 @@ def _klucz_kolejnosci(pozycja):
 def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
     """Odliczania pojazdu od najbliższego; sprzedane auto — pusta lista. Klucze pozycji:
     - klucz, rodzaj
-      („dokument”/„gwarancja_km”/„gwarancja_naprawy”/„podzespol”/„przebieg”/„rata”),
+      („dokument”/„skarbiec”/„gwarancja_km”/„gwarancja_naprawy”/„podzespol”/„przebieg”/„rata”),
       ikona, tytul (None, gdy nazwa zależy od jednostki), trasa;
     - dni (ujemne: po terminie; None: nie wiadomo), data, prognoza;
     - zostalo_km, cel_km, od_km; udzial (0–1, None bez początku), poczatek, poczatek_z;
@@ -294,6 +312,7 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
 
     wynik = (
         _dokumenty(auto_id, dane, dzis)
+        + _dokumenty_skarbca(auto_id, dzis)
         + _limit_gwarancji(auto_id, dane, przebieg, sredni_dzienny, prog_km, dzis)
         + _gwarancje_napraw(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis)
         + _podzespoly(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis)

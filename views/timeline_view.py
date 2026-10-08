@@ -189,7 +189,7 @@ class TimelineView(ft.View):
         daje nieograniczoną wysokość, a STRETCH albo `expand=True` na kresce psuły
         render. Kreska `dol` (top=… + bottom=0) dociąga się do dołu wiersza. Zwraca dict
         z kontrolką i oboma odcinkami linii (do poprawy końcówek)."""
-        _, typ, data, tytul, opis, kwota, zalacznik, trasa = z[:8]
+        _, typ, data, tytul, opis, kwota, pliki, trasa = z[:8]
         autor = z[8] if len(z) > 8 else None
         notatka = z[9] if len(z) > 9 else None
         ikona, kolor = IKONY_TIMELINE.get(typ, (ft.Icons.EVENT_NOTE, ft.Colors.ON_SURFACE_VARIANT))
@@ -220,8 +220,8 @@ class TimelineView(ft.View):
         )
 
         naglowek_bits = [utils.podpis(str(data))]
-        if zalacznik:
-            naglowek_bits.append(utils.wskaznik_zalacznika(self._page, zalacznik, typ))
+        if pliki:
+            naglowek_bits.append(utils.wskaznik_zalacznikow(self._page, pliki, typ))
         if autor:
             # Skoro można filtrować po autorze, trzeba go też widzieć na karcie —
             # inaczej wynik filtrowania nie daje się zweryfikować wzrokiem.

@@ -69,7 +69,7 @@ MIESIAC_OPON_LETNICH = next(
 # Kolejność pozycji z tego samego dnia: najpierw papiery i pieniądze, na końcu
 # to, co tylko informuje.
 KOLEJNOSC_RODZAJOW = {
-    "dokument": 0, "rata": 1, "cykliczny": 2, "opony": 3, "podzespol": 4,
+    "dokument": 0, "skarbiec": 0, "rata": 1, "cykliczny": 2, "opony": 3, "podzespol": 4,
     "gwarancja_naprawy": 5, "gwarancja_km": 6, "budzet": 7, "przebieg": 8,
 }
 
@@ -126,7 +126,7 @@ def _z_odliczan(odliczania, dzis, koniec):
         if o["status"] == "po_terminie":
             # Skończona gwarancja (data albo limit przebiegu) to nie sprawa do
             # załatwienia — polisa, przegląd i wymiana już tak.
-            if o["ikona"] == "gwarancja":
+            if o["ikona"] in ("gwarancja", "gwarancja_inna"):
                 continue
             pozycje.append(_pozycja(**wspolne, data=o["data"], dni=o["dni"], zalegla=True,
                                     prognoza=o["prognoza"]))
@@ -555,7 +555,7 @@ def os_przyszlosci(auto_id, dni=None, dzis=None) -> dict[str, Any]:
     pojazdu i dla sprzedanego — pusta oś. Słownik:
     - dni, od, do;
     - pozycje (zaległe, potem po dacie): klucz, rodzaj
-      („dokument”/„gwarancja_km”/„gwarancja_naprawy”/„podzespol”/„przebieg”/„cykliczny”/„opony”/„rata”/„budzet”),
+      („dokument”/„skarbiec”/„gwarancja_km”/„gwarancja_naprawy”/„podzespol”/„przebieg”/„cykliczny”/„opony”/„rata”/„budzet”),
       ikona, tytul, data, dni, zalegla, prognoza, najpozniej, zakladana, sugestia,
       kwota, szacunek, status, trasa albo akcja („cykliczne”, „opony”), okres_dni,
       platnosc, budzet, sezon, zrodlo, cel_km, zostalo_km;

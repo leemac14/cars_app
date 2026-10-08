@@ -13,7 +13,10 @@ from .pamiec import zanotuj_zmiane_danych
 from .polaczenie import polacz_baze
 from .daty import przelicz_daty_iso
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
-from .zalaczniki import _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki
+from .zalaczniki import (
+    _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki,
+    posprzataj_osierocone_zalaczniki, przenies_dawne_zalaczniki,
+)
 from .kosz import posprzataj_kosz
 
 
@@ -589,6 +592,18 @@ def init_db():
             ALTER TABLE trasy_szablony ADD COLUMN dokad TEXT;
             ALTER TABLE trasy_szablony ADD COLUMN cel TEXT;
             ALTER TABLE trasy_szablony ADD COLUMN sluzbowy INTEGER;
+            """,
+            # Wersja 51: wiele plików na wpis i skarbiec dokumentów (N-05). `zalaczniki` wskazuje
+            # wpis parą (tabela, rekord_id); `auto_id` dla kosza i kaskady. Dokument: rodzaj z
+            # db.RODZAJE_DOKUMENTOW, daty dd.mm.rrrr; `liczba_plikow` — ile plików ma telefon,
+            # który je dodał (pliki nie jadą do chmury). Dawne `zalacznik` przenosi blok niżej.
+            """
+            CREATE TABLE IF NOT EXISTS zalaczniki (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, tabela TEXT NOT NULL, rekord_id INTEGER NOT NULL, sciezka TEXT NOT NULL, typ TEXT, opis TEXT, kolejnosc INTEGER NOT NULL DEFAULT 0, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_zalaczniki_rekord ON zalaczniki(tabela, rekord_id);
+            CREATE INDEX IF NOT EXISTS idx_zalaczniki_auto ON zalaczniki(auto_id, tabela);
+            CREATE TABLE IF NOT EXISTS dokumenty_pojazdu (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, rodzaj TEXT NOT NULL, nazwa TEXT, numer TEXT, data_wystawienia TEXT, data_waznosci TEXT, notatki TEXT, liczba_plikow INTEGER NOT NULL DEFAULT 0, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_dokumenty_pojazdu_auto ON dokumenty_pojazdu(auto_id);
+            CREATE INDEX IF NOT EXISTS idx_dokumenty_pojazdu_auto_zdalne ON dokumenty_pojazdu(auto_id, zdalne_id);
             """
         ]
 
@@ -682,6 +697,10 @@ def init_db():
             if i == 43:
                 przelicz_daty_iso(conn, tabele=_TABELE_DATY_ISO_WERSJI_44)
 
+            # Pojedynczy `zalacznik` wpisów staje się pierwszym plikiem w `zalaczniki`.
+            if i == 50:
+                przenies_dawne_zalaczniki(cursor)
+
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")
                 for zid, znazwa in cursor.fetchall():
@@ -713,6 +732,12 @@ def porzadki_startowe() -> tuple[int, int]:
     # kasujemy raz przy starcie, a nie przy każdym wejściu na ekran kosza:
     # retencja liczona jest w dniach, więc częściej nie ma sensu.
     posprzataj_kosz()
+
+    # Pliki wpisów usuniętych na drugim telefonie albo kaskadą (podzespół z historią).
+    try:
+        posprzataj_osierocone_zalaczniki()
+    except Exception:
+        log.polkniety("sprzątanie plików usuniętych wpisów")
 
     # Jednorazowa naprawa ścieżek załączników z innego urządzenia
     # (/data/user/0/<pakiet>/files/...) — dla baz sprzed tej naprawy; wczytanie kopii

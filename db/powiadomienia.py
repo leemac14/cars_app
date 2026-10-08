@@ -24,6 +24,7 @@ from .szkice import DNI_PRZYPOMNIENIA_SZKICU, podsumowanie_szkicow
 from .raty import KOLUMNY_UMOWY, czy_rata, opis_postepu_umowy
 from .kopie import stan_kopii_zapasowej
 from .ewidencja import nazwa_miesiaca, przypomnienie_ewidencji, tekst_km_przejazdu
+from .dokumenty import terminy_skarbca
 
 
 # ============================================================================
@@ -233,6 +234,18 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
                             powiadomienie["opis_oferty"] = zdanie_oferty_oc_ac(
                                 w["oferta_oc_ac"], w["oferta_oc_ac_data"])
                     wyniki.append(powiadomienie)
+
+            # Dokumenty skarbca z własną datą (gwarancja akumulatora, karta parkingowa) — próg
+            # „Inne dokumenty pojazdu”. Te z datą Karty pojazdu przypomniały się wyżej.
+            if w["status"] != STATUS_POJAZDU_SPRZEDANY:
+                for d in terminy_skarbca(auto_id, dzis):
+                    if d["dni"] > (prog_dni if prog_dni_wymuszony else d["prog"]):
+                        continue
+                    wyniki.append({
+                        "typ": "dokument", "tytul": d["tytul_pelny"], "opis": opis_terminu_dni(d["dni"]),
+                        "status": "przeterminowane" if d["dni"] < 0 else "pilne",
+                        "trasa": "/dokumenty", "klucz": f"skarbiec:{d['id']}",
+                    })
 
             # Gwarancja ma dwa niezależne limity — datę i przebieg. Kilometry
             # potrafią się skończyć długo przed datą, więc liczymy je osobno.

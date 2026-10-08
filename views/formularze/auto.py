@@ -102,7 +102,7 @@ class FormularzAutoView(ft.View):
                     if n_val and not m_val and not mod_val:
                         m_val = n_val
 
-        self.k_zdjecie, self.get_zdjecie = utils.komponent_zalacznika(page, self.zg_val, tylko_zdjecie=True)
+        self.k_zdjecie, self.get_zdjecie = utils.komponent_zalacznika(page, self.zg_val)
         self.k_kolor, self.get_kolor = utils.komponent_wyboru_koloru(page, self.kolor_auta_val)
 
         # Nowe 3 pola zamiast jednego pola nazwy

@@ -187,11 +187,13 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT id, sezon, rozmiar, marka_model, glebokosc_bieznika, data_pomiaru, numer_dot, ilosc, zamontowane, cena, os_montazu, zalacznik "
+                "SELECT id, sezon, rozmiar, marka_model, glebokosc_bieznika, data_pomiaru, numer_dot, ilosc, zamontowane, cena, os_montazu, NULL "
                 "FROM zestawy_opon WHERE auto_id=? ORDER BY zamontowane DESC, sezon",
                 (self.state.auto_id,)
             )
-            zestawy = c.fetchall()
+            # Ostatnie pole — lista plików zestawu (db.zalaczniki_pojazdu), jednym zapytaniem.
+            pliki_opon = db.zalaczniki_pojazdu(self.state.auto_id, "zestawy_opon")
+            zestawy = [z[:-1] + (pliki_opon.get(z[0], []),) for z in c.fetchall()]
 
         if not zestawy:
             elementy.append(ft.Text("Brak zapisanych zestawów opon. Kliknij + poniżej, aby dodać pierwszy zestaw.", color=ft.Colors.ON_SURFACE_VARIANT))
@@ -240,7 +242,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         for z in zestawy:
             karta = self._karta_zestawu(z)
-            z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, zalacznik = z
+            z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, pliki = z
             tekst_szukaj = f"{sezon} {rozmiar} {marka} {dot} {cena}".lower()
             self.wszystkie_karty_opony.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_opony.controls.append(karta)
@@ -318,7 +320,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         )
 
     def _karta_zestawu(self, z):
-        z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, zalacznik = z
+        z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, pliki = z
         ikona_sezonu = IKONY_SEZONU.get(sezon, ft.Icons.TIRE_REPAIR)
 
         if glebokosc is not None and str(glebokosc) != "":
@@ -367,7 +369,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         karta, kontener = utils.karta_listy(
             ft.Column([
                 ft.Row([
-                    utils.wskaznik_zalacznika(self._page, zalacznik, "Zestaw opon") if zalacznik else ft.Container(),
+                    utils.wskaznik_zalacznikow(self._page, pliki, "Zestaw opon") if pliki else ft.Container(),
                     ft.Row([
                         ft.Icon(ikona_sezonu, size=17, color=ft.Colors.PRIMARY),
                         ft.Text(str(sezon), weight="bold", size=16, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
@@ -393,11 +395,11 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         )
 
         self.karty_ref[z_id] = kontener
-        self.podepnij_zdarzenia_grupowe(kontener, z_id, lambda zid=z_id, zsez=sezon, zzal=zalacznik: self._pokaz_menu(zid, zsez, zzal), "zestawy_opon")
+        self.podepnij_zdarzenia_grupowe(kontener, z_id, lambda zid=z_id, zsez=sezon, zpl=pliki: self._pokaz_menu(zid, zsez, zpl), "zestawy_opon")
 
         return karta
 
-    def _pokaz_menu(self, zid, sezon, zalacznik=None):
+    def _pokaz_menu(self, zid, sezon, pliki=None):
         def zamontuj(os):
             poprzedni = (db.pobierz_stan_opon(self.state.auto_id) or {}).get("sezon")
             db.oznacz_zamontowany_zestaw(self.state.auto_id, zid, os)
@@ -419,15 +421,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.pokaz_komunikat_cofnij(self._page, "Usunięto zestaw opon.", wynik)
             utils.potwierdz(self._page, "Usunąć?", f"Czy na pewno usunąć zestaw „{sezon}”?", wykonaj)
 
-        async def dodaj_zmien_zdj():
-            await utils.szybkie_dodanie_zdjecia(self._page, "zestawy_opon", zid, zalacznik, lambda: utils.przejdz(self._page, "/magazyn"))
-
-        pozycje_menu = []
-        if zalacznik:
-            pozycje_menu.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Zestaw opon")})
-            pozycje_menu.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
-        else:
-            pozycje_menu.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/opona)", "akcja": dodaj_zmien_zdj})
+        pozycje_menu = utils.pozycje_menu_zalacznikow(self._page, "zestawy_opon", zid, pliki, "Zestaw opon",
+                                                      lambda: utils.przejdz(self._page, "/magazyn"))
 
         pozycje_menu.extend([
             {"ikona": ft.Icons.CHECK_CIRCLE, "tekst": "Zamontuj na całym aucie", "akcja": lambda: zamontuj("Wszystkie"), "kolor": ft.Colors.GREEN},
@@ -446,11 +441,13 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa, "
+                "SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, NULL, prog_ostrzezenia, cena_jednostkowa, "
                 "sklep, link FROM magazyn_czesci WHERE auto_id=? ORDER BY nazwa",
                 (self.state.auto_id,)
             )
-            czesci = c.fetchall()
+            # Pole 8 — lista plików pozycji (db.zalaczniki_pojazdu), jednym zapytaniem.
+            pliki_czesci = db.zalaczniki_pojazdu(self.state.auto_id, "magazyn_czesci")
+            czesci = [cz[:8] + (pliki_czesci.get(cz[0], []),) + cz[9:] for cz in c.fetchall()]
 
         if not czesci:
             elementy.append(ft.Text("Brak części i płynów w magazynie. Kliknij + poniżej, aby dodać pierwszą pozycję.", color=ft.Colors.ON_SURFACE_VARIANT))
@@ -506,7 +503,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         for cz in czesci:
             karta = self._karta_czesci(cz)
-            c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn, sklep, link = cz
+            c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, pliki, prog_ostrzezenia, cena_jedn, sklep, link = cz
             tekst_szukaj = f"{nazwa} {kategoria} {notatki} {sklep or ''}".lower()
             self.wszystkie_karty_czesci.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_czesci.controls.append(karta)
@@ -536,7 +533,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         )
 
     def _karta_czesci(self, cz):
-        c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jedn, sklep, link = cz
+        c_id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, pliki, prog_ostrzezenia, cena_jedn, sklep, link = cz
         ikona = IKONY_KATEGORII_MAGAZYNU.get(kategoria, ft.Icons.BUILD)
         waluta = utils.symbol_waluty()
 
@@ -591,7 +588,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         tresc = [
             ft.Row([
-                utils.wskaznik_zalacznika(self._page, zalacznik, "Część/płyn") if zalacznik else ft.Container(),
+                utils.wskaznik_zalacznikow(self._page, pliki, "Część/płyn") if pliki else ft.Container(),
                 ft.Row([
                     ft.Icon(ikona, size=17, color=ft.Colors.PRIMARY),
                     ft.Text(str(nazwa), weight="bold", size=16, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
@@ -626,8 +623,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         self.karty_ref[c_id] = kontener
         self.podepnij_zdarzenia_grupowe(
             kontener, c_id,
-            lambda cid=c_id, cn=nazwa, czal=zalacznik, cj=jednostka, uz=bool(zuzycie), sk=sklep, ln=link:
-                self._pokaz_menu_czesci(cid, cn, czal, cj, uz, sk, ln),
+            lambda cid=c_id, cn=nazwa, cpl=pliki, cj=jednostka, uz=bool(zuzycie), sk=sklep, ln=link:
+                self._pokaz_menu_czesci(cid, cn, cpl, cj, uz, sk, ln),
             "magazyn_czesci")
 
         return karta
@@ -686,7 +683,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         bs.content.content = ft.Column(zawartosc, tight=True, spacing=8)
         utils.otworz_dno(self._page, bs)
 
-    def _pokaz_menu_czesci(self, cid, nazwa, zalacznik=None, jednostka="szt", uzyta=False, sklep=None, link=None):
+    def _pokaz_menu_czesci(self, cid, nazwa, pliki=None, jednostka="szt", uzyta=False, sklep=None, link=None):
         def usun_czesc():
             def wykonaj():
                 wynik = db.usun_czesc_magazynu_z_cofnieciem(cid)   # było: db.usun_z_cofnieciem("magazyn_czesci", cid)
@@ -695,15 +692,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             tresc = f"Czy na pewno usunąć pozycję „{nazwa}”?" + self._ostrzezenie_o_zuzyciu([cid])
             utils.potwierdz(self._page, "Usunąć?", tresc, wykonaj)
 
-        async def dodaj_zmien_zdj():
-            await utils.szybkie_dodanie_zdjecia(self._page, "magazyn_czesci", cid, zalacznik, lambda: utils.przejdz(self._page, "/magazyn"))
-
-        pozycje_menu = []
-        if zalacznik:
-            pozycje_menu.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Część/płyn")})
-            pozycje_menu.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
-        else:
-            pozycje_menu.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (faktura/część)", "akcja": dodaj_zmien_zdj})
+        pozycje_menu = utils.pozycje_menu_zalacznikow(self._page, "magazyn_czesci", cid, pliki, "Część/płyn",
+                                                      lambda: utils.przejdz(self._page, "/magazyn"))
 
         # Historia cen i kolejny zakup (M-15). „Kupiłem ponownie” zmienia stan,
         # więc przy podglądzie znika; historię i link wolno tylko oglądać.
@@ -738,7 +728,6 @@ class FormularzOponyView(ft.View):
         gl_val, dp_val, dot_val, il_val = "", "", "", "4"
         zam_val, dz_val, pz_val, cena_val, not_val = False, "", "", "", ""
         os_val = "Wszystkie"
-        self.zalacznik_val = None
         self.pz_km = None  # przebieg przy zakupie w km, jak w bazie
 
         if zestaw_id:
@@ -746,7 +735,7 @@ class FormularzOponyView(ft.View):
                 c = conn.cursor()
                 c.execute(
                     "SELECT sezon, rozmiar, marka_model, glebokosc_bieznika, data_pomiaru, numer_dot, "
-                    "ilosc, zamontowane, data_zakupu, przebieg_zakupu, cena, notatki, os_montazu, zalacznik FROM zestawy_opon WHERE id=?",
+                    "ilosc, zamontowane, data_zakupu, przebieg_zakupu, cena, notatki, os_montazu FROM zestawy_opon WHERE id=?",
                     (zestaw_id,)
                 )
                 w = c.fetchone()
@@ -765,9 +754,8 @@ class FormularzOponyView(ft.View):
                     cena_val = str(w[10] or "")
                     not_val = str(w[11] or "")
                     os_val = str(w[12] or "Wszystkie")
-                    self.zalacznik_val = w[13] if len(w) > 13 else None
 
-        self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        self.pliki = utils.PolaZalacznikow(page, "zestawy_opon", zestaw_id)
         # Ikona idzie do leading_icon, a NIE do tekstu: ft.Icons to wyliczenie,
         # więc f"{IKONY_SEZONU[s]} {s}" renderowało się jako „74139 Letnie”.
         self.e_sezon = ft.Dropdown(
@@ -808,8 +796,9 @@ class FormularzOponyView(ft.View):
         k1 = utils.karta_formularza([self.e_sezon, self.e_rozmiar, self.e_marka], "Specyfikacja opony", ft.Icons.INFO_OUTLINE, domyslnie_otwarte=True)
         k2 = utils.karta_formularza([self.e_gl, self.e_dp, self.e_dot, self.e_il, self.e_zam, self.e_os], "Stan i pomiary", ft.Icons.SEARCH)
         k3 = utils.karta_formularza([self.e_dz, self.e_pz, self.e_cena, self.e_not], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
-        k4 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
-        
+        k4 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (faktura, zdjęcia opon)", ft.Icons.ATTACH_FILE,
+                                    domyslnie_otwarte=bool(self.pliki.pozycje))
+
         elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz zestaw", self.zapisz, "/magazyn")]
 
         super().__init__(
@@ -824,7 +813,7 @@ class FormularzOponyView(ft.View):
     def _migawka_formularza(self):
         return (self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value, self.e_gl.value,
                 self.e_dp.value, self.e_dot.value, self.e_il.value, self.e_zam.value, self.e_os.value,
-                self.e_dz.value, self.e_pz.value, self.e_cena.value, self.e_not.value)
+                self.e_dz.value, self.e_pz.value, self.e_cena.value, self.e_not.value, self.pliki.migawka())
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -863,30 +852,27 @@ class FormularzOponyView(ft.View):
                                             km_przy_otwarciu=self.pz_km)
                            if (self.e_pz.value or "").strip() else None)
         nowy_id = self.zestaw_id
-        
-        przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
-        nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
 
-        with db.polacz_baze() as conn:
+        with self.pliki.zapis(), db.polacz_baze() as conn:
             cur = conn.cursor()
             if self.zestaw_id:
                 cur.execute(
                     "UPDATE zestawy_opon SET sezon=?, rozmiar=?, marka_model=?, glebokosc_bieznika=?, "
-                    "data_pomiaru=?, numer_dot=?, ilosc=?, data_zakupu=?, przebieg_zakupu=?, cena=?, notatki=?, zalacznik=? WHERE id=?",
+                    "data_pomiaru=?, numer_dot=?, ilosc=?, data_zakupu=?, przebieg_zakupu=?, cena=?, notatki=? WHERE id=?",
                     (self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value, glebokosc,
-                    self.e_dp.value, dot, ilosc, self.e_dz.value, przebieg_zakupu, cena, self.e_not.value, nowy_zalacznik,
+                    self.e_dp.value, dot, ilosc, self.e_dz.value, przebieg_zakupu, cena, self.e_not.value,
                     self.zestaw_id)
                 )
             else:
                 cur.execute(
                     "INSERT INTO zestawy_opon (auto_id, sezon, rozmiar, marka_model, glebokosc_bieznika, "
-                    "data_pomiaru, numer_dot, ilosc, zamontowane, data_zakupu, przebieg_zakupu, cena, notatki, zalacznik) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "data_pomiaru, numer_dot, ilosc, zamontowane, data_zakupu, przebieg_zakupu, cena, notatki) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (self.state.auto_id, self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value,
-                    glebokosc, self.e_dp.value, dot, ilosc, 0, self.e_dz.value, przebieg_zakupu, cena, self.e_not.value, nowy_zalacznik)
+                    glebokosc, self.e_dp.value, dot, ilosc, 0, self.e_dz.value, przebieg_zakupu, cena, self.e_not.value)
                 )
                 nowy_id = cur.lastrowid
-        db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+            self.pliki.zapisz_w(conn, nowy_id, self.state.auto_id)
 
         if self.e_zam.value and nowy_id:
             db.oznacz_zamontowany_zestaw(self.state.auto_id, nowy_id, self.e_os.value)
@@ -918,13 +904,12 @@ class FormularzCzesciView(ft.View):
         cena_val, cena_jedn_val, data_val, not_val = "", "", datetime.now().strftime("%d.%m.%Y"), ""
         prog_val = "1"
         sklep_val, link_val = "", ""
-        self.zalacznik_val = None
 
         if czesc_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
                 c.execute(
-                    "SELECT nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, zalacznik, prog_ostrzezenia, cena_jednostkowa, "
+                    "SELECT nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, prog_ostrzezenia, cena_jednostkowa, "
                     "sklep, link FROM magazyn_czesci WHERE id=?", (czesc_id,)
                 )
                 w = c.fetchone()
@@ -936,12 +921,11 @@ class FormularzCzesciView(ft.View):
                     cena_val = utils.liczba_do_pola(w[4])
                     data_val = str(w[5] or "")
                     not_val = str(w[6] or "")
-                    self.zalacznik_val = w[7] if len(w) > 7 else None
-                    prog_val = str(w[8]) if len(w) > 8 and w[8] is not None else "1"
-                    cena_jedn_val = utils.liczba_do_pola(w[9]) if len(w) > 9 else ""
-                    sklep_val, link_val = str(w[10] or ""), str(w[11] or "")
+                    prog_val = str(w[7]) if w[7] is not None else "1"
+                    cena_jedn_val = utils.liczba_do_pola(w[8])
+                    sklep_val, link_val = str(w[9] or ""), str(w[10] or "")
 
-        self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        self.pliki = utils.PolaZalacznikow(page, "magazyn_czesci", czesc_id)
         self.e_nazwa = ft.TextField(label="Nazwa*", value=nazwa_val, hint_text="np. Olej 5W-30, żarówka H7", **utils.styl_pola())
         self.e_kat = ft.Dropdown(
             label="Kategoria",
@@ -1001,7 +985,8 @@ class FormularzCzesciView(ft.View):
                          "Ta sama data poprawia cenę tego zakupu.") if czesc_id else ft.Container(),
             self.sklep.kontrolka, self.e_link, self.e_not,
         ], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
-        k4 = utils.karta_formularza([self.k_zalacznik], "Załącznik (paragon / zdjęcie)", ft.Icons.ATTACH_FILE)
+        k4 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (paragon, zdjęcie części)", ft.Icons.ATTACH_FILE,
+                                    domyslnie_otwarte=bool(self.pliki.pozycje))
 
         elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz pozycję", self.zapisz, "/magazyn")]
 
@@ -1013,7 +998,7 @@ class FormularzCzesciView(ft.View):
     def _migawka_formularza(self):
         return (self.e_nazwa.value, self.e_kat.value, self.e_ilosc.value, self.e_jedn.value,
                 self.e_prog.value, self.e_cena.value, self.e_cena_jedn.value, self.e_data.value, self.e_not.value,
-                self.e_sklep.value, self.e_link.value)
+                self.e_sklep.value, self.e_link.value, self.pliki.migawka())
 
     def _pokaz_poprzednie_ceny(self, odswiez=False):
         """Linijka pod nazwą: ostatnia cena tej części (i najtańsza, jeśli była
@@ -1114,10 +1099,7 @@ class FormularzCzesciView(ft.View):
         sklep = db.dopasuj_sklep(self.state.auto_id, self.e_sklep.value)
         link = db.normalizuj_link(self.e_link.value)
 
-        przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
-        nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
-
-        with db.polacz_baze() as conn:
+        with self.pliki.zapis(), db.polacz_baze() as conn:
             # Pozycja sprzed zapisu — z bazy, nie z chwili otwarcia formularza:
             # druga osoba mogła ją w międzyczasie zmienić (historia cen porównuje
             # datę zakupu przed i po).
@@ -1129,17 +1111,17 @@ class FormularzCzesciView(ft.View):
                 ).fetchone()
                 przed = dict(zip(kolumny, wiersz)) if wiersz else None
                 conn.execute(
-                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, ilosc=?, jednostka=?, cena=?, cena_jednostkowa=?, data_zakupu=?, notatki=?, zalacznik=?, prog_ostrzezenia=?, "
+                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, ilosc=?, jednostka=?, cena=?, cena_jednostkowa=?, data_zakupu=?, notatki=?, prog_ostrzezenia=?, "
                     "sklep=?, link=? WHERE id=?",
-                    (nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog,
+                    (nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, prog,
                      sklep, link, self.czesc_id)
                 )
                 czesc_id = self.czesc_id
             else:
                 kursor = conn.execute(
-                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu, notatki, zalacznik, prog_ostrzezenia, sklep, link) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, nowy_zalacznik, prog,
+                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu, notatki, prog_ostrzezenia, sklep, link) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, prog,
                      sklep, link)
                 )
                 czesc_id = kursor.lastrowid
@@ -1148,8 +1130,7 @@ class FormularzCzesciView(ft.View):
                 "id": czesc_id, "nazwa": nazwa, "ilosc": ilosc, "jednostka": self.e_jedn.value,
                 "cena_jednostkowa": cena_jedn, "data_zakupu": self.e_data.value, "sklep": sklep,
             })
-
-        db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+            self.pliki.zapisz_w(conn, czesc_id, self.state.auto_id)
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "magazyn")
         utils.przejdz(self._page, "/magazyn")

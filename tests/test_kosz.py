@@ -236,7 +236,7 @@ def test_zajeta_sciezka_pliku_daje_nowa_nazwe_i_podmieniony_odsylacz(baza):
     """Po imporcie kopii w folderze może już leżeć plik o tej samej nazwie."""
     pomoce.utworz_pojazd("Pierwszy")
     with db.polacz_baze() as conn:
-        stara_sciezka = conn.execute("SELECT zalacznik FROM tankowania WHERE id=1").fetchone()[0]
+        stara_sciezka = conn.execute("SELECT sciezka FROM zalaczniki WHERE tabela='tankowania' AND rekord_id=1").fetchone()[0]
 
     wynik = db.usun_auto_do_kosza(1)
 
@@ -247,7 +247,7 @@ def test_zajeta_sciezka_pliku_daje_nowa_nazwe_i_podmieniony_odsylacz(baza):
     db.przywroc_auto_z_kosza(wynik["kosz_id"])
 
     with db.polacz_baze() as conn:
-        nowa_sciezka = conn.execute("SELECT zalacznik FROM tankowania WHERE auto_id=1").fetchone()[0]
+        nowa_sciezka = conn.execute("SELECT sciezka FROM zalaczniki WHERE tabela='tankowania' AND auto_id=1").fetchone()[0]
 
     assert nowa_sciezka != stara_sciezka
     assert nowa_sciezka.startswith("zalaczniki/"), "podmieniony odsyłacz to nowy zapis — w postaci względnej"

@@ -131,7 +131,7 @@ class OdliczaniaView(ft.View):
         if pozycja["rodzaj"] in ("dokument", "gwarancja_km"):
             return "/pojazd"
         # Harmonogram rat to ekran do oglądania — zapłatę i tak blokuje rola.
-        if pozycja["rodzaj"] in ("przebieg", "gwarancja_naprawy", "rata"):
+        if pozycja["rodzaj"] in ("przebieg", "gwarancja_naprawy", "rata", "skarbiec"):
             return pozycja["trasa"]
         return None
 

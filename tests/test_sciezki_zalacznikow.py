@@ -145,29 +145,36 @@ USUWANIA = {
 }
 
 
+def _plik_wpisu(tabela, rekord_id):
+    return pomoce.pliki_wpisu(tabela, rekord_id)[0][0]
+
+
 @pytest.mark.parametrize("rodzaj", sorted(USUWANIA))
 def test_usuniecie_z_cofnieciem_odklada_i_oddaje_plik(baza, rodzaj):
     usun, tabela, klucz = USUWANIA[rodzaj]
     zid = pomoce.utworz_pojazd("Cofany")
-    with db.polacz_baze() as conn:
-        wpis = conn.execute(f"SELECT zalacznik FROM {tabela} WHERE id=?", (zid[klucz],)).fetchone()[0]
+    wpis = _plik_wpisu(tabela, zid[klucz])
     plik = db.pelna_sciezka_zalacznika(wpis)
     przed = tresc(plik)
 
     wynik = usun(zid)
     assert wynik
     assert not os.path.exists(plik), "plik ma czekać w folderze odroczonym na cofnięcie"
+    with db.polacz_baze() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM zalaczniki WHERE sciezka=?", (wpis,)).fetchone()[0] == 0
 
     wynik["cofnij"]()
     assert tresc(plik) == przed
     with db.polacz_baze() as conn:
-        assert conn.execute(f"SELECT COUNT(*) FROM {tabela} WHERE zalacznik=?", (wpis,)).fetchone()[0] == 1
+        rekord_id = conn.execute("SELECT rekord_id FROM zalaczniki WHERE tabela=? AND sciezka=?",
+                                 (tabela, wpis)).fetchone()[0]
+        assert conn.execute(f"SELECT COUNT(*) FROM {tabela} WHERE id=?", (rekord_id,)).fetchone()[0] == 1, \
+            "plik wraca przy wpisie, który wrócił (cofnięcie wstawia go czasem pod nowym id)"
 
 
 def test_wygasniecie_cofania_kasuje_odlozony_plik(baza):
     zid = pomoce.utworz_pojazd("Kasowany")
-    with db.polacz_baze() as conn:
-        wpis = conn.execute("SELECT zalacznik FROM tankowania WHERE id=?", (zid["tankowanie"],)).fetchone()[0]
+    wpis = _plik_wpisu("tankowania", zid["tankowanie"])
 
     wynik = db.usun_z_cofnieciem("tankowania", zid["tankowanie"])
     assert os.listdir(db.FOLDER_ODROCZONE)
@@ -201,10 +208,9 @@ def test_naprawa_nie_rusza_wpisow_trafiajacych_w_plik(baza):
     """Bez migracji: dawny zapis bezwzględny i względny z '\\' zostają, jakie są."""
     zid = pomoce.utworz_pojazd("Stary", sciezki_wzgledne=False)
     pomoce.utworz_pojazd("Nowy")
+    wpis = _plik_wpisu("historia", zid["historia"])
     with db.polacz_baze() as conn:
-        wpis = conn.execute("SELECT zalacznik FROM historia WHERE id=?", (zid["historia"],)).fetchone()[0]
-        conn.execute("UPDATE historia SET zalacznik=? WHERE id=?",
-                     ("zalaczniki\\" + os.path.basename(wpis), zid["historia"]))
+        conn.execute("UPDATE zalaczniki SET sciezka=? WHERE sciezka=?", ("zalaczniki\\" + os.path.basename(wpis), wpis))
     przed = pomoce.odciski_zalacznikow()
 
     assert db.napraw_sciezki_zalacznikow() == (0, 0)

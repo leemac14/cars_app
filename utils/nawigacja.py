@@ -49,6 +49,12 @@ EKRANY = [
     {"id": "pojazd", "tytul": "Karta pojazdu", "opis": "Terminy, wartość, ubezpieczenie, ściągawka",
      "ikona": ft.Icons.BADGE, "grupa": "pojazd", "trasa": "/pojazd",
      "slowa": ["oc", "ac", "przegląd", "polisa", "vin", "dane techniczne", "assistance", "tablica", "ubezpieczenie"]},
+    # Skarbiec (N-05): skany dokumentów z datami ważności. Opis i słowa bez „oc”, „olej”,
+    # „koszt”, „opon”, „budż” i „rozrz” (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "dokumenty", "tytul": "Dokumenty pojazdu", "opis": "Dowód, polisy, umowa kupna, gwarancje i instrukcja ze skanami",
+     "ikona": ft.Icons.FOLDER_SHARED, "grupa": "pojazd", "trasa": "/dokumenty",
+     "slowa": ["skarbiec", "dokumenty", "dowód rejestracyjny", "polisa", "umowa", "gwarancja", "instrukcja",
+               "książka serwisowa", "skan", "pdf", "papiery", "ważność"]},
     # Obok Karty pojazdu, bo odpowiada na pytanie, z którym się tam wchodzi
     # („kiedy przegląd?”) — tylko dla wszystkiego naraz, nie dla samych dokumentów.
     # Opis i słowa świadomie bez „oc”, „olej” i „koszt”: wyszukiwarka ma dla

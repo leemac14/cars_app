@@ -359,6 +359,17 @@ IKONY_TERMINOW = {
     "apteczka": ft.Icons.MEDICAL_SERVICES,
 }
 
+# Rodzaje dokumentów skarbca (db.RODZAJE_DOKUMENTOW); te z datą Karty pojazdu jak terminy.
+IKONY_DOKUMENTOW = {
+    **IKONY_TERMINOW,
+    "dowod": ft.Icons.BADGE,
+    "umowa": ft.Icons.HANDSHAKE,
+    "gwarancja_inna": ft.Icons.VERIFIED,
+    "instrukcja": ft.Icons.MENU_BOOK,
+    "ksiazka": ft.Icons.AUTO_STORIES,
+    "inne": ft.Icons.DESCRIPTION,
+}
+
 
 def opis_dni_terminu(dni):
     """„za 12 dni” / „dzisiaj” / „5 dni po terminie” — jedno miejsce na tę
@@ -415,7 +426,7 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
 # gwarancja naprawy, okrągły przebieg i umowy rat (db.odliczania_pojazdu zwraca
 # klucz, nie ikonę).
 IKONY_ODLICZAN = {
-    **IKONY_TERMINOW,
+    **IKONY_DOKUMENTOW,
     "podzespol": ft.Icons.HANDYMAN,
     "gwarancja_naprawy": ft.Icons.GPP_GOOD,
     "przebieg": ft.Icons.FLAG,
@@ -590,6 +601,7 @@ def baner_nieswiezego_licznika(page: ft.Page, auto_id, swiezosc, po_zapisie=None
 
 
 __all__ = [
+    "IKONY_DOKUMENTOW",
     "IKONY_ODLICZAN",
     "IKONY_STATUSU_ODLICZANIA",
     "IKONY_STATUSU_TERMINU",

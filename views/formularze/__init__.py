@@ -14,9 +14,11 @@ from .wpis_serwisowy import FormularzWpisView
 from .wizyta import FormularzWizytyView
 from .rata import FormularzRatyView
 from .przejazd import FormularzPrzejazduView
+from .dokument import FormularzDokumentuView
 
 __all__ = [
     "FormularzAutoView",
+    "FormularzDokumentuView",
     "FormularzInneView",
     "FormularzInterwalView",
     "FormularzPrzejazduView",

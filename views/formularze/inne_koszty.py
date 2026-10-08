@@ -24,11 +24,10 @@ class FormularzInneView(ft.View):
         d_val, op_val, kw_val, tagi_val = datetime.now().strftime("%d.%m.%Y"), "", "", ""
         notatka_val = ""
         kat_val = db.KATEGORIA_INNE_DOMYSLNA
-        self.zalacznik_val = None
         if zrodlo_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, kategoria, nazwa, kwota, tagi, zalacznik, notatka FROM inne_koszty WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, kategoria, nazwa, kwota, tagi, notatka FROM inne_koszty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
                     d_val, op_val, kw_val = str(w[0] or ""), str(w[2] or ""), str(w[3] or "")
@@ -38,18 +37,15 @@ class FormularzInneView(ft.View):
                     # więc czytamy go jako kategorię — pusty zamieniamy na „Ogólne”.
                     kat_val = db.etykieta_kategorii_innych(w[1])
                     tagi_val = str(w[4] or "")
-                    self.zalacznik_val = w[5]
-                    notatka_val = str(w[6] or "")
+                    notatka_val = str(w[5] or "")
                     if duplikuj_id:
                         d_val = datetime.now().strftime("%d.%m.%Y")
-                        self.zalacznik_val = None
 
         if self.szkic:
             # Krótki opis z migawki („myjnia”, „A4 bramki”) to przy koszcie
             # właśnie jego nazwa — pole wymagane, więc oszczędza pisania.
             d_val = self.szkic["data"]
             op_val = self.szkic["opis"] or ""
-            self.zalacznik_val = self.szkic["zalacznik"]
 
         # Kategoria opisuje RODZAJ wydatku (winieta, myjnia, polisa), tagi —
         # cokolwiek innego, co użytkownik chce po sobie znaleźć. To dwie różne
@@ -73,7 +69,8 @@ class FormularzInneView(ft.View):
         
         self.e_o = ft.TextField(label="Opis / Nazwa usługi", value=op_val, **utils.styl_pola(page=page))
         self.e_kw = ft.TextField(label=f"Kwota całkowita ({utils.symbol_waluty()})", value=kw_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
-        self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        # Duplikat zaczyna bez plików — paragon jest z tamtego dnia.
+        self.pliki = utils.PolaZalacznikow(page, "inne_koszty", i_id, szkic=self.szkic)
         self.notatka_bazowa = (notatka_val or "").strip()
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 
@@ -85,7 +82,8 @@ class FormularzInneView(ft.View):
             [self.e_d, self.e_kat, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi, self.e_o, self.e_kw],
             "Szczegóły wydatku", ft.Icons.RECEIPT_LONG, domyslnie_otwarte=True, page=page
         )
-        k2 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
+        k2 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (paragon, faktura, zdjęcia)", ft.Icons.ATTACH_FILE,
+                                    domyslnie_otwarte=bool(self.pliki.pozycje))
         k3 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
                                     domyslnie_otwarte=bool(notatka_val))
         elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz koszt", self.zapisz, self.powrot)]
@@ -100,7 +98,8 @@ class FormularzInneView(ft.View):
         )
 
     def _migawka_formularza(self):
-        return (self.e_d.value, self.e_kat.value, self.get_tagi(), self.e_o.value, self.e_kw.value, self.k_notatka.value)
+        return (self.e_d.value, self.e_kat.value, self.get_tagi(), self.e_o.value, self.e_kw.value, self.k_notatka.value,
+                self.pliki.migawka())
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -118,28 +117,26 @@ class FormularzInneView(ft.View):
 
         wybrane_tagi = self.get_tagi()
         kategoria = db.etykieta_kategorii_innych(self.e_kat.value)
-        przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
-        nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
 
-        with db.polacz_baze() as conn:
-            if self.i_id: 
+        with self.pliki.zapis(), db.polacz_baze() as conn:
+            if self.i_id:
                 conn.execute(
-                    "UPDATE inne_koszty SET data=?, data_iso=?, kategoria=?, nazwa=?, kwota=?, tagi=?, zalacznik=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?",
-                    (self.e_d.value, na_iso(self.e_d.value), kategoria, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.i_id)
+                    "UPDATE inne_koszty SET data=?, data_iso=?, kategoria=?, nazwa=?, kwota=?, tagi=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?",
+                    (self.e_d.value, na_iso(self.e_d.value), kategoria, opis, kwo, wybrane_tagi, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.i_id)
                 )
                 rekord_id = self.i_id
-            else: 
+            else:
                 kursor = conn.execute(
-                    "INSERT INTO inne_koszty (auto_id, data, data_iso, kategoria, nazwa, kwota, tagi, zalacznik, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), kategoria, opis, kwo, wybrane_tagi, nowy_zalacznik, db.pobierz_moje_imie())
+                    "INSERT INTO inne_koszty (auto_id, data, data_iso, kategoria, nazwa, kwota, tagi, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
+                    (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), kategoria, opis, kwo, wybrane_tagi, db.pobierz_moje_imie())
                 )
                 rekord_id = kursor.lastrowid
                 # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
                 if self.szkic:
                     db.zamknij_szkic(self.szkic["id"], conn=conn)
+            self.pliki.zapisz_w(conn, rekord_id, self.state.auto_id)
 
         utils.zapisz_notatke_z_formularza("inne_koszty", rekord_id, self.k_notatka.value, self.notatka_bazowa)
-        db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "inny koszt")
 

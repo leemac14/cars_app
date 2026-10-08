@@ -40,7 +40,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             elementy = []
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, h.zalacznik, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data, h.koszt_robocizny FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
+                c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wizyta_id, w.koszt_calkowity, h.kategoria, NULL, h.dodane_przez, h.zmodyfikowane_przez, h.data_modyfikacji, h.notatka, h.notatka_autor, h.notatka_data, h.koszt_robocizny FROM historia h LEFT JOIN wizyty w ON h.wizyta_id=w.id WHERE h.zadanie_id=?", (z_id,))
                 wpisy = c.fetchall()
             # Części z magazynu przy pojedynczych wpisach — ich koszt siedzi już
             # w cenie wpisu, a dopisek mówi, ile z niej przyszło z półki.
@@ -53,7 +53,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             # Gwarancje napraw po identyfikatorze wpisu — także te, które minęły,
             # i te, po których część wymieniono jeszcze raz (db.gwarancje_wpisow).
             gwarancje = db.gwarancje_wpisow(z_id)
-            wpisy = [tuple(w) + (utils.etykieta_podzialu(rozbicia.get(w[0])),) for w in wpisy]
+            # Pole 7 — lista plików wpisu (db.zalaczniki_pojazdu), jednym zapytaniem.
+            pliki_wpisow = db.zalaczniki_pojazdu(self.state.auto_id, "historia")
+            wpisy = [tuple(w[:7]) + (pliki_wpisow.get(w[0], []),) + tuple(w[8:])
+                     + (utils.etykieta_podzialu(rozbicia.get(w[0])),) for w in wpisy]
 
             if not wpisy:
                 elementy.append(ft.Text("Brak wpisów w historii. Kliknij + aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
@@ -106,7 +109,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 wpisy = wpisy_po_filtrach
                 utils.posortuj_liste(wpisy, self.state, "historia", opcje_sort)
 
-                def otworz_menu_historii(h_id, w_id, zalacznik=None, notatka=None):
+                def otworz_menu_historii(h_id, w_id, pliki=None, notatka=None):
                     # Wpisu z wizyty zbiorczej nie edytujemy stąd (dane w wizycie), ale
                     # NOTATKĘ i gwarancję (wyjątek dla podzespołu) tak — należą do
                     # jednej pozycji; obie przechodzą przez sito roli.
@@ -141,16 +144,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                             utils.pokaz_komunikat_cofnij(self._page, "Usunięto wpis.", wynik)
                         utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten wpis z historii?", wykonaj)
 
-                    async def dodaj_zmien_zdj():
-                        await utils.szybkie_dodanie_zdjecia(self._page, "historia", h_id, zalacznik, lambda: utils.przejdz(self._page, f"/historia/{z_id}"))
+                    pozycje = utils.pozycje_menu_zalacznikow(
+                        self._page, "historia", h_id, pliki, "Wpis historii",
+                        lambda: utils.przejdz(self._page, f"/historia/{z_id}"))
 
-                    pozycje = []
-                    if zalacznik:
-                        pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Historia")})
-                        pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
-                    else:
-                        pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon/faktura)", "akcja": dodaj_zmien_zdj})
-                
                     pozycje.append(utils.pozycja_menu_notatki(
                         self._page, "historia", h_id, notatka,
                         lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu"
@@ -164,7 +161,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
 
                 j = utils.jednostka_dystansu()  # raz na całą listę
                 for w in wpisy:
-                    (h_id, data, prz, cena, w_id, w_koszt, kategoria, zalacznik, dodane_przez,
+                    (h_id, data, prz, cena, w_id, w_koszt, kategoria, pliki, dodane_przez,
                      zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data,
                      _robocizna, _podzial) = w
                     jest_zbiorcza = w_id is not None
@@ -182,7 +179,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Row([
                             ft.Text(str(data), weight="bold", size=16, expand=True), 
                             ft.Row([
-                                utils.wskaznik_zalacznika(self._page, zalacznik, "Wpis historii"),
+                                utils.wskaznik_zalacznikow(self._page, pliki, "Wpis historii"),
                                 ft.Text(k_str, color=utils.KOLOR_STATUS["cost"], weight="bold")
                             ], spacing=6)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -215,7 +212,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
 
                     self.karty_ref[h_id] = kontener
 
-                    def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=zalacznik, nt=notatka):
+                    def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=pliki, nt=notatka):
                         if self.tryb_zaznaczania:
                             if wid:
                                 utils.pokaz_komunikat(self._page, "Wpisów z Wizyty Zbiorczej nie można grupować stąd. Usuń całą wizytę.", utils.KOLOR_STATUS["warning"])
@@ -391,7 +388,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         with db.polacz_baze() as conn:
             c = conn.cursor()
             c.execute("""
-                SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.tagi,
+                SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, NULL, w.tagi,
                        GROUP_CONCAT(z.nazwa, ', ') as czesci, w.dodane_przez,
                        w.zmodyfikowane_przez, w.data_modyfikacji, w.notatki, w.koszt_robocizny
                 FROM wizyty w
@@ -410,7 +407,10 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         # filtra „Podział” — po nim najłatwiej znaleźć stare wizyty do rozbicia.
         rozbicia = {w[0]: db.rozbicie_kosztu(w[4], w[12], (zuzycie_wizyt.get(w[0]) or {}).get("koszt"))
                     for w in wizyty_lista}
-        wizyty_lista = [tuple(w) + (utils.etykieta_podzialu(rozbicia[w[0]]),) for w in wizyty_lista]
+        # Pole 5 — lista plików wizyty (db.zalaczniki_pojazdu), jednym zapytaniem.
+        pliki_wizyt = db.zalaczniki_pojazdu(self.state.auto_id, "wizyty")
+        wizyty_lista = [tuple(w[:5]) + (pliki_wizyt.get(w[0], []),) + tuple(w[6:])
+                        + (utils.etykieta_podzialu(rozbicia[w[0]]),) for w in wizyty_lista]
 
         sort_ui = utils.przycisk_sortowania(self._page, self.state, "wizyty", opcje_sort)
         spis_filtrow = [
@@ -462,7 +462,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         )
         # ---------------------------------------------
 
-        def otworz_menu_wiz(wid, zalacznik=None, notatka=None):
+        def otworz_menu_wiz(wid, pliki=None, notatka=None):
             def usun_wizyte():
                 def wykonaj():
                     wynik = db.usun_wizyty_z_cofnieciem([wid])
@@ -478,16 +478,8 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     utils.pokaz_komunikat_cofnij(self._page, "Usunięto wizytę w warsztacie.", wynik)
                 utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć tę wizytę zbiorczą?", wykonaj)
 
-            async def dodaj_zmien_zdj():
-                await utils.szybkie_dodanie_zdjecia(self._page, "wizyty", wid, zalacznik, lambda: utils.przejdz(self._page, "/wizyty"))
-
-            pozycje = []
-            if zalacznik:
-                pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Wizyta")})
-                pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
-            else:
-                pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie", "akcja": dodaj_zmien_zdj})
-                
+            pozycje = utils.pozycje_menu_zalacznikow(self._page, "wizyty", wid, pliki, "Wizyta",
+                                                     lambda: utils.przejdz(self._page, "/wizyty"))
             pozycje.append(utils.pozycja_menu_notatki(
                 self._page, "wizyty", wid, notatka,
                 lambda: utils.przejdz(self._page, "/wizyty"), "Notatka do wizyty"
@@ -525,7 +517,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             kontakty = {db.klucz_nazwy(n): (t, a) for _i, n, t, a, _nt in db.pobierz_warsztaty(self.state.auto_id)}
             bez_nazwy = db.klucz_nazwy(db.WARSZTAT_BEZ_NAZWY)
             for w in wizyty_lista:
-                (w_id, data, prz, wyk, kosz, zalacznik, tagi, czesci, dodane_przez,
+                (w_id, data, prz, wyk, kosz, pliki, tagi, czesci, dodane_przez,
                  zmodyfikowane_przez, data_modyfikacji, notatka_wizyty, _robocizna, _podzial) = w
                 czesci = czesci or "Brak podpiętych części"
                 opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wizyt.get(w_id))
@@ -534,7 +526,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                     ft.Row([
                         ft.Text(str(data), weight="bold", size=16, expand=True),
                         ft.Row([
-                            utils.wskaznik_zalacznika(self._page, zalacznik, "Wizyta"),
+                            utils.wskaznik_zalacznikow(self._page, pliki, "Wizyta"),
                             ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))}  {utils.symbol_waluty()}", color=utils.KOLOR_STATUS["cost"], weight="bold")
                         ], spacing=6)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -576,7 +568,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
 
                 self.karty_ref[w_id] = kontener
 
-                def _on_click(e, wid=w_id, zal=zalacznik, nt=notatka_wizyty):
+                def _on_click(e, wid=w_id, zal=pliki, nt=notatka_wizyty):
                     if self.tryb_zaznaczania:
                         self.zaznacz_odznacz(wid, self.karty_ref[wid])
                     else:

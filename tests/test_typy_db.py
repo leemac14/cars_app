@@ -46,6 +46,7 @@ def _widziane_do(wersja):
 # `k` to kontekst: k["id"] — identyfikatory z utworz_pojazd(), k["tmp"] — katalog.
 WYWOLANIA = {
     "brakujace_podzespoly": lambda k: (k["id"]["auto_id"], "LPG"),
+    "dokumenty_pojazdu": lambda k: (k["id"]["auto_id"],),
     "domyslne_zadania": lambda k: ("LPG",),
     "generuj_eksport_csv": lambda k: (db.pobierz_dane_eksportu(k["id"]["auto_id"], list(db.KATEGORIE_EKSPORTU)),),
     "globalne_wyszukiwanie": lambda k: (k["id"]["auto_id"], "olej"),
@@ -70,6 +71,7 @@ WYWOLANIA = {
     "pobierz_checklisty": lambda k: (k["id"]["auto_id"],),
     "pobierz_czesci_do_zuzycia": lambda k: (k["id"]["auto_id"],),
     "pobierz_dane_timeline": lambda k: (k["id"]["auto_id"],),
+    "pobierz_zalaczniki": lambda k: ("wizyty", k["id"]["wizyta"]),
     "pobierz_historie_przebiegu": lambda k: (k["id"]["auto_id"],),
     "pobierz_historie_zuzycia": lambda k: (k["id"]["magazyn"],),
     "pobierz_karty_warsztatow": lambda k: (k["id"]["auto_id"],),
@@ -118,6 +120,7 @@ WYWOLANIA = {
     "sprawdz_kopie_przed_wczytaniem": lambda k: (db.BAZA_DANYCH,),
     "stan_budzetow": lambda k: (k["id"]["auto_id"],),
     "tabela_z_wierszy": lambda k: (db.wczytaj_wiersze_csv(str(k["csv"])),),
+    "terminy_skarbca": lambda k: (k["id"]["auto_id"],),
     "ustal_oferte_oc_ac": lambda k: ("Warta 1 240 zł", "Link4 1 310 zł", "01.10.2025"),
     "utworz_wizyte_z_do_zrobienia": lambda k: (k["id"]["auto_id"], [k["id"]["do_zrobienia"]]),
     "warunek_zakresu_dat": lambda k: ("data_iso", date(2026, 1, 1), date(2026, 3, 31)),

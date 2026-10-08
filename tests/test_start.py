@@ -140,7 +140,7 @@ def test_porzadki_naprawiaja_sciezke_z_innego_urzadzenia(baza):
     identyfikatory = pomoce.utworz_pojazd("Przeniesiony")
     with db.polacz_baze() as conn:
         conn.execute(
-            "UPDATE tankowania SET zalacznik=? WHERE id=?",
+            "UPDATE zalaczniki SET sciezka=? WHERE tabela='tankowania' AND rekord_id=?",
             ("/data/user/0/pl.flota/files/data/zalaczniki/przeniesione.jpg",
              identyfikatory["tankowanie"]),
         )
@@ -153,7 +153,7 @@ def test_porzadki_naprawiaja_sciezke_z_innego_urzadzenia(baza):
     assert naprawione >= 1 and brakujace == 0
     with db.polacz_baze() as conn:
         sciezka = conn.execute(
-            "SELECT zalacznik FROM tankowania WHERE id=?", (identyfikatory["tankowanie"],)
+            "SELECT sciezka FROM zalaczniki WHERE tabela='tankowania' AND rekord_id=?", (identyfikatory["tankowanie"],)
         ).fetchone()[0]
     assert sciezka == "zalaczniki/przeniesione.jpg", "naprawa wpisuje postać względną, nie tutejszą bezwzględną"
     assert os.path.exists(db.pelna_sciezka_zalacznika(sciezka)), "po naprawie ścieżka ma wskazywać istniejący plik"

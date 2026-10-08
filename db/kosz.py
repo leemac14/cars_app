@@ -8,13 +8,16 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from .stale import DNI_KOSZA_DOMYSLNIE, DNI_KOSZA_OPCJE, FOLDER_KOSZ, TABELE_Z_ZALACZNIKIEM
+from .stale import DNI_KOSZA_DOMYSLNIE, DNI_KOSZA_OPCJE, FOLDER_KOSZ, TABELE_DAWNEGO_ZALACZNIKA, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
 from .pomocnicze import parsuj_int_bezpiecznie
 from .daty import uzupelnij_date_iso
 from .ustawienia import _pobierz_ustawienia_pojazdu, _przywroc_ustawienia_pojazdu, _usun_ustawienia_pojazdu, pobierz_ustawienie, zapisz_ustawienie
 from .synchronizacja import usun_z_kolejki_sync, zakolejkuj_synchronizacje, zarejestruj_nagrobek
-from .zalaczniki import pelna_sciezka_zalacznika, sciezka_pliku_zalacznika, usun_plik_zalacznika, wzgledna_sciezka_zalacznika
+from .zalaczniki import (
+    dopisz_dawny_zalacznik, pelna_sciezka_zalacznika, sciezka_pliku_zalacznika, usun_plik_zalacznika,
+    wzgledna_sciezka_zalacznika,
+)
 
 
 def _upewnij_folder_kosza():
@@ -31,7 +34,8 @@ def _upewnij_folder_kosza():
 
 # Kolejność MA ZNACZENIE przy odtwarzaniu — klucz obcy wymaga, żeby rodzic
 # istniał wcześniej: historia zależy od zadań i wizyt, wizyta_czesci_magazynu od
-# wizyt i magazynu, do_zrobienia od zadań.
+# wizyt i magazynu, do_zrobienia od zadań. `zalaczniki` na końcu: ich rekord_id
+# przemapowuje się po wpisach każdej tabeli.
 KOSZ_TABELE_POTOMNE = [
     "zadania", "wizyty", "magazyn_czesci", "tagi", "tankowania",
     "inne_koszty", "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
@@ -40,6 +44,7 @@ KOSZ_TABELE_POTOMNE = [
     "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
     "checklisty_pozycje",
     "budzety", "rozliczenia", "szkice_wpisow", "ceny_czesci", "przejazdy",
+    "dokumenty_pojazdu", "zalaczniki",
 ]
 
 
@@ -84,7 +89,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
     "do_zrobienia", "historia", "tagi", "wizyta_czesci_magazynu",
     "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
     "trasy_szablony", "checklisty", "checklisty_pozycje", "budzety",
-    "rozliczenia", "ceny_czesci", "przejazdy",
+    "rozliczenia", "ceny_czesci", "przejazdy", "dokumenty_pojazdu",
 ]
 
 
@@ -94,7 +99,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
 KOSZ_TABELE_LICZONE = [
     "tankowania", "historia", "wizyty", "inne_koszty", "zestawy_opon",
     "magazyn_czesci", "zdjecia_karoserii", "odczyty_przebiegu", "do_zrobienia",
-    "szkice_wpisow", "przejazdy",
+    "szkice_wpisow", "przejazdy", "dokumenty_pojazdu",
 ]
 
 
@@ -163,9 +168,10 @@ def usun_auto_do_kosza(auto_id):
 
     schowaj(dane_auta.get("zdjecie_glowne"), "auto")
     for tab in KOSZ_TABELE_POTOMNE:
-        if tab in TABELE_Z_ZALACZNIKIEM:
+        kolumna = "sciezka" if tab == "zalaczniki" else "zalacznik"
+        if tab == "zalaczniki" or tab in TABELE_Z_ZALACZNIKIEM or tab in TABELE_DAWNEGO_ZALACZNIKA:
             for wiersz in tabele[tab]["wiersze"]:
-                schowaj(wiersz.get("zalacznik"), "z")
+                schowaj(wiersz.get(kolumna), "z")
 
     # Kaskada SQLite wyczyści wszystkie tabele potomne
     with polacz_baze() as conn:
@@ -375,6 +381,7 @@ def przywroc_auto_z_kosza(kosz_id):
         nowe_auto_id = c.lastrowid
 
         mapy = {}
+        dawne = []  # (tabela, id, ścieżka) z migawek sprzed wersji 51 — kolumna `zalacznik` wpisów
         for tab in KOSZ_TABELE_POTOMNE:
             mapy[tab] = {}
             wiersze = (tabele.get(tab) or {}).get("wiersze") or []
@@ -393,6 +400,10 @@ def przywroc_auto_z_kosza(kosz_id):
                         dane[kolumna] = mapy.get(rodzic, {}).get(dane[kolumna], dane[kolumna])
                 if dane.get("zalacznik") in podmiana:
                     dane["zalacznik"] = podmiana[dane["zalacznik"]]
+                dawny = dane.pop("zalacznik", None) if tab in TABELE_DAWNEGO_ZALACZNIKA else None
+                if tab == "zalaczniki":
+                    dane["rekord_id"] = mapy.get(dane.get("tabela"), {}).get(dane.get("rekord_id"), dane.get("rekord_id"))
+                    dane["sciezka"] = podmiana.get(dane.get("sciezka"), dane.get("sciezka"))
                 # Migawka sprzed wersji 44 nie zna `data_iso` — liczymy ją z daty
                 # jak przy każdym zapisie, zamiast przywracać wpis bez niej.
                 uzupelnij_date_iso(tab, dane)
@@ -405,6 +416,11 @@ def przywroc_auto_z_kosza(kosz_id):
                 )
                 if stare_id is not None:
                     mapy[tab][stare_id] = c.lastrowid
+                if dawny:
+                    dawne.append((tab, c.lastrowid, dawny))
+
+        for tab, rekord_id, sciezka in dawne:
+            dopisz_dawny_zalacznik(conn, nowe_auto_id, tab, rekord_id, sciezka)
 
         c.execute("DELETE FROM kosz_pojazdy WHERE id=?", (kosz_id,))
 

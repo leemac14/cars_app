@@ -105,6 +105,13 @@ def odciski_zalacznikow():
     return odciski
 
 
+def pliki_wpisu(tabela, rekord_id):
+    """[(sciezka, typ, opis)] plików wpisu w kolejności z formularza (tabela `zalaczniki`)."""
+    with db.polacz_baze() as conn:
+        return conn.execute("SELECT sciezka, typ, opis FROM zalaczniki WHERE tabela=? AND rekord_id=? "
+                            "ORDER BY kolejnosc, id", (tabela, rekord_id)).fetchall()
+
+
 def klucze_obce_spojne():
     """Pusta lista = wszystkie klucze obce wskazują na istniejące wiersze."""
     with db.polacz_baze() as conn:
@@ -159,16 +166,14 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (auto, "Olej silnikowy i filtr", 15000, 0, "zad-1"))
         zid["zadanie"] = c.lastrowid
 
-        c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, zalacznik, "
-                  "gwarancja_data, gwarancja_przebieg, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                  (auto, "2026-01-10", 100000, "Warsztat u Janka", 480.0, 200.0,
-                   plik(f"{nazwa}_wizyta.jpg", b"WIZYTA") if z_zalacznikami else None, "10.01.2028", 130000, "wiz-1"))
+        c.execute("INSERT INTO wizyty (auto_id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, "
+                  "gwarancja_data, gwarancja_przebieg, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (auto, "2026-01-10", 100000, "Warsztat u Janka", 480.0, 200.0, "10.01.2028", 130000, "wiz-1"))
         zid["wizyta"] = c.lastrowid
 
-        c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, zalacznik, "
-                  "sklep, link, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, "
+                  "sklep, link, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
                   (auto, "Filtr oleju", "Filtry", 2.0, "szt", 39.0, 19.5,
-                   plik(f"{nazwa}_czesc.jpg", b"CZESC") if z_zalacznikami else None,
                    "Inter Cars", "https://example.com/filtr-oleju", "mag-1"))
         zid["magazyn"] = c.lastrowid
 
@@ -182,10 +187,10 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
         c.execute("INSERT INTO tagi (auto_id, nazwa, kolor, zdalne_id) VALUES (?,?,?,?)", (auto, "Trasa", "#FF0000", "tag-1"))
         zid["tag"] = c.lastrowid
 
-        c.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, rodzaj_energii, notatka, zalacznik, zdalne_id) "
-                  "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO tankowania (auto_id, data, przebieg, dystans, litry, kwota, do_pelna, stacja, rodzaj_energii, notatka, zdalne_id) "
+                  "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                   (auto, "2026-02-01", 100500, 500.0, 32.5, 210.0, 1, "Orlen", db.ENERGIA_PALIWO, "Pełny bak przed trasą",
-                   plik(f"{nazwa}_paragon.jpg", b"PARAGON") if z_zalacznikami else None, "tank-1"))
+                   "tank-1"))
         zid["tankowanie"] = c.lastrowid
 
         c.execute("INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, zdalne_id) VALUES (?,?,?,?,?,?)",
@@ -244,10 +249,10 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
 
         # Z gwarancją naprawy (dwa lata albo 30 000 km), tą samą co wspólna
         # wizyty — kosz i synchronizacja mają ją przenieść jak każdą inną kolumnę.
-        c.execute("INSERT INTO historia (zadanie_id, wizyta_id, data, przebieg, kategoria, cena, wykonawca, notatka, zalacznik, "
-                  "gwarancja_data, gwarancja_przebieg, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO historia (zadanie_id, wizyta_id, data, przebieg, kategoria, cena, wykonawca, notatka, "
+                  "gwarancja_data, gwarancja_przebieg, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                   (zid["zadanie"], zid["wizyta"], "2026-01-10", 100000, "Serwis", 480.0, "Warsztat u Janka", "Olej Castrol",
-                   plik(f"{nazwa}_wpis.jpg", b"WPIS") if z_zalacznikami else None, "10.01.2028", 130000, "hist-1"))
+                   "10.01.2028", 130000, "hist-1"))
         zid["historia"] = c.lastrowid
 
         c.execute("INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta, koszt, zdalne_id) VALUES (?,?,?,?,?)",
@@ -279,6 +284,27 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                    plik(f"{nazwa}_szkic.jpg", b"SZKIC") if z_zalacznikami else None,
                    "tankowanie", 101400, "Orlen przy A2"))
         zid["szkic"] = c.lastrowid
+
+        # Dokument skarbca bez daty ważności — scenariusze mają być spokojne w dzwonku.
+        c.execute("INSERT INTO dokumenty_pojazdu (auto_id, rodzaj, numer, notatki, liczba_plikow, dodane_przez, zdalne_id) "
+                  "VALUES (?,?,?,?,?,?,?)",
+                  (auto, "dowod", "DR/BAU 1234567", "Oryginał w schowku", 1 if z_zalacznikami else 0, "Kamil", "dok-1"))
+        zid["dokument"] = c.lastrowid
+
+        # Pliki wpisów (N-05): dwa przy wizycie — kolejność i rodzaj mają przetrwać kosz.
+        if z_zalacznikami:
+            for tabela, rekord_id, nazwa_pliku, tresc, typ, kolejnosc in (
+                ("wizyty", zid["wizyta"], f"{nazwa}_wizyta.jpg", b"WIZYTA", "paragon", 0),
+                ("wizyty", zid["wizyta"], f"{nazwa}_faktura.pdf", b"FAKTURA", "faktura", 1),
+                ("magazyn_czesci", zid["magazyn"], f"{nazwa}_czesc.jpg", b"CZESC", "zdjecie_czesci", 0),
+                ("tankowania", zid["tankowanie"], f"{nazwa}_paragon.jpg", b"PARAGON", "paragon", 0),
+                ("historia", zid["historia"], f"{nazwa}_wpis.jpg", b"WPIS", "paragon", 0),
+                ("dokumenty_pojazdu", zid["dokument"], f"{nazwa}_dowod.jpg", b"DOWOD", db.TYP_PLIKU_DOKUMENTU, 0),
+            ):
+                c.execute("INSERT INTO zalaczniki (auto_id, tabela, rekord_id, sciezka, typ, opis, kolejnosc) "
+                          "VALUES (?,?,?,?,?,?,?)",
+                          (auto, tabela, rekord_id, plik(nazwa_pliku, tresc), typ, "Strona 1" if kolejnosc else None,
+                           kolejnosc))
 
         # Tabela spoza kosza — świadomie, żeby testy widziały różnicę.
         c.execute("INSERT INTO wyciszone_powiadomienia (auto_id, klucz, do_dnia, tytul) VALUES (?,?,?,?)",
@@ -370,6 +396,7 @@ ARGUMENTY_IDENTYFIKATOROW = {
     # Formularz umowy raty na zwykłym wydatku cyklicznym — przestawienie na raty.
     "wydatek_id": "cykliczny",
     "przejazd_id": "przejazd",
+    "dokument_id": "dokument",
 }
 
 _KLASY_WIDOKOW = None

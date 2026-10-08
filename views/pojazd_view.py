@@ -237,6 +237,7 @@ class PojazdView(ft.View):
             wiersz_oferty = self._wiersz_oferty(jest_polisa=False)
             if wiersz_oferty is not None:
                 zawartosc.append(wiersz_oferty)
+            zawartosc.append(self._wejscie_do_dokumentow())
             return utils.karta_analizy(self._page, "Terminy i dokumenty", ft.Icons.SHIELD, zawartosc)
 
         wiersze = []
@@ -269,7 +270,17 @@ class PojazdView(ft.View):
                     expand=True),
             ], spacing=6))
 
+        wiersze.append(self._wejscie_do_dokumentow())
         return utils.karta_analizy(self._page, "Terminy i dokumenty", ft.Icons.SHIELD, wiersze)
+
+    def _wejscie_do_dokumentow(self):
+        """Skany dowodu, polis i umowy (skarbiec, N-05) — przycisk z liczbą i tym, co pilne."""
+        stan = db.podsumowanie_dokumentow(self.state.auto_id)
+        tekst = f"Dokumenty pojazdu ({stan['liczba']})" if stan["liczba"] else "Dokumenty pojazdu — dodaj skany"
+        if stan["pilne"]:
+            tekst += f" · {db.liczba_z_odmiana(stan['pilne'], 'pilny', 'pilne', 'pilnych')}"
+        return ft.TextButton(tekst, icon=ft.Icons.FOLDER_SHARED,
+                             on_click=lambda e: utils.przejdz(self._page, "/dokumenty"))
 
     # ================= NAJLEPSZA OFERTA OC/AC =================
 

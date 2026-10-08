@@ -380,16 +380,3 @@ def test_obraz_w_nietypowym_trybie_zapisuje_sie_jako_prawdziwy_jpeg(baza, tmp_pa
     with Image.open(db.sciezka_pliku_zalacznika(zapisana)) as wynik:
         assert wynik.format == "JPEG"
 
-
-def test_zdjecia_laczone_w_pdf_nie_zostaja_otwarte(baza, tmp_path):
-    from PIL import Image
-    sciezki = []
-    for i in range(2):
-        sciezka = tmp_path / f"strona{i}.png"
-        Image.new("RGB", (30, 40), (i * 100, 0, 0)).save(sciezka)
-        sciezki.append(str(sciezka))
-    pdf = db.polacz_zdjecia_w_pdf(sciezki)
-    assert pdf and open(pdf, "rb").read(4) == b"%PDF"
-    for sciezka in sciezki:
-        import os
-        os.remove(sciezka)  # na Windows otwarty uchwyt zablokowałby usunięcie

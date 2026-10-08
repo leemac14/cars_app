@@ -28,6 +28,9 @@ class MiksinZakladkiTankowania:
             c = conn.cursor()
             c.execute("SELECT * FROM tankowania WHERE auto_id=?", (self.state.auto_id,))
             baza_lista = [dict(row) for row in c.fetchall()]
+        pliki_wpisow = db.zalaczniki_pojazdu(self.state.auto_id, "tankowania")
+        for w in baza_lista:
+            w["pliki"] = pliki_wpisow.get(w["id"], [])
 
         if not baza_lista:
             self.elementy.append(utils.ekran_braku_danych(
@@ -150,7 +153,7 @@ class MiksinZakladkiTankowania:
             po_filtrach = tankowania_po_filtrach
             utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
 
-            def otworz_menu_t(tid, zalacznik=None, notatka=None):
+            def otworz_menu_t(tid, pliki=None, notatka=None):
                 def usun_tankowanie():
                     def wykonaj():
                         wynik = db.usun_z_cofnieciem("tankowania", tid)
@@ -158,15 +161,8 @@ class MiksinZakladkiTankowania:
                         utils.pokaz_komunikat_cofnij(self._page, "Usunięto tankowanie.", wynik)
                     utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć to tankowanie?", wykonaj)
 
-                async def dodaj_zmien_zdj():
-                    await utils.szybkie_dodanie_zdjecia(self._page, "tankowania", tid, zalacznik, lambda: utils.przejdz(self._page, "/"))
-
-                pozycje = []
-                if zalacznik:
-                    pozycje.append({"ikona": ft.Icons.IMAGE, "tekst": "Pokaż zdjęcie", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, zalacznik, "Tankowanie")})
-                    pozycje.append({"ikona": ft.Icons.EDIT_DOCUMENT, "tekst": "Zmień zdjęcie", "akcja": dodaj_zmien_zdj})
-                else:
-                    pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj zdjęcie (paragon)", "akcja": dodaj_zmien_zdj})
+                pozycje = utils.pozycje_menu_zalacznikow(self._page, "tankowania", tid, pliki, "Tankowanie",
+                                                         lambda: utils.przejdz(self._page, "/"))
 
                 pozycje.append(utils.pozycja_menu_notatki(
                     self._page, "tankowania", tid, notatka,
@@ -218,7 +214,7 @@ class MiksinZakladkiTankowania:
                                                 color=ft.Colors.GREEN_800 if czy_prad_w else ft.Colors.BLUE_800),
                                     ], spacing=3, tight=True),
                                 ) if dwuzrodlowy_lista else ft.Container(),
-                                utils.wskaznik_zalacznika(self._page, w.get('zalacznik'), "Tankowanie"),
+                                utils.wskaznik_zalacznikow(self._page, w.get('pliki'), "Tankowanie"),
                                 ft.Icon(ft.Icons.EV_STATION if czy_prad_w else ft.Icons.LOCAL_GAS_STATION, size=14, color=ft.Colors.PRIMARY, tooltip="Do pełna") if w.get('do_pelna') else ft.Container(),
                                 ft.Text(f"-{cena_str}", weight="bold", color=utils.KOLOR_STATUS["cost"])
                             ], spacing=4)
@@ -246,7 +242,7 @@ class MiksinZakladkiTankowania:
                     kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
 
                     self.karty_ref[tid] = kontener
-                    self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, zal=w.get('zalacznik'), nt=w.get('notatka'): otworz_menu_t(id_el, zal, nt), "tankowania")
+                    self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, pl=w.get('pliki'), nt=w.get('notatka'): otworz_menu_t(id_el, pl, nt), "tankowania")
 
                     karta_t = ft.Card(elevation=1, content=kontener)
                     tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')} {db.ETYKIETY_RODZAJU[rodzaj_w]} {w.get('typ_ladowania') or ''} {w.get('notatka') or ''}".lower()

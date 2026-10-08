@@ -332,7 +332,7 @@ class FormularzZdjecieKaroseriiView(ft.View):
         # Dodawanie nowych -> masowy wybór wielu zdjęć naraz; każde stanie się
         # osobnym wpisem w galerii ze wspólnymi metadanymi z formularza poniżej.
         if wpis_id:
-            self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val, tylko_zdjecie=True)
+            self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
         else:
             self.k_zalacznik, self.get_wiele_zdjec = utils.komponent_wielu_nowych_zdjec(page)
 

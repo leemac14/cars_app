@@ -17,7 +17,7 @@ from views.history_view import HistoriaView, WizytyZbiorczeView
 from views.formularze import (
     FormularzAutoView, FormularzTankowanieView, FormularzInneView,
     FormularzWizytyView, FormularzInterwalView, FormularzZadanieView,
-    FormularzWpisView, FormularzRatyView, FormularzPrzejazduView
+    FormularzWpisView, FormularzRatyView, FormularzPrzejazduView, FormularzDokumentuView
 )
 from views.settings_view import UstawieniaView
 from views.todo_view import DoZrobieniaView, FormularzDoZrobieniaView
@@ -46,6 +46,7 @@ from views.miesiac_view import MiesiacWPigulceView
 from views.co_nowego_view import CoNowegoView
 from views.raty_view import RatyView
 from views.ewidencja_view import EwidencjaPrzebieguView
+from views.dokumenty_view import DokumentyView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
 # Router to jedyna droga do formularzy, więc jedno sprawdzenie zastępuje dwadzieścia w
@@ -113,7 +114,8 @@ def _cel_trasy(segmenty):
 
     # Umowa raty (/raty/nowa, /raty/edytuj/<id>) to wpis cykliczny — wspólny
     # inwentarz pojazdu bez podpisu autora, więc o edycji rozstrzyga sama rola.
-    if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria", "raty"):
+    # Dokument skarbca (/dokumenty/nowy[/<rodzaj>], /dokumenty/edytuj/<id>) — tak samo.
+    if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria", "raty", "dokumenty"):
         if drugi in AKCJE_DODAWANIA:
             return True, True, None, None
         if drugi == "edytuj":
@@ -780,6 +782,14 @@ def main(page: ft.Page):
             page.views.append(WarsztatyView(page, app_state))
         elif segmenty[0] == "budzet":
             page.views.append(BudzetView(page, app_state))
+        elif segmenty[0] == "dokumenty":
+            # Skarbiec dokumentów (N-05). Formularz leży NA liście, więc „wstecz” wraca do niej.
+            page.views.append(DokumentyView(page, app_state))
+            if len(segmenty) >= 2 and segmenty[1] == "nowy":
+                page.views.append(FormularzDokumentuView(
+                    page, app_state, None, rodzaj=segmenty[2] if len(segmenty) >= 3 else None))
+            elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
+                page.views.append(FormularzDokumentuView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "raty":
             # Leasing i kredyt (M-22). Formularz umowy leży NA harmonogramie, więc
             # strzałka w pasku i systemowe „wstecz” wracają do listy umów.

@@ -181,7 +181,10 @@ TERMINY_DOKUMENTOW = [
     ("gwarancja",  "gwarancja_data",  "Gwarancja producenta"),
 ]
 
-KLUCZE_TERMINOW = {k for k, _, _ in TERMINY_DOKUMENTOW}
+# Własny próg ma też skarbiec (db/dokumenty.py): dokumenty z datą ważności spoza Karty pojazdu.
+KLUCZ_PROGU_SKARBCA = "skarbiec"
+PROGI_TERMINOW = [(k, e) for k, _, e in TERMINY_DOKUMENTOW] + [(KLUCZ_PROGU_SKARBCA, "Inne dokumenty pojazdu")]
+KLUCZE_TERMINOW = {k for k, _ in PROGI_TERMINOW}
 
 # Notatka „najlepsza oferta OC/AC”: kolumna `oferta_oc_ac` + `oferta_oc_ac_data`
 # (ostatnia zmiana tekstu). Wspólna dla OC i AC, zostaje po odnowieniu polisy.
@@ -280,8 +283,16 @@ KATEGORIE_MAGAZYNU = ["Płyny eksploatacyjne", "Oleje i smary", "Żarówki i bez
 JEDNOSTKI_MAGAZYNU = ["szt", "l", "ml", "kg", "g"]
 
 
-TABELE_Z_ZALACZNIKIEM = {"tankowania", "wizyty", "inne_koszty", "zdjecia_karoserii", "historia", "zestawy_opon", "magazyn_czesci",
-                         "szkice_wpisow"}
+# Jeden wiersz = jeden plik w kolumnie `zalacznik` (zdjęcie karoserii, paragon w kolejce).
+TABELE_Z_ZALACZNIKIEM = {"zdjecia_karoserii", "szkice_wpisow"}
+
+# Wpisy z wieloma plikami w tabeli `zalaczniki` (tabela, rekord_id) — N-05, wersja 51.
+TABELE_Z_WIELOMA_ZALACZNIKAMI = ("tankowania", "wizyty", "historia", "inne_koszty", "zestawy_opon",
+                                 "magazyn_czesci", "dokumenty_pojazdu")
+
+# Dawna kolumna `zalacznik` wpisów: migracja 51 przenosi ją do `zalaczniki` i zeruje. Zostaje
+# w schemacie, bo stare kopie i migawki kosza wciąż ją niosą (db/zalaczniki.py).
+TABELE_DAWNEGO_ZALACZNIKA = ("tankowania", "wizyty", "historia", "inne_koszty", "zestawy_opon", "magazyn_czesci")
 
 
 # Tabele z `data_iso` (RRRR-MM-DD, migracja 44) obok `data` (DD.MM.RRRR). Wartość zawsze
@@ -421,6 +432,7 @@ __all__ = [
     "KATEGORIE_INNYCH_KOSZTOW",
     "KATEGORIE_MAGAZYNU",
     "KLUCZE_TERMINOW",
+    "KLUCZ_PROGU_SKARBCA",
     "KLUCZE_TERMINOW_Z_OFERTA",
     "KOLEJNOSC_PRIORYTETU",
     "KOLEJNOSC_TRYBOW_MOTYWU",
@@ -439,6 +451,7 @@ __all__ = [
     "PROGI_DNI_DOKUMENTU_OPCJE",
     "PROGI_DNI_OPCJE",
     "PROGI_KM_OPCJE",
+    "PROGI_TERMINOW",
     "PROG_DNI_POWIADOMIEN",
     "PROG_ILOSC_MAGAZYNU_DOMYSLNY",
     "PROG_KM_POWIADOMIEN",
@@ -452,6 +465,8 @@ __all__ = [
     "STREFY_KAROSERII",
     "TABELE_NOTATKI_Z_PODPISEM",
     "TABELE_Z_DATA_ISO",
+    "TABELE_DAWNEGO_ZALACZNIKA",
+    "TABELE_Z_WIELOMA_ZALACZNIKAMI",
     "TABELE_Z_ZALACZNIKIEM",
     "TERMINY_DOKUMENTOW",
     "TYPY_LADOWANIA",

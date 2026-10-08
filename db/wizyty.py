@@ -1,9 +1,6 @@
 """Wizyty serwisowe i ich powiązanie z listą Do zrobienia."""
 
-import os
-import shutil
 import sqlite3
-import uuid
 from date import na_iso
 from datetime import datetime
 from typing import Any
@@ -11,7 +8,7 @@ from typing import Any
 from .polaczenie import polacz_baze
 from .ustawienia import pobierz_moje_imie
 from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
+from .zalaczniki import odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki
 from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow, przywroc_czesci_wizyty
 from .przebieg import pobierz_aktualny_przebieg, przelicz_wszystkie_zadania
 from .nazwy import klucz_nazwy
@@ -164,20 +161,9 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
     if wiz["wykonawca"]:
         opis_zrodla += f" ({wiz['wykonawca']})"
 
-    # Załączniki (paragony) zdejmowanych wpisów historii chowamy tak jak przy
-    # każdym innym usuwaniu z opcją cofnięcia — do_zrobienia nie ma kolumny na
-    # załącznik, więc plik czeka w folderze odroczonym na ewentualne cofnięcie.
-    sciezki_tymczasowe = []
-    folder_tmp = _upewnij_folder_odroczonych()
-    for d in historia_dane:
-        zal = sciezka_pliku_zalacznika(d.get("zalacznik"))
-        if zal and os.path.exists(zal):
-            tmp = os.path.join(folder_tmp, f"h_{uuid.uuid4().hex}_{os.path.basename(zal)}")
-            try:
-                shutil.move(zal, tmp)
-                sciezki_tymczasowe.append((tmp, zal))
-            except Exception:
-                pass
+    # Pliki zdejmowanych wpisów czekają w folderze odroczonych na ewentualne cofnięcie —
+    # pozycja do zrobienia nie ma plików.
+    pliki_historii = odloz_zalaczniki_rekordow("historia", [d["id"] for d in historia_dane])
 
     # Zwracana pozycja znika z historii, więc jej części wracają na stan magazynu.
     czesci_wpisow = _zdejmij_powiazania_czesci_wpisow([d["id"] for d in historia_dane])
@@ -221,12 +207,6 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
         for w in czesci_wpisow:
             if w.get("zdalne_id"):
                 usun_nagrobek(w["zdalne_id"])
-        for tmp, oryg in sciezki_tymczasowe:
-            if os.path.exists(tmp):
-                try:
-                    shutil.move(tmp, oryg)
-                except Exception:
-                    pass
 
         with polacz_baze() as conn:
             if nowe_do_zrobienia_ids:
@@ -242,14 +222,14 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
             conn.execute("UPDATE wizyty SET koszt_calkowity=? WHERE id=?", (koszt_przed, wizyta_id))
         # Wpisy historii wracają tu z oryginalnymi ID (kolumny_historii zawierają id)
         _przywroc_powiazania_czesci_wpisow(czesci_wpisow)
+        przywroc_odlozone_zalaczniki(pliki_historii)
         przelicz_wszystkie_zadania(auto_id)
 
     def finalizuj():
         if stan["cofniete"]:
             return
         stan["sfinalizowane"] = True
-        for tmp, _ in sciezki_tymczasowe:
-            usun_plik_zalacznika(tmp)
+        skasuj_odlozone_zalaczniki(pliki_historii)
 
     return {
         "cofnij": cofnij, "finalizuj": finalizuj,
@@ -289,18 +269,9 @@ def usun_wizyty_z_cofnieciem(ids_list):
     if not wizyty_dane:
         return None
 
-    # Bezpieczne chowanie załączników z wizyt
-    sciezki_tymczasowe = []
-    folder_tmp = _upewnij_folder_odroczonych()
-    for dane in wizyty_dane:
-        oryginalna = sciezka_pliku_zalacznika(dane.get("zalacznik"))
-        if oryginalna and os.path.exists(oryginalna):
-            sciezka_tmp = os.path.join(folder_tmp, f"wizyta_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
-            try:
-                shutil.move(oryginalna, sciezka_tmp)
-                sciezki_tymczasowe.append((sciezka_tmp, oryginalna))
-            except Exception:
-                pass
+    # Pliki wizyt i ich pozycji czekają w folderze odroczonych na ewentualne cofnięcie.
+    pliki_wizyt = odloz_zalaczniki_rekordow("wizyty", [d["id"] for d in wizyty_dane])
+    pliki_historii = odloz_zalaczniki_rekordow("historia", [d["id"] for d in historia_dane])
 
     # Faktyczne operacje kasowania (oddajemy też części do magazynu!)
     with polacz_baze() as conn:
@@ -332,10 +303,6 @@ def usun_wizyty_z_cofnieciem(ids_list):
         for zid in zdalne_id_czesci:
             usun_nagrobek(zid)
 
-        for tmp, oryg in sciezki_tymczasowe:
-            if os.path.exists(tmp):
-                try: shutil.move(tmp, oryg)
-                except Exception: pass
 
         with polacz_baze() as conn:
             if wizyty_dane:
@@ -357,12 +324,15 @@ def usun_wizyty_z_cofnieciem(ids_list):
                     conn.execute(f"INSERT INTO wizyta_czesci_magazynu ({n_c}) VALUES ({p_c})", tuple(d[k] for k in kolumny_czesci))
                     # Ponownie potrącamy części ze stanu magazynu
                     conn.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?", (d["ilosc_uzyta"], d["magazyn_id"]))
+        # Wizyty i pozycje wracają z oryginalnymi id — pliki bez przemapowania.
+        przywroc_odlozone_zalaczniki(pliki_wizyt)
+        przywroc_odlozone_zalaczniki(pliki_historii)
 
     def finalizuj_usuniecie():
         if stan["cofniete"]: return
         stan["trwale_usuniete"] = True
-        for tmp, _ in sciezki_tymczasowe:
-            usun_plik_zalacznika(tmp)
+        skasuj_odlozone_zalaczniki(pliki_wizyt)
+        skasuj_odlozone_zalaczniki(pliki_historii)
 
     return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
 

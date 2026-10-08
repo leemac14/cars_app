@@ -130,6 +130,10 @@ KONFIGURACJA_SYNC = [
     # Saldo wspólne — „Rozliczone” z jednego telefonu zeruje je na drugim; migawka sald
     # jedzie w całości.
     {"tabela": "rozliczenia", "kolumny": ["data", "uczestnicy", "salda", "przelewy", "notatka", "klucz", "poprzednie", "dodane_przez", "data_utworzenia"], "fk": {}},
+    # Skarbiec dokumentów (N-05): opis i daty bez plików — `liczba_plikow` mówi drugiej
+    # osobie, że plik jest na innym telefonie.
+    {"tabela": "dokumenty_pojazdu", "kolumny": ["rodzaj", "nazwa", "numer", "data_wystawienia", "data_waznosci",
+                                                "notatki", "liczba_plikow", "dodane_przez"], "fk": {}},
 ]
 
 
@@ -191,6 +195,7 @@ ETYKIETY_TABEL_SYNC = {
     "checklisty": "Checklista",
     "checklisty_pozycje": "Pozycja checklisty",
     "rozliczenia": "Rozliczenie",
+    "dokumenty_pojazdu": "Dokument pojazdu",
     "info_pojazdu": "Dane pojazdu",
 }
 

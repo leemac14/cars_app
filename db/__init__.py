@@ -18,6 +18,7 @@ from .synchronizacja import *
 from .energia import *
 from .notatki import *
 from .zalaczniki import *
+from .dokumenty import *
 from .szkice import *
 from .kopie import *
 from .ceny_czesci import *
@@ -65,6 +66,7 @@ from . import (
     energia,
     notatki,
     zalaczniki,
+    dokumenty,
     szkice,
     kopie,
     ceny_czesci,

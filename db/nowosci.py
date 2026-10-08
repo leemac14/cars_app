@@ -28,6 +28,14 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.8.2", "pozycje": [
+        {"tytul": "Dokumenty pojazdu", "ikona": "FOLDER_SHARED", "ekran": "dokumenty",
+         "opis": "Skany dowodu, polisy, umowy kupna, gwarancji i instrukcji w jednym miejscu, z datą ważności. "
+                 "Polisa i przegląd dzielą datę z Kartą pojazdu, a o pozostałych przypomni dzwonek."},
+        {"tytul": "Kilka plików przy wpisie", "ikona": "ATTACH_FILE", "ekran": "wizyty",
+         "opis": "Do wizyty, tankowania, kosztu, wymiany, opon i części dodasz naraz paragon, fakturę i zdjęcie "
+                 "wymienionej części — każdy plik z rodzajem i opisem. Plakietka na liście mówi, ile ich jest."},
+    ]},
     {"wersja": "2026.10.8", "pozycje": [
         {"tytul": "Co przede mną", "ikona": "EVENT_NOTE", "ekran": "co-przede-mna",
          "opis": "Cały plan auta w jednym kalendarzu na 30, 90 albo 365 dni: terminy dokumentów, wymiany "

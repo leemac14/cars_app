@@ -66,7 +66,7 @@ class UstawieniaView(ft.View):
             return f"{d} dni"
 
         self.dropdowny_terminow = {}
-        for klucz, _kolumna, etykieta in db.TERMINY_DOKUMENTOW:
+        for klucz, etykieta in db.PROGI_TERMINOW:
             self.dropdowny_terminow[klucz] = ft.Dropdown(
                 label=etykieta,
                 options=(
@@ -293,7 +293,7 @@ class UstawieniaView(ft.View):
                     "wiedzieć dużo wcześniej niż o dacie ważności apteczki.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
-            ] + [self.dropdowny_terminow[k] for k, _, _ in db.TERMINY_DOKUMENTOW] + [
+            ] + [self.dropdowny_terminow[k] for k, _ in db.PROGI_TERMINOW] + [
                 ft.Divider(height=1),
                 self.e_przypomnienie_licznika,
                 ft.Text(
@@ -1013,7 +1013,7 @@ class UstawieniaView(ft.View):
                 self.e_prog_km.value, self.e_prog_dni.value,
                 self.e_dni_kosza.value, self.e_moje_imie.value, self.wybrany_kolor,
                 self.e_przypomnienie_licznika.value,
-                tuple(self.dropdowny_terminow[k].value for k, _, _ in db.TERMINY_DOKUMENTOW))
+                tuple(self.dropdowny_terminow[k].value for k, _ in db.PROGI_TERMINOW))
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -1025,7 +1025,7 @@ class UstawieniaView(ft.View):
         db.zapisz_jednostke_dystansu(self.jednostka_dystansu)
         db.zapisz_ustawienie("prog_km_powiadomien", self.e_prog_km.value)
         db.zapisz_ustawienie("prog_dni_powiadomien", self.e_prog_dni.value)
-        for klucz, _kolumna, _etykieta in db.TERMINY_DOKUMENTOW:
+        for klucz, _etykieta in db.PROGI_TERMINOW:
             db.zapisz_prog_dni_dokumentu(klucz, self.dropdowny_terminow[klucz].value)
         db.zapisz_dni_kosza(self.e_dni_kosza.value)
         db.zapisz_dni_przypomnienia_o_odczycie(self.e_przypomnienie_licznika.value)

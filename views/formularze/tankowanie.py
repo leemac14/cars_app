@@ -82,7 +82,6 @@ class FormularzTankowanieView(ft.View):
         p_val, dys_val, l_val, k_val, stacja_val = "", "", "", "", ""
         ladowanie_val = ""
         pelna_val = True
-        self.zalacznik_val = None
         tagi_val = ""
         notatka_val = ""
 
@@ -93,11 +92,11 @@ class FormularzTankowanieView(ft.View):
         with db.polacz_baze() as conn:
             c = conn.cursor()
             if zrodlo_id:
-                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, notatka FROM tankowania WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi, rodzaj_energii, typ_ladowania, notatka FROM tankowania WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
-                if w: 
-                    self.rodzaj_energii = db.normalizuj_rodzaj_energii(w[9], self.state.auto_id)
-                    ladowanie_val = str(w[10] or "") if w[10] else ""
+                if w:
+                    self.rodzaj_energii = db.normalizuj_rodzaj_energii(w[8], self.state.auto_id)
+                    ladowanie_val = str(w[9] or "") if w[9] else ""
                     d_val = str(w[0] or "")
                     self.prz_przy_otwarciu, self.dys_przy_otwarciu = w[1] or None, w[2] or None
                     p_val = db.wartosc_pola_dystansu(w[1], self.j) if w[1] else ""
@@ -106,12 +105,11 @@ class FormularzTankowanieView(ft.View):
                     l_val = utils.liczba_do_pola(w[3]) if w[3] else ""
                     k_val = utils.liczba_do_pola(w[4]) if w[4] else ""
                     pelna_val = bool(w[5])
-                    stacja_val = str(w[6] or "") if len(w) > 6 else ""
-                    self.zalacznik_val = w[7] if len(w) > 7 else None
-                    tagi_val = str(w[8] or "") if len(w) > 8 else ""
+                    stacja_val = str(w[6] or "")
+                    tagi_val = str(w[7] or "")
                     # Duplikat przenosi też notatkę — kontekst („tankowanie na
                     # trasie do Krakowa”) jest zwykle tym, co się powtarza.
-                    notatka_val = str(w[11] or "") if len(w) > 11 else ""
+                    notatka_val = str(w[10] or "")
                     
                     cur_prz = int(w[1] or 0)
                     c.execute("SELECT MAX(przebieg) FROM tankowania WHERE auto_id=? AND przebieg < ?", (self.state.auto_id, cur_prz))
@@ -127,12 +125,10 @@ class FormularzTankowanieView(ft.View):
                     self.ostatni_prz = int(res[0])
                 if duplikuj_id:
                     d_val = datetime.now().strftime("%d.%m.%Y")
-                    self.zalacznik_val = None
         if self.szkic:
             # Data migawki, zdjęcie paragonu jako załącznik (bez kopiowania pliku),
             # licznik i opis wpisane zaraz po zdjęciu.
             d_val = self.szkic["data"]
-            self.zalacznik_val = self.szkic["zalacznik"]
             notatka_val = self.szkic["opis"] or ""
             if self.szkic["przebieg"]:
                 self.prz_przy_otwarciu = self.szkic["przebieg"]
@@ -291,7 +287,8 @@ class FormularzTankowanieView(ft.View):
             ) if self.dwuzrodlowy else ft.Container(),
         )
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
-        self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+        # Duplikat zaczyna bez plików — paragon jest z tamtego dnia.
+        self.pliki = utils.PolaZalacznikow(page, "tankowania", t_id, szkic=self.szkic)
         self.notatka_bazowa = (notatka_val or "").strip()
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 
@@ -322,7 +319,8 @@ class FormularzTankowanieView(ft.View):
             "Szczegóły transakcji",
             ft.Icons.EV_STATION if self.rodzaj_energii == db.ENERGIA_PRAD else ft.Icons.LOCAL_GAS_STATION
         )
-        k3 = utils.karta_formularza([self.k_zalacznik], "Załącznik", ft.Icons.ATTACH_FILE)
+        k3 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (paragon, zdjęcia)", ft.Icons.ATTACH_FILE,
+                                    domyslnie_otwarte=bool(self.pliki.pozycje))
         # Karta notatki rozwinięta, gdy wpis już jakąś ma — inaczej trzeba by
         # klikać w zwinięty nagłówek, żeby w ogóle zobaczyć, że notatka istnieje.
         k4 = utils.karta_formularza([self.k_notatka], "Notatka", ft.Icons.STICKY_NOTE_2_OUTLINED,
@@ -342,7 +340,7 @@ class FormularzTankowanieView(ft.View):
     def _migawka_formularza(self):
         return (self.e_d.value, self.e_p.value, self.e_dys.value, self.e_l.value,
                 self.e_cena.value, self.e_k.value, self.c_pel.value, self.get_stacja(), self.get_tagi(),
-                self.rodzaj_energii, self.e_ladowanie.value, self.k_notatka.value)
+                self.rodzaj_energii, self.e_ladowanie.value, self.k_notatka.value, self.pliki.migawka())
     
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -547,30 +545,27 @@ class FormularzTankowanieView(ft.View):
             return
 
         wybrane_tagi = self.get_tagi()
-        
-        przygotowany = db.przygotuj_nowy_zalacznik(self.get_zalacznik())
-        nowy_zalacznik = przygotowany if przygotowany is not None else self.zalacznik_val
         stacja_wart = self.get_stacja()
         # Typ ładowania zapisujemy TYLKO przy prądzie — przy paliwie byłby
         # zaszumionym polem bez znaczenia.
         typ_lad = (self.e_ladowanie.value or None) if self.rodzaj_energii == db.ENERGIA_PRAD else None
 
-        with db.polacz_baze() as conn:
-            if self.t_id: 
-                conn.execute("UPDATE tankowania SET data=?, data_iso=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, zalacznik=?, tagi=?, rodzaj_energii=?, typ_ladowania=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", 
-                             (self.e_d.value, na_iso(self.e_d.value), prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
+        with self.pliki.zapis(), db.polacz_baze() as conn:
+            if self.t_id:
+                conn.execute("UPDATE tankowania SET data=?, data_iso=?, przebieg=?, dystans=?, litry=?, kwota=?, do_pelna=?, stacja=?, tagi=?, rodzaj_energii=?, typ_ladowania=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?",
+                             (self.e_d.value, na_iso(self.e_d.value), prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.t_id))
                 rekord_id = self.t_id
-            else: 
-                kursor = conn.execute("INSERT INTO tankowania (auto_id, data, data_iso, przebieg, dystans, litry, kwota, do_pelna, stacja, zalacznik, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
-                             (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, nowy_zalacznik, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie()))
+            else:
+                kursor = conn.execute("INSERT INTO tankowania (auto_id, data, data_iso, przebieg, dystans, litry, kwota, do_pelna, stacja, tagi, rodzaj_energii, typ_ladowania, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                             (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, dys, lit, kwo, 1 if self.c_pel.value else 0, stacja_wart, wybrane_tagi, self.rodzaj_energii, typ_lad, db.pobierz_moje_imie()))
                 rekord_id = kursor.lastrowid
                 # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
                 if self.szkic:
                     db.zamknij_szkic(self.szkic["id"], conn=conn)
+            self.pliki.zapisz_w(conn, rekord_id, self.state.auto_id)
         # Notatkę zapisujemy osobno i TYLKO gdy treść się zmieniła — inaczej
         # poprawka ceny przestemplowałaby cudzy podpis pod notatką na swój.
         utils.zapisz_notatke_z_formularza("tankowania", rekord_id, self.k_notatka.value, self.notatka_bazowa)
-        db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "tankowanie")
 

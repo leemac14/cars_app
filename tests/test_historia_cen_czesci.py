@@ -520,7 +520,7 @@ def test_menu_pozycji_historia_cen_kupilem_ponownie_i_link(magazyn_z_historia, b
 
     widok._pokaz_menu_czesci(d["czesc"], "Filtr oleju", None, "szt", False, "Inter Cars", d["dane"]["link"])
     assert [p["tekst"] for p in menu[-1]][:5] == [
-        "Dodaj zdjęcie (faktura/część)", "Kupiłem ponownie", "Historia cen", "Otwórz stronę produktu", "Kopiuj link"]
+        "Dodaj plik (zdjęcie, PDF)", "Kupiłem ponownie", "Historia cen", "Otwórz stronę produktu", "Kopiuj link"]
 
     db.ustaw_role_pojazdu(d["auto_id"], db.ROLA_PODGLAD)
     widok._pokaz_menu_czesci(d["czesc"], "Filtr oleju", None, "szt", False, "Inter Cars", d["dane"]["link"])

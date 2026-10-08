@@ -1,12 +1,14 @@
 """Dane dla widoku osi czasu."""
 
 import sqlite3
+from typing import Any
 
 from .stale import ENERGIA_PRAD
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .jednostki import jednostka_dystansu, tekst_dystansu
 from .energia import normalizuj_rodzaj_energii
+from .zalaczniki import zalaczniki_pojazdu
 
 
 def _km(przebieg, jednostka):
@@ -16,23 +18,24 @@ def _km(przebieg, jednostka):
     return tekst_dystansu(przebieg or 0, 0, jednostka)
 
 
-def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float | None, str | None, str, str | None, str | None]]:
+def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float | None, list[dict[str, Any]], str, str | None, str | None]]:
     """Chronologiczne zdarzenia pojazdu ze wszystkich modułów dla /timeline: krotki
-    (id_timeline, typ, data, tytul, opis, kwota, zalacznik, trasa, dodane_przez,
-    notatka). Pozycje historii z wizyty zbiorczej pomijane (jak w eksporcie); zdjęcia
+    (id_timeline, typ, data, tytul, opis, kwota, pliki — lista z `zalaczniki`, trasa,
+    dodane_przez, notatka). Pozycje historii z wizyty zbiorczej pomijane (jak w eksporcie); zdjęcia
     karoserii mają dodane_przez = None."""
     if not auto_id:
         return []
 
     zdarzenia = []
     jednostka = jednostka_dystansu()
+    pliki = {t: zalaczniki_pojazdu(auto_id, t) for t in ("tankowania", "historia", "wizyty", "inne_koszty")}
 
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
 
         c.execute(
-            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, zalacznik, dodane_przez, notatka, rodzaj_energii "
+            "SELECT id, data, przebieg, litry, kwota, stacja, do_pelna, dodane_przez, notatka, rodzaj_energii "
             "FROM tankowania WHERE auto_id=?", (auto_id,)
         )
         for r in c.fetchall():
@@ -45,12 +48,12 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
             zdarzenia.append((
                 f"tankowanie_{r['id']}", "Tankowanie", r["data"],
                 nazwa + (" (do pełna)" if r["do_pelna"] else ""), opis,
-                float(r["kwota"] or 0), r["zalacznik"], f"/tankowanie/edytuj/{r['id']}",
+                float(r["kwota"] or 0), pliki["tankowania"].get(r["id"], []), f"/tankowanie/edytuj/{r['id']}",
                 r["dodane_przez"], r["notatka"],
             ))
 
         c.execute(
-            "SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, z.nazwa, h.zalacznik, h.dodane_przez, h.notatka "
+            "SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, z.nazwa, h.dodane_przez, h.notatka "
             "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
         )
@@ -59,12 +62,12 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
             zdarzenia.append((
                 f"historia_{r['id']}", "Serwis", r["data"],
                 str(r["nazwa"]), opis,
-                float(r["cena"] or 0), r["zalacznik"], f"/wpis/edytuj/{r['id']}",
+                float(r["cena"] or 0), pliki["historia"].get(r["id"], []), f"/wpis/edytuj/{r['id']}",
                 r["dodane_przez"], r["notatka"],
             ))
 
         c.execute(
-            "SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.zalacznik, w.dodane_przez, w.notatki, "
+            "SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.dodane_przez, w.notatki, "
             "GROUP_CONCAT(z.nazwa, ', ') as czesci "
             "FROM wizyty w LEFT JOIN historia h ON h.wizyta_id=w.id LEFT JOIN zadania z ON h.zadanie_id=z.id "
             "WHERE w.auto_id=? GROUP BY w.id", (auto_id,)
@@ -74,16 +77,16 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
             zdarzenia.append((
                 f"wizyta_{r['id']}", "Wizyta zbiorcza", r["data"],
                 "Wizyta w warsztacie", opis,
-                float(r["koszt_calkowity"] or 0), r["zalacznik"], f"/wizyty/edytuj/{r['id']}",
+                float(r["koszt_calkowity"] or 0), pliki["wizyty"].get(r["id"], []), f"/wizyty/edytuj/{r['id']}",
                 r["dodane_przez"], r["notatki"],
             ))
 
-        c.execute("SELECT id, data, nazwa, kategoria, kwota, zalacznik, dodane_przez, notatka FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, data, nazwa, kategoria, kwota, dodane_przez, notatka FROM inne_koszty WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             zdarzenia.append((
                 f"inne_{r['id']}", "Inny koszt", r["data"],
                 str(r["nazwa"] or "Koszt"), str(r["kategoria"] or ""),
-                float(r["kwota"] or 0), r["zalacznik"], f"/inne/edytuj/{r['id']}",
+                float(r["kwota"] or 0), pliki["inne_koszty"].get(r["id"], []), f"/inne/edytuj/{r['id']}",
                 r["dodane_przez"], r["notatka"],
             ))
 
@@ -93,7 +96,8 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
             zdarzenia.append((
                 f"zdjecie_{r['id']}", "Zdjęcie karoserii", r["data"],
                 f"Zdjęcie: {r['strefa']}", opis,
-                None, r["zalacznik"], f"/karoseria/edytuj/{r['id']}", None, r["opis"],
+                None, [{"sciezka": r["zalacznik"], "typ": "zdjecie", "opis": None}] if r["zalacznik"] else [],
+                f"/karoseria/edytuj/{r['id']}", None, r["opis"],
             ))
 
         c.execute("SELECT id, data, przebieg, notatka FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
@@ -101,7 +105,7 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
             zdarzenia.append((
                 f"odczyt_{r['id']}", "Odczyt przebiegu", r["data"],
                 "Odczyt licznika", _km(r['przebieg'], jednostka),
-                None, None, "/przebieg", None, r["notatka"],
+                None, [], "/przebieg", None, r["notatka"],
             ))
 
     return zdarzenia

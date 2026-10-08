@@ -1,9 +1,6 @@
 """Magazyn części: rozliczanie zużycia, zwroty i zestawy opon."""
 
-import os
-import shutil
 import sqlite3
-import uuid
 from date import parsuj_date
 from datetime import datetime
 from typing import Any
@@ -13,7 +10,7 @@ from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
 from .ceny_czesci import zachowaj_zakup_pozycji
-from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
+from .zalaczniki import odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki
 
 
 # Zużycie części z magazynu ma dwa nośniki: wizytę zbiorczą i pojedynczy wpis. Tabele są
@@ -368,15 +365,7 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
         c.execute("SELECT * FROM historia_czesci_magazynu WHERE magazyn_id=?", (czesc_id,))
         uzycia_wpisow = [{k: r[k] for k in kol_hw} for r in c.fetchall()]
 
-    sciezka_tymczasowa = None
-    oryginalna = sciezka_pliku_zalacznika(dane_czesc.get("zalacznik"))
-    if oryginalna and os.path.exists(oryginalna):
-        folder_tmp = _upewnij_folder_odroczonych()
-        sciezka_tymczasowa = os.path.join(folder_tmp, f"magazyn_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
-        try:
-            shutil.move(oryginalna, sciezka_tymczasowa)
-        except Exception:
-            sciezka_tymczasowa = None
+    pliki_czesci = odloz_zalaczniki_rekordow("magazyn_czesci", [czesc_id])
 
     with polacz_baze() as conn:
         # Historia cen przeżywa pozycję: jej ostatni zakup zostaje w dzienniku
@@ -408,13 +397,7 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
             usun_nagrobek(zdalny_id_czesci)
         for zid in zdalne_id_uzycia + zdalne_id_uzycia_wpisow:
             usun_nagrobek(zid)
-        
-        if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
-            try:
-                shutil.move(sciezka_tymczasowa, oryginalna)
-            except Exception:
-                pass
-                
+
         with polacz_baze() as conn:
             n_m, p_m = ",".join(kol_m), ",".join("?" for _ in kol_m)
             conn.execute(f"INSERT INTO magazyn_czesci ({n_m}) VALUES ({p_m})", tuple(dane_czesc[k] for k in kol_m))
@@ -426,13 +409,14 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
                 n_hw, p_hw = ",".join(kol_hw), ",".join("?" for _ in kol_hw)
                 for d in uzycia_wpisow:
                     conn.execute(f"INSERT INTO historia_czesci_magazynu ({n_hw}) VALUES ({p_hw})", tuple(d[k] for k in kol_hw))
+        # Pozycja wraca z oryginalnym id (kol_m zawiera id) — pliki bez przemapowania.
+        przywroc_odlozone_zalaczniki(pliki_czesci)
 
     def finalizuj_usuniecie():
         if stan["cofniete"]:
             return
         stan["trwale_usuniete"] = True
-        if sciezka_tymczasowa:
-            usun_plik_zalacznika(sciezka_tymczasowa)
+        skasuj_odlozone_zalaczniki(pliki_czesci)
 
     return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
 

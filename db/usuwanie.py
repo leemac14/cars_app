@@ -8,7 +8,10 @@ import uuid
 from .stale import OSIE_MONTAZU, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, usun_plik_zalacznika
+from .zalaczniki import (
+    _upewnij_folder_odroczonych, odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, sciezka_pliku_zalacznika,
+    skasuj_odlozone_zalaczniki, usun_plik_zalacznika,
+)
 from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow
 
 
@@ -128,6 +131,7 @@ def usun_z_cofnieciem(tabela, rekord_id):
     # Wpis serwisowy może mieć podpięte części z magazynu — oddajemy je na stan,
     # zanim CASCADE skasuje powiązania (patrz _zdejmij_powiazania_czesci_wpisow).
     czesci_wpisu = _zdejmij_powiazania_czesci_wpisow([rekord_id]) if tabela == "historia" else []
+    pliki_wpisu = odloz_zalaczniki_rekordow(tabela, [rekord_id])
 
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id=?", (rekord_id,))
@@ -171,6 +175,7 @@ def usun_z_cofnieciem(tabela, rekord_id):
             kursor.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders})", wartosci)
             nowe_id = kursor.lastrowid
         _przywroc_powiazania_czesci_wpisow(czesci_wpisu, {rekord_id: nowe_id})
+        przywroc_odlozone_zalaczniki(pliki_wpisu, {rekord_id: nowe_id})
 
     def finalizuj_usuniecie():
         """Wywołać po upłynięciu okna na cofnięcie — kasuje fizycznie odłożony plik."""
@@ -179,6 +184,7 @@ def usun_z_cofnieciem(tabela, rekord_id):
         stan["trwale_usuniete"] = True
         if sciezka_tymczasowa:
             usun_plik_zalacznika(sciezka_tymczasowa)
+        skasuj_odlozone_zalaczniki(pliki_wpisu)
 
     return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "dane": dane}
 
@@ -252,6 +258,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
     # Jak przy usuwaniu pojedynczego wpisu — części wracają na stan magazynu,
     # zamiast zniknąć cicho razem z powiązaniem skasowanym przez CASCADE.
     czesci_wpisow = _zdejmij_powiazania_czesci_wpisow(ids_list) if tabela == "historia" else []
+    pliki_wpisow = odloz_zalaczniki_rekordow(tabela, ids_list)
 
     with polacz_baze() as conn:
         conn.execute(f"DELETE FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_list))
@@ -296,6 +303,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
                 if dane.get("id") is not None:
                     mapa_id[dane["id"]] = kursor.lastrowid
         _przywroc_powiazania_czesci_wpisow(czesci_wpisow, mapa_id)
+        przywroc_odlozone_zalaczniki(pliki_wpisow, mapa_id)
 
     def finalizuj_usuniecie():
         if stan["cofniete"]:
@@ -303,6 +311,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
         stan["trwale_usuniete"] = True
         for tmp, _ in sciezki_tymczasowe:
             usun_plik_zalacznika(tmp)
+        skasuj_odlozone_zalaczniki(pliki_wpisow)
 
     return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "pominiete": ile_pominietych}
 
@@ -343,18 +352,8 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
         c.execute("SELECT id FROM do_zrobienia WHERE zadanie_id=?", (zadanie_id,))
         do_zrobienia_ids = [r["id"] for r in c.fetchall()]
 
-    # 4. Zabezpieczamy fizyczne pliki załączników powiązane z historią tego zadania
-    sciezki_tymczasowe = []
-    folder_tmp = _upewnij_folder_odroczonych()
-    for d in historia_dane:
-        zal = sciezka_pliku_zalacznika(d.get("zalacznik"))
-        if zal and os.path.exists(zal):
-            tmp = os.path.join(folder_tmp, f"h_{uuid.uuid4().hex}_{os.path.basename(zal)}")
-            try:
-                shutil.move(zal, tmp)
-                sciezki_tymczasowe.append((tmp, zal))
-            except Exception:
-                pass
+    # 4. Pliki wpisów historii czekają w folderze odroczonych na ewentualne cofnięcie.
+    pliki_historii = odloz_zalaczniki_rekordow("historia", [d["id"] for d in historia_dane])
 
     # 5. Części z magazynu użyte w tych wpisach wracają na stan — CASCADE
     # skasowałby powiązania po cichu, zostawiając sztuki „zużyte” w nieistniejącym
@@ -391,14 +390,6 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
             if w.get("zdalne_id"):
                 usun_nagrobek(w["zdalne_id"])
 
-        # Przywrócenie plików na dysk
-        for tmp, oryg in sciezki_tymczasowe:
-            if os.path.exists(tmp):
-                try:
-                    shutil.move(tmp, oryg)
-                except Exception:
-                    pass
-
         # Przywrócenie rekordów w bazie danych z zachowaniem ich oryginalnych ID
         with polacz_baze() as conn:
             # 1. Przywrócenie zadania
@@ -422,15 +413,15 @@ def usun_zadanie_z_cofnieciem(zadanie_id):
                 )
 
         # 4. Wpisy historii wróciły z ORYGINALNYMI ID, więc powiązania z magazynem
-        # wstawiamy bez przemapowania; sztuki znów schodzą ze stanu.
+        # i pliki wstawiamy bez przemapowania; sztuki znów schodzą ze stanu.
         _przywroc_powiazania_czesci_wpisow(czesci_wpisow)
+        przywroc_odlozone_zalaczniki(pliki_historii)
 
     def finalizuj_usuniecie():
         if stan["cofniete"]:
             return
         stan["trwale_usuniete"] = True
-        for tmp, _ in sciezki_tymczasowe:
-            usun_plik_zalacznika(tmp)
+        skasuj_odlozone_zalaczniki(pliki_historii)
 
     return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "dane": dane_zad}
 

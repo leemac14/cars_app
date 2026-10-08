@@ -150,6 +150,7 @@ NAZWY_WPISOW_W_PODGLADZIE = {
     "do_zrobienia": ("zadanie do zrobienia", "zadania do zrobienia", "zadań do zrobienia"),
     "szkice_wpisow": ("szkic do wpisania", "szkice do wpisania", "szkiców do wpisania"),
     "przejazdy": ("przejazd w ewidencji", "przejazdy w ewidencji", "przejazdów w ewidencji"),
+    "dokumenty_pojazdu": ("dokument pojazdu", "dokumenty pojazdu", "dokumentów pojazdu"),
 }
 
 
