@@ -173,6 +173,8 @@ class ArchiwumView(ft.View):
              "akcja": lambda: self._otworz(a)},
             {"ikona": ft.Icons.SUMMARIZE, "tekst": "Eksport danych (CSV/PDF)",
              "akcja": lambda: self._otworz(a, "/eksport")},
+            {"ikona": ft.Icons.SAVE_ALT, "tekst": "Zapisz pojazd do pliku",
+             "akcja": lambda: utils.zapisz_pojazd_do_pliku(self._page, a["id"])},
             {"ikona": ft.Icons.BADGE, "tekst": "Karta pojazdu",
              "akcja": lambda: self._otworz(a, "/pojazd")},
             {"ikona": ft.Icons.UNARCHIVE, "tekst": "Przywróć do garażu",

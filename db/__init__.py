@@ -1,6 +1,6 @@
 """Warstwa danych: SQLite, logika domenowa, eksport i import. Moduły ułożone od najmniej
 zależnych (`stale`, `pamiec`, `polaczenie`) do najbardziej (`migracje`, za nią
-`manifest_kopii`); całość re-eksportowana tutaj, więc działa `db.cokolwiek(...)`."""
+`manifest_kopii` i `plik_pojazdu`); całość re-eksportowana tutaj, więc działa `db.cokolwiek(...)`."""
 
 # Ten plik istnieje po to, żeby scalić moduły pakietu w jedną przestrzeń nazw —
 # gwiazdki i „nieużywane” importy są tu zamierzone.
@@ -52,6 +52,7 @@ from .import_csv import *
 from .presety_importu import *
 from .migracje import *
 from .manifest_kopii import *
+from .plik_pojazdu import *
 
 from . import (
     stale,
@@ -100,6 +101,7 @@ from . import (
     presety_importu,
     migracje,
     manifest_kopii,
+    plik_pojazdu,
 )
 
 # Widok eksportu pyta wprost `db.FPDF is not None`, żeby wiedzieć, czy

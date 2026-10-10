@@ -370,6 +370,29 @@ def policz_kontrolki(kontrolka, limit=20000):
     return ile
 
 
+def napisy(korzen):
+    """Wszystkie napisy z drzewa kontrolek (też etykiety przycisków i przełączników) — do
+    sprawdzania okien, których strona testowa nie pokazuje."""
+    import flet as ft
+
+    wynik, do_odwiedzenia = [], [korzen]
+    while do_odwiedzenia:
+        kontrolka = do_odwiedzenia.pop()
+        for pole in ("value", "label", "tooltip"):
+            wartosc = getattr(kontrolka, pole, None)
+            if isinstance(wartosc, str):
+                wynik.append(wartosc)
+        for pole in ("controls", "content", "title", "subtitle", "leading", "trailing", "actions"):
+            dziecko = getattr(kontrolka, pole, None)
+            if isinstance(dziecko, str):
+                wynik.append(dziecko)
+            elif isinstance(dziecko, (list, tuple)):
+                do_odwiedzenia.extend(d for d in dziecko if isinstance(d, ft.Control))
+            elif isinstance(dziecko, ft.Control):
+                do_odwiedzenia.append(dziecko)
+    return wynik
+
+
 # ============================================================================
 #  WIDOKI
 # ============================================================================

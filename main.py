@@ -397,11 +397,18 @@ def main(page: ft.Page):
         """Podgląd kopii i pytanie „wczytać?” — dopiero po „Wczytaj” rusza
         wykonaj_import, który nadpisuje bazę (utils/kopie.py). Tą drogą idą
         oba wybierania pliku; „Wczytaj” z listy kopii w Ustawieniach pyta tak
-        samo (views/settings_view.py)."""
+        samo (views/settings_view.py). Plik pojazdu idzie do okna wczytania auta."""
+        if db.rodzaj_archiwum(sciezka) == "pojazd":
+            utils.zapytaj_o_wczytanie_pojazdu(page, app_state, sciezka)
+            return
+
         async def _wczytaj():
             await asyncio.to_thread(wykonaj_import, sciezka)
 
         utils.zapytaj_o_wczytanie_kopii(page, sciezka, lambda: page.run_task(_wczytaj))
+
+    # Okno wczytania pojazdu oddaje tu kopię bazy wybraną zamiast pliku pojazdu.
+    page.zapytaj_o_import = zapytaj_o_import
 
     file_picker = ft.FilePicker()
     _pending_export = {"bajty": None}  # bufor na dane, gdy plik zapisu pochodzi z eksportu innego niż kopia bazy

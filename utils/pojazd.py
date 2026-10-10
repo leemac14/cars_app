@@ -61,9 +61,10 @@ def usun_auto(page: ft.Page, state):
     )
 
 
-def sprzedaj_auto(page: ft.Page, state):
+def sprzedaj_auto(page: ft.Page, state, plik_dla_kupujacego=None):
     """Wyprowadza pojazd z aktywnego garażu bez kasowania. To NIE kosz (ten jest do
-    cofania pomyłek) — historia sprzedanego zostaje czytelna i eksportowalna."""
+    cofania pomyłek) — historia sprzedanego zostaje czytelna i eksportowalna.
+    `plik_dla_kupujacego(auto_id)` — gdy podany, okno proponuje zapis pliku pojazdu po sprzedaży."""
     if not state.auto_id:
         return
     auto_id = state.auto_id
@@ -76,7 +77,11 @@ def sprzedaj_auto(page: ft.Page, state):
         keyboard_type=ft.KeyboardType.NUMBER, **styl_pola()
     )
 
+    ch_plik = ft.Checkbox(label="Zapisz plik dla kupującego", value=False) if plik_dla_kupujacego else None
     podpowiedz = ["Auto zniknie z przełącznika pojazdów, ale cała historia zostaje — otworzysz ją w Archiwum."]
+    if ch_plik:
+        podpowiedz.append("Plik to historia auta ze zdjęciami do wczytania w tej aplikacji — bez kosztów prywatnych, "
+                          "rozliczeń i cen; sekcje wybierzesz w następnym oknie.")
     if metryki.get("cena_zakupu"):
         podpowiedz.append(
             f"Cena zakupu: {formatuj_liczba(metryki['cena_zakupu'])} {symbol_waluty()}. "
@@ -110,11 +115,13 @@ def sprzedaj_auto(page: ft.Page, state):
         db.zainicjuj_domyslne_auto(state)
         przejdz(page, "/")
         pokaz_komunikat_cofnij(page, f"„{nazwa}” przeniesiony do archiwum sprzedanych.", wynik)
+        if ch_plik and ch_plik.value:
+            plik_dla_kupujacego(auto_id)
 
     dlg = ft.AlertDialog(
         title=ft.Text(f"Sprzedaj „{nazwa}”?", weight="bold"),
         content=ft.Column(
-            [e_data, e_cena] + [
+            [e_data, e_cena] + ([ch_plik] if ch_plik else []) + [
                 ft.Text(t, size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT) for t in podpowiedz
             ],
             tight=True, spacing=10,

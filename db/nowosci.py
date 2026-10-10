@@ -28,6 +28,15 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.11", "pozycje": [
+        {"tytul": "Pojazd w jednym pliku", "ikona": "SAVE_ALT",
+         "opis": "W menu bocznym, w grupie Garaż, zapiszesz auto razem ze zdjęciami do jednego pliku i wczytasz je "
+                 "na innym telefonie — a gdy już tam jest, zastąpisz je albo dodasz obok. Przed zapisem wybierasz, "
+                 "co trafi do pliku."},
+        {"tytul": "Historia dla kupującego", "ikona": "SELL", "ekran": "archiwum",
+         "opis": "Przy sprzedaży auta i w Archiwum zapiszesz plik bez rozliczeń, budżetów, ewidencji przejazdów, "
+                 "cen i podpisów — kupujący wczyta u siebie serwis, tankowania, przebieg i zdjęcia."},
+    ]},
     {"wersja": "2026.10.8.2", "pozycje": [
         {"tytul": "Dokumenty pojazdu", "ikona": "FOLDER_SHARED", "ekran": "dokumenty",
          "opis": "Skany dowodu, polisy, umowy kupna, gwarancji i instrukcji w jednym miejscu, z datą ważności. "

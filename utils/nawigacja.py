@@ -11,6 +11,7 @@ from .wyglad import dol_bezpieczny, pasek_przewijany, pasek_zawijany, tlo_karty
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_menu_grupowane, przejdz, zamknij_dialog, zamknij_dno
 from .zalaczniki import abs_zalacznik
 from .pojazd import ikona_nadwozia, sprzedaj_auto, usun_auto
+from .plik_pojazdu import wczytaj_pojazd_z_pliku, zapisz_pojazd_do_pliku
 from .powiadomienia import pokaz_panel_wydatkow_cyklicznych, przycisk_dzwonka
 
 
@@ -181,6 +182,14 @@ EKRANY = [
      "ikona": ft.Icons.PEOPLE, "grupa": "garaz", "trasa": "/wspoldzielenie",
      "slowa": ["udostępnij", "rodzina", "partner", "synchronizacja", "chmura", "wspólne auto",
                "kod qr", "zaproszenie", "dołącz"]},
+    {"id": "auto-do-pliku", "tytul": "Zapisz pojazd do pliku",
+     "opis": "Auto ze zdjęciami w jednym pliku — na inny telefon albo dla kupującego",
+     "ikona": ft.Icons.SAVE_ALT, "grupa": "garaz", "akcja": "zapisz_pojazd",
+     "slowa": ["eksport pojazdu", "przenieś auto", "inny telefon", "kupujący", "przekaż historię", "zip"]},
+    {"id": "auto-z-pliku", "tytul": "Wczytaj pojazd z pliku",
+     "opis": "Auto z innego telefonu albo od poprzedniego właściciela",
+     "ikona": ft.Icons.DRIVE_FOLDER_UPLOAD, "grupa": "garaz", "akcja": "wczytaj_pojazd", "wymaga_pojazdu": False,
+     "slowa": ["import pojazdu", "przenieś auto", "nowy telefon", "od sprzedającego", "zip"]},
     {"id": "archiwum", "tytul": "Archiwum pojazdów", "opis": "Sprzedane auta z pełną historią",
      "ikona": ft.Icons.INVENTORY, "grupa": "garaz", "trasa": "/archiwum", "wymaga_pojazdu": False,
      "slowa": ["sprzedane", "archiwum", "byłe auta", "poprzedni samochód", "historia sprzedanych"]},
@@ -897,12 +906,16 @@ def pokaz_edytor_skrotow(page: ft.Page, state, po_zapisie=None):
 
 def akcje_nawigacji(page: ft.Page, state, cb_export=None, cb_import=None, cb_theme=None):
     """Obsługa pozycji rejestru, które nie są zwykłym przejściem pod adres —
-    kopia bazy, motyw, usunięcie pojazdu. Wołający, który tych rzeczy nie może
+    kopia bazy, plik pojazdu, motyw, usunięcie pojazdu. Wołający, który tych rzeczy nie może
     wykonać (np. ekran wyszukiwania), po prostu ich nie przekazuje i znikają
     z listy zamiast prowadzić donikąd."""
     akcje = {
         "usun_pojazd": (lambda: usun_auto(page, state)) if state.auto_id else None,
-        "sprzedaj_pojazd": (lambda: sprzedaj_auto(page, state)) if state.auto_id else None,
+        "sprzedaj_pojazd": (lambda: sprzedaj_auto(
+            page, state, plik_dla_kupujacego=lambda auto_id: zapisz_pojazd_do_pliku(
+                page, auto_id, db.ZESTAW_DLA_KUPUJACEGO))) if state.auto_id else None,
+        "zapisz_pojazd": (lambda: zapisz_pojazd_do_pliku(page, state.auto_id)) if state.auto_id else None,
+        "wczytaj_pojazd": lambda: wczytaj_pojazd_z_pliku(page, state),
         "cykliczne": (lambda: pokaz_panel_wydatkow_cyklicznych(page, state)) if state.auto_id else None,
         "edytuj_pojazd": (lambda: przejdz(page, f"/auto/edytuj/{state.auto_id}")) if state.auto_id else None,
     }

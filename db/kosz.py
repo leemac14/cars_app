@@ -123,6 +123,22 @@ def _zrzut_tabeli_pojazdu(c, tabela, auto_id):
     return {"kolumny": kolumny, "wiersze": [{k: w[k] for k in kolumny} for w in c.fetchall()]}
 
 
+def zrzut_pojazdu(auto_id) -> dict | None:
+    """Migawka auta: wiersz `samochody` i KOSZ_TABELE_POTOMNE, bez ustawień i plików; None,
+    gdy auta nie ma. Wspólna dla kosza i pliku pojazdu (db/plik_pojazdu.py)."""
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("PRAGMA table_info(samochody)")
+        kol_auta = [r["name"] for r in c.fetchall()]
+        c.execute("SELECT * FROM samochody WHERE id=?", (auto_id,))
+        w_auto = c.fetchone()
+        if not w_auto:
+            return None
+        tabele = {tab: _zrzut_tabeli_pojazdu(c, tab, auto_id) for tab in KOSZ_TABELE_POTOMNE}
+    return {"wersja": 1, "auto": {"kolumny": kol_auta, "wiersz": {k: w_auto[k] for k in kol_auta}}, "tabele": tabele}
+
+
 def usun_auto_do_kosza(auto_id):
     """Przenosi pojazd z historią i zdjęciami do kosza. Zwraca słownik dla
     utils.pokaz_komunikat_cofnij: „cofnij” przywraca auto i zdejmuje je z kosza,
@@ -132,22 +148,10 @@ def usun_auto_do_kosza(auto_id):
         return None
 
     folder = _upewnij_folder_kosza()
-    tabele = {}
-
-    with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-
-        c.execute("PRAGMA table_info(samochody)")
-        kol_auta = [r["name"] for r in c.fetchall()]
-        c.execute("SELECT * FROM samochody WHERE id=?", (auto_id,))
-        w_auto = c.fetchone()
-        if not w_auto:
-            return None
-        dane_auta = {k: w_auto[k] for k in kol_auta}
-
-        for tab in KOSZ_TABELE_POTOMNE:
-            tabele[tab] = _zrzut_tabeli_pojazdu(c, tab, auto_id)
+    migawka = zrzut_pojazdu(auto_id)
+    if not migawka:
+        return None
+    dane_auta, tabele = migawka["auto"]["wiersz"], migawka["tabele"]
 
     nazwa = str(dane_auta.get("nazwa") or "Pojazd")
     pliki = []
@@ -192,15 +196,8 @@ def usun_auto_do_kosza(auto_id):
     # Ustawienia przywiązane do tego auta (np. własny układ kokpitu) jadą razem
     # z nim — inaczej zostałyby w bazie jako sieroty, a po przywróceniu pod nowym
     # ID pojazd i tak by ich nie znalazł.
-    ustawienia_auta = _pobierz_ustawienia_pojazdu(auto_id)
+    migawka["ustawienia"] = _pobierz_ustawienia_pojazdu(auto_id)
     _usun_ustawienia_pojazdu(auto_id)
-
-    migawka = {
-        "wersja": 1,
-        "auto": {"kolumny": kol_auta, "wiersz": dane_auta},
-        "tabele": tabele,
-        "ustawienia": ustawienia_auta,
-    }
 
     with polacz_baze() as conn:
         c = conn.cursor()
@@ -311,7 +308,6 @@ def przywroc_auto_z_kosza(kosz_id):
     dane_auta = dict((migawka.get("auto") or {}).get("wiersz") or {})
     if not dane_auta:
         return None
-    tabele = migawka.get("tabele") or {}
 
     # Zdjęcia wracają na stare ścieżki; zajęta albo bezwzględna z innego urządzenia →
     # nowa nazwa w TUTEJSZYM folderze i podmiana odwołania (względnego). Wpis trafiający
@@ -339,90 +335,9 @@ def przywroc_auto_z_kosza(kosz_id):
         except Exception:
             pass
 
-    if dane_auta.get("zdjecie_glowne") in podmiana:
-        dane_auta["zdjecie_glowne"] = podmiana[dane_auta["zdjecie_glowne"]]
-
     with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-
-        def kolumny_tabeli(tab):
-            c.execute(f"PRAGMA table_info({tab})")
-            return {r["name"] for r in c.fetchall()}
-
-        def id_wolne(tab, wartosc):
-            if wartosc is None:
-                return False
-            c.execute(f"SELECT 1 FROM {tab} WHERE id=?", (wartosc,))
-            return c.fetchone() is None
-
-        # samochody.nazwa jest UNIQUE — jeśli w międzyczasie powstało auto o tej
-        # samej nazwie, przywracane dostaje dopisek zamiast wywalić całą operację.
-        nazwa_bazowa = str(dane_auta.get("nazwa") or "Pojazd")
-        nazwa = nazwa_bazowa
-        licznik = 2
-        while True:
-            c.execute("SELECT 1 FROM samochody WHERE nazwa=?", (nazwa,))
-            if c.fetchone() is None:
-                break
-            nazwa = f"{nazwa_bazowa} ({licznik})"
-            licznik += 1
-        dane_auta["nazwa"] = nazwa
-
-        kol_samochody = kolumny_tabeli("samochody")
-        rekord = {k: v for k, v in dane_auta.items() if k in kol_samochody}
-        if not id_wolne("samochody", rekord.get("id")):
-            rekord.pop("id", None)
-        nazwy_kolumn = list(rekord.keys())
-        c.execute(
-            f"INSERT INTO samochody ({','.join(nazwy_kolumn)}) VALUES ({','.join('?' * len(nazwy_kolumn))})",
-            tuple(rekord[k] for k in nazwy_kolumn)
-        )
-        nowe_auto_id = c.lastrowid
-
-        mapy = {}
-        dawne = []  # (tabela, id, ścieżka) z migawek sprzed wersji 51 — kolumna `zalacznik` wpisów
-        for tab in KOSZ_TABELE_POTOMNE:
-            mapy[tab] = {}
-            wiersze = (tabele.get(tab) or {}).get("wiersze") or []
-            if not wiersze:
-                continue
-            kolumny = kolumny_tabeli(tab)
-            for zrodlowy in wiersze:
-                dane = {k: v for k, v in zrodlowy.items() if k in kolumny}
-                if not dane:
-                    continue
-                stare_id = dane.get("id")
-                if tab not in KOSZ_TABELE_BEZ_AUTO_ID and "auto_id" in kolumny:
-                    dane["auto_id"] = nowe_auto_id
-                for kolumna, rodzic in KOSZ_KLUCZE_OBCE.get(tab, {}).items():
-                    if dane.get(kolumna) is not None:
-                        dane[kolumna] = mapy.get(rodzic, {}).get(dane[kolumna], dane[kolumna])
-                if dane.get("zalacznik") in podmiana:
-                    dane["zalacznik"] = podmiana[dane["zalacznik"]]
-                dawny = dane.pop("zalacznik", None) if tab in TABELE_DAWNEGO_ZALACZNIKA else None
-                if tab == "zalaczniki":
-                    dane["rekord_id"] = mapy.get(dane.get("tabela"), {}).get(dane.get("rekord_id"), dane.get("rekord_id"))
-                    dane["sciezka"] = podmiana.get(dane.get("sciezka"), dane.get("sciezka"))
-                # Migawka sprzed wersji 44 nie zna `data_iso` — liczymy ją z daty
-                # jak przy każdym zapisie, zamiast przywracać wpis bez niej.
-                uzupelnij_date_iso(tab, dane)
-                if not id_wolne(tab, stare_id):
-                    dane.pop("id", None)
-                nazwy_kolumn = list(dane.keys())
-                c.execute(
-                    f"INSERT INTO {tab} ({','.join(nazwy_kolumn)}) VALUES ({','.join('?' * len(nazwy_kolumn))})",
-                    tuple(dane[k] for k in nazwy_kolumn)
-                )
-                if stare_id is not None:
-                    mapy[tab][stare_id] = c.lastrowid
-                if dawny:
-                    dawne.append((tab, c.lastrowid, dawny))
-
-        for tab, rekord_id, sciezka in dawne:
-            dopisz_dawny_zalacznik(conn, nowe_auto_id, tab, rekord_id, sciezka)
-
-        c.execute("DELETE FROM kosz_pojazdy WHERE id=?", (kosz_id,))
+        nowe_auto_id = odtworz_pojazd(conn, migawka, podmiana)
+        conn.execute("DELETE FROM kosz_pojazdy WHERE id=?", (kosz_id,))
 
     _przywroc_ustawienia_pojazdu(nowe_auto_id, migawka.get("ustawienia"))
 
@@ -433,6 +348,99 @@ def przywroc_auto_z_kosza(kosz_id):
             zakolejkuj_synchronizacje(nowe_auto_id, "Przywrócenie pojazdu z kosza")
         except Exception:
             pass
+
+    return nowe_auto_id
+
+
+def odtworz_pojazd(conn, migawka, podmiana=None, nowe_id=False) -> int:
+    """Wstawia auto z migawki w transakcji `conn`, zwraca jego ID. ID rekordów 1:1, gdy wolne
+    (`nowe_id` — zawsze świeże: dane z innej bazy nie zajmą ID zwolnionego tutaj); zajęte dostają
+    nowe, a odwołania są przemapowane (KOSZ_KLUCZE_OBCE). `podmiana`: {ścieżka pliku z migawki:
+    nowa}. Kolumn spoza bieżącego schematu nie wstawia."""
+    podmiana = podmiana or {}
+    dane_auta = dict((migawka.get("auto") or {}).get("wiersz") or {})
+    tabele = migawka.get("tabele") or {}
+    if dane_auta.get("zdjecie_glowne") in podmiana:
+        dane_auta["zdjecie_glowne"] = podmiana[dane_auta["zdjecie_glowne"]]
+
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    def kolumny_tabeli(tab):
+        c.execute(f"PRAGMA table_info({tab})")
+        return {r["name"] for r in c.fetchall()}
+
+    def id_wolne(tab, wartosc):
+        if wartosc is None:
+            return False
+        c.execute(f"SELECT 1 FROM {tab} WHERE id=?", (wartosc,))
+        return c.fetchone() is None
+
+    # samochody.nazwa jest UNIQUE — jeśli w międzyczasie powstało auto o tej
+    # samej nazwie, przywracane dostaje dopisek zamiast wywalić całą operację.
+    nazwa_bazowa = str(dane_auta.get("nazwa") or "Pojazd")
+    nazwa = nazwa_bazowa
+    licznik = 2
+    while True:
+        c.execute("SELECT 1 FROM samochody WHERE nazwa=?", (nazwa,))
+        if c.fetchone() is None:
+            break
+        nazwa = f"{nazwa_bazowa} ({licznik})"
+        licznik += 1
+    dane_auta["nazwa"] = nazwa
+
+    kol_samochody = kolumny_tabeli("samochody")
+    rekord = {k: v for k, v in dane_auta.items() if k in kol_samochody}
+    if nowe_id or not id_wolne("samochody", rekord.get("id")):
+        rekord.pop("id", None)
+    nazwy_kolumn = list(rekord.keys())
+    c.execute(
+        f"INSERT INTO samochody ({','.join(nazwy_kolumn)}) VALUES ({','.join('?' * len(nazwy_kolumn))})",
+        tuple(rekord[k] for k in nazwy_kolumn)
+    )
+    nowe_auto_id = c.lastrowid
+
+    mapy = {}
+    dawne = []  # (tabela, id, ścieżka) z migawek sprzed wersji 51 — kolumna `zalacznik` wpisów
+    for tab in KOSZ_TABELE_POTOMNE:
+        mapy[tab] = {}
+        wiersze = (tabele.get(tab) or {}).get("wiersze") or []
+        if not wiersze:
+            continue
+        kolumny = kolumny_tabeli(tab)
+        for zrodlowy in wiersze:
+            dane = {k: v for k, v in zrodlowy.items() if k in kolumny}
+            if not dane:
+                continue
+            stare_id = dane.get("id")
+            if tab not in KOSZ_TABELE_BEZ_AUTO_ID and "auto_id" in kolumny:
+                dane["auto_id"] = nowe_auto_id
+            for kolumna, rodzic in KOSZ_KLUCZE_OBCE.get(tab, {}).items():
+                if dane.get(kolumna) is not None:
+                    dane[kolumna] = mapy.get(rodzic, {}).get(dane[kolumna], dane[kolumna])
+            if dane.get("zalacznik") in podmiana:
+                dane["zalacznik"] = podmiana[dane["zalacznik"]]
+            dawny = dane.pop("zalacznik", None) if tab in TABELE_DAWNEGO_ZALACZNIKA else None
+            if tab == "zalaczniki":
+                dane["rekord_id"] = mapy.get(dane.get("tabela"), {}).get(dane.get("rekord_id"), dane.get("rekord_id"))
+                dane["sciezka"] = podmiana.get(dane.get("sciezka"), dane.get("sciezka"))
+            # Migawka sprzed wersji 44 nie zna `data_iso` — liczymy ją z daty
+            # jak przy każdym zapisie, zamiast przywracać wpis bez niej.
+            uzupelnij_date_iso(tab, dane)
+            if nowe_id or not id_wolne(tab, stare_id):
+                dane.pop("id", None)
+            nazwy_kolumn = list(dane.keys())
+            c.execute(
+                f"INSERT INTO {tab} ({','.join(nazwy_kolumn)}) VALUES ({','.join('?' * len(nazwy_kolumn))})",
+                tuple(dane[k] for k in nazwy_kolumn)
+            )
+            if stare_id is not None:
+                mapy[tab][stare_id] = c.lastrowid
+            if dawny:
+                dawne.append((tab, c.lastrowid, dawny))
+
+    for tab, rekord_id, sciezka in dawne:
+        dopisz_dawny_zalacznik(conn, nowe_auto_id, tab, rekord_id, sciezka)
 
     return nowe_auto_id
 
@@ -574,6 +582,7 @@ __all__ = [
     "_upewnij_folder_kosza",
     "_zrzut_tabeli_pojazdu",
     "liczba_w_koszu",
+    "odtworz_pojazd",
     "oproznij_kosz",
     "pobierz_dni_kosza",
     "pobierz_kosz",
@@ -582,4 +591,5 @@ __all__ = [
     "usun_auto_do_kosza",
     "usun_z_kosza_trwale",
     "zapisz_dni_kosza",
+    "zrzut_pojazdu",
 ]

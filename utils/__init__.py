@@ -34,6 +34,7 @@ from .warsztaty import *
 from .ceny_czesci import *
 from .szkice import *
 from .kopie import *
+from .plik_pojazdu import *
 from .zaproszenia import *
 from .powiadomienia import *
 from .przyszlosc import *
@@ -70,6 +71,7 @@ from . import (
     ceny_czesci,
     szkice,
     kopie,
+    plik_pojazdu,
     zaproszenia,
     powiadomienia,
     przyszlosc,
