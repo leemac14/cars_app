@@ -13,6 +13,7 @@ from .ustawienia import (czy_zapamietywac_wyszukiwania, pobierz_ustawienie,
                          pobierz_walute, usun_ustawienie, zapisz_ustawienie)
 from .raty import czy_rata, etykieta_umowy
 from .ewidencja import opis_trasy, tekst_km_przejazdu
+from .awarie import ETYKIETY_RODZAJU_SERWISU, SERWIS_PLANOWE, rodzaj_serwisu
 
 
 # Zapytanie kwotowe rozpoznajemy WPROST w polu wyszukiwarki — bez dodatkowych
@@ -607,6 +608,14 @@ def _wpis(typ, tytul, podpis, data, trasa, kwota=None, tekst_dodatkowy="", **pol
     }
 
 
+def _rodzaj_do_szukania(wartosc):
+    """(etykieta rodzaju naprawy do pola wyszukiwania, dopisek do opisu wyniku) — dopisek tylko
+    przy awarii i modernizacji, jak chip na karcie."""
+    rodzaj = rodzaj_serwisu(wartosc)
+    etykieta = ETYKIETY_RODZAJU_SERWISU.get(rodzaj, "")
+    return etykieta, (f" • {etykieta}" if rodzaj and rodzaj != SERWIS_PLANOWE else "")
+
+
 def _wszystkie_wpisy(auto_id):
     """WSZYSTKIE dane pojazdu jako jednolite rekordy, filtrowane w Pythonie (przy jednym
     aucie tyle samo co SQL, a warunki łączą się dowolnie). Tą samą drogą idzie szukanie
@@ -628,27 +637,29 @@ def _wszystkie_wpisy(auto_id):
                                f"/tankowanie/edytuj/{r['id']}", kwota=r["kwota"],
                                stacja=r["stacja"], tag=r["tagi"], notatka=r["notatka"]))
 
-        c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, h.kategoria, h.notatka, "
+        c.execute("SELECT h.id, h.data, h.przebieg, h.cena, h.wykonawca, h.kategoria, h.notatka, h.rodzaj, "
                   "z.nazwa FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
                   "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,))
         for r in c.fetchall():
-            opis = tekst_dystansu(r['przebieg'] or 0, 0, j) + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            rodzaj, dopisek = _rodzaj_do_szukania(r["rodzaj"])
+            opis = tekst_dystansu(r['przebieg'] or 0, 0, j) + (f" • {r['wykonawca']}" if r["wykonawca"] else "") + dopisek
             if r["notatka"]:
                 opis += f" • {skrot_notatki(r['notatka'])}"
             wpisy.append(_wpis("Serwis", r["nazwa"], opis, r["data"], f"/wpis/edytuj/{r['id']}",
                                kwota=r["cena"], kategoria=r["kategoria"], warsztat=r["wykonawca"],
-                               notatka=r["notatka"]))
+                               notatka=r["notatka"], naprawa=rodzaj))
 
-        c.execute("SELECT w.id, w.data, w.wykonawca, w.koszt_calkowity, w.notatki, w.tagi, "
+        c.execute("SELECT w.id, w.data, w.wykonawca, w.koszt_calkowity, w.notatki, w.tagi, w.rodzaj, "
                   "GROUP_CONCAT(z.nazwa, ', ') AS czesci FROM wizyty w "
                   "LEFT JOIN historia h ON h.wizyta_id=w.id LEFT JOIN zadania z ON h.zadanie_id=z.id "
                   "WHERE w.auto_id=? GROUP BY w.id", (auto_id,))
         for r in c.fetchall():
-            opis = str(r["czesci"] or "Brak podpiętych części") + (f" • {r['wykonawca']}" if r["wykonawca"] else "")
+            rodzaj, dopisek = _rodzaj_do_szukania(r["rodzaj"])
+            opis = str(r["czesci"] or "Brak podpiętych części") + (f" • {r['wykonawca']}" if r["wykonawca"] else "") + dopisek
             wpisy.append(_wpis("Wizyta zbiorcza", "Wizyta w warsztacie", opis, r["data"],
                                f"/wizyty/edytuj/{r['id']}", kwota=r["koszt_calkowity"],
                                warsztat=r["wykonawca"], tag=r["tagi"], notatka=r["notatki"],
-                               nazwa=r["czesci"]))
+                               nazwa=r["czesci"], naprawa=rodzaj))
 
         c.execute("SELECT id, data, nazwa, kwota, kategoria, tagi, notatka FROM inne_koszty "
                   "WHERE auto_id=?", (auto_id,))
@@ -938,6 +949,7 @@ __all__ = [
     "_bezpieczna_data",
     "_dzis",
     "_historia_surowa",
+    "_rodzaj_do_szukania",
     "_koniec_miesiaca",
     "_kwota_jawna",
     "_liczba_z_zapytania",

@@ -19,6 +19,7 @@ class FormularzWizytyView(ft.View):
         tagi_val = ""
         kat_val = "Letnie"
         koszt_zrodla, robocizna_zrodla = None, None
+        rodzaj_zrodla = None
         # Gwarancja wspólna wizyty siedzi w `wizyty` i przechodzi na pozycje,
         # które ją mają. Pozycja z inną to wyjątek ustawiony przy niej samej
         # (historia podzespołu → „Gwarancja tej pozycji”) — zapis wizyty go nie rusza.
@@ -39,13 +40,14 @@ class FormularzWizytyView(ft.View):
         if zrodlo_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, tagi, koszt_robocizny, gwarancja_data, gwarancja_przebieg FROM wizyty WHERE id=?", (zrodlo_id,))
+                c.execute("SELECT data, przebieg, wykonawca, koszt_calkowity, notatki, tagi, koszt_robocizny, gwarancja_data, gwarancja_przebieg, rodzaj FROM wizyty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w:
                     d_val, wyk_val, not_val = str(w[0] or ""), str(w[2] or ""), str(w[4] or "")
                     self.p_km = w[1] or None
                     koszt_zrodla, robocizna_zrodla = float(w[3] or 0.0), w[6]
                     tagi_val = str(w[5] or "")
+                    rodzaj_zrodla = db.rodzaj_serwisu(w[9])
                 c.execute("SELECT zadanie_id, kategoria, gwarancja_data, gwarancja_przebieg FROM historia WHERE wizyta_id=? ORDER BY id", (zrodlo_id,))
                 dane_h = c.fetchall()
                 podpiete = {r[0] for r in dane_h}
@@ -105,6 +107,12 @@ class FormularzWizytyView(ft.View):
             ),
         )
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, wyk_val)
+        # Rodzaj wizyty przechodzi na jej pozycje. Edycja i duplikat z rodzajem trzymają
+        # zapisany; nowa wizyta bierze podpowiedź z zaznaczonych podzespołów, dopóki
+        # użytkownik nie wybierze sam.
+        self.rodzaj = utils.PoleRodzajuSerwisu(page, rodzaj_zrodla if (w_id or rodzaj_zrodla)
+                                               else db.domyslny_rodzaj_serwisu(podpiete))
+        self.rodzaj.dotkniety = bool(w_id or rodzaj_zrodla)
         # Rachunek warsztatu osobno za robociznę i za części — albo jedną kwotą,
         # gdy rachunek podziału nie ma. Duplikat przenosi też podział.
         self.koszt = utils.KosztNaprawy(page, self.zuzycie, koszt_zrodla, robocizna_zrodla, doliczone)
@@ -118,6 +126,8 @@ class FormularzWizytyView(ft.View):
         self.zadania_opon_ids = set()
         
         def odswiez_widocznosc_opon(e=None):
+            if not self.rodzaj.dotkniety:
+                self.rodzaj.podpowiedz(db.domyslny_rodzaj_serwisu([chk.data for chk in self.chk_czesci if chk.value]))
             czy_zaznaczono_opony = any(chk.value for chk in self.chk_czesci if chk.data in self.zadania_opon_ids)
             self.e_kat_wizyty.visible = czy_zaznaczono_opony
             self.e_kat_wizyty.update()
@@ -151,7 +161,7 @@ class FormularzWizytyView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", self.powrot, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza(
-            [self.e_d, self.e_p, self.k_wykonawca, *self.koszt.kontrolki(), self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
+            [self.rodzaj.kontrolka, self.e_d, self.e_p, self.k_wykonawca, *self.koszt.kontrolki(), self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
             "Ogólne informacje", ft.Icons.HOME_REPAIR_SERVICE, domyslnie_otwarte=True, page=page
         )
         k1b = utils.karta_formularza([self.pliki.kontrolka], "Pliki (paragon, faktura, zdjęcie części)", ft.Icons.ATTACH_FILE,
@@ -177,7 +187,7 @@ class FormularzWizytyView(ft.View):
                     ft.Icon(ft.Icons.CONTENT_COPY, size=16, color=ft.Colors.PRIMARY),
                     ft.Text(
                         "Duplikat wizyty: przeniesiono warsztat, koszt naprawy (bez części z magazynu), "
-                        "notatki, tagi, zaznaczone podzespoły i okres gwarancji. Data i przebieg są "
+                        "notatki, tagi, rodzaj, zaznaczone podzespoły i okres gwarancji. Data i przebieg są "
                         "dzisiejsze, a zużycie z magazynu zaznacz ponownie — stan mógł się zmienić.",
                         size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
                     ),
@@ -531,7 +541,7 @@ class FormularzWizytyView(ft.View):
             self.e_d.value, self.e_p.value, self.get_wykonawca(), self.koszt.migawka(), self.e_n.value,
             self.get_tagi(), self.e_kat_wizyty.value,
             tuple(chk.value for chk in self.chk_czesci),
-            self.zuzycie.migawka(), self.gwarancja.migawka(), self.pliki.migawka(),
+            self.zuzycie.migawka(), self.gwarancja.migawka(), self.pliki.migawka(), self.rodzaj.migawka(),
         )
 
     def _przebieg_km(self):
@@ -582,6 +592,7 @@ class FormularzWizytyView(ft.View):
             db.dodaj_warsztat(self.state.auto_id, wyk)
             
         wybrane_tagi = self.get_tagi()
+        rodzaj = self.rodzaj.wartosc
 
         zdalne_id_historii_do_nagrobka = []
         zdalne_id_czesci_do_nagrobka = []
@@ -593,7 +604,7 @@ class FormularzWizytyView(ft.View):
                 w_osoba = cur.fetchone()
                 osoba_wizyty = (w_osoba[0] if w_osoba and w_osoba[0] else None) or db.pobierz_moje_imie()
                 nowa_gwarancja = db.klucz_gwarancji(gw_koniec, gw_limit)
-                cur.execute("UPDATE wizyty SET data=?, data_iso=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, tagi=?, gwarancja_data=?, gwarancja_przebieg=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, wybrane_tagi, *nowa_gwarancja, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
+                cur.execute("UPDATE wizyty SET data=?, data_iso=?, przebieg=?, wykonawca=?, koszt_calkowity=?, koszt_robocizny=?, notatki=?, tagi=?, gwarancja_data=?, gwarancja_przebieg=?, rodzaj=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, wybrane_tagi, *nowa_gwarancja, rodzaj, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.w_id))
 
                 # Zostające pozycje POPRAWIAMY w miejscu (UPDATE), nie kasujemy —
                 # skasowanie gubiło cenę z Do zrobienia, notatkę i załącznik, a w
@@ -608,8 +619,8 @@ class FormularzWizytyView(ft.View):
                         gwarancja_poz = db.klucz_gwarancji(gw_data_poz, gw_km_poz)
                         if gwarancja_poz == self._gwarancja_wizyty:
                             gwarancja_poz = nowa_gwarancja
-                        cur.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, wykonawca=?, kategoria=?, gwarancja_data=?, gwarancja_przebieg=? WHERE id=?",
-                                    (self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *gwarancja_poz, h_id))
+                        cur.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, wykonawca=?, kategoria=?, gwarancja_data=?, gwarancja_przebieg=?, rodzaj=? WHERE id=?",
+                                    (self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *gwarancja_poz, rodzaj, h_id))
                         zostaja.add(zid)
                         continue
                     if zdalne_id:
@@ -619,20 +630,20 @@ class FormularzWizytyView(ft.View):
                     if zid in zostaja:
                         continue
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?)", (self.w_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, osoba_wizyty))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)", (self.w_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, rodzaj, osoba_wizyty))
                 wizyta_id = self.w_id
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
             else:
                 osoba_wizyty = db.pobierz_moje_imie()
                 nowa_gwarancja = db.klucz_gwarancji(gw_koniec, gw_limit)
-                cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, tagi, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, wybrane_tagi, *nowa_gwarancja, osoba_wizyty))
+                cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, tagi, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (self.state.auto_id, self.e_d.value, na_iso(self.e_d.value), prz, wyk, koszt_razem, robocizna, self.e_n.value, wybrane_tagi, *nowa_gwarancja, rodzaj, osoba_wizyty))
                 wizyta_id = cur.lastrowid
                 # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
                 if self.szkic:
                     db.zamknij_szkic(self.szkic["id"], conn=conn)
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, osoba_wizyty))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, rodzaj, osoba_wizyty))
  
             db.rozlicz_czesci_z_magazynu(wizyta_id, nowe_uzyte, conn=conn)
             self.pliki.zapisz_w(conn, wizyta_id, self.state.auto_id)

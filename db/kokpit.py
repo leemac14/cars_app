@@ -23,6 +23,7 @@ from .magazyn import pobierz_stan_magazynu, pobierz_stan_opon
 from .checklisty import podsumowanie_checklist
 from .przebieg import oblicz_sredni_dzienny_przebieg
 from .koszty import pobierz_koszt_miesiaca_do_dnia, pobierz_koszty_miesieczne, suma_kategorii_innych
+from .awarie import sygnal_awarii
 from .raty import podsumowanie_rat
 from .ewidencja import kafel_ewidencji
 from .powiadomienia import pobierz_powiadomienia
@@ -114,6 +115,8 @@ METRYKI_KOKPITU = {
     "opony": lambda auto_id: _opony(auto_id),
     "checklista": lambda auto_id: podsumowanie_checklist(auto_id),
     "oplaty_drogowe": lambda auto_id: _oplaty_drogowe(auto_id),
+    # Awarie kontra eksploatacja: 12 miesięcy plus sygnał „auto zaczyna się sypać”.
+    "awarie": lambda auto_id: sygnal_awarii(auto_id),
     # Leasing i kredyt: wszystkie umowy pojazdu w jednej liczbie (db/raty.py).
     "raty": lambda auto_id: podsumowanie_rat(auto_id),
     # Ewidencja przebiegu: bieżący miesiąc (db/ewidencja.py); None = auto bez przejazdów.
@@ -148,6 +151,7 @@ METRYKI_KAFELKOW = {
     "opony": ("opony",),
     "checklist": ("checklista",),
     "oplaty_drogowe": ("oplaty_drogowe",),
+    "awarie": ("awarie",),
     "do_splaty": ("raty",),
     "do_zrobienia": ("do_zrobienia",),
     "magazyn": ("magazyn",),

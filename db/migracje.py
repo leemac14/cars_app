@@ -604,6 +604,13 @@ def init_db():
             CREATE TABLE IF NOT EXISTS dokumenty_pojazdu (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, rodzaj TEXT NOT NULL, nazwa TEXT, numer TEXT, data_wystawienia TEXT, data_waznosci TEXT, notatki TEXT, liczba_plikow INTEGER NOT NULL DEFAULT 0, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_dokumenty_pojazdu_auto ON dokumenty_pojazdu(auto_id);
             CREATE INDEX IF NOT EXISTS idx_dokumenty_pojazdu_auto_zdalne ON dokumenty_pojazdu(auto_id, zdalne_id);
+            """,
+            # Wersja 52: rodzaj naprawy wpisu i wizyty — db.RODZAJE_SERWISU; pozycje wizyty
+            # mają rodzaj wizyty. NULL = nieoznaczone; starych wierszy nie wypełniamy, bo
+            # zmieniony rekord pojechałby do chmury (sync `dopisane`).
+            """
+            ALTER TABLE historia ADD COLUMN rodzaj TEXT;
+            ALTER TABLE wizyty ADD COLUMN rodzaj TEXT;
             """
         ]
 

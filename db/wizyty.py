@@ -11,6 +11,7 @@ from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
 from .zalaczniki import odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki
 from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow, przywroc_czesci_wizyty
 from .przebieg import pobierz_aktualny_przebieg, przelicz_wszystkie_zadania
+from .awarie import domyslny_rodzaj_serwisu
 from .nazwy import klucz_nazwy
 
 
@@ -43,6 +44,7 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
         cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, notatki, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
                     (auto_id, dzis, na_iso(dzis), prz, "", suma_kosztow, notatki, pobierz_moje_imie()))
         wizyta_id = cur.lastrowid
+        zadania_wizyty = []
 
         for tytul, koszt, zadanie_id in pozycje:
             czy_opony = False
@@ -71,6 +73,13 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
                 kat = "Letnie" if czy_opony else None
                 cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)",
                             (wizyta_id, zadanie_id, dzis, na_iso(dzis), prz, koszt or 0.0, "", kat, pobierz_moje_imie()))
+                zadania_wizyty.append(zadanie_id)
+
+        # Rodzaj jak w nowej wizycie z formularza: „planowe”, gdy każdy podzespół ma interwał.
+        rodzaj = domyslny_rodzaj_serwisu(zadania_wizyty, conn=conn)
+        if rodzaj:
+            cur.execute("UPDATE wizyty SET rodzaj=? WHERE id=?", (rodzaj, wizyta_id))
+            cur.execute("UPDATE historia SET rodzaj=? WHERE wizyta_id=?", (rodzaj, wizyta_id))
 
         cur.execute(f"DELETE FROM do_zrobienia WHERE id IN ({placeholders})", tuple(ids_list))
 

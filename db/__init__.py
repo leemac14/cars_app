@@ -26,6 +26,7 @@ from .magazyn import *
 from .checklisty import *
 from .przebieg import *
 from .koszty import *
+from .awarie import *
 from .gwarancje import *
 from .raty import *
 from .ewidencja import *
@@ -75,6 +76,7 @@ from . import (
     checklisty,
     przebieg,
     koszty,
+    awarie,
     gwarancje,
     raty,
     ewidencja,

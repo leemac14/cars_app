@@ -38,6 +38,9 @@ class FormularzWpisView(ft.View):
         self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
         koszt_zrodla, robocizna_zrodla = None, None
         notatka_val = ""
+        # Rodzaj naprawy: przy edycji i duplikacie zapisany, nowy wpis (i duplikat bez
+        # rodzaju) — „planowe”, gdy podzespół ma interwał.
+        rodzaj_val = None
         # Gwarancja naprawy: przy edycji ta zapisana, przy duplikacie — ten sam
         # OKRES od dzisiejszej wymiany (db.przesun_gwarancje), nie stara data.
         gwarancja = {"koniec": None, "limit_km": None, "miesiace": None, "dystans_km": None}
@@ -48,7 +51,7 @@ class FormularzWpisView(ft.View):
         if h_id or duplikuj_id:
             with db.polacz_baze() as conn:
                 c = conn.cursor()
-                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, notatka, koszt_robocizny, gwarancja_data, gwarancja_przebieg FROM historia WHERE id=?", (h_id or duplikuj_id,))
+                c.execute("SELECT data, przebieg, cena, wykonawca, kategoria, notatka, koszt_robocizny, gwarancja_data, gwarancja_przebieg, rodzaj FROM historia WHERE id=?", (h_id or duplikuj_id,))
                 w = c.fetchone()
                 if w:
                     d_val, w_val = str(w[0] or ""), str(w[3] or "")
@@ -57,6 +60,7 @@ class FormularzWpisView(ft.View):
                     if czy_opony and w[4]: kat_val = str(w[4])
                     notatka_val = str(w[5] or "")
                     gwarancja.update(koniec=w[7], limit_km=w[8])
+                    rodzaj_val = db.rodzaj_serwisu(w[9])
                     if duplikuj_id:
                         d_val = datetime.now().strftime("%d.%m.%Y")
                         # Licznik duplikatu zostaje ze źródła (poprawia się go
@@ -90,6 +94,9 @@ class FormularzWpisView(ft.View):
         self.koszt = utils.KosztNaprawy(page, self.zuzycie, koszt_zrodla, robocizna_zrodla, doliczone,
                                         etykieta_kwoty="Koszt usługi / części")
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, w_val)
+        if not h_id and rodzaj_val is None:
+            rodzaj_val = db.domyslny_rodzaj_serwisu([self.z_id])
+        self.rodzaj = utils.PoleRodzajuSerwisu(page, rodzaj_val)
         self.e_kat = ft.Dropdown(
             label="Rodzaj opon", 
             options=[
@@ -108,7 +115,7 @@ class FormularzWpisView(ft.View):
 
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, f"{'Edycja' if h_id else 'Nowa wymiana'}: {nazwa}", self.trasa_powrotu, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
-        k1 = utils.karta_formularza([self.e_d, self.e_p, self.e_kat, *self.koszt.kontrolki(), self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True, page=page)
+        k1 = utils.karta_formularza([self.rodzaj.kontrolka, self.e_d, self.e_p, self.e_kat, *self.koszt.kontrolki(), self.k_wykonawca], "Informacje o serwisie", ft.Icons.BUILD, domyslnie_otwarte=True, page=page)
         k_gwarancja = utils.karta_formularza(
             self.gwarancja.kontrolki(), "Gwarancja na naprawę", ft.Icons.GPP_GOOD,
             domyslnie_otwarte=bool(gwarancja["koniec"] or gwarancja["limit_km"]), page=page,
@@ -133,6 +140,7 @@ class FormularzWpisView(ft.View):
         return (
             self.e_d.value, self.e_p.value, self.koszt.migawka(), self.get_wykonawca(), self.e_kat.value,
             self.k_notatka.value, self.zuzycie.migawka(), self.gwarancja.migawka(), self.pliki.migawka(),
+            self.rodzaj.migawka(),
         )
 
     def _przebieg_km(self):
@@ -178,11 +186,12 @@ class FormularzWpisView(ft.View):
             db.dodaj_warsztat(self.state.auto_id, wyk)
 
         kat = self.e_kat.value if self.e_kat.visible else None
+        rodzaj = self.rodzaj.wartosc
 
         zdalne_id_czesci_do_nagrobka = []
         with self.pliki.zapis(), db.polacz_baze() as conn:
             if self.h_id:
-                conn.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, cena=?, koszt_robocizny=?, wykonawca=?, kategoria=?, gwarancja_data=?, gwarancja_przebieg=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, gw_koniec, gw_limit, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
+                conn.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, cena=?, koszt_robocizny=?, wykonawca=?, kategoria=?, gwarancja_data=?, gwarancja_przebieg=?, rodzaj=?, zmodyfikowane_przez=?, data_modyfikacji=? WHERE id=?", (self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, gw_koniec, gw_limit, rodzaj, db.pobierz_moje_imie(), datetime.now().strftime("%d.%m.%Y %H:%M"), self.h_id))
                 historia_id = self.h_id
                 # Edycja: najpierw oddajemy do magazynu to, co ten wpis zdjął
                 # poprzednio, a dopiero potem potrącamy nowy zestaw. Inaczej
@@ -190,7 +199,7 @@ class FormularzWpisView(ft.View):
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wpisu(historia_id, conn=conn)
             else:
                 kursor = conn.cursor()
-                kursor.execute("INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, koszt_robocizny, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, gw_koniec, gw_limit, db.pobierz_moje_imie()))
+                kursor.execute("INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, koszt_robocizny, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, gw_koniec, gw_limit, rodzaj, db.pobierz_moje_imie()))
                 historia_id = kursor.lastrowid
 
             db.rozlicz_czesci_z_magazynu_wpisu(historia_id, nowe_uzyte, conn=conn)

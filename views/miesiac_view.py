@@ -73,6 +73,9 @@ class MiesiacWPigulceView(SekcjePigulki, ft.View):
                 elementy.append(self._karta_glowna())
                 elementy.append(self._kafle())
                 elementy.append(self._rozbicie_kosztow())
+                karta_awarii = self._karta_awarii()
+                if karta_awarii:
+                    elementy.append(karta_awarii)
                 elementy.append(self._wykres_dni())
                 elementy.append(self._werdykty())
                 elementy.append(self._przycisk_grafiki())

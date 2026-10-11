@@ -357,6 +357,16 @@ class MiksinZakladkiStatystyki:
                 self._scena_zakladki,
             )
 
+            # ----- Awarie kontra eksploatacja -----
+            # Suma serwisu rośnie też wtedy, gdy po prostu jeździsz więcej; udział awarii
+            # i odstępy między nimi mówią, czy auto zaczyna się sypać. Domyślnie cała historia.
+            zakres_awarii = utils.zakres_wykresu(self.state, "awarie")
+            dane_awarii = db.awarie_i_eksploatacja(self.state.auto_id, utils.granica_zakresu(zakres_awarii))
+            karta_awarii = utils.karta_awarii(
+                self._page, self.state.auto_id, dane_awarii, zakres_awarii, self._scena_zakladki,
+                po_zmianie=lambda: utils.odswiez_ekran(self._page),
+            )
+
             dzisiaj = datetime.now()
             zakres_wydatkow = utils.zakres_wykresu(self.state, "wydatki")
             # Słupek to miesiąc tylko do roku wstecz. Przy „Wszystko” i dłuższej
@@ -768,6 +778,13 @@ class MiksinZakladkiStatystyki:
                 ]),
                 utils.pasek_zakresu_czasu(self._page, self.state, "robocizna"),
                 karta_robocizny,
+                ft.Divider(height=20),
+                ft.Row([
+                    ft.Text("Awarie kontra eksploatacja", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
+                    utils.etykieta(f"Serwis: {utils.formatuj_liczba(dane_awarii['razem'])}  {utils.symbol_waluty()}", size=13),
+                ]),
+                utils.pasek_zakresu_czasu(self._page, self.state, "awarie"),
+                karta_awarii,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Wydatki w czasie", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),

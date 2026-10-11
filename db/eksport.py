@@ -18,6 +18,7 @@ from .ustawienia import pobierz_prog_dni, pobierz_prog_km, pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, slowo_dystansu
 from .energia import domyslny_rodzaj_energii
 from .koszty import rozbicie_kosztu
+from .awarie import ETYKIETY_RODZAJU_SERWISU, rodzaj_serwisu
 from .ewidencja import miejsca_km
 
 
@@ -76,6 +77,11 @@ def _kolumny_rozbicia(koszt, robocizna, z_magazynu):
     return [formatuj_liczba_eksport(r["robocizna"]), formatuj_liczba_eksport(r["czesci"] + r["z_magazynu"])]
 
 
+def _rodzaj_naprawy(rodzaj):
+    """„Rodzaj” do tabeli eksportu; naprawa bez rodzaju — puste pole."""
+    return ETYKIETY_RODZAJU_SERWISU.get(rodzaj_serwisu(rodzaj), "")
+
+
 def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     """Dane pojazdu do eksportu wg kategorii z KATEGORIE_EKSPORTU, opcjonalnie w
     zakresie [od_data, do_data] (date albo None). Zakres tnie tylko tankowania,
@@ -122,17 +128,17 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             c.execute(
                 "SELECT h.data, z.nazwa, h.przebieg, h.cena, h.koszt_robocizny, "
                 "(SELECT SUM(x.koszt) FROM historia_czesci_magazynu x WHERE x.historia_id = h.id), "
-                "h.wykonawca, h.kategoria, h.notatka "
+                "h.wykonawca, h.kategoria, h.notatka, h.rodzaj "
                 "FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
                 f"WHERE z.auto_id=? AND h.wizyta_id IS NULL{warunek} ORDER BY h.data_iso, h.id",
                 (auto_id, *parametry)
             )
             wiersze = []
-            for data, nazwa, prz, cena, robocizna, magazyn, wyk, kat, notatka in c.fetchall():
-                wiersze.append([data, nazwa, licznik(prz), formatuj_liczba_eksport(cena),
+            for data, nazwa, prz, cena, robocizna, magazyn, wyk, kat, notatka, rodzaj in c.fetchall():
+                wiersze.append([data, nazwa, _rodzaj_naprawy(rodzaj), licznik(prz), formatuj_liczba_eksport(cena),
                                 *_kolumny_rozbicia(cena, robocizna, magazyn),
                                 wyk or "", kat or "", notatka or ""])
-            wynik["historia"] = (["Data", "Podzespół", f"Przebieg ({j})", "Koszt", "Robocizna", "Części",
+            wynik["historia"] = (["Data", "Podzespół", "Rodzaj", f"Przebieg ({j})", "Koszt", "Robocizna", "Części",
                                   "Wykonawca", "Kategoria", "Notatka"], wiersze)
 
         if "wizyty" in kategorie:
@@ -141,20 +147,20 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
                 "SELECT w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, w.koszt_robocizny, "
                 "(SELECT SUM(x.koszt) FROM wizyta_czesci_magazynu x WHERE x.wizyta_id = w.id), "
                 "w.notatki, w.tagi, "
-                "GROUP_CONCAT(z.nazwa, ', ') FROM wizyty w "
+                "GROUP_CONCAT(z.nazwa, ', '), w.rodzaj FROM wizyty w "
                 "LEFT JOIN historia h ON h.wizyta_id = w.id "
                 "LEFT JOIN zadania z ON h.zadanie_id = z.id "
                 f"WHERE w.auto_id=?{warunek} GROUP BY w.id ORDER BY w.data_iso, w.id", (auto_id, *parametry)
             )
             wiersze = []
-            for data, prz, wyk, kosz, robocizna, magazyn, notatki, tagi, czesci in c.fetchall():
+            for data, prz, wyk, kosz, robocizna, magazyn, notatki, tagi, czesci, rodzaj in c.fetchall():
                 wiersze.append([
-                    data, licznik(prz), wyk or "", formatuj_liczba_eksport(kosz),
+                    data, licznik(prz), wyk or "", _rodzaj_naprawy(rodzaj), formatuj_liczba_eksport(kosz),
                     *_kolumny_rozbicia(kosz, robocizna, magazyn),
                     czesci or "", tagi or "", notatki or ""
                 ])
             wynik["wizyty"] = (
-                ["Data", f"Przebieg ({j})", "Warsztat", "Koszt", "Robocizna", "Części", "Podzespoły", "Tagi",
+                ["Data", f"Przebieg ({j})", "Warsztat", "Rodzaj", "Koszt", "Robocizna", "Części", "Podzespoły", "Tagi",
                  "Notatki"], wiersze
             )
 
@@ -434,6 +440,7 @@ __all__ = [
     "_MAPA_TRANSLITERACJI_PL",
     "_RaportPDF",
     "_kolumny_rozbicia",
+    "_rodzaj_naprawy",
     "generuj_csv",
     "generuj_eksport_csv",
     "oblicz_podsumowanie_okresu",

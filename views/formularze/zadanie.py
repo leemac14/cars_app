@@ -44,9 +44,11 @@ class FormularzZadanieView(ft.View):
         
         # Pliki pierwszej wymiany (paragon, faktura, zdjęcie części).
         self.pliki = utils.PolaZalacznikow(page, "historia")
+        # Nowy podzespół nie ma jeszcze interwału, więc rodzaj bez podpowiedzi.
+        self.rodzaj = utils.PoleRodzajuSerwisu(page)
 
         self.karta_wymiany = utils.karta_formularza(
-            [self.e_d, self.e_p, self.e_c, self.k_wykonawca, self.pliki.kontrolka], 
+            [self.rodzaj.kontrolka, self.e_d, self.e_p, self.e_c, self.k_wykonawca, self.pliki.kontrolka], 
             "Szczegóły pierwszej wymiany", ft.Icons.BUILD, domyslnie_otwarte=True
         )
         self.karta_wymiany.visible = False
@@ -70,7 +72,8 @@ class FormularzZadanieView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_n.value, self.c_dotyczy_opon.value, self.c_dodaj_wymiane.value,
-                self.e_d.value, self.e_p.value, self.e_c.value, self.get_wykonawca(), self.pliki.migawka())
+                self.e_d.value, self.e_p.value, self.e_c.value, self.get_wykonawca(), self.pliki.migawka(),
+                self.rodzaj.migawka())
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -118,8 +121,8 @@ class FormularzZadanieView(ft.View):
                         
                     kat = "Letnie" if self.c_dotyczy_opon.value else None
                     c.execute(
-                        "INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
-                        (nowe_z_id, self.e_d.value, na_iso(self.e_d.value), prz, kos, wyk, kat, db.pobierz_moje_imie())
+                        "INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, rodzaj, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)",
+                        (nowe_z_id, self.e_d.value, na_iso(self.e_d.value), prz, kos, wyk, kat, self.rodzaj.wartosc, db.pobierz_moje_imie())
                     )
                     self.pliki.zapisz_w(conn, c.lastrowid, self.state.auto_id)
         if not self.z_id and self.c_dodaj_wymiane.value:

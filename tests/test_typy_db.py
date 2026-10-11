@@ -60,6 +60,8 @@ WYWOLANIA = {
     "miesiace_ewidencji": lambda k: (k["id"]["auto_id"],),
     "miesiace_z_danymi": lambda k: (k["id"]["auto_id"],),
     "napraw_sciezki_zalacznikow": lambda k: (),
+    # Wizyty i wpisy z dosyp_dane są bez rodzaju — lista nie jest pusta.
+    "naprawy_bez_rodzaju": lambda k: (k["id"]["auto_id"],),
     "niewidziane_powiadomienia": lambda k: (db.pobierz_powiadomienia(k["id"]["auto_id"], pomin_wyciszone=False), {}),
     "niewidziane_wydania": lambda k: _widziane_do("2026.9.30"),
     "odliczania_pojazdu": lambda k: (k["id"]["auto_id"],),

@@ -344,6 +344,7 @@ KOKPIT_WIDGETY = {
     "opony": "Opony na aucie",
     "checklist": "Checklista przed trasą",
     "oplaty_drogowe": "Opłaty drogowe i mandaty",
+    "awarie": "Awarie: udział w koszcie serwisu",
     "do_splaty": "Leasing i kredyt: do spłaty",
     "do_zrobienia": "Do zrobienia",
     "magazyn": "Magazyn — niski stan",
@@ -427,6 +428,8 @@ def _klucz_widzianych_powiadomien(auto_id):
 # funkcji do USTAWIENIA_PER_POJAZD (kosz zapisuje je po NAZWIE).
 ZAKRES_WYKRESU_DOMYSLNY = 12
 ZAKRESY_WYKRESU = (3, 6, 12, 0)  # miesiące wstecz; 0 = cała historia
+# Wykresy rzadkich zdarzeń domyślnie na całej historii — awaria zdarza się raz na kilka miesięcy.
+ZAKRESY_DOMYSLNE_WYKRESOW = {"awarie": 0}
 
 # Okno kroczące wykresu „koszt na 1000 km” — długość okna jednego punktu, nie zakres
 # widoku (własne wartości i domyślny rok). W tym samym wierszu co zakresy wykresów.
@@ -463,8 +466,9 @@ def pobierz_zakres_wykresu(auto_id, klucz) -> int:
     zlewała ostatnie miesiące w jedną kreskę przy krawędzi."""
     # Liczba spoza zakresów wykresu (np. 24 — okno koszt/1000 km — wpisane
     # pod kluczem wykresu) wraca do domyślnego, jak każdy inny śmieć.
-    zakres = _odczytaj_zakresy_wykresow(auto_id).get(klucz, ZAKRES_WYKRESU_DOMYSLNY)
-    return zakres if zakres in ZAKRESY_WYKRESU else ZAKRES_WYKRESU_DOMYSLNY
+    domyslny = ZAKRESY_DOMYSLNE_WYKRESOW.get(klucz, ZAKRES_WYKRESU_DOMYSLNY)
+    zakres = _odczytaj_zakresy_wykresow(auto_id).get(klucz, domyslny)
+    return zakres if zakres in ZAKRESY_WYKRESU else domyslny
 
 
 def pobierz_okno_kroczace(auto_id) -> int:
@@ -662,6 +666,7 @@ __all__ = [
     "KLUCZ_OKNA_1000KM",
     "OKNA_1000KM",
     "OKNO_1000KM_DOMYSLNE",
+    "ZAKRESY_DOMYSLNE_WYKRESOW",
     "ZAKRESY_WYKRESU",
     "ZAKRES_WYKRESU_DOMYSLNY",
     "KLUCZ_OKNA_PRZYSZLOSCI",

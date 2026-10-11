@@ -71,12 +71,14 @@ KONFIGURACJA_SYNC = [
     # `dopisane` — kolumny dołożone, gdy w chmurze były już rekordy; puste nie zmieniają
     # hasha (inaczej po aktualizacji cała tabela szłaby od nowa z konfliktem przy każdym
     # wierszu).
-    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "koszt_robocizny", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji", "gwarancja_data", "gwarancja_przebieg"], "fk": {},
-     "dopisane": ["koszt_robocizny", "gwarancja_data", "gwarancja_przebieg"]},
+    # Rodzaj naprawy (wersja 52) jedzie razem z wpisem — udział awarii ma być jedną
+    # liczbą dla obu osób.
+    {"tabela": "wizyty", "kolumny": ["data", "przebieg", "wykonawca", "koszt_calkowity", "koszt_robocizny", "notatki", "tagi", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji", "gwarancja_data", "gwarancja_przebieg", "rodzaj"], "fk": {},
+     "dopisane": ["koszt_robocizny", "gwarancja_data", "gwarancja_przebieg", "rodzaj"]},
     # Gwarancja naprawy jedzie do drugiej osoby: to ona stoi z autem
     # w warsztacie, kiedy klocki zaczną piszczeć drugi raz.
-    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "koszt_robocizny", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji", "gwarancja_data", "gwarancja_przebieg"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
-     "dopisane": ["koszt_robocizny", "gwarancja_data", "gwarancja_przebieg"]},
+    {"tabela": "historia", "kolumny": ["data", "przebieg", "kategoria", "cena", "koszt_robocizny", "wykonawca", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji", "gwarancja_data", "gwarancja_przebieg", "rodzaj"], "fk": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
+     "dopisane": ["koszt_robocizny", "gwarancja_data", "gwarancja_przebieg", "rodzaj"]},
     # Koszt zużycia jedzie razem z ilością: to on mówi drugiej osobie, ile
     # z kosztu wizyty przyszło z magazynu — bez niego jej edycja tej wizyty
     # doliczyłaby części drugi raz.

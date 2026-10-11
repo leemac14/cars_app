@@ -28,6 +28,18 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.11.2", "pozycje": [
+        {"tytul": "Awarie kontra eksploatacja", "ikona": "CAR_REPAIR", "ekran": "statystyki",
+         "opis": "Przy wpisie serwisowym i wizycie zaznaczysz, czy to naprawa planowa, awaria czy modernizacja. "
+                 "Analiza pokaże udział awarii w koszcie serwisu, średni odstęp między nimi i wykres w czasie — "
+                 "sama suma serwisu rośnie też wtedy, gdy po prostu jeździsz więcej."},
+        {"tytul": "Oznacz dawne naprawy", "ikona": "PLAYLIST_ADD_CHECK", "ekran": "statystyki",
+         "opis": "Starsze wpisy nie mają rodzaju — oznaczysz je jednym dotknięciem z karty w Analizie, a naprawy "
+                 "podzespołów z interwałem podpowiedzą się jako planowe. Na listach wizyt i historii jest filtr „Rodzaj”."},
+        {"tytul": "Kafelek „Awarie w serwisie”", "ikona": "SPACE_DASHBOARD", "ekran": "kokpit",
+         "opis": "Udział awarii z ostatniego roku z ostrzeżeniem, gdy rośnie albo awarie przychodzą coraz częściej "
+                 "— dodasz go w układzie kafelków. Rok i miesiąc w pigułce też pokazują awarie."},
+    ]},
     {"wersja": "2026.10.11", "pozycje": [
         {"tytul": "Pojazd w jednym pliku", "ikona": "SAVE_ALT",
          "opis": "W menu bocznym, w grupie Garaż, zapiszesz auto razem ze zdjęciami do jednego pliku i wczytasz je "

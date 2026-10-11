@@ -179,6 +179,7 @@ IKONY_KOKPITU = {
     "opony": ft.Icons.TIRE_REPAIR,
     "checklist": ft.Icons.FACT_CHECK,
     "oplaty_drogowe": ft.Icons.TOLL,
+    "awarie": ft.Icons.CAR_REPAIR,
     "do_splaty": ft.Icons.ACCOUNT_BALANCE,
     "do_zrobienia": ft.Icons.CHECKLIST_RTL,
     "magazyn": ft.Icons.INVENTORY_2,
@@ -243,6 +244,23 @@ KOLORY_RODZAJU_PRZEJAZDU = {
 }
 
 
+# Rodzaj naprawy (db.RODZAJE_SERWISU; None = bez rodzaju) — kolor serii wykresu i chipa.
+# Awaria bierze czerwień „critical”, bo mówi o stanie auta, a nie tylko o kategorii.
+KOLORY_RODZAJU_SERWISU = {
+    "planowe": ft.Colors.TEAL_600,
+    "awaria": KOLOR_STATUS["critical"],
+    "modernizacja": ft.Colors.INDIGO_400,
+    None: ft.Colors.OUTLINE,
+}
+
+IKONY_RODZAJU_SERWISU = {
+    "planowe": ft.Icons.EVENT_REPEAT,
+    "awaria": ft.Icons.REPORT_PROBLEM,
+    "modernizacja": ft.Icons.UPGRADE,
+    None: ft.Icons.HELP_OUTLINE,
+}
+
+
 # Ikony podźródeł WŁASNYCH odczytów (db.ZRODLA_ODCZYTU) — dopowiadają, skąd
 # wziął się wpis, którego nie da się przypisać do kosztu.
 IKONY_PODZRODEL_ODCZYTU = {
@@ -265,6 +283,7 @@ IKONY_OBSERWACJI = {
     "koszt_km": ft.Icons.AUTO_GRAPH,
     "warsztat": ft.Icons.HANDYMAN,
     "czesci": ft.Icons.INVENTORY_2,
+    "awarie": ft.Icons.CAR_REPAIR,
 }
 
 
@@ -376,6 +395,8 @@ __all__ = [
     "IKONY_AKTYWNOSCI",
     "IKONY_EKSPORTU",
     "KOLORY_RODZAJU_PRZEJAZDU",
+    "KOLORY_RODZAJU_SERWISU",
+    "IKONY_RODZAJU_SERWISU",
     "IKONY_KATEGORII_INNYCH",
     "IKONY_KATEGORII_KOSZTOW",
     "IKONY_KOKPITU",

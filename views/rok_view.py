@@ -105,6 +105,21 @@ class SekcjePigulki:
             pasek("Inne koszty", d["koszty"]["inne"], ft.Colors.GREEN_700),  # paleta: tożsamość — kolor kategorii kosztu
         ])
 
+    def _karta_awarii(self):
+        """Serwis okresu wg rodzaju naprawy (db.awarie_i_eksploatacja) — None bez napraw."""
+        a = self.dane.get("awarie")
+        if not a or (not a["razem"] and not a["naprawy"]):
+            return None
+        w = utils.symbol_waluty()
+        zdanie = (f"{db.liczba_z_odmiana(a['awarie'], 'awaria', 'awarie', 'awarii')} za "
+                  f"{utils.formatuj_liczba(a['rodzaje'][db.SERWIS_AWARIA]['kwota'])} {w} — "
+                  f"{utils.formatuj_liczba(a['udzial_awarii'] or 0, 0)}% kosztu serwisu."
+                  if a["awarie"] else "Bez awarii w tym okresie.")
+        if a["nieoznaczone"]:
+            zdanie += f" Bez rodzaju: {db.liczba_z_odmiana(a['nieoznaczone'], 'naprawa', 'naprawy', 'napraw')}."
+        return utils.karta_analizy(self._page, "Awarie kontra eksploatacja", ft.Icons.CAR_REPAIR,
+                                   [*utils.paski_rodzajow(self._page, a, self.scena), utils.podpis(zdanie)])
+
     def _karta_werdyktu(self, tytul, pozycje):
         """Werdykt: krótkie zdania z liczbą zamiast tabeli. `pozycje` to
         krotki (ikona, kolor, etykieta, wartość)."""
@@ -238,6 +253,9 @@ class RokWPigulceView(SekcjePigulki, ft.View):
                 elementy.append(self._karta_glowna())
                 elementy.append(self._kafle())
                 elementy.append(self._rozbicie_kosztow())
+                karta_awarii = self._karta_awarii()
+                if karta_awarii:
+                    elementy.append(karta_awarii)
                 elementy.append(self._wykres_miesiecy())
                 # Liczba „względem 2025 roku” stoi w Werdykcie niżej; ta karta
                 # jest jej rozwinięciem — pokazuje, OD KTÓREGO miesiąca lata

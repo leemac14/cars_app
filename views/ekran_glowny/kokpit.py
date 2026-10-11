@@ -887,6 +887,53 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        def widget_awarie():
+            """Awarie kontra eksploatacja (db.sygnal_awarii): udział awarii w koszcie serwisu
+            z 12 miesięcy z paskiem, w stopce ostatnia awaria albo ostrzeżenie, gdy udział
+            rośnie lub odstępy się skracają. Auto bez żadnej naprawy — „nie dotyczy”."""
+            stan = metryka("awarie")
+            rok = stan["rok"]
+            ikona = utils.IKONY_KOKPITU["awarie"]
+            na_klik = idz_do_statystyk(1)
+            if not rok["razem"] and not rok["naprawy"]:
+                if not stan["napraw_razem"]:
+                    return kafel_pusty(ikona, ft.Colors.BLUE_GREY_700, "Awarie", "Bez napraw", na_klik)
+                return kafel_wartosci(ikona, utils.KOLOR_STATUS["ok"], "Awarie", "Bez napraw w roku", na_klik)
+            if rok["udzial_awarii"] is None or rok["rodzaje"][None]["kwota"] > rok["razem"] / 2:
+                return kafel_wartosci(ikona, utils.KOLOR_STATUS["warning"], "Awarie", "Oznacz naprawy", na_klik)
+
+            ostrzezenie = stan["rosnie"] or stan["skracaja_sie"]
+            kolor = utils.KOLOR_STATUS["warning"] if ostrzezenie else ft.Colors.PRIMARY
+            if stan["rosnie"]:
+                stopka = f"rok wcześniej {utils.formatuj_liczba(stan['wczesniej'], 0)}%"
+            elif stan["skracaja_sie"]:
+                stopka = "awarie coraz częściej"
+            elif rok["awarie"]:
+                stopka = (f"{db.liczba_z_odmiana(rok['awarie'], 'awaria', 'awarie', 'awarii')} • ostatnia "
+                          f"{'dziś' if not stan['dni_od_awarii'] else utils.formatuj_dni(stan['dni_od_awarii']) + ' temu'}")
+            else:
+                stopka = "bez awarii w 12 mies."
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor)),
+                ink=True, on_click=na_klik,
+                tooltip="Udział awarii w koszcie serwisu z ostatnich 12 miesięcy",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=kolor),
+                        utils.etykieta("Awarie w serwisie", expand=True),
+                    ], spacing=6),
+                    liczba_kafelka(rok["udzial_awarii"], lambda v: f"{utils.formatuj_liczba(v, 0)}%"),
+                    scena.wskaznik(ft.ProgressBar(
+                        value=(rok["udzial_awarii"] or 0) / 100,
+                        color=utils.KOLORY_RODZAJU_SERWISU[db.SERWIS_AWARIA],
+                        bgcolor=utils.tlo_toru(self._page), height=6, border_radius=3,
+                    )),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            )
+
         def widget_do_splaty():
             """Leasing i kredyt: ile jeszcze zostało do spłaty, ile rat już
             poszło i do kiedy — połowa odpowiedzi na pytanie, czy zmieniać auto.
@@ -1146,6 +1193,7 @@ class MiksinKokpitu:
             "opony": widget_opony,
             "checklist": widget_checklist,
             "oplaty_drogowe": widget_oplaty_drogowe,
+            "awarie": widget_awarie,
             "do_splaty": widget_do_splaty,
             "ewidencja": widget_ewidencja,
             "do_zrobienia": widget_do_zrobienia,

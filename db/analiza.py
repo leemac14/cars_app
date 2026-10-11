@@ -18,6 +18,7 @@ from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_en
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu
 from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_rozbicie_napraw, pobierz_trend_cen_paliwa, porownaj_czesci_wlasne
 from .statystyki import koszt_na_1000km, pobierz_serie_spalania
+from .awarie import awarie_i_eksploatacja, sygnal_awarii
 from .pojazd import pobierz_dane_pojazdu
 
 
@@ -758,9 +759,9 @@ def _najwiekszy_wydatek(wpisy):
 
 def _rachunek_okresu(auto_id, od, do, historia_prz):
     """Część wspólna roku i miesiąca w pigułce: koszty w rozbiciu, kilometry,
-    tankowania, ulubiona stacja, średnie zużycie, największy wydatek. `wpisy_kosztow` —
-    (dzień, kwota, kategoria) do słupków; wołający zdejmuje je z wyniku. None bez wpisu
-    kosztowego."""
+    tankowania, ulubiona stacja, średnie zużycie, największy wydatek, serwis wg rodzaju
+    naprawy (`awarie`). `wpisy_kosztow` — (dzień, kwota, kategoria) do słupków; wołający
+    zdejmuje je z wyniku. None bez wpisu kosztowego."""
     with polacz_baze() as conn:
         wpisy = _wpisy_okresu(conn, auto_id, od, do)
     koszty = _koszty_wpisow(wpisy)
@@ -802,6 +803,7 @@ def _rachunek_okresu(auto_id, od, do, historia_prz):
         "liczba_wpisow_serwisu": len(wpisy["serwis"]),
         "najwiekszy_wydatek": _najwiekszy_wydatek(wpisy),
         "porownanie_dystansu": _porownanie_dystansu(km),
+        "awarie": awarie_i_eksploatacja(auto_id, od, do),
     }
 
 
@@ -1660,6 +1662,35 @@ def obserwacje_analityczne(auto_id, limit=None):
                 f"„{q['nazwa']}” (+{formatuj_liczba_eksport(q['proc'], 0)}%)" for q in podwyzki[1:3]) + "."
         obserwacje.append(_obserwacja(
             "czesci_drozeja", "neutralny", "czesci", "Części drożeją", tekst, 35, "/magazyn",
+        ))
+
+    # 12. Awarie kontra eksploatacja — suma serwisu rośnie też wtedy, gdy po prostu
+    #     jeździsz więcej; udział awarii i odstępy między nimi już nie (db.sygnal_awarii).
+    sygnal = sygnal_awarii(auto_id, dzis)
+
+    def dni_txt(n):
+        return liczba_z_odmiana(round(n), "dzień", "dni", "dni")
+
+    if sygnal["rosnie"]:
+        tekst = (f"Awarie to {formatuj_liczba_eksport(sygnal['teraz'], 0)}% kosztu serwisu z ostatnich "
+                 f"12 miesięcy — rok wcześniej {formatuj_liczba_eksport(sygnal['wczesniej'], 0)}%.")
+        if sygnal["skracaja_sie"]:
+            tekst += (f" Przerwy między awariami też się skracają: ostatnio {dni_txt(sygnal['odstep_ostatnich_dni'])}, "
+                      f"wcześniej {dni_txt(sygnal['odstep_wczesniej_dni'])}.")
+        obserwacje.append(_obserwacja("awarie_rosna", "zly", "awarie", "Auto zaczyna się sypać?", tekst, 82, "/wizyty"))
+    elif sygnal["skracaja_sie"]:
+        obserwacje.append(_obserwacja(
+            "awarie_czesciej", "uwaga", "awarie", "Awarie coraz częściej",
+            f"Dwie ostatnie przerwy między awariami to średnio {dni_txt(sygnal['odstep_ostatnich_dni'])}, "
+            f"wcześniejsze — {dni_txt(sygnal['odstep_wczesniej_dni'])}.",
+            75, "/wizyty",
+        ))
+    elif sygnal["maleje"]:
+        obserwacje.append(_obserwacja(
+            "awarie_maleja", "dobry", "awarie", "Mniej awarii niż rok temu",
+            f"Awarie to {formatuj_liczba_eksport(sygnal['teraz'], 0)}% kosztu serwisu z ostatnich 12 miesięcy "
+            f"— rok wcześniej {formatuj_liczba_eksport(sygnal['wczesniej'], 0)}%.",
+            42, "/wizyty",
         ))
 
     obserwacje.sort(key=lambda o: -o["waga"])
