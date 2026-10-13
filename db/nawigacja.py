@@ -11,6 +11,7 @@ from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .nowosci import liczba_niewidzianych_wydan
 from .pojazd import terminy_pojazdu
 from .kosz import liczba_w_koszu
+from .dolewki import sygnaly_plynow
 
 
 def _sparsuj_datetime(tekst):
@@ -253,6 +254,15 @@ def _policz_liczniki_nawigacji(auto_id):
         n = 0
     if n:
         wynik["co-nowego"] = n
+
+    # Dolewki: te same sygnały, co w dzwonku (zużycie oleju, ubytek płynu).
+    try:
+        n = len(sygnaly_plynow(auto_id))
+    except sqlite3.Error:
+        log.polkniety("odznaka dolewek płynów")
+        n = 0
+    if n:
+        wynik["dolewki"] = n
 
     return wynik
 

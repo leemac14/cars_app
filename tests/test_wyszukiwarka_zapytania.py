@@ -170,10 +170,10 @@ def _typy(wyniki):
 
 
 def test_zakres_dat_obejmuje_wszystkie_rodzaje_wpisow(pojazd):
-    """Luty 2026 w danych testowych: tankowanie, inny koszt, odczyt licznika
-    i przejazd z ewidencji."""
+    """Luty 2026 w danych testowych: tankowanie, inny koszt, odczyt licznika,
+    przejazd z ewidencji i dolewka."""
     wyniki = db.globalne_wyszukiwanie(pojazd, "luty 2026")
-    assert _typy(wyniki) == ["Inny koszt", "Odczyt licznika", "Przejazd", "Tankowanie"]
+    assert _typy(wyniki) == ["Dolewka", "Inny koszt", "Odczyt licznika", "Przejazd", "Tankowanie"]
 
 
 def test_zakres_dat_pomija_wpisy_bez_daty(pojazd):

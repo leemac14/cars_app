@@ -5,7 +5,7 @@ import flet as ft
 import log
 from datetime import datetime
 
-from .stale import IKONY_UMOW_RAT, KOLOR_STATUS, RADIUS, formatuj_liczba
+from .stale import IKONY_PLYNOW, IKONY_UMOW_RAT, KOLOR_STATUS, RADIUS, formatuj_liczba
 from .format import _odmiana_liczby, formatuj_dni, kolor_i_tekst_terminu, parsuj_float, parsuj_int, symbol_waluty
 from .typografia import podpis
 from .zgodnosc import ustaw_blad, ustaw_ikone
@@ -524,6 +524,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         ikona = ft.Icons.PENDING_ACTIONS
                     elif p["typ"] == "ewidencja":
                         ikona = ft.Icons.ALT_ROUTE
+                    elif p["typ"] == "plyn":
+                        ikona = IKONY_PLYNOW.get(p.get("plyn"), ft.Icons.WATER_DROP)
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=tytul_pozycji(p),

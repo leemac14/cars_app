@@ -611,6 +611,16 @@ def init_db():
             """
             ALTER TABLE historia ADD COLUMN rodzaj TEXT;
             ALTER TABLE wizyty ADD COLUMN rodzaj TEXT;
+            """,
+            # Wersja 53: dolewki płynów (N-12). `plyn` z db.RODZAJE_PLYNOW, `ilosc` w litrach,
+            # `ilosc_magazynu` — ile zeszło ze stanu pozycji (w jej jednostce), `koszt_id` —
+            # powiązany Inny koszt; oba odwołania przeżywają usunięcie rodzica jako NULL.
+            """
+            CREATE TABLE IF NOT EXISTS dolewki (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, data TEXT NOT NULL, data_iso TEXT, przebieg INTEGER NOT NULL DEFAULT 0, plyn TEXT NOT NULL, ilosc REAL NOT NULL, produkt TEXT, magazyn_id INTEGER, ilosc_magazynu REAL, koszt_id INTEGER, notatka TEXT, notatka_autor TEXT, notatka_data TEXT, dodane_przez TEXT, zmodyfikowane_przez TEXT, data_modyfikacji TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE, FOREIGN KEY (magazyn_id) REFERENCES magazyn_czesci(id) ON DELETE SET NULL, FOREIGN KEY (koszt_id) REFERENCES inne_koszty(id) ON DELETE SET NULL);
+            CREATE INDEX IF NOT EXISTS idx_dolewki_auto_data_iso ON dolewki(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_dolewki_auto_zdalne ON dolewki(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_dolewki_koszt ON dolewki(koszt_id);
+            CREATE INDEX IF NOT EXISTS idx_dolewki_magazyn ON dolewki(magazyn_id);
             """
         ]
 

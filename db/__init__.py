@@ -26,6 +26,7 @@ from .magazyn import *
 from .checklisty import *
 from .przebieg import *
 from .koszty import *
+from .dolewki import *
 from .awarie import *
 from .gwarancje import *
 from .raty import *
@@ -76,6 +77,7 @@ from . import (
     checklisty,
     przebieg,
     koszty,
+    dolewki,
     awarie,
     gwarancje,
     raty,

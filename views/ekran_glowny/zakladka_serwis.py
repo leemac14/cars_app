@@ -33,7 +33,7 @@ class MiksinZakladkiSerwis:
         # „Pojazd”.
         self.elementy.append(utils.pasek_sekcji(
             self._page, self.state,
-            ["wizyty", "do-zrobienia", "magazyn"],
+            ["wizyty", "do-zrobienia", "magazyn", "dolewki"],
             self.akcje_nawigacji, self.liczniki_nawigacji,
         ))
 
@@ -55,6 +55,8 @@ class MiksinZakladkiSerwis:
                 self.state.auto_id, aktualny_przebieg=akt_prz, sredni_dzienny=sredni_dzienny,
                 prog_dni=prog_dni, prog_km=prog_km)
         }
+        # Dolewki od ostatniej wymiany pod podzespołem, którego wymiany wyznaczają okresy płynu.
+        dolewki_podzespolow = db.zuzycie_przy_zadaniach(self.state.auto_id)
 
         # --- Wyraźne oddzielenie skrótów od właściwej listy podzespołów ---
         self.elementy.append(ft.Divider(height=20))
@@ -202,6 +204,12 @@ class MiksinZakladkiSerwis:
                         ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
                         wiersz_statusu
                     ]
+                    tekst_dolewek = ""
+                    wiersz_dolewek = (utils.wiersz_zuzycia_podzespolu(dolewki_podzespolow[zid], j)
+                                      if zid in dolewki_podzespolow else None)
+                    if wiersz_dolewek is not None:
+                        tresc_karty.append(wiersz_dolewek)
+                        tekst_dolewek = wiersz_dolewek.controls[1].value
                     tekst_gwarancji = ""
                     if zid in gwarancje_podzespolow:
                         tekst_gwarancji = utils.tekst_gwarancji(gwarancje_podzespolow[zid], j, szczegoly=False)
@@ -214,7 +222,7 @@ class MiksinZakladkiSerwis:
 
                     self.karty_ref[zid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, zid, lambda zid=zid, zn=zn: pokaz_menu(zid, zn), "zadania")
-                    tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status} {tekst_gwarancji}".lower()
+                    tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status} {tekst_gwarancji} {tekst_dolewek}".lower()
                     self.wszystkie_karty_serwis.append({"karta": karta_z, "szukaj": tekst_szukaj})
                     self.lista_kart_serwis.controls.append(karta_z)
 

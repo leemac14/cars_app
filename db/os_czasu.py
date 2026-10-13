@@ -3,12 +3,13 @@
 import sqlite3
 from typing import Any
 
-from .stale import ENERGIA_PRAD
+from .stale import ENERGIA_PRAD, RODZAJE_PLYNOW
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .jednostki import jednostka_dystansu, tekst_dystansu
 from .energia import normalizuj_rodzaj_energii
 from .zalaczniki import zalaczniki_pojazdu
+from .dolewki import tekst_litrow
 
 
 def _km(przebieg, jednostka):
@@ -81,7 +82,9 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
                 r["dodane_przez"], r["notatki"],
             ))
 
-        c.execute("SELECT id, data, nazwa, kategoria, kwota, dodane_przez, notatka FROM inne_koszty WHERE auto_id=?", (auto_id,))
+        # Koszt dolewki stoi na osi razem z dolewką (niżej), nie drugi raz jako Inny koszt.
+        c.execute("SELECT id, data, nazwa, kategoria, kwota, dodane_przez, notatka FROM inne_koszty WHERE auto_id=? "
+                  "AND id NOT IN (SELECT koszt_id FROM dolewki WHERE koszt_id IS NOT NULL)", (auto_id,))
         for r in c.fetchall():
             zdarzenia.append((
                 f"inne_{r['id']}", "Inny koszt", r["data"],
@@ -106,6 +109,18 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
                 f"odczyt_{r['id']}", "Odczyt przebiegu", r["data"],
                 "Odczyt licznika", _km(r['przebieg'], jednostka),
                 None, [], "/przebieg", None, r["notatka"],
+            ))
+
+        c.execute("SELECT d.id, d.data, d.przebieg, d.plyn, d.ilosc, d.produkt, d.dodane_przez, d.notatka, d.koszt_id, k.kwota "
+                  "FROM dolewki d LEFT JOIN inne_koszty k ON k.id = d.koszt_id WHERE d.auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            opis = " • ".join(x for x in (tekst_litrow(r["ilosc"]), _km(r["przebieg"], jednostka), r["produkt"]) if x)
+            zdarzenia.append((
+                f"dolewka_{r['id']}", "Dolewka", r["data"],
+                f"Dolewka: {RODZAJE_PLYNOW.get(r['plyn'], {}).get('w_zdaniu', 'płyn')}", opis,
+                float(r["kwota"]) if r["kwota"] is not None else None, pliki["inne_koszty"].get(r["koszt_id"], []),
+                f"/dolewki/edytuj/{r['id']}",
+                r["dodane_przez"], r["notatka"],
             ))
 
     return zdarzenia

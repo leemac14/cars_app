@@ -25,6 +25,7 @@ from .raty import KOLUMNY_UMOWY, czy_rata, opis_postepu_umowy
 from .kopie import stan_kopii_zapasowej
 from .ewidencja import nazwa_miesiaca, przypomnienie_ewidencji, tekst_km_przejazdu
 from .dokumenty import terminy_skarbca
+from .dolewki import sygnaly_plynow
 
 
 # ============================================================================
@@ -336,6 +337,11 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
                     "status": s, "trasa": "/magazyn",
                     "klucz": f"magazyn:{m['id']}",
                 })
+
+    # Zużycie oleju (wysokie albo rosnące) i ubytek płynu w układzie zamkniętym — o stanie auta,
+    # więc przed przypomnieniami o danych. Sprzedane auto już nie przypomina.
+    if not (w and w["status"] == STATUS_POJAZDU_SPRZEDANY):
+        wyniki.extend(sygnaly_plynow(auto_id, dzis))
 
     # Stan licznika na końcu: przy tym samym statusie prawdziwe terminy stoją
     # nad nim (sortowanie niżej jest stabilne), więc kafel „Termin” pokaże go

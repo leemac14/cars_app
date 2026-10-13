@@ -15,10 +15,12 @@ from .wizyta import FormularzWizytyView
 from .rata import FormularzRatyView
 from .przejazd import FormularzPrzejazduView
 from .dokument import FormularzDokumentuView
+from .dolewka import FormularzDolewkiView
 
 __all__ = [
     "FormularzAutoView",
     "FormularzDokumentuView",
+    "FormularzDolewkiView",
     "FormularzInneView",
     "FormularzInterwalView",
     "FormularzPrzejazduView",

@@ -28,6 +28,20 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.13", "pozycje": [
+        {"tytul": "Dolewki płynów", "ikona": "WATER_DROP", "ekran": "dolewki",
+         "opis": "Zapiszesz, ile oleju, płynu chłodniczego, hamulcowego, AdBlue czy płynu do spryskiwaczy dolałeś "
+                 "i przy jakim przebiegu. Butelka z magazynu zejdzie ze stanu sama, a koszt trafi do Innych kosztów."},
+        {"tytul": "Zużycie oleju między wymianami", "ikona": "INSIGHTS", "ekran": "dolewki",
+         "opis": "Ekran dolewek liczy litry na tysiąc przejechanych między kolejnymi wymianami i pokazuje je na "
+                 "wykresie — rosnące zużycie oleju to najwcześniejszy sygnał zużycia silnika."},
+        {"tytul": "Ostrzeżenie w dzwonku i kafelki", "ikona": "NOTIFICATIONS_ACTIVE", "ekran": "kokpit",
+         "opis": "Dzwonek powie, gdy zużycie oleju rośnie albo jest wysokie, a płyn chłodniczy lub hamulcowy "
+                 "dolewasz raz po raz. Na kokpicie kafelek „Zużycie oleju”, a „Dolewka” jest też pod przyciskiem dodawania."},
+        {"tytul": "Dolewki w Serwisie, dzienniku i wyszukiwarce", "ikona": "HANDYMAN", "ekran": "serwis",
+         "opis": "Pod wymianą oleju widać, ile dolano od ostatniej wymiany. Dolewki są też w Dzienniku życia auta, "
+                 "w wyszukiwarce, w historii licznika i w eksporcie."},
+    ]},
     {"wersja": "2026.10.11.2", "pozycje": [
         {"tytul": "Awarie kontra eksploatacja", "ikona": "CAR_REPAIR", "ekran": "statystyki",
          "opis": "Przy wpisie serwisowym i wizycie zaznaczysz, czy to naprawa planowa, awaria czy modernizacja. "

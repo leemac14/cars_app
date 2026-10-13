@@ -17,7 +17,7 @@ from views.history_view import HistoriaView, WizytyZbiorczeView
 from views.formularze import (
     FormularzAutoView, FormularzTankowanieView, FormularzInneView,
     FormularzWizytyView, FormularzInterwalView, FormularzZadanieView,
-    FormularzWpisView, FormularzRatyView, FormularzPrzejazduView, FormularzDokumentuView
+    FormularzWpisView, FormularzRatyView, FormularzPrzejazduView, FormularzDokumentuView, FormularzDolewkiView
 )
 from views.settings_view import UstawieniaView
 from views.todo_view import DoZrobieniaView, FormularzDoZrobieniaView
@@ -47,6 +47,7 @@ from views.co_nowego_view import CoNowegoView
 from views.raty_view import RatyView
 from views.ewidencja_view import EwidencjaPrzebieguView
 from views.dokumenty_view import DokumentyView
+from views.dolewki_view import DolewkiView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
 # Router to jedyna droga do formularzy, więc jedno sprawdzenie zastępuje dwadzieścia w
@@ -62,6 +63,7 @@ TABELE_TRAS = {
     "inne": "inne_koszty",
     "wizyty": "wizyty",
     "wpis": "historia",
+    "dolewki": "dolewki",
 }
 
 
@@ -115,7 +117,8 @@ def _cel_trasy(segmenty):
     # Umowa raty (/raty/nowa, /raty/edytuj/<id>) to wpis cykliczny — wspólny
     # inwentarz pojazdu bez podpisu autora, więc o edycji rozstrzyga sama rola.
     # Dokument skarbca (/dokumenty/nowy[/<rodzaj>], /dokumenty/edytuj/<id>) — tak samo.
-    if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria", "raty", "dokumenty"):
+    if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria", "raty", "dokumenty",
+                 "dolewki"):
         if drugi in AKCJE_DODAWANIA:
             return True, True, None, None
         if drugi == "edytuj":
@@ -797,6 +800,20 @@ def main(page: ft.Page):
                     page, app_state, None, rodzaj=segmenty[2] if len(segmenty) >= 3 else None))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 page.views.append(FormularzDokumentuView(page, app_state, utils.parsuj_int(segmenty[2], None)))
+        elif segmenty[0] == "dolewki":
+            # Dolewki płynów (N-12): /dolewki[/<płyn>]; formularz (/dolewki/nowa[/<płyn>], /dolewki/edytuj/<id>)
+            # leży NA liście płynu, więc „wstecz” wraca do niej.
+            drugi = segmenty[1] if len(segmenty) > 1 else ""
+            trzeci = segmenty[2] if len(segmenty) > 2 else None
+            if drugi in ("nowa", "nowy", "nowe"):
+                page.views.append(DolewkiView(page, app_state, trzeci))
+                page.views.append(FormularzDolewkiView(page, app_state, None, plyn=trzeci))
+            elif drugi == "edytuj" and trzeci:
+                wpis = db.pobierz_dolewke(utils.parsuj_int(trzeci, None))
+                page.views.append(DolewkiView(page, app_state, wpis["plyn"] if wpis else None))
+                page.views.append(FormularzDolewkiView(page, app_state, utils.parsuj_int(trzeci, None)))
+            else:
+                page.views.append(DolewkiView(page, app_state, drugi or None))
         elif segmenty[0] == "raty":
             # Leasing i kredyt (M-22). Formularz umowy leży NA harmonogramie, więc
             # strzałka w pasku i systemowe „wstecz” wracają do listy umów.

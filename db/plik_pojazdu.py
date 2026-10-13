@@ -60,6 +60,8 @@ SEKCJE_PLIKU_POJAZDU = [
     {"id": "serwis", "tytul": "Serwis i naprawy", "opis": "Podzespoły, wymiany, wizyty w warsztacie i własne pakiety",
      "tabele": ("zadania", "historia", "wizyty", "pakiety_serwisowe_wlasne"), "liczone": ("historia", "wizyty"),
      "dla_kupujacego": True},
+    {"id": "dolewki", "tytul": "Dolewki płynów", "opis": "Olej i płyny dolewane między wymianami, z przebiegiem",
+     "tabele": ("dolewki",), "dla_kupujacego": True},
     {"id": "tankowania", "tytul": "Tankowania i ładowania", "opis": "Paliwo i prąd ze stacją, ilością i kwotą",
      "tabele": ("tankowania",), "dla_kupujacego": True},
     {"id": "licznik", "tytul": "Odczyty licznika", "opis": "Historia przebiegu",
@@ -108,7 +110,8 @@ SEKCJE_PLIKU_POJAZDU = [
 ]
 
 # Odwołania, bez których wiersz dalej ma sens (reszta bez rodzica wypada).
-_KLUCZE_OPCJONALNE = {("do_zrobienia", "zadanie_id"), ("historia", "wizyta_id")}
+_KLUCZE_OPCJONALNE = {("do_zrobienia", "zadanie_id"), ("historia", "wizyta_id"),
+                      ("dolewki", "magazyn_id"), ("dolewki", "koszt_id")}
 # Wiersz, który JEST plikiem i bez niego nie istnieje (kolumna NOT NULL).
 _WIERSZE_Z_PLIKIEM_WYMAGANYM = {"zalaczniki", "zdjecia_karoserii"}
 

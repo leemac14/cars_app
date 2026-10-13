@@ -657,7 +657,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             ft.Divider(height=14),
         ]
         if not historia:
-            zawartosc.append(utils.podpis("Ta pozycja nie była jeszcze użyta w żadnym wpisie ani wizycie."))
+            zawartosc.append(utils.podpis("Ta pozycja nie była jeszcze użyta w żadnym wpisie, wizycie ani dolewce."))
         for pozycja in historia:
             kwota = (f"{utils.formatuj_liczba(pozycja['koszt'])} {waluta}" if pozycja["koszt"] is not None
                      else "bez doliczenia")
@@ -666,8 +666,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 on_click=lambda e, t=pozycja["trasa"]: otworz(t),
                 **utils.powierzchnia(self._page, "blok"),
                 content=ft.Row([
-                    ft.Icon(ft.Icons.HOME_REPAIR_SERVICE if pozycja["zrodlo"] == "wizyty" else ft.Icons.BUILD,
-                            size=18, color=ft.Colors.PRIMARY),
+                    ft.Icon({"wizyty": ft.Icons.HOME_REPAIR_SERVICE, "dolewki": ft.Icons.WATER_DROP}.get(
+                        pozycja["zrodlo"], ft.Icons.BUILD), size=18, color=ft.Colors.PRIMARY),
                     ft.Column([
                         ft.Text(pozycja["tytul"], size=utils.FS["body"], weight="w500",
                                 max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),

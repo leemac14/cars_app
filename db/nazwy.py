@@ -64,6 +64,7 @@ def znajdz_duplikaty_nazw(auto_id) -> list[dict[str, Any]]:
             "SELECT magazyn_id, COUNT(*) FROM ("
             " SELECT magazyn_id FROM wizyta_czesci_magazynu"
             " UNION ALL SELECT magazyn_id FROM historia_czesci_magazynu"
+            " UNION ALL SELECT magazyn_id FROM dolewki WHERE magazyn_id IS NOT NULL"
             ") GROUP BY magazyn_id"
         ),
         "zadania": "SELECT zadanie_id, COUNT(*) FROM historia GROUP BY zadanie_id",
@@ -107,7 +108,8 @@ def znajdz_duplikaty_nazw(auto_id) -> list[dict[str, Any]]:
 
 # Dokąd przepisać powiązania przy scalaniu: tabela nazw -> [(tabela, kolumna)].
 PRZEPIECIA_PRZY_SCALANIU = {
-    "magazyn_czesci": [("wizyta_czesci_magazynu", "magazyn_id"), ("historia_czesci_magazynu", "magazyn_id")],
+    "magazyn_czesci": [("wizyta_czesci_magazynu", "magazyn_id"), ("historia_czesci_magazynu", "magazyn_id"),
+                       ("dolewki", "magazyn_id")],
     "zadania": [("historia", "zadanie_id"), ("do_zrobienia", "zadanie_id")],
     "warsztaty": [],
     "tagi": [],

@@ -11,6 +11,7 @@ IKONY_TIMELINE = {
     "Inny koszt": (ft.Icons.RECEIPT_LONG, ft.Colors.GREEN_700),
     "Zdjęcie karoserii": (ft.Icons.PHOTO_CAMERA, ft.Colors.PURPLE_700),
     "Odczyt przebiegu": (ft.Icons.SPEED, ft.Colors.TEAL_700),
+    "Dolewka": (ft.Icons.WATER_DROP, ft.Colors.BROWN_400),
 }
 
 class TimelineView(ft.View):

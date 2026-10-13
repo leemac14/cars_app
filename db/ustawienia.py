@@ -349,6 +349,7 @@ KOKPIT_WIDGETY = {
     "do_zrobienia": "Do zrobienia",
     "magazyn": "Magazyn — niski stan",
     "ewidencja": "Ewidencja przebiegu: służbowe km",
+    "zuzycie_oleju": "Zużycie oleju",
     # Kafelki AKCJI: zamiast liczby mają czynność. Te same wpisy, co pod FAB-em
     # w rogu ekranu, plus stan licznika, którego FAB nie ma. Kokpit odpowiadał
     # dotąd wyłącznie na pytanie „co się dzieje”, nigdy „zrób”.
@@ -359,6 +360,7 @@ KOKPIT_WIDGETY = {
     "akcja_wizyta": "Akcja: wizyta w warsztacie",
     "akcja_podzespol": "Akcja: dodaj podzespół",
     "akcja_do_zrobienia": "Akcja: dodaj zadanie",
+    "akcja_dolewka": "Akcja: dodaj dolewkę",
 }
 
 # Kafelki akcji wchodzą tylko do układu DOMYŚLNEGO — pojazd z własnym układem

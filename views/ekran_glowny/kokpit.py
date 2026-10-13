@@ -1099,6 +1099,44 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        def widget_zuzycie_oleju():
+            """Dolewki oleju (N-12): zużycie l/1000 km z ostatniego zmierzonego okresu w kolorze stanu, w stopce
+            bieżący okres albo „rośnie”. Elektryk bez dolewek oleju — „nie dotyczy”."""
+            stan = metryka("zuzycie_oleju")
+            ikona = utils.IKONY_KOKPITU["zuzycie_oleju"]
+
+            def idz_do_dolewek(e):
+                utils.przejdz(self._page, f"/dolewki/{db.PLYN_OLEJ}")
+
+            if stan is None:
+                return kafel_pusty(ikona, ft.Colors.BLUE_GREY_700, "Zużycie oleju", "Nie dotyczy", idz_do_dolewek)
+            if stan.get("brak"):
+                return kafel_wartosci(ikona, ft.Colors.BLUE_GREY_700, "Zużycie oleju", "Brak dolewek", idz_do_dolewek)
+            kolor = utils.kolor_zuzycia(stan)
+            okres = stan["biezacy"]
+            if stan["rosnie"]:
+                stopka = f"rośnie, wcześniej {db.tekst_zuzycia(stan['poprzednio'], j)}"
+            elif okres:
+                stopka = f"od wymiany {db.opis_okresu(okres, j)}"
+            else:
+                stopka = db.liczba_z_odmiana(stan["liczba"], "dolewka", "dolewki", "dolewek")
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor)),
+                ink=True, on_click=idz_do_dolewek,
+                tooltip="Zużycie oleju między wymianami — z dolewek i przebiegu",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=kolor),
+                        utils.etykieta("Zużycie oleju", expand=True),
+                    ], spacing=6),
+                    liczba_kafelka(stan["na_1000"], lambda v: db.tekst_zuzycia(v, j),
+                                   zastepnik=f"Za mało {db.slowo_dystansu('dopelniacz_pelny', j)}"),
+                    ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=6),
+            )
+
         # ================= KAFELKI AKCJI =================
         # Kokpit odpowiadał dotąd wyłącznie na pytanie „co się dzieje”. Dwie
         # najczęstsze czynności w aplikacji — tankowanie i stan licznika —
@@ -1172,6 +1210,11 @@ class MiksinKokpitu:
                                lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"),
                                "Nowa pozycja na liście Do zrobienia")
 
+        def widget_akcja_dolewka():
+            return kafel_akcji(ft.Icons.WATER_DROP, "Dolewka",
+                               lambda e: utils.przejdz(self._page, "/dolewki/nowa"),
+                               "Dolany olej albo płyn — ilość i przebieg")
+
         self._kokpit_budowniczy = {
             "koszt_miesiac": widget_koszt_miesiac,
             "termin": widget_termin,
@@ -1196,6 +1239,7 @@ class MiksinKokpitu:
             "awarie": widget_awarie,
             "do_splaty": widget_do_splaty,
             "ewidencja": widget_ewidencja,
+            "zuzycie_oleju": widget_zuzycie_oleju,
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
             "akcja_tankowanie": widget_akcja_tankowanie,
@@ -1205,6 +1249,7 @@ class MiksinKokpitu:
             "akcja_wizyta": widget_akcja_wizyta,
             "akcja_podzespol": widget_akcja_podzespol,
             "akcja_do_zrobienia": widget_akcja_do_zrobienia,
+            "akcja_dolewka": widget_akcja_dolewka,
         }
 
         # Ustawienia → „Ułóż kafelki kokpitu” tylko przełączają ekran; tryb

@@ -113,6 +113,12 @@ EKRANY = [
      "ikona": ft.Icons.INVENTORY_2, "grupa": "serwis", "trasa": "/magazyn",
      "stan": {"magazyn_zakladka": 1},
      "slowa": ["części", "płyny", "olej", "zapas", "półka", "stan magazynowy"]},
+    # Dolewki (N-12) stoją przy magazynie: z półki idą prosto do silnika. „olej” w opisie i słowach
+    # celowo — kto go szuka, chce też tego ekranu (listy w tests/test_wyszukiwarka_ekranow.py).
+    {"id": "dolewki", "tytul": "Dolewki płynów", "opis": "Olej i płyny dolewane między wymianami, zużycie i ubytki",
+     "ikona": ft.Icons.WATER_DROP, "grupa": "serwis", "trasa": "/dolewki",
+     "slowa": ["dolewka", "dolewki", "dolać", "olej", "zużycie oleju", "płyn chłodniczy", "płyn hamulcowy",
+               "adblue", "spryskiwacze", "ubytek", "silnik bierze"]},
     {"id": "opony", "tytul": "Opony", "opis": "Zestawy, bieżnik i sezonowa zmiana",
      "ikona": ft.Icons.TIRE_REPAIR, "grupa": "serwis", "trasa": "/magazyn",
      "stan": {"magazyn_zakladka": 0},

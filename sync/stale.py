@@ -94,6 +94,12 @@ KONFIGURACJA_SYNC = [
     {"tabela": "historia_czesci_magazynu", "kolumny": ["ilosc_uzyta", "koszt"], "fk": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
+    # Dolewki płynów (wersja 53): zużycie oleju ma być jedną liczbą dla obu osób. Po
+    # magazynie i innych kosztach — rodzice muszą mieć `zdalne_id` przed dolewką.
+    {"tabela": "dolewki", "kolumny": ["data", "przebieg", "plyn", "ilosc", "produkt", "ilosc_magazynu", "notatka",
+                                      "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez",
+                                      "data_modyfikacji"],
+     "fk": {"magazyn_id": "magazyn_czesci", "koszt_id": "inne_koszty"}},
     {"tabela": "warsztaty", "kolumny": ["nazwa", "telefon", "adres", "notatki"], "fk": {}},
     # Umowa raty (wersja 49) jedzie razem z wpisem: rata zapłacona na jednym
     # telefonie przesuwa harmonogram także na drugim, a „ile zostało do spłaty”
@@ -194,6 +200,7 @@ ETYKIETY_TABEL_SYNC = {
     "budzety": "Limit budżetu",
     "trasy_szablony": "Zapisana trasa",
     "przejazdy": "Przejazd",
+    "dolewki": "Dolewka płynu",
     "checklisty": "Checklista",
     "checklisty_pozycje": "Pozycja checklisty",
     "rozliczenia": "Rozliczenie",

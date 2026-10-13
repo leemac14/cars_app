@@ -17,6 +17,7 @@ IKONY_WYSZUKIWANIA = {
     "Checklista": (ft.Icons.FACT_CHECK, ft.Colors.LIGHT_GREEN_700),
     "Odczyt licznika": (ft.Icons.SPEED, ft.Colors.BLUE_GREY_700),
     "Przejazd": (ft.Icons.ALT_ROUTE, ft.Colors.TEAL_600),
+    "Dolewka": (ft.Icons.WATER_DROP, ft.Colors.BROWN_400),
 }
 
 

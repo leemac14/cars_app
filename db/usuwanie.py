@@ -13,6 +13,7 @@ from .zalaczniki import (
     skasuj_odlozone_zalaczniki, usun_plik_zalacznika,
 )
 from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow
+from .dolewki import powiazania_kosztow_dolewek, przywroc_powiazania_kosztow
 
 
 def aktualizuj_wiele_zdjec_karoserii(ids_list, strefa=None, typ_porownania=None, opis=None):
@@ -131,6 +132,8 @@ def usun_z_cofnieciem(tabela, rekord_id):
     # Wpis serwisowy może mieć podpięte części z magazynu — oddajemy je na stan,
     # zanim CASCADE skasuje powiązania (patrz _zdejmij_powiazania_czesci_wpisow).
     czesci_wpisu = _zdejmij_powiazania_czesci_wpisow([rekord_id]) if tabela == "historia" else []
+    # Koszt dolewki wraca pod nowym id — dolewka (ON DELETE SET NULL) dowiązuje się przy cofnięciu.
+    dolewki_kosztu = powiazania_kosztow_dolewek([rekord_id]) if tabela == "inne_koszty" else {}
     pliki_wpisu = odloz_zalaczniki_rekordow(tabela, [rekord_id])
 
     with polacz_baze() as conn:
@@ -175,6 +178,7 @@ def usun_z_cofnieciem(tabela, rekord_id):
             kursor.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders})", wartosci)
             nowe_id = kursor.lastrowid
         _przywroc_powiazania_czesci_wpisow(czesci_wpisu, {rekord_id: nowe_id})
+        przywroc_powiazania_kosztow(dolewki_kosztu, {rekord_id: nowe_id})
         przywroc_odlozone_zalaczniki(pliki_wpisu, {rekord_id: nowe_id})
 
     def finalizuj_usuniecie():
@@ -258,6 +262,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
     # Jak przy usuwaniu pojedynczego wpisu — części wracają na stan magazynu,
     # zamiast zniknąć cicho razem z powiązaniem skasowanym przez CASCADE.
     czesci_wpisow = _zdejmij_powiazania_czesci_wpisow(ids_list) if tabela == "historia" else []
+    dolewki_kosztow = powiazania_kosztow_dolewek(ids_list) if tabela == "inne_koszty" else {}
     pliki_wpisow = odloz_zalaczniki_rekordow(tabela, ids_list)
 
     with polacz_baze() as conn:
@@ -303,6 +308,7 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
                 if dane.get("id") is not None:
                     mapa_id[dane["id"]] = kursor.lastrowid
         _przywroc_powiazania_czesci_wpisow(czesci_wpisow, mapa_id)
+        przywroc_powiazania_kosztow(dolewki_kosztow, mapa_id)
         przywroc_odlozone_zalaczniki(pliki_wpisow, mapa_id)
 
     def finalizuj_usuniecie():

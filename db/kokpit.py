@@ -23,6 +23,7 @@ from .magazyn import pobierz_stan_magazynu, pobierz_stan_opon
 from .checklisty import podsumowanie_checklist
 from .przebieg import oblicz_sredni_dzienny_przebieg
 from .koszty import pobierz_koszt_miesiaca_do_dnia, pobierz_koszty_miesieczne, suma_kategorii_innych
+from .dolewki import kafel_zuzycia_oleju
 from .awarie import sygnal_awarii
 from .raty import podsumowanie_rat
 from .ewidencja import kafel_ewidencji
@@ -121,6 +122,8 @@ METRYKI_KOKPITU = {
     "raty": lambda auto_id: podsumowanie_rat(auto_id),
     # Ewidencja przebiegu: bieżący miesiąc (db/ewidencja.py); None = auto bez przejazdów.
     "ewidencja": lambda auto_id: kafel_ewidencji(auto_id),
+    # Dolewki oleju: zużycie l/1000 km z ostatniego zmierzonego okresu (db/dolewki.py).
+    "zuzycie_oleju": lambda auto_id: kafel_zuzycia_oleju(auto_id),
     "do_zrobienia": lambda auto_id: podsumowanie_do_zrobienia(auto_id),
     "magazyn": lambda auto_id: pobierz_stan_magazynu(auto_id),
     # Rola przy pojeździe: kafelki akcji znikają przy „podglądzie”.
@@ -156,6 +159,7 @@ METRYKI_KAFELKOW = {
     "do_zrobienia": ("do_zrobienia",),
     "magazyn": ("magazyn",),
     "ewidencja": ("ewidencja",),
+    "zuzycie_oleju": ("zuzycie_oleju",),
     "akcja_tankowanie": ("tylko_podglad",),
     "akcja_paragon": ("tylko_podglad",),
     "akcja_licznik": ("tylko_podglad",),
@@ -163,6 +167,7 @@ METRYKI_KAFELKOW = {
     "akcja_wizyta": ("tylko_podglad",),
     "akcja_podzespol": ("tylko_podglad",),
     "akcja_do_zrobienia": ("tylko_podglad",),
+    "akcja_dolewka": ("tylko_podglad",),
 }
 
 

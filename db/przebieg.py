@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from .stale import (
-    ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, ZRODLA_ODCZYTU, ZRODLA_PRZEBIEGU,
+    ENERGIA_PALIWO, ENERGIA_PRAD, RODZAJE_PLYNOW, STATUS_POJAZDU_AKTYWNY, ZRODLA_ODCZYTU, ZRODLA_PRZEBIEGU,
     ZRODLO_ODCZYTU_DOMYSLNE,
 )
 from .polaczenie import polacz_baze
@@ -39,6 +39,9 @@ def pobierz_aktualny_przebieg(auto_id):
         c.execute("SELECT licznik, data, 1 FROM przejazdy WHERE auto_id = ? AND licznik IS NOT NULL", (auto_id,))
         wpisy.extend(c.fetchall())
 
+        c.execute("SELECT przebieg, data, 1 FROM dolewki WHERE auto_id = ?", (auto_id,))
+        wpisy.extend(c.fetchall())
+
     parsed = []
     for prz, d_str, priorytet in wpisy:
         try:
@@ -59,7 +62,7 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
     """Ostrzeżenie (str), gdy nowy_przebieg nie pasuje do sąsiadów W CZASIE: niższy niż
     najwyższy z tej samej lub wcześniejszej daty, wyższy niż wpis późniejszy albo z
     nierealnym dziennym przebiegiem od poprzedniego. Źródła: tankowania, wizyty,
-    odczyty, przejazdy z licznikiem, wpisy historii spoza wizyty. Wpisy bez przebiegu (0
+    odczyty, przejazdy z licznikiem, dolewki, wpisy historii spoza wizyty. Wpisy bez przebiegu (0
     lub puste) pomijane."""
     if not auto_id or not nowy_przebieg or nowy_przebieg <= 0:
         return None
@@ -94,6 +97,11 @@ def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tab
         wyklucz_sql = " AND id != ?" if (tabela == "przejazdy" and wyklucz_id) else ""
         params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
         c.execute(f"SELECT licznik, data FROM przejazdy WHERE auto_id=? AND licznik IS NOT NULL{wyklucz_sql}", params)
+        wpisy += c.fetchall()
+
+        wyklucz_sql = " AND id != ?" if (tabela == "dolewki" and wyklucz_id) else ""
+        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
+        c.execute(f"SELECT przebieg, data FROM dolewki WHERE auto_id=?{wyklucz_sql}", params)
         wpisy += c.fetchall()
 
     nowa_data = parsuj_date(nowa_data_str) if nowa_data_str else datetime.now().date()
@@ -234,7 +242,7 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7, punkty=None):
 
 def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
     """Chronologiczna historia licznika ze wszystkich źródeł (tankowania, wizyty,
-    historia bez wizyty, odczyty, przejazdy z licznikiem) do wykresu w paszporcie; na
+    historia bez wizyty, odczyty, przejazdy z licznikiem, dolewki) do wykresu w paszporcie; na
     dzień najwyższy przebieg. Zwraca [(data_str, przebieg_int)]."""
     if not auto_id:
         return []
@@ -254,6 +262,8 @@ def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
         c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
         wpisy += c.fetchall()
         c.execute("SELECT data, licznik FROM przejazdy WHERE auto_id=? AND licznik IS NOT NULL", (auto_id,))
+        wpisy += c.fetchall()
+        c.execute("SELECT data, przebieg FROM dolewki WHERE auto_id=?", (auto_id,))
         wpisy += c.fetchall()
 
     wg_daty = {}
@@ -399,6 +409,18 @@ def pobierz_pelna_historie_przebiegu(auto_id) -> list[dict[str, Any]]:
                 "notatka": r["notatka"], "notatka_autor": r["notatka_autor"],
                 "notatka_data": r["notatka_data"],
                 "trasa": f"/ewidencja/edytuj/{r['id']}", "edytowalny": False,
+            })
+
+        c.execute("SELECT id, data, przebieg, plyn, notatka, notatka_autor, notatka_data FROM dolewki WHERE auto_id=?",
+                  (auto_id,))
+        for r in c.fetchall():
+            wpisy.append({
+                "zrodlo": "dolewka", "podzrodlo": None,
+                "id": r["id"], "data": r["data"], "przebieg": int(r["przebieg"] or 0),
+                "opis": RODZAJE_PLYNOW.get(r["plyn"], {}).get("nazwa", "Dolewka"),
+                "notatka": r["notatka"], "notatka_autor": r["notatka_autor"],
+                "notatka_data": r["notatka_data"],
+                "trasa": f"/dolewki/edytuj/{r['id']}", "edytowalny": False,
             })
 
     # Wpisy bez sensownego przebiegu (0 albo brak) nie mówią nic o liczniku —

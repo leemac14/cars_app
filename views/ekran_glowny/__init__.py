@@ -374,6 +374,7 @@ class MainView(
             (ft.Icons.LOCAL_GAS_STATION, "Tankowanie", lambda e: utils.przejdz(self._page, "/tankowanie/nowe")),
             (ft.Icons.PHOTO_CAMERA, "Paragon na później", lambda e: utils.otworz_migawke(self._page, self.state)),
             (ft.Icons.RECEIPT_LONG, "Inny koszt", lambda e: utils.przejdz(self._page, "/inne/nowy")),
+            (ft.Icons.WATER_DROP, "Dolewka", lambda e: utils.przejdz(self._page, "/dolewki/nowa")),
             (ft.Icons.HANDYMAN, "Podzespół", lambda e: utils.przejdz(self._page, "/zadanie/nowy")),
             (ft.Icons.HOME_REPAIR_SERVICE, "Wizyta w warsztacie", lambda e: utils.przejdz(self._page, "/wizyty/nowa")),
             (ft.Icons.CHECKLIST_RTL, "Do zrobienia", lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")),

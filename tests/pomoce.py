@@ -236,6 +236,14 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                    "Parking 12 zł", "Kamil", "05.02.2026 18:00", "Kamil", "przejazd-1"))
         zid["przejazd"] = c.lastrowid
 
+        # Dolewka oleju z pozycją magazynu (kosz i plik pojazdu przemapowują odwołanie) — bez kosztu, bo
+        # Inny koszt jest tu jeden (test_kosz liczy); licznik to kolejne źródło historii licznika.
+        c.execute("INSERT INTO dolewki (auto_id, data, przebieg, plyn, ilosc, produkt, magazyn_id, notatka, "
+                  "notatka_autor, notatka_data, dodane_przez, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (auto, "06.02.2026", 100800, db.PLYN_OLEJ, 0.5, "Castrol 5W-30", zid["magazyn"],
+                   "Przed trasą", "Kamil", "06.02.2026 08:00", "Kamil", "dolewka-1"))
+        zid["dolewka"] = c.lastrowid
+
         c.execute("INSERT INTO checklisty (auto_id, nazwa, opis, zdalne_id) VALUES (?,?,?,?)",
                   (auto, "Przed dłuższą trasą", "Obchód auta", "check-1"))
         zid["checklista"] = c.lastrowid
@@ -319,6 +327,51 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
     db.zapisz_ustawienie(db.ustawienia._klucz_kokpitu(auto), "przebieg,paliwo,terminy")
 
     return {"auto_id": auto, **zid}
+
+
+# ============================================================================
+#  CHMURA W PAMIĘCI
+# ============================================================================
+
+class _Odpowiedz:
+    def __init__(self, data=None):
+        self.data = data
+
+
+class ChmuraWPamieci:
+    """Supabase na tyle, na ile potrzebuje go `sync.wysylanie._wypchnij_tabele`: rekordy {zdalne_id: dane}."""
+
+    def __init__(self, rekordy=None):
+        self.rekordy = dict(rekordy or {})
+
+    def rpc(self, nazwa, parametry):
+        chmura = self
+
+        class _Wywolanie:
+            def execute(self):
+                if nazwa == "aktualizuj_zdalny_rekord":
+                    chmura.rekordy[parametry["p_id"]] = parametry["p_dane"]
+                    return _Odpowiedz()
+                nowe = f"{parametry.get('p_tabela', 'rekord')}-{len(chmura.rekordy) + 1}"
+                chmura.rekordy[nowe] = parametry["p_dane"]
+                return _Odpowiedz(nowe)
+        return _Wywolanie()
+
+    def table(self, nazwa):
+        chmura = self
+
+        class _Zapytanie:
+            def select(self, *_):
+                return self
+
+            def in_(self, _pole, identyfikatory):
+                self.identyfikatory = list(identyfikatory)
+                return self
+
+            def execute(self):
+                return _Odpowiedz([{"id": i, "dane": chmura.rekordy[i]} for i in self.identyfikatory
+                                   if i in chmura.rekordy])
+        return _Zapytanie()
 
 
 # ============================================================================
@@ -421,6 +474,7 @@ ARGUMENTY_IDENTYFIKATOROW = {
     "wydatek_id": "cykliczny",
     "przejazd_id": "przejazd",
     "dokument_id": "dokument",
+    "dolewka_id": "dolewka",
 }
 
 _KLASY_WIDOKOW = None

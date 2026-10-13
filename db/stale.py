@@ -266,6 +266,9 @@ KATEGORIA_INNE_DOMYSLNA = "Ogólne"
 
 KATEGORIA_INNE_DROGOWE = "Mandaty i opłaty drogowe"
 
+# Koszt dolewki płynu (db/dolewki.py) — powiązany wpis, który zakłada formularz dolewki.
+KATEGORIA_INNE_DOLEWKI = "Płyny i dolewki"
+
 KATEGORIE_INNYCH_KOSZTOW = [
     KATEGORIA_INNE_DOMYSLNA,
     KATEGORIA_INNE_DROGOWE,
@@ -274,9 +277,37 @@ KATEGORIE_INNYCH_KOSZTOW = [
     "Parking i garaż",
     "Wyposażenie i akcesoria",
     "Opłaty urzędowe",
+    KATEGORIA_INNE_DOLEWKI,
     "Cykliczne",
 ]
 
+
+# Płyny dolewane między wymianami (db/dolewki.py).
+PLYN_OLEJ = "olej"
+OCENA_OLEJU = "olej"     # norma / podwyższone / wysokie i „rośnie”
+OCENA_UKLADU = "uklad"   # układ zamknięty: powtarzające się dolewki to ubytek
+
+# `wymiana` — cząstki nazwy podzespołu (bez ogonków), `bez` — cząstki, które go wykluczają,
+# `pierwszenstwo` — gdy pasuje kilka podzespołów, liczą się te z tą cząstką.
+RODZAJE_PLYNOW = {
+    "olej": {"nazwa": "Olej silnikowy", "w_zdaniu": "olej silnikowy", "dopelniacz": "oleju",
+             "magazyn": "Oleje i smary", "ocena": OCENA_OLEJU, "bez_elektryka": True,
+             "wymiana": ("olej", "oil"), "pierwszenstwo": ("silnik", "engine", "motor"),
+             "bez": ("skrzyn", "przekla", "dyfer", "most", "reduktor", "wspomag", "hydraul", "amortyz", "atf",
+                     "dsg", "haldex", "rozdziel")},
+    "chlodniczy": {"nazwa": "Płyn chłodniczy", "w_zdaniu": "płyn chłodniczy", "dopelniacz": "płynu chłodniczego",
+                   "magazyn": "Płyny eksploatacyjne", "ocena": OCENA_UKLADU,
+                   "wymiana": ("chlodnicz", "chlodzac", "coolant", "glikol", "antifreeze"),
+                   "bez": ("klimat", "czynnik"), "porada": "Sprawdź szczelność układu chłodzenia."},
+    "hamulcowy": {"nazwa": "Płyn hamulcowy", "w_zdaniu": "płyn hamulcowy", "dopelniacz": "płynu hamulcowego",
+                  "magazyn": "Płyny eksploatacyjne", "ocena": OCENA_UKLADU,
+                  "wymiana": ("plyn hamulc", "plynu hamulc", "brake fluid", "dot4", "dot 4"),
+                  "porada": "Sprawdź klocki i szczelność układu hamulcowego."},
+    "adblue": {"nazwa": "AdBlue", "w_zdaniu": "AdBlue", "dopelniacz": "AdBlue", "magazyn": "Płyny eksploatacyjne",
+               "tylko_diesel": True},
+    "spryskiwacze": {"nazwa": "Płyn do spryskiwaczy", "w_zdaniu": "płyn do spryskiwaczy",
+                     "dopelniacz": "płynu do spryskiwaczy", "magazyn": "Płyny eksploatacyjne"},
+}
 
 KATEGORIE_MAGAZYNU = ["Płyny eksploatacyjne", "Oleje i smary", "Żarówki i bezpieczniki", "Filtry", "Akcesoria", "Inne"]
 
@@ -301,11 +332,11 @@ TABELE_DAWNEGO_ZALACZNIKA = ("tankowania", "wizyty", "historia", "inne_koszty", 
 TABELE_Z_DATA_ISO = (
     "tankowania", "inne_koszty", "wizyty", "historia",
     "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
-    "szkice_wpisow", "ceny_czesci", "przejazdy",
+    "szkice_wpisow", "ceny_czesci", "przejazdy", "dolewki",
 )
 
 
-# Pięć źródeł stanu licznika; cztery „przy okazji”, ale dla historii tak samo
+# Sześć źródeł stanu licznika; pięć „przy okazji”, ale dla historii tak samo
 # wiarygodne. Przejazd z ewidencji tylko z wpisanym licznikiem (przejazdy.licznik — stan
 # PO przejeździe).
 ZRODLA_PRZEBIEGU = {
@@ -314,6 +345,7 @@ ZRODLA_PRZEBIEGU = {
     "wizyta": "Wizyta w warsztacie",
     "serwis": "Wpis serwisowy",
     "przejazd": "Przejazd z ewidencji",
+    "dolewka": "Dolewka płynu",
 }
 
 
@@ -345,13 +377,14 @@ POLA_NOTATKI = {
     "zestawy_opon": "notatki",
     "warsztaty": "notatki",
     "przejazdy": "notatka",
+    "dolewki": "notatka",
 }
 
 
 # Tabele, w których notatka ma WŁASNY podpis (notatka_autor + notatka_data).
 # Przy współdzielonym pojeździe uwagę dopisuje zwykle ktoś inny niż autor wpisu
 # i długo po jego dodaniu, więc dodane_przez/zmodyfikowane_przez tego nie oddaje.
-TABELE_NOTATKI_Z_PODPISEM = {"tankowania", "historia", "inne_koszty", "odczyty_przebiegu", "przejazdy"}
+TABELE_NOTATKI_Z_PODPISEM = {"tankowania", "historia", "inne_koszty", "odczyty_przebiegu", "przejazdy", "dolewki"}
 
 
 # Notatka ma być KRÓTKA — jedno zdanie kontekstu, nie dziennik. Limit trzyma
@@ -408,6 +441,10 @@ TRYB_EWIDENCJI_DOMYSLNY = "podzial"
 
 
 __all__ = [
+    "RODZAJE_PLYNOW",
+    "PLYN_OLEJ",
+    "OCENA_UKLADU",
+    "OCENA_OLEJU",
     "TRYBY_EWIDENCJI",
     "TRYB_EWIDENCJI_DOMYSLNY",
     "BAZA_DANYCH",
@@ -427,6 +464,7 @@ __all__ = [
     "JEDNOSTKI_MAGAZYNU",
     "JEDNOSTKI_SPALANIA",
     "JEDNOSTKI_ZUZYCIA_EV",
+    "KATEGORIA_INNE_DOLEWKI",
     "KATEGORIA_INNE_DOMYSLNA",
     "KATEGORIA_INNE_DROGOWE",
     "KATEGORIE_INNYCH_KOSZTOW",

@@ -191,6 +191,8 @@ IKONY_KOKPITU = {
     "akcja_wizyta": ft.Icons.HOME_REPAIR_SERVICE,
     "akcja_podzespol": ft.Icons.HANDYMAN,
     "akcja_do_zrobienia": ft.Icons.CHECKLIST_RTL,
+    "zuzycie_oleju": ft.Icons.OIL_BARREL,
+    "akcja_dolewka": ft.Icons.WATER_DROP,
 }
 
 
@@ -224,6 +226,7 @@ IKONY_ZRODEL_PRZEBIEGU = {
     "wizyta": ft.Icons.HOME_REPAIR_SERVICE,
     "serwis": ft.Icons.BUILD,
     "przejazd": ft.Icons.ALT_ROUTE,
+    "dolewka": ft.Icons.WATER_DROP,
 }
 
 
@@ -233,6 +236,26 @@ KOLORY_ZRODEL_PRZEBIEGU = {
     "wizyta": ft.Colors.RED_700,
     "serwis": ft.Colors.ORANGE_700,
     "przejazd": ft.Colors.TEAL_600,
+    "dolewka": ft.Colors.BROWN_400,
+}
+
+
+# Płyn dolewki (db.RODZAJE_PLYNOW) — ikona i kolor TOŻSAMOŚCI na kartach, chipach i wykresie;
+# stan zużycia mówi KOLOR_STATUS.
+IKONY_PLYNOW = {
+    "olej": ft.Icons.OIL_BARREL,
+    "chlodniczy": ft.Icons.THERMOSTAT,
+    "hamulcowy": ft.Icons.DISC_FULL,
+    "adblue": ft.Icons.SCIENCE,
+    "spryskiwacze": ft.Icons.LOCAL_CAR_WASH,
+}
+
+KOLORY_PLYNOW = {
+    "olej": ft.Colors.BROWN_400,
+    "chlodniczy": ft.Colors.LIGHT_BLUE_600,
+    "hamulcowy": ft.Colors.INDIGO_300,
+    "adblue": ft.Colors.BLUE_400,
+    "spryskiwacze": ft.Colors.CYAN_600,
 }
 
 
@@ -320,6 +343,7 @@ IKONY_EKSPORTU = {
     "warsztaty": ft.Icons.BUSINESS,
     "odczyty_przebiegu": ft.Icons.STRAIGHTEN,
     "przejazdy": ft.Icons.ALT_ROUTE,
+    "dolewki": ft.Icons.WATER_DROP,
     "tagi": ft.Icons.LABEL,
 }
 
@@ -344,6 +368,7 @@ IKONY_KATEGORII_INNYCH = {
     "Parking i garaż": ft.Icons.LOCAL_PARKING,
     "Wyposażenie i akcesoria": ft.Icons.SHOPPING_BAG,
     "Opłaty urzędowe": ft.Icons.ACCOUNT_BALANCE,
+    "Płyny i dolewki": ft.Icons.WATER_DROP,
     "Cykliczne": ft.Icons.AUTORENEW,
 }
 
@@ -356,6 +381,7 @@ KOLORY_KATEGORII_INNYCH = {
     "Parking i garaż": ft.Colors.BLUE_GREY_500,
     "Wyposażenie i akcesoria": ft.Colors.TEAL_600,
     "Opłaty urzędowe": ft.Colors.BROWN_500,
+    "Płyny i dolewki": ft.Colors.BROWN_400,
     "Cykliczne": ft.Colors.PURPLE_300,
 }
 
@@ -402,11 +428,13 @@ __all__ = [
     "IKONY_KOKPITU",
     "IKONY_NADWOZIA",
     "IKONY_OBSERWACJI",
+    "IKONY_PLYNOW",
     "IKONY_PODZRODEL_ODCZYTU",
     "IKONY_SEZONU_OPON",
     "IKONY_UMOW_RAT",
     "IKONY_ZRODEL_PRZEBIEGU",
     "KOLORY_KATEGORII_INNYCH",
+    "KOLORY_PLYNOW",
     "KOLORY_SEZONU_OPON",
     "KOLORY_TONU",
     "KOLORY_ZRODEL_PRZEBIEGU",

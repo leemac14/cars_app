@@ -6,6 +6,7 @@ from datetime import date as Data, datetime, timedelta
 
 from date import parsuj_date
 
+from .stale import KATEGORIA_INNE_DOLEWKI, RODZAJE_PLYNOW
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .jednostki import jednostka_dystansu, tekst_dystansu
@@ -14,6 +15,7 @@ from .ustawienia import (czy_zapamietywac_wyszukiwania, pobierz_ustawienie,
 from .raty import czy_rata, etykieta_umowy
 from .ewidencja import opis_trasy, tekst_km_przejazdu
 from .awarie import ETYKIETY_RODZAJU_SERWISU, SERWIS_PLANOWE, rodzaj_serwisu
+from .dolewki import tekst_litrow
 
 
 # Zapytanie kwotowe rozpoznajemy WPROST w polu wyszukiwarki — bez dodatkowych
@@ -661,8 +663,9 @@ def _wszystkie_wpisy(auto_id):
                                warsztat=r["wykonawca"], tag=r["tagi"], notatka=r["notatki"],
                                nazwa=r["czesci"], naprawa=rodzaj))
 
+        # Koszt dolewki szuka się razem z dolewką (niżej) — drugi wynik o tym samym byłby szumem.
         c.execute("SELECT id, data, nazwa, kwota, kategoria, tagi, notatka FROM inne_koszty "
-                  "WHERE auto_id=?", (auto_id,))
+                  "WHERE auto_id=? AND id NOT IN (SELECT koszt_id FROM dolewki WHERE koszt_id IS NOT NULL)", (auto_id,))
         for r in c.fetchall():
             opis = str(r["kategoria"] or "Inny koszt")
             if r["notatka"]:
@@ -703,6 +706,18 @@ def _wszystkie_wpisy(auto_id):
             wpisy.append(_wpis("Przejazd", trasa or r["cel"] or "Przejazd", " • ".join(czesci), r["data"],
                                f"/ewidencja/edytuj/{r['id']}", nazwa=trasa, opis=r["cel"],
                                kategoria=rodzaj, notatka=r["notatka"], tekst_dodatkowy=r["kierowca"]))
+
+        # Dolewka: „olej” i „dolewka” trafiają przez nazwę, produkt przez opis, płyn jako kategoria.
+        c.execute("SELECT d.id, d.data, d.przebieg, d.plyn, d.ilosc, d.produkt, d.notatka, k.kwota FROM dolewki d "
+                  "LEFT JOIN inne_koszty k ON k.id = d.koszt_id WHERE d.auto_id=?", (auto_id,))
+        for r in c.fetchall():
+            plyn = RODZAJE_PLYNOW.get(r["plyn"], {})
+            czesci = [tekst_litrow(r["ilosc"]), tekst_dystansu(r["przebieg"] or 0, 0, j)]
+            czesci += [x for x in (r["produkt"], skrot_notatki(r["notatka"])) if x]
+            wpisy.append(_wpis("Dolewka", f"Dolewka: {plyn.get('w_zdaniu', 'płyn')}", " • ".join(czesci), r["data"],
+                               f"/dolewki/edytuj/{r['id']}", kwota=r["kwota"], kategoria=plyn.get("nazwa"),
+                               opis=r["produkt"], notatka=r["notatka"],
+                               tekst_dodatkowy=KATEGORIA_INNE_DOLEWKI if r["kwota"] is not None else ""))
 
         c.execute("SELECT id, nazwa, kategoria, ilosc, jednostka, cena, data_zakupu, notatki, sklep "
                   "FROM magazyn_czesci WHERE auto_id=?", (auto_id,))

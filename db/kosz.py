@@ -44,7 +44,7 @@ KOSZ_TABELE_POTOMNE = [
     "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
     "checklisty_pozycje",
     "budzety", "rozliczenia", "szkice_wpisow", "ceny_czesci", "przejazdy",
-    "dokumenty_pojazdu", "zalaczniki",
+    "dolewki", "dokumenty_pojazdu", "zalaczniki",
 ]
 
 
@@ -77,6 +77,7 @@ KOSZ_KLUCZE_OBCE = {
     "wizyta_czesci_magazynu": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"},
     "historia_czesci_magazynu": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"},
     "checklisty_pozycje": {"checklista_id": "checklisty"},
+    "dolewki": {"magazyn_id": "magazyn_czesci", "koszt_id": "inne_koszty"},
 }
 
 
@@ -89,7 +90,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
     "do_zrobienia", "historia", "tagi", "wizyta_czesci_magazynu",
     "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
     "trasy_szablony", "checklisty", "checklisty_pozycje", "budzety",
-    "rozliczenia", "ceny_czesci", "przejazdy", "dokumenty_pojazdu",
+    "rozliczenia", "ceny_czesci", "przejazdy", "dokumenty_pojazdu", "dolewki",
 ]
 
 
@@ -99,7 +100,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
 KOSZ_TABELE_LICZONE = [
     "tankowania", "historia", "wizyty", "inne_koszty", "zestawy_opon",
     "magazyn_czesci", "zdjecia_karoserii", "odczyty_przebiegu", "do_zrobienia",
-    "szkice_wpisow", "przejazdy", "dokumenty_pojazdu",
+    "szkice_wpisow", "przejazdy", "dokumenty_pojazdu", "dolewki",
 ]
 
 

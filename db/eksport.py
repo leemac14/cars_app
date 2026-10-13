@@ -10,7 +10,7 @@ try:
 except ImportError:
     FPDF = None
 
-from .stale import ENERGIA_PRAD
+from .stale import ENERGIA_PRAD, RODZAJE_PLYNOW
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .daty import warunek_zakresu_dat
@@ -40,6 +40,7 @@ KATEGORIE_EKSPORTU = {
     "warsztaty": "Baza warsztatów",
     "odczyty_przebiegu": "Odczyty licznika",
     "przejazdy": "Ewidencja przebiegu (przejazdy)",
+    "dolewki": "Dolewki płynów",
     "tagi": "Tagi",
 }
 
@@ -85,7 +86,7 @@ def _rodzaj_naprawy(rodzaj):
 def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     """Dane pojazdu do eksportu wg kategorii z KATEGORIE_EKSPORTU, opcjonalnie w
     zakresie [od_data, do_data] (date albo None). Zakres tnie tylko tankowania,
-    historię, wizyty, inne koszty, odczyty przebiegu i przejazdy; stany aktualne
+    historię, wizyty, inne koszty, odczyty przebiegu, przejazdy i dolewki; stany aktualne
     (magazyn, opony, Do zrobienia, zadania, cykliczne, warsztaty, tagi) idą zawsze w
     całości."""
     wynik = {}
@@ -291,6 +292,25 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             wynik["przejazdy"] = (
                 ["Data", "Skąd", "Dokąd", "Cel", f"Dystans ({j})", "Tam i z powrotem", "Rodzaj", "Kierowca",
                  f"Licznik po ({j})", "Notatka"], wiersze
+            )
+
+        # Dolewki: litry dolane i ile z nich zeszło z półki; koszt z powiązanego Innego kosztu.
+        if "dolewki" in kategorie:
+            warunek, parametry = warunek_zakresu_dat("d.data_iso", od_data, do_data)
+            c.execute(
+                "SELECT d.data, d.przebieg, d.plyn, d.ilosc, d.produkt, m.nazwa, d.ilosc_magazynu, m.jednostka, "
+                "k.kwota, d.notatka FROM dolewki d LEFT JOIN magazyn_czesci m ON m.id = d.magazyn_id "
+                "LEFT JOIN inne_koszty k ON k.id = d.koszt_id "
+                f"WHERE d.auto_id=?{warunek} ORDER BY d.data_iso, d.przebieg, d.id", (auto_id, *parametry)
+            )
+            wiersze = [
+                [data, licznik(prz), RODZAJE_PLYNOW.get(plyn, {}).get("nazwa", plyn or ""), formatuj_liczba_eksport(ilosc, 2),
+                 produkt or "", f"{nazwa_m} ({formatuj_liczba_eksport(z_magazynu, 2)} {jednostka_m or 'l'})" if nazwa_m else "",
+                 formatuj_liczba_eksport(kwota), notatka or ""]
+                for data, prz, plyn, ilosc, produkt, nazwa_m, z_magazynu, jednostka_m, kwota, notatka in c.fetchall()
+            ]
+            wynik["dolewki"] = (
+                ["Data", f"Przebieg ({j})", "Płyn", "Ilość (l)", "Produkt", "Z magazynu", "Koszt", "Notatka"], wiersze
             )
 
         if "tagi" in kategorie:

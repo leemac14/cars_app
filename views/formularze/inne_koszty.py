@@ -89,12 +89,28 @@ class FormularzInneView(ft.View):
         elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz koszt", self.zapisz, self.powrot)]
         if self.szkic:
             elementy.insert(0, utils.pasek_szkicu(page, self.szkic))
+        dolewka = db.dolewka_kosztu(i_id) if i_id else None
+        if dolewka:
+            elementy.insert(0, self._pasek_dolewki(dolewka))
 
         super().__init__(
             route=(f"/inne/edytuj/{i_id}" if i_id
                    else utils.trasa_uzupelnienia("koszt", self.szkic["id"]) if self.szkic
                    else "/inne/nowy"),
             padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
+        )
+
+    def _pasek_dolewki(self, d):
+        """Koszt założony przez dolewkę: ilość i przebieg poprawia się tam, a jej zapis przepisze ten wpis."""
+        tekst = (f"Koszt dolewki z {d['data']} ({db.RODZAJE_PLYNOW.get(d['plyn'], {}).get('w_zdaniu', 'płyn')} "
+                 f"{db.tekst_litrow(d['ilosc'])}). Ilość i przebieg zmienisz w dolewce — jej zapis poprawi też ten koszt.")
+        return ft.Container(
+            padding=utils.SPACING["md"], **utils.powierzchnia(self._page, "blok"),
+            content=ft.Row([
+                ft.Icon(ft.Icons.WATER_DROP, size=18, color=utils.KOLORY_PLYNOW.get(d["plyn"])),
+                utils.podpis(tekst, expand=True),
+                ft.TextButton("Otwórz", on_click=lambda e: utils.przejdz(self._page, f"/dolewki/edytuj/{d['id']}")),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         )
 
     def _migawka_formularza(self):

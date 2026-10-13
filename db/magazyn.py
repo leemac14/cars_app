@@ -5,7 +5,7 @@ from date import parsuj_date
 from datetime import datetime
 from typing import Any
 
-from .stale import MIESIACE_ZIMOWE, PROG_ILOSC_MAGAZYNU_DOMYSLNY, SEZONY_PRZELACZALNE
+from .stale import MIESIACE_ZIMOWE, PROG_ILOSC_MAGAZYNU_DOMYSLNY, RODZAJE_PLYNOW, SEZONY_PRZELACZALNE
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
 from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
@@ -364,6 +364,8 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
         kol_hw = [r["name"] for r in c.fetchall()]
         c.execute("SELECT * FROM historia_czesci_magazynu WHERE magazyn_id=?", (czesc_id,))
         uzycia_wpisow = [{k: r[k] for k in kol_hw} for r in c.fetchall()]
+        # Dolewka przeżywa pozycję (ON DELETE SET NULL); cofnięcie oddaje jej odwołanie.
+        dolewki_pozycji = [r[0] for r in c.execute("SELECT id FROM dolewki WHERE magazyn_id=?", (czesc_id,))]
 
     pliki_czesci = odloz_zalaczniki_rekordow("magazyn_czesci", [czesc_id])
 
@@ -409,6 +411,9 @@ def usun_czesc_magazynu_z_cofnieciem(czesc_id):
                 n_hw, p_hw = ",".join(kol_hw), ",".join("?" for _ in kol_hw)
                 for d in uzycia_wpisow:
                     conn.execute(f"INSERT INTO historia_czesci_magazynu ({n_hw}) VALUES ({p_hw})", tuple(d[k] for k in kol_hw))
+            if dolewki_pozycji:
+                conn.execute(f"UPDATE dolewki SET magazyn_id=? WHERE magazyn_id IS NULL AND id IN "
+                             f"({','.join('?' * len(dolewki_pozycji))})", (czesc_id, *dolewki_pozycji))
         # Pozycja wraca z oryginalnym id (kol_m zawiera id) — pliki bez przemapowania.
         przywroc_odlozone_zalaczniki(pliki_czesci)
 
@@ -500,7 +505,7 @@ def pobierz_podsumowanie_zuzycia(auto_id) -> dict[int, dict[str, Any]]:
     """{magazyn_id: {"liczba", "ilosc", "koszt", "ostatnio"}} dla całego magazynu.
 
     Jedno zapytanie na pojazd, żeby karta pozycji na liście nie pytała bazy sama
-    za siebie. `koszt` sumuje wyłącznie zużycia doliczone do serwisu."""
+    za siebie. `koszt` sumuje zużycia doliczone do serwisu i koszty dolewek z półki."""
     if not auto_id:
         return {}
     with polacz_baze() as conn:
@@ -514,8 +519,11 @@ def pobierz_podsumowanie_zuzycia(auto_id) -> dict[int, dict[str, Any]]:
             "SELECT hcm.magazyn_id, hcm.ilosc_uzyta, hcm.koszt, h.data "
             "FROM historia_czesci_magazynu hcm "
             "JOIN historia h ON h.id = hcm.historia_id "
-            "JOIN magazyn_czesci m ON m.id = hcm.magazyn_id WHERE m.auto_id=?",
-            (auto_id, auto_id)
+            "JOIN magazyn_czesci m ON m.id = hcm.magazyn_id WHERE m.auto_id=? "
+            "UNION ALL "
+            "SELECT d.magazyn_id, d.ilosc_magazynu, k.kwota, d.data FROM dolewki d "
+            "LEFT JOIN inne_koszty k ON k.id = d.koszt_id WHERE d.auto_id=? AND d.magazyn_id IS NOT NULL",
+            (auto_id, auto_id, auto_id)
         )
         wiersze = c.fetchall()
 
@@ -531,7 +539,7 @@ def pobierz_podsumowanie_zuzycia(auto_id) -> dict[int, dict[str, Any]]:
 
 
 def pobierz_historie_zuzycia(czesc_id) -> list[dict[str, Any]]:
-    """Gdzie ta pozycja zeszła z magazynu — wizyty i pojedyncze wpisy razem, od
+    """Gdzie ta pozycja zeszła z magazynu — wizyty, pojedyncze wpisy i dolewki razem, od
     najnowszego. Każdy element: {"zrodlo", "rekord_id", "data", "tytul",
     "opis", "ilosc", "koszt", "trasa"}; `trasa` prowadzi do edycji rekordu."""
     if not czesc_id:
@@ -557,6 +565,9 @@ def pobierz_historie_zuzycia(czesc_id) -> list[dict[str, Any]]:
             (czesc_id,)
         )
         wpisy = c.fetchall()
+        c.execute("SELECT d.id AS rekord_id, d.data, d.plyn, d.ilosc_magazynu, k.kwota AS koszt "
+                  "FROM dolewki d LEFT JOIN inne_koszty k ON k.id = d.koszt_id WHERE d.magazyn_id=?", (czesc_id,))
+        dolewki = c.fetchall()
 
     wynik = []
     for r in wizyty:
@@ -575,6 +586,13 @@ def pobierz_historie_zuzycia(czesc_id) -> list[dict[str, Any]]:
             "opis": "Wpis serwisowy" + (f" • {r['wykonawca']}" if r["wykonawca"] else ""),
             "ilosc": _na_liczbe(r["ilosc_uzyta"]) or 0.0, "koszt": _na_liczbe(r["koszt"]),
             "trasa": trasa,
+        })
+    for r in dolewki:
+        wynik.append({
+            "zrodlo": "dolewki", "rekord_id": r["rekord_id"], "data": str(r["data"] or ""),
+            "tytul": f"Dolewka: {RODZAJE_PLYNOW.get(r['plyn'], {}).get('w_zdaniu', 'płyn')}",
+            "opis": "Dolewka płynu", "ilosc": _na_liczbe(r["ilosc_magazynu"]) or 0.0, "koszt": _na_liczbe(r["koszt"]),
+            "trasa": f"/dolewki/edytuj/{r['rekord_id']}",
         })
     wynik.sort(key=lambda w: (parsuj_date(w["data"]), w["rekord_id"]), reverse=True)
     return wynik

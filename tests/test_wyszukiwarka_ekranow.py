@@ -53,15 +53,15 @@ def test_krotka_fraza_zostawia_wszystkie_ekrany_nad_wpisami(fraza):
 
 
 def test_dluga_fraza_z_danych_oddaje_gore_wpisom():
-    assert rozstaw("olej", sa_wpisy=True) == ([], ["magazyn", "serwis"])
+    assert rozstaw("olej", sa_wpisy=True) == ([], ["dolewki", "magazyn", "serwis"])
     assert rozstaw("rozrząd", sa_wpisy=True) == ([], ["serwis"])
-    assert rozstaw("  olej  ", sa_wpisy=True) == ([], ["magazyn", "serwis"])
+    assert rozstaw("  olej  ", sa_wpisy=True) == ([], ["dolewki", "magazyn", "serwis"])
 
 
 def test_bez_trafien_we_wpisy_ekrany_zostaja_na_gorze():
     """Wpisów nie ma, więc nie ma z czym przegrać."""
     assert rozstaw("rozrząd", sa_wpisy=False) == (["serwis"], [])
-    assert rozstaw("olej", sa_wpisy=False) == (["magazyn", "serwis"], [])
+    assert rozstaw("olej", sa_wpisy=False) == (["dolewki", "magazyn", "serwis"], [])
 
 
 def test_trafienie_w_tytul_trzyma_ekran_u_gory_osobno_dla_kazdego():
