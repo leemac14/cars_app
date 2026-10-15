@@ -58,23 +58,25 @@ class MiksinZakladkiStatystyki:
                          if sredni_dzienny else "Brak danych")
 
         def kafel(ikona, tytul, wartosc, kolor=ft.Colors.PRIMARY, expand=None):
+            # Ikona nad wartością, nie obok: w połówce ekranu obok ikony zostawało
+            # ~74 dp i „Zatankowano” łamało się w środku słowa.
             return ft.Card(
                 elevation=1,
                 expand=expand,
                 content=ft.Container(
                     padding=15,
-                    content=ft.Row([
-                        ft.Container(
-                            content=ft.Icon(ikona, color=kolor, size=22),
-                            bgcolor=ft.Colors.with_opacity(0.13, kolor),
-                            border_radius=10,
-                            padding=8
-                        ),
-                        ft.Column([
-                            ft.Text(tytul, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                            ft.Text(wartosc, weight="bold", size=17)
-                        ], spacing=2, expand=True)
-                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Container(
+                                content=ft.Icon(ikona, color=kolor, size=18),
+                                bgcolor=ft.Colors.with_opacity(0.13, kolor),
+                                border_radius=8,
+                                padding=6
+                            ),
+                            ft.Text(tytul, size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Text(wartosc, weight="bold", size=17),
+                    ], spacing=8)
                 )
             )
 
@@ -112,14 +114,14 @@ class MiksinZakladkiStatystyki:
 
             self.elementy.extend([
                 ft.Row(utils.tytul_sekcji(ft.Icons.PIE_CHART, "Podsumowanie kosztów"), spacing=8),
-                kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)}  {utils.symbol_waluty()}", ft.Colors.RED_700),  # paleta: tożsamość — kolor kategorii kosztu
+                kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)} {utils.symbol_waluty()}", ft.Colors.RED_700),  # paleta: tożsamość — kolor kategorii kosztu
                 ft.Row([
                     kafel(ft.Icons.LOCAL_GAS_STATION, "Na energię" if dwuzrodlowy else "Na paliwo",
-                          f"{utils.formatuj_liczba(pal)}  {utils.symbol_waluty()}", ft.Colors.BLUE_700, expand=1),
-                    kafel(ft.Icons.BUILD, "Na serwis", f"{utils.formatuj_liczba(serw)}  {utils.symbol_waluty()}", ft.Colors.ORANGE_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
+                          f"{utils.formatuj_liczba(pal)} {utils.symbol_waluty()}", ft.Colors.BLUE_700, expand=1),
+                    kafel(ft.Icons.BUILD, "Na serwis", f"{utils.formatuj_liczba(serw)} {utils.symbol_waluty()}", ft.Colors.ORANGE_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
                 ], spacing=10),
                 ft.Row([
-                    kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)}  {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
+                    kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)} {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
                     kafel(ft.Icons.ADD_ROAD, f"Koszt 1 {j}",
                           utils.formatuj_na_dystans(koszt_km, f" {utils.symbol_waluty()}/", 2, j),
                           ft.Colors.PURPLE_700, expand=1),
@@ -273,7 +275,7 @@ class MiksinZakladkiStatystyki:
                         ft.Row([
                             ft.Icon(ikona, size=15, color=kolor),
                             ft.Text(tytul, weight="bold", size=13, color=ft.Colors.ON_SURFACE,
-                                    expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)
+                                    expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
                         ], spacing=6, expand=True),
                         ft.Text(
                             f"{utils.formatuj_liczba(kwota)} {utils.symbol_waluty()} ({utils.formatuj_liczba(procent, 0)}%)",
@@ -316,7 +318,7 @@ class MiksinZakladkiStatystyki:
                                 ft.Icon(utils.ikona_kategorii_innych(nazwa_kat), size=15,
                                         color=utils.kolor_kategorii_innych(nazwa_kat)),
                                 ft.Text(nazwa_kat, weight="bold", size=13, color=ft.Colors.ON_SURFACE,
-                                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                                        max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                             ], spacing=6, expand=True),
                             ft.Text(
                                 f"{utils.formatuj_liczba(suma_kat)} {utils.symbol_waluty()} ({utils.formatuj_liczba(procent_kat, 0)}%)",
@@ -433,7 +435,8 @@ class MiksinZakladkiStatystyki:
                         text_align=ft.TextAlign.CENTER,
                         color=ft.Colors.PRIMARY if czy_biezacy else ft.Colors.ON_SURFACE_VARIANT
                     )
-                ], alignment=ft.MainAxisAlignment.END, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4)
+                ], alignment=ft.MainAxisAlignment.END, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4,
+                   expand=True)
 
                 kolumny_wykresu.append(kolumna_slupka)
 
@@ -442,9 +445,11 @@ class MiksinZakladkiStatystyki:
                 content=ft.Container(
                     padding=15,
                     content=ft.Column([
+                        # Słupki dzielą wiersz po równo — dwanaście ze stałym odstępem
+                        # wychodziło za kartę.
                         ft.Row(
                             controls=kolumny_wykresu,
-                            alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                            spacing=2,
                             vertical_alignment=ft.CrossAxisAlignment.END
                         ),
                         ft.Row(
@@ -658,7 +663,7 @@ class MiksinZakladkiStatystyki:
                                 ft.Icon(ft.Icons.EMOJI_EVENTS if czy_najtansza else ft.Icons.LOCAL_GAS_STATION,
                                         size=16, color=utils.KOLOR_STATUS["accent"] if czy_najtansza else ft.Colors.ON_SURFACE_VARIANT),
                                 ft.Text(s["nazwa"], weight="bold" if czy_najtansza else "normal", size=13,
-                                        expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                        expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                             ], spacing=6, expand=True),
                             ft.Text(
                                 f"{utils.formatuj_liczba(s['srednia_cena'], 2)} {utils.symbol_waluty()}/{jednostka_wykresow}  •  {s['liczba_tankowan']}x",
@@ -761,34 +766,34 @@ class MiksinZakladkiStatystyki:
                 utils.pasek_lat_rdr(self._page, self.state),
                 utils.karta_rok_do_roku(self._page, self.state),
                 ft.Divider(height=20),
-                ft.Text("Struktura Kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
+                ft.Text("Struktura kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
                 utils.pasek_zakresu_czasu(self._page, self.state, "struktura"),
                 karta_struktury,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Inne koszty wg kategorii", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Razem: {utils.formatuj_liczba(inn_kat)}  {utils.symbol_waluty()}", size=13),
+                    utils.etykieta(f"Razem: {utils.formatuj_liczba(inn_kat)} {utils.symbol_waluty()}", size=13),
                 ]),
                 utils.pasek_zakresu_czasu(self._page, self.state, "kategorie"),
                 karta_kategorii_innych,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Robocizna czy części", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Razem: {utils.formatuj_liczba(rozbicie_napraw['razem'])}  {utils.symbol_waluty()}", size=13),
+                    utils.etykieta(f"Razem: {utils.formatuj_liczba(rozbicie_napraw['razem'])} {utils.symbol_waluty()}", size=13),
                 ]),
                 utils.pasek_zakresu_czasu(self._page, self.state, "robocizna"),
                 karta_robocizny,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Awarie kontra eksploatacja", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Serwis: {utils.formatuj_liczba(dane_awarii['razem'])}  {utils.symbol_waluty()}", size=13),
+                    utils.etykieta(f"Serwis: {utils.formatuj_liczba(dane_awarii['razem'])} {utils.symbol_waluty()}", size=13),
                 ]),
                 utils.pasek_zakresu_czasu(self._page, self.state, "awarie"),
                 karta_awarii,
                 ft.Divider(height=20),
                 ft.Row([
                     ft.Text("Wydatki w czasie", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Razem: {utils.formatuj_liczba(suma_okresu)}  {utils.symbol_waluty()}", size=13),
+                    utils.etykieta(f"Razem: {utils.formatuj_liczba(suma_okresu)} {utils.symbol_waluty()}", size=13),
                 ]),
                 utils.pasek_zakresu_czasu(self._page, self.state, "wydatki"),
                 karta_wykresu,
@@ -1063,7 +1068,7 @@ class MiksinZakladkiStatystyki:
                 tresc = [
                     ft.Row([
                         ft.Text(etykieta, weight="bold", size=16, expand=True),
-                        ft.Text(f"{utils.formatuj_liczba(razem_w)}  {utils.symbol_waluty()}", weight="bold", size=16, color=utils.KOLOR_STATUS["cost"])
+                        ft.Text(f"{utils.formatuj_liczba(razem_w)} {utils.symbol_waluty()}", weight="bold", size=16, color=utils.KOLOR_STATUS["cost"])
                     ]),
                     opis,
                 ]
@@ -1106,14 +1111,14 @@ class MiksinZakladkiStatystyki:
                     utils.dopasuj_wysokosc_listy(self.lista_kart_stat, self._page, wysokosc_pozycji=150)
                     self.update()
 
-                self.elementy.append(
+                self.elementy.append(utils.na_cala_szerokosc(
                     ft.TextField(
-                        hint_text="Szukaj okresu (np. 2026, Sierpień)...",
+                        hint_text="Szukaj okresu (np. 2026)",
                         prefix_icon=ft.Icons.SEARCH,
                         on_change=utils.z_opoznieniem(self._page, filtruj_okresy),
                         **utils.styl_pola()
                     )
-                )
+                ))
 
                 self.lista_kart_stat = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_stat, "lista:statystyki")

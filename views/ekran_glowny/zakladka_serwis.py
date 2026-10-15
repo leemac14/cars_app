@@ -122,14 +122,14 @@ class MiksinZakladkiSerwis:
                 utils.dopasuj_wysokosc_listy(self.lista_kart_serwis, self._page, wysokosc_pozycji=190)
                 self.update()
 
-            self.elementy.append(
+            self.elementy.append(utils.na_cala_szerokosc(
                 ft.TextField(
-                    hint_text="Szukaj podzespołu (np. olej, klocki, filtr)...",
+                    hint_text="Szukaj (np. olej, klocki, filtr)",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_zadania),
                     **utils.styl_pola()
                 )
-            )
+            ))
             self.lista_kart_serwis = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_serwis, "lista:serwis")
             self.uzyj_wirtualizacji = True

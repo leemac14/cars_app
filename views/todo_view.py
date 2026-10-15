@@ -159,12 +159,12 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                     self.update()
 
                 self.pole_wyszukiwarki = ft.TextField(
-                    hint_text="Szukaj (tytuł, opis, podzespół)...",
+                    hint_text="Szukaj (tytuł, opis, podzespół)",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_pozycje),
                     **utils.styl_pola()
                 )
-                elementy.append(self.pole_wyszukiwarki)
+                elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
 
                 self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:do_zrobienia")
@@ -322,7 +322,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         return ft.Card(elevation=1, content=ft.Container(
             padding=15,
             content=ft.Column(
-                naglowek + [ft.Divider(height=10)] + (checkboxy or [
+                naglowek + [ft.Divider(height=10)] + ([utils.pole_wyboru(c) for c in checkboxy] or [
                     ft.Text("Ta lista nie ma jeszcze pozycji — dodaj je w edycji.",
                             size=12, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
                 ]) + [
@@ -524,7 +524,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             content=ft.Column([
                 ft.Text(tresc_dialogu),
                 ft.Container(height=5),
-                chk_podzespoly,
+                utils.pole_wyboru(chk_podzespoly),
                 ft.Text(
                     "Pozycje bez podzespołu (przy odznaczonej opcji powyżej) trafią do wizyty "
                     "wyłącznie jako łączny koszt i notatka — nie pojawią się jako osobne części wizyty.",
@@ -584,7 +584,7 @@ class FormularzDoZrobieniaView(ft.View):
             c.execute("SELECT id, nazwa FROM zadania WHERE auto_id=? ORDER BY nazwa", (self.state.auto_id,))
             lista_zadan = c.fetchall()
 
-        self.e_tytul = ft.TextField(label="Co trzeba zrobić?*", value=tyt_val, hint_text="np. Wymienić żarówkę, sprawdzić klimatyzację", **utils.styl_pola())
+        self.e_tytul = ft.TextField(label="Co trzeba zrobić?*", value=tyt_val, hint_text="np. wymienić żarówkę", **utils.styl_pola())
         self.e_opis = ft.TextField(label="Szczegóły (opcjonalnie)", value=opis_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
         self.e_priorytet = ft.Dropdown(
             label="Priorytet",
@@ -592,13 +592,13 @@ class FormularzDoZrobieniaView(ft.View):
             value=priorytet_val,
             **utils.styl_dropdown()
         )
-        self.e_koszt = ft.TextField(label=f"Szacowany koszt ({utils.symbol_waluty()}, opcjonalnie)", value=koszt_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_termin = utils.pole_daty(page, "Termin realizacji (opcjonalnie)", termin_val)
+        self.e_koszt = ft.TextField(label=f"Szacowany koszt ({utils.symbol_waluty()})", value=koszt_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_termin = utils.pole_daty(page, "Termin realizacji", termin_val)
 
-        opcje_zadan = [ft.DropdownOption(key="", text="— Brak / utworzy się automatycznie —")]
+        opcje_zadan = [ft.DropdownOption(key="", text="— Brak (utworzy się) —")]
         opcje_zadan += [ft.DropdownOption(key=str(z_id), text=str(z_nazwa)) for z_id, z_nazwa in lista_zadan]
         self.e_zadanie = ft.Dropdown(
-            label="Powiąż z istniejącym podzespołem (opcjonalnie)",
+            label="Powiąż z podzespołem",
             options=opcje_zadan,
             value=zadanie_val,
             **utils.styl_dropdown()

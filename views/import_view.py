@@ -124,11 +124,14 @@ class ImportCSVView(ft.View):
             "Pierwszy wiersz musi zawierać nagłówki kolumn.",
             size=12, color=ft.Colors.ON_SURFACE_VARIANT
         )
+        # Listy na całą szerokość: same dopasowują się do najdłuższej opcji
+        # i wybrana „Arkusz albo inna aplikacja” wchodziła pod strzałkę.
+        self.w_typ = utils.na_cala_szerokosc(self.e_typ)
         k1 = utils.karta_formularza(
             [
-                self.e_zrodlo,
+                utils.na_cala_szerokosc(self.e_zrodlo),
                 self.t_opis_zrodla,
-                self.e_typ,
+                self.w_typ,
                 self.t_opis_typu,
                 ft.Divider(height=1),
                 self.t_info_arkusza,
@@ -196,7 +199,7 @@ class ImportCSVView(ft.View):
         """Opis źródła, napis na przycisku i to, co ma sens tylko przy arkuszu."""
         preset = self._preset()
         self.t_opis_zrodla.value = preset["opis"] if preset else OPIS_ARKUSZA
-        for kontrolka in (self.e_typ, self.t_opis_typu, self.t_info_arkusza):
+        for kontrolka in (self.e_typ, self.w_typ, self.t_opis_typu, self.t_info_arkusza):
             kontrolka.visible = preset is None
         utils.ustaw_tekst_przycisku(self.btn_plik, f"Wybierz plik z {preset['etykieta']}" if preset else "Wybierz plik CSV")
 
@@ -475,12 +478,12 @@ class ImportCSVView(ft.View):
         raport = czesc["raport"]
         gotowe = raport["gotowe"]
         tresc = [
-            ft.Switch(
+            utils.pole_wyboru(ft.Switch(
                 label=f"{konfig['etykieta']}: {db.liczba_z_odmiana(len(gotowe), 'nowy wpis', 'nowe wpisy', 'nowych wpisów')}",
                 value=czesc["wlaczona"] and bool(gotowe),
                 disabled=not gotowe,
                 on_change=lambda e, c=czesc: self._przelacz_czesc(c, bool(e.control.value)),
-            ),
+            )),
             utils.podpis(f"{czesc['zrodlo']} · pominięte duplikaty: {raport['duplikaty']} · "
                          f"wiersze z błędami: {len(raport['bledy'])}"),
         ]

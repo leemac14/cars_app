@@ -28,6 +28,18 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.16", "pozycje": [
+        {"tytul": "Napisy bez ucinania", "ikona": "WRAP_TEXT", "ekran": "kokpit",
+         "opis": "Nazwy na kafelkach i kartach, tytuły, etykiety przełączników i podpowiedzi pól nie urywają się "
+                 "już wielokropkiem w pół słowa — dłuższy tekst przechodzi do drugiej linii, a kafelek albo okno "
+                 "rośnie razem z nim."},
+        {"tytul": "Wygodniejsze okna i formularze", "ikona": "TOUCH_APP", "ekran": "ewidencja",
+         "opis": "Pola wyszukiwania sięgają przez całą szerokość ekranu, przełącznik włączysz dotknięciem całego "
+                 "wiersza z opisem, a układ raportu ewidencji wybierasz z listy zamiast ze ściśniętych przycisków."},
+        {"tytul": "Drobne poprawki", "ikona": "AUTO_FIX_HIGH", "ekran": "statystyki",
+         "opis": "Kwoty w Obserwacjach mają odstęp co trzy cyfry jak w całej aplikacji, Rok w pigułce mówi "
+                 "„2 razy” zamiast „2,0 raza”, a kilka nagłówków nie zaczyna już każdego słowa wielką literą."},
+    ]},
     {"wersja": "2026.10.13", "pozycje": [
         {"tytul": "Dolewki płynów", "ikona": "WATER_DROP", "ekran": "dolewki",
          "opis": "Zapiszesz, ile oleju, płynu chłodniczego, hamulcowego, AdBlue czy płynu do spryskiwaczy dolałeś "

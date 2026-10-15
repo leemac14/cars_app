@@ -594,7 +594,8 @@ def test_okno_rozliczone_zapisuje_zeruje_i_wysyla(wspolne, ekran):
     assert {"Ola", "Kamil", f"100,00 {utils.symbol_waluty()}"} <= set(podglad)
 
     pola = {pole.label: pole for pole in kontrolki(dlg, ft.TextField)}
-    e_data, e_notatka = pola["Data rozliczenia"], pola["Notatka (np. przelew, gotówka)"]
+    e_data, e_notatka = pola["Data rozliczenia"], pola["Notatka"]
+    assert e_notatka.hint_text == "np. przelew, gotówka"
     zatwierdz = next(b for b in dlg.actions if isinstance(b, ft.FilledButton))
 
     e_data.value = (date.today() + timedelta(days=1)).strftime("%d.%m.%Y")

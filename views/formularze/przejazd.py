@@ -47,7 +47,7 @@ class FormularzPrzejazduView(ft.View):
         self.e_dokad = ft.TextField(label="Dokąd", value=dane["dokad"], hint_text="np. Klient ABC, Łódź",
                                     on_blur=lambda e: self._podpowiedz_kilometry(), **styl)
         self.e_cel = ft.TextField(label="Cel wyjazdu", value=dane["cel"],
-                                  hint_text="np. Spotkanie z klientem, serwis u klienta", **styl)
+                                  hint_text="np. spotkanie z klientem", **styl)
         self.e_km = ft.TextField(label=f"Dystans w jedną stronę ({self.j})",
                                  value=db.wartosc_pola_dystansu(dane["km_jednej_strony"], self.j, 1)
                                  if dane["km_jednej_strony"] else "",
@@ -56,7 +56,7 @@ class FormularzPrzejazduView(ft.View):
                                     on_change=lambda e: self._odswiez_razem())
         self.t_razem = utils.podpis("")
         self.ostatnio = ft.Container(visible=False)
-        self.e_licznik = ft.TextField(label=f"Stan licznika po przejeździe ({self.j}, opcjonalnie)",
+        self.e_licznik = ft.TextField(label=f"Licznik po przejeździe ({self.j})",
                                       value=db.wartosc_pola_dystansu(dane["licznik"], self.j)
                                       if dane.get("licznik") else "",
                                       keyboard_type=ft.KeyboardType.NUMBER,

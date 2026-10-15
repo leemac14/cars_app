@@ -76,7 +76,7 @@ class MiksinKokpitu:
             return handler
 
         def styl_wartosci(**nadpisania):
-            pola = dict(size=utils.FS["title"], weight="bold", no_wrap=True,
+            pola = dict(size=utils.FS["title"], weight="bold", max_lines=2,
                         overflow=ft.TextOverflow.ELLIPSIS)
             pola.update(nadpisania)
             return pola
@@ -126,7 +126,7 @@ class MiksinKokpitu:
             wiersz = [chip] if chip is not None else []
             wiersz.append(ft.Text(
                 podpis, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
                 text_align=ft.TextAlign.END if chip is not None else ft.TextAlign.START,
             ))
             return ft.Row(wiersz, spacing=6)
@@ -238,10 +238,11 @@ class MiksinKokpitu:
                         ft.Icon(ft.Icons.EVENT, size=15, color=ft.Colors.PRIMARY),
                         utils.etykieta(f"Termin{dodatek}", expand=True),
                     ], spacing=6),
-                    ft.Text(str(p["tytul"]), size=utils.FS["title"], weight="bold", no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    ft.Text(str(p["tytul"]), size=utils.FS["title"], weight="bold", max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Row([
                         ft.Icon(ikona_p, size=13, color=kolor_p),
-                        ft.Text(p["opis"], size=utils.FS["caption"], color=kolor_p, no_wrap=True, expand=True),
+                        ft.Text(p["opis"], size=utils.FS["caption"], color=kolor_p, expand=True,
+                                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ], spacing=4),
                 ], spacing=4)
                 # Polisa OC/AC z notatką „najlepsza oferta OC/AC”: jedna, ucięta
@@ -250,7 +251,7 @@ class MiksinKokpitu:
                 if p.get("oferta"):
                     tresc.controls.append(ft.Text(
                         f"Oferta: {p['oferta']}", size=utils.FS["caption"],
-                        color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True,
+                        color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,
                         overflow=ft.TextOverflow.ELLIPSIS))
 
                 trasa_termin = p.get("trasa")
@@ -551,7 +552,7 @@ class MiksinKokpitu:
                     ], spacing=6),
                     tekst_wartosci(wartosc),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
             )
 
@@ -571,7 +572,10 @@ class MiksinKokpitu:
         def widget_ostatnia_aktywnosc():
             zdarzenia = metryka("ostatnia_aktywnosc")
             if not zdarzenia:
-                return ft.Container()
+                # Pusty Container zajmował niewidoczną komórkę siatki i spychał następny
+                # kafelek na prawą połowę. Brak zdarzeń jest chwilowy, więc kafelek zostaje.
+                return kafel_wartosci(ft.Icons.HISTORY, ft.Colors.BLUE_GREY_700, "Ostatnia aktywność",
+                                      "Bez zmian", lambda e: utils.przejdz(self._page, "/timeline"))
 
             wiersze = []
             for opis, kto, kiedy_tekst, _, ikona, trasa in zdarzenia:
@@ -580,8 +584,8 @@ class MiksinKokpitu:
                         ft.Icon(utils.ikona_z_mapy(utils.IKONY_AKTYWNOSCI, ikona), size=15,
                                 color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Column([
-                            ft.Text(opis, size=11, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.Text(f"{kto} • {kiedy_tekst}", size=10, color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.Text(opis, size=11, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.Text(f"{kto} • {kiedy_tekst}", size=10, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                         ], spacing=0, expand=True, tight=True),
                     ], spacing=6)
                 )
@@ -624,7 +628,7 @@ class MiksinKokpitu:
                     ft.Row([utils.gauge_kondycji(kondycja, rozmiar=76, grubosc=8, scena=scena)],
                            alignment=ft.MainAxisAlignment.CENTER),
                     ft.Text(etykieta_kond, size=utils.FS["caption"], color=kolor_gauge,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
                             text_align=ft.TextAlign.CENTER),
                 ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             )
@@ -658,7 +662,7 @@ class MiksinKokpitu:
                         ft.Icon(utils.ikona_z_mapy(utils.IKONY_OBSERWACJI, o["ikona"], ft.Icons.INSIGHTS),
                                 size=15, color=kolor),
                         ft.Text(o["tytul"], size=utils.FS["caption"], color=kolor,
-                                expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ], spacing=6),
                     ft.Text(o["tekst"], size=utils.FS["body"], color=ft.Colors.ON_SURFACE,
                             max_lines=4, overflow=ft.TextOverflow.ELLIPSIS),
@@ -687,7 +691,7 @@ class MiksinKokpitu:
                         ft.Icon(ft.Icons.SAVINGS, size=15, color=ft.Colors.PRIMARY),
                         ft.Text(f"Budżet • {stan['etykieta_okresu'].lower()}", size=utils.FS["caption"],
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
-                                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ], spacing=6),
                     utils.pasek_budzetu(self._page, stan, scena=scena),
                 ], spacing=8),
@@ -734,7 +738,7 @@ class MiksinKokpitu:
                     ], spacing=6),
                     tekst_wartosci(wartosc),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
             )
 
@@ -782,11 +786,12 @@ class MiksinKokpitu:
                 wiersz_bieznika = ft.Row([
                     ft.Icon(ft.Icons.STRAIGHTEN, size=13, color=kolor_bieznika),
                     ft.Text(f"bieżnik {utils.formatuj_liczba(bieznik, 1)} mm", size=utils.FS["caption"],
-                            color=kolor_bieznika, no_wrap=True, expand=True),
+                            color=kolor_bieznika, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                 ], spacing=4)
             else:
                 wiersz_bieznika = ft.Text("bieżnik niezmierzony", size=utils.FS["caption"],
-                                          color=ft.Colors.ON_SURFACE_VARIANT, no_wrap=True)
+                                          color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,
+                                          overflow=ft.TextOverflow.ELLIPSIS)
 
             tresc = [
                 ft.Row([
@@ -796,13 +801,13 @@ class MiksinKokpitu:
                 ft.Row([
                     ft.Icon(ikona_sezonu, size=17, color=kolor_sezonu),
                     ft.Text(sezon or "Nic nie zamontowane", size=utils.FS["title"], weight="bold",
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                 ], spacing=6),
                 wiersz_bieznika,
             ]
             if stopka:
                 tresc.append(ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                                     no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
+                                     max_lines=2, overflow=ft.TextOverflow.ELLIPSIS))
 
             return ft.Container(
                 width=SZER_KAFLA + 40, padding=15,
@@ -850,7 +855,7 @@ class MiksinKokpitu:
                         height=6, border_radius=3,
                     )),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
             )
 
@@ -883,7 +888,7 @@ class MiksinKokpitu:
                     ], spacing=6),
                     tekst_wartosci(wartosc),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
             )
 
@@ -930,7 +935,7 @@ class MiksinKokpitu:
                         bgcolor=utils.tlo_toru(self._page), height=6, border_radius=3,
                     )),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
             )
 
@@ -975,7 +980,7 @@ class MiksinKokpitu:
                         height=6, border_radius=3,
                     )),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
             )
 
@@ -1020,7 +1025,7 @@ class MiksinKokpitu:
                         height=6, border_radius=3,
                     )),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
             )
 
@@ -1061,7 +1066,7 @@ class MiksinKokpitu:
                                 size=utils.FS["caption"], color=utils.KOLOR_STATUS["critical"], no_wrap=True),
                     ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.END),
                     ft.Text(opis, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
             )
 
@@ -1095,7 +1100,7 @@ class MiksinKokpitu:
                                    lambda v: f"{utils.formatuj_liczba(v, 0)} do uzupełnienia",
                                    zastepnik="Stan w porządku"),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=4),
             )
 
@@ -1133,7 +1138,7 @@ class MiksinKokpitu:
                     liczba_kafelka(stan["na_1000"], lambda v: db.tekst_zuzycia(v, j),
                                    zastepnik=f"Za mało {db.slowo_dystansu('dopelniacz_pelny', j)}"),
                     ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
             )
 
@@ -1160,7 +1165,7 @@ class MiksinKokpitu:
                     ], spacing=6),
                     ft.Row([
                         ft.Icon(ikona, size=17, color=ft.Colors.PRIMARY),
-                        ft.Text(tytul, size=utils.FS["title"], weight="bold", no_wrap=True,
+                        ft.Text(tytul, size=utils.FS["title"], weight="bold", max_lines=2,
                                 overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                     ], spacing=6),
                 ], spacing=4),

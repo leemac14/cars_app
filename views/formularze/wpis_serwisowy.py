@@ -82,7 +82,7 @@ class FormularzWpisView(ft.View):
         # („2 lata”, „+20 tys. km”) — patrz utils.PolaGwarancji.
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val,
                                    po_zmianie=lambda: self.gwarancja.przy_zmianie_wymiany())
-        self.e_p = ft.TextField(label=f"Przebieg w momencie wymiany ({utils.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(self.p_km), keyboard_type=ft.KeyboardType.NUMBER,
+        self.e_p = ft.TextField(label=f"Przebieg przy wymianie ({utils.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(self.p_km), keyboard_type=ft.KeyboardType.NUMBER,
                                 on_change=lambda e: self.gwarancja.przy_zmianie_wymiany(), **utils.styl_pola(page=page))
         self.gwarancja = utils.PolaGwarancji(
             page, gwarancja["koniec"], gwarancja["limit_km"],

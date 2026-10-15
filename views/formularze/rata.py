@@ -59,7 +59,7 @@ class FormularzRatyView(ft.View):
         styl = utils.styl_pola(page=page)
         liczbowe = dict(keyboard_type=ft.KeyboardType.NUMBER, on_change=lambda e: self._przelicz())
 
-        self.e_nazwa = ft.TextField(label="Nazwa", hint_text="np. Leasing w banku, Kredyt na auto",
+        self.e_nazwa = ft.TextField(label="Nazwa", hint_text="np. Leasing w banku",
                                     value=str(w.get("nazwa") or ""), **styl)
         self.e_kwota_fin = ft.TextField(value=_tekst_pola(w.get("kwota_finansowania")), **liczbowe, **styl)
         self.e_oplata = ft.TextField(label=f"Opłata wstępna ({waluta})", value=_tekst_pola(w.get("oplata_wstepna")),

@@ -195,7 +195,7 @@ class FormularzTankowanieView(ft.View):
             page, state, stacja_val,
             elektryczny=(self.rodzaj_energii == db.ENERGIA_PRAD)
         )
-        hint_prz = f"Ost.: {self.ostatni_prz_pola} {self.j}" if self.ostatni_prz > 0 else "np. 150000"
+        hint_prz = f"ost. {self.ostatni_prz_pola}" if self.ostatni_prz > 0 else "np. 150000"
         
         self.e_p = ft.TextField(label=f"Licznik ({self.j})", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
         self.e_dys = ft.TextField(label=f"Dystans ({self.j})", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola(page=page))
@@ -208,7 +208,7 @@ class FormularzTankowanieView(ft.View):
         # ich ilorazem, tak jak w statystykach.
         self.e_l = ft.TextField(label=self.etykiety["ilosc"], value=l_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_cena = ft.TextField(label=f"{self.etykiety['cena_za']} ({utils.symbol_waluty()})", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
-        self.e_k = ft.TextField(label=f"Całkowity Koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_k = ft.TextField(label=f"Całkowity koszt ({utils.symbol_waluty()})", value=k_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         for klucz in _POLA_TROJKI:
             pole = self._pole_trojki(klucz)
             pole.on_change = lambda e, k=klucz: self._zmiana_w_trojce(k)
@@ -234,6 +234,7 @@ class FormularzTankowanieView(ft.View):
 
         self.c_pel = ft.Checkbox(label=self.etykiety["do_pelna"], value=pelna_val,
                                  on_change=lambda e: self._odswiez_ostrzezenie_ciagu())
+        self.w_pel = utils.pole_wyboru(self.c_pel)
 
         # Pasek „przerywa ciąg” pod polem, którego dotyczy, i jeszcze PRZED
         # zapisem: zapomniany pełny bak poprawia się jednym kliknięciem, a celowe
@@ -259,7 +260,7 @@ class FormularzTankowanieView(ft.View):
             self.etykiety = db.etykiety_energii(self.rodzaj_energii)
             self.e_l.label = self.etykiety["ilosc"]
             self.e_cena.label = f"{self.etykiety['cena_za']} ({utils.symbol_waluty()})"
-            self.c_pel.label = self.etykiety["do_pelna"]
+            utils.ustaw_etykiete_wyboru(self.w_pel, self.etykiety["do_pelna"])
             self.e_ladowanie.visible = (self.rodzaj_energii == db.ENERGIA_PRAD)
             if not self.e_ladowanie.visible:
                 self.e_ladowanie.value = ""
@@ -299,11 +300,11 @@ class FormularzTankowanieView(ft.View):
         
         wiersz_przebiegu = ft.Row([
             ft.Container(self.e_p, expand=True),
-            ft.Icon(ft.Icons.SYNC_ALT, color=ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY), tooltip="Pola powiązane automatycznie"),
+            ft.Icon(ft.Icons.SYNC_ALT, size=16, color=ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY), tooltip="Pola powiązane automatycznie"),
             ft.Container(self.e_dys, expand=True),
-        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, spacing=2)
 
-        k1 = utils.karta_formularza([self.e_d, wiersz_przebiegu], "Przebieg i Data", ft.Icons.SPEED, domyslnie_otwarte=True, page=page)
+        k1 = utils.karta_formularza([self.e_d, wiersz_przebiegu], "Przebieg i data", ft.Icons.SPEED, domyslnie_otwarte=True, page=page)
         zawartosc_k2 = []
         if self.dwuzrodlowy:
             zawartosc_k2 += [
@@ -311,7 +312,7 @@ class FormularzTankowanieView(ft.View):
                 self.przelacznik_rodzaju,
             ]
         zawartosc_k2 += [
-            self.k_stacja, self.e_ladowanie, self.k_trojka, self.c_pel, self.baner_ciagu,
+            self.k_stacja, self.e_ladowanie, self.k_trojka, self.w_pel, self.baner_ciagu,
             ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi,
         ]
         k2 = utils.karta_formularza(

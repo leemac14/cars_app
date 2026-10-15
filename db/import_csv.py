@@ -992,7 +992,7 @@ TYPY_IMPORTU = {
         "podglad": lambda g, jednostka: f"{g['data']} • {tekst_dystansu(g['przebieg'])}",
     },
     "przejazdy": {
-        "etykieta": "Przejazdy (ewidencja przebiegu)",
+        "etykieta": "Przejazdy",
         "opis": "Ewidencja z arkusza — data, skąd, dokąd albo opis trasy, cel, kilometry, rodzaj i kierowca.",
         "pola": POLA_IMPORTU_PRZEJAZDOW,
         "dopasuj": dopasuj_kolumny_przejazdow,

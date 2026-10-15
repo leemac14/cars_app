@@ -39,7 +39,7 @@ class FormularzInterwalView(ft.View):
         self.e_prog_km = ft.Dropdown(
             label=f"Ostrzegaj na ile {db.slowo_dystansu('dopelniacz', j)} przed",
             options=(
-                [ft.DropdownOption(key="", text=f"Domyślny z Ustawień ({db.tekst_dystansu(db.pobierz_prog_km(), 0, j)})")]
+                [ft.DropdownOption(key="", text=f"Z Ustawień ({db.tekst_dystansu(db.pobierz_prog_km(), 0, j)})")]
                 + [ft.DropdownOption(key=str(km), text=f"{tekst} przed terminem") for km, tekst in opcje_km]
             ),
             value=prog_km_val,
@@ -48,7 +48,7 @@ class FormularzInterwalView(ft.View):
         self.e_prog_dni = ft.Dropdown(
             label="Ostrzegaj na ile dni przed",
             options=(
-                [ft.DropdownOption(key="", text=f"Domyślny z Ustawień ({db.pobierz_prog_dni()} dni)")]
+                [ft.DropdownOption(key="", text=f"Z Ustawień ({db.pobierz_prog_dni()} dni)")]
                 + [ft.DropdownOption(key=str(v), text=f"{v} dni przed terminem") for v in db.PROGI_DNI_OPCJE]
             ),
             value=prog_dni_val if prog_dni_val in dozwolone_dni else "",

@@ -31,8 +31,8 @@ Testy NIE dotykają `flota_zadania.db` obok repozytorium. `conftest.py` ustawia
 | `test_widoki.py` | Wszystkie widoki budują się bez okna, na dziewięciu układach danych: pusty garaż, auto bez wpisów, komplet, auto z historią, elektryk, hybryda plug-in, auto sprzedane, cudze auto w podglądzie, pełny kosz. Ekran główny osobno w każdej zakładce. |
 | `test_konce_linii.py` | Cały projekt na LF, bez BOM-ów, z jawną polityką w `.gitattributes`. Umie też naprawiać. |
 | `test_formatowanie.py` | Ekran i eksport składają liczbę tak samo; zaokrąglenia wypisane wprost; rozmiary w bajtach mają jedną postać. |
-| `test_audyty.py` | Sześć audytów: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`, ciche `except …: pass`, kształt wyników `db` kontra adnotacje, ręczne składanie liczb. Plus testy samych audytów. |
-| `audyty.py` | Silniki tych sześciu audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
+| `test_audyty.py` | Siedem audytów: `expand` w wierszu o nieograniczonej szerokości, chipy rozciągające się na całą linijkę paska zawijanego, pola i argumenty kontrolek Fleta + `run_task`, ciche `except …: pass`, kształt wyników `db` kontra adnotacje, ręczne składanie liczb, napisy ucięte na telefonie 360 dp (każdy widok, ekran główny, kokpit z kompletem kafelków i okna otwierane dotknięciem wszystkiego na ekranie). Plus testy samych audytów. |
+| `audyty.py` | Silniki tych siedmiu audytów. Da się uruchomić wprost: `python tests/audyty.py`. |
 | `test_typy_db.py` | Adnotacje zwrotu warstwy danych kontra to, co funkcje naprawdę zwracają — wołane na bazie testowej. |
 | `ciche_wyjatki.txt` | Zamrożona liczba cichych `except …: pass` w każdym pliku. |
 | `test_start.py` | Podział startu: `init_db()` robi tylko schemat, `porzadki_startowe()` sprząta kosz, odroczone załączniki i (raz) ścieżki. |
@@ -154,7 +154,7 @@ Format to zrzut SQL, a nie plik `.db`: tekst zamiast bajtów, więc diff coś zn
 dzisiaj — nie są zapisem archeologicznym tego, co naprawdę wyszło do ludzi rok
 temu. Od dziś są jednak punktem odniesienia, którego nie da się zmienić mimochodem.
 
-## Cztery audyty
+## Pięć audytów
 
 Trzy pierwsze były jednorazowymi skryptami: napisane, uruchomione raz,
 wyrzucone. Każdy wykrył prawdziwy błąd, więc każdy zasługuje na to, żeby
@@ -187,6 +187,16 @@ jeszcze w drzewie strony, starsza wersja Fleta nie zna zdarzenia). Chodzi o to,
 żeby NOWY cichy blok był decyzją, a nie odruchem — od czasu `log.py` zapisanie,
 co zostało połknięte, kosztuje jedną linijkę: `log.polkniety("opis")`. Kluczem
 jest plik, nie numer linii, bo numer zmienia się przy każdej edycji powyżej.
+
+**Audyt uciętych napisów** — też chodzi po zbudowanym drzewie, ale liczy
+szerokości: rozkłada je jak `RenderFlex` na telefonie 360 dp (okno ma ok. 230 dp
+treści) i mierzy napisy metryką Roboto. Zgłasza napis w jednej linii, który
+kończy się wielokropkiem, wiersz szerszy niż ekran, słowo łamane w środku
+w ściśniętej kolumnie, etykietę i podpowiedź pola, opcję szerszą niż lista oraz
+etykietę przełącznika (Flet jej nie zawija — stąd `utils.pole_wyboru`). Okna
+sprawdza test, który dotyka po kolei wszystkiego na ekranie i audytuje każde
+otwarte okno i arkusz. Naprawa: napis się zawija, a element rośnie; krótszy
+tekst tylko tam, gdzie zawijanie psuje układ.
 
 ```
 python tests/audyty.py            # raport, w tym rozjazd z zamkiem
@@ -388,9 +398,3 @@ różnorodność (paski filtrów pokazują się dopiero, gdy jest z czego wybier
 porównań „przed i po", `zbuduj_strone()` daje `ft.Page` bez okna,
 `klasy_widokow()` / `zbuduj_widok()` / `przygotuj_scenariusz()` budują dowolny
 ekran na dowolnym układzie danych.
-
-## Czego tu jeszcze nie ma
-
-- audyt tekstu (`Text` w wierszu bez `expand`) z notatki o poprawkach UI —
-  posłużył jednorazowo do wytypowania miejsc do poprawki, nie jest regułą do
-  pilnowania.

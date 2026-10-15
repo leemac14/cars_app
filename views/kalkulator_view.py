@@ -55,10 +55,10 @@ class KalkulatorTrasyView(ft.View):
                 cena_paliwa_domyslna = kwota / litry
 
         # Pola tekstowe (podpięte pod event on_change dla wyliczeń w locie)
-        self.e_dystans = ft.TextField(label=f"Planowany dystans w jedną stronę ({self.j})", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
+        self.e_dystans = ft.TextField(label=f"Dystans w jedną stronę ({self.j})", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola())
         self.c_powrot = ft.Checkbox(label="Podróż w obie strony (×2 dystans)", value=False, on_change=self.przelicz)
         self.e_osoby = ft.TextField(
-            label="Liczba osób dzielących koszt (z kierowcą)",
+            label="Liczba osób (z kierowcą)",
             value="1", keyboard_type=ft.KeyboardType.NUMBER, on_change=self.przelicz, **utils.styl_pola()
         )
         
@@ -93,11 +93,14 @@ class KalkulatorTrasyView(ft.View):
         )
         self._odswiez_trasy()
 
-        # Dynamiczne teksty wyników
-        self.t_koszt_paliwa = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.PRIMARY)
-        self.t_koszt_calkowity = ft.Text("0.00", size=24, weight="bold", color=utils.KOLOR_STATUS["cost"])
-        self.t_koszt_osoba = ft.Text("0.00", size=24, weight="bold", color=ft.Colors.GREEN_700)  # paleta: tożsamość — druga kwota odróżniona kolorem od pierwszej
-        self.t_litry = ft.Text("0.0 L", size=14, color=ft.Colors.ON_SURFACE_VARIANT)
+        # Dynamiczne teksty wyników — zero w tym samym zapisie co po przeliczeniu
+        # (było „0.00” z kropką i bez waluty, dopóki nie wpisało się dystansu).
+        zero = f"{utils.formatuj_liczba(0, 2)} {utils.symbol_waluty()}"
+        self.t_koszt_paliwa = ft.Text(zero, size=24, weight="bold", color=ft.Colors.PRIMARY)
+        self.t_koszt_calkowity = ft.Text(zero, size=24, weight="bold", color=utils.KOLOR_STATUS["cost"])
+        self.t_koszt_osoba = ft.Text(zero, size=24, weight="bold", color=ft.Colors.GREEN_700)  # paleta: tożsamość — druga kwota odróżniona kolorem od pierwszej
+        self.t_litry = ft.Text(f"Potrzebne paliwo: {utils.formatuj_liczba(0, 1)} L", size=14,
+                               color=ft.Colors.ON_SURFACE_VARIANT)
 
         # Karty interfejsu
         k1 = utils.karta_formularza(
@@ -216,7 +219,7 @@ class KalkulatorTrasyView(ft.View):
         Zapisujemy stan pól z ekranu, a nie przekazane wartości — użytkownik
         mógł je poprawić tuż przed kliknięciem."""
         e_nazwa = ft.TextField(
-            label="Nazwa trasy (np. Do teściów)",
+            label="Nazwa trasy", hint_text="np. Do teściów",
             value=str(trasa["nazwa"]) if trasa else "",
             **utils.styl_pola()
         )

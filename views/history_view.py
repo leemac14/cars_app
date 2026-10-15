@@ -103,12 +103,12 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     self.update()
 
                 self.pole_wyszukiwarki = ft.TextField(
-                    hint_text="Szukaj (np. przebieg, data, notatki)...",
+                    hint_text="Szukaj (przebieg, data, notatka)",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_historie),
                     **utils.styl_pola()
                 )
-                elementy.append(self.pole_wyszukiwarki)
+                elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
                 # -------------------------------------------
 
                 # Filtrowanie i sortowanie listy wpisów
@@ -174,9 +174,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
                     # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
                     if jest_zbiorcza:
-                        k_str = f"{utils.formatuj_liczba(float(w_koszt or 0))}  {utils.symbol_waluty()} (cała wizyta)"
+                        k_str = f"{utils.formatuj_liczba(float(w_koszt or 0))} {utils.symbol_waluty()} (cała wizyta)"
                     else:
-                        k_str = f"{utils.formatuj_liczba(float(cena or 0))}  {utils.symbol_waluty()}"
+                        k_str = f"{utils.formatuj_liczba(float(cena or 0))} {utils.symbol_waluty()}"
                     sub_tekst = f"Przebieg: {utils.formatuj_dystans(int(prz or 0), 0, j)}  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
                     if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
                     opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wpisow.get(h_id))
@@ -227,7 +227,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     def _on_click(e, hid=h_id, wid=w_id, kont=kontener, zal=pliki, nt=notatka):
                         if self.tryb_zaznaczania:
                             if wid:
-                                utils.pokaz_komunikat(self._page, "Wpisów z Wizyty Zbiorczej nie można grupować stąd. Usuń całą wizytę.", utils.KOLOR_STATUS["warning"])
+                                utils.pokaz_komunikat(self._page, "Wpisów z wizyty zbiorczej nie można grupować stąd. Usuń całą wizytę.", utils.KOLOR_STATUS["warning"])
                             else:
                                 self.zaznacz_odznacz(hid, kont)
                         else:
@@ -356,7 +356,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.Text("Zaznacz pozycje, które wracają na listę — np. część zamówioną, "
                         "ale jeszcze niezamontowaną."),
                 ft.Container(height=5),
-                ft.Column(checkboxy, tight=True, spacing=0),
+                ft.Column([utils.pole_wyboru(c) for c in checkboxy], tight=True, spacing=0),
                 blad,
                 ft.Text(
                     "Zaznaczone pozycje znikną z tej wizyty, a ich koszt zostanie odjęty od "
@@ -378,7 +378,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
 
         appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "Wizyty Zbiorcze", "/",
+            page, "Wizyty zbiorcze", "/",
             akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, self.state.auto_id, "/wizyty"))] if wspolny_id else None
         )
         fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/wizyty/nowa"))
@@ -464,12 +464,12 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             self.update()
 
         self.pole_wyszukiwarki = ft.TextField(
-            hint_text="Szukaj (część, warsztat, data, koszt)...",
+            hint_text="Szukaj (część, warsztat, data)",
             prefix_icon=ft.Icons.SEARCH,
             on_change=utils.z_opoznieniem(self._page, filtruj_wizyty),
             **utils.styl_pola()
         )
-        elementy.append(self.pole_wyszukiwarki)
+        elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
 
         self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
         utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:wizyty")
@@ -545,7 +545,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                         ft.Text(str(data), weight="bold", size=16, expand=True),
                         ft.Row([
                             utils.wskaznik_zalacznikow(self._page, pliki, "Wizyta"),
-                            ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))}  {utils.symbol_waluty()}", color=utils.KOLOR_STATUS["cost"], weight="bold")
+                            ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))} {utils.symbol_waluty()}", color=utils.KOLOR_STATUS["cost"], weight="bold")
                         ], spacing=6)
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     ft.Row([

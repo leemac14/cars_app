@@ -319,7 +319,10 @@ class RokWPigulceView(SekcjePigulki, ft.View):
             wartosc = d["miesiace"][m]
             wysokosc = int(WYS_MAX * (wartosc / maks)) if wartosc > 0 else 4
             czy_szczyt = (m == d["najdrozszy_miesiac"]["miesiac"] and wartosc > 0)
+            # Równe dwunaste części wiersza zamiast stałych odstępów: przy 10 dp między
+            # słupkami grudzień wypadał za kartę na węższych telefonach.
             kolumny.append(ft.Container(
+                expand=True,
                 on_click=(lambda e, mc=m: utils.przejdz(self._page, f"/rok/{self.rok}/{mc}"))
                 if wartosc > 0 else None,
                 content=ft.Column([
@@ -339,8 +342,7 @@ class RokWPigulceView(SekcjePigulki, ft.View):
             ))
 
         return utils.karta_analizy(self._page, "Miesiąc po miesiącu", ft.Icons.BAR_CHART, [
-            ft.Row(kolumny, alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                   vertical_alignment=ft.CrossAxisAlignment.END),
+            ft.Row(kolumny, spacing=0, vertical_alignment=ft.CrossAxisAlignment.END),
             utils.podpis("Dotknij słupka, żeby zobaczyć ten miesiąc w pigułce."),
         ])
 

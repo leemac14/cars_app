@@ -462,14 +462,18 @@ class EwidencjaPrzebieguView(ft.View):
             "kilometrowka": "Tylko przejazdy służbowe ze stawką i kwotą, Twoje dane i miejsce na podpis "
                             "pracodawcy.",
         }
-        kontener_ukladu = ft.Container()
+        # Trzy nazwy układów nie mieszczą się obok siebie w oknie na telefonie
+        # („Kilometrówka” łamała się w środku słowa), więc wybór idzie w pionie.
+        grupa_ukladu = ft.RadioGroup(
+            value=uklady[wybor["uklad"]],
+            on_change=lambda e: zmien_uklad(uklady.index(e.control.value)),
+            content=ft.Column([utils.pole_wyboru(ft.Radio(value=k, label=db.UKLADY_RAPORTU_EWIDENCJI[k]))
+                               for k in uklady], spacing=0),
+        )
         kontener_formatu = ft.Container(width=220)
         opis = utils.podpis("")
 
         def odswiez():
-            kontener_ukladu.content = utils.segmented_control(
-                self._page, [(db.UKLADY_RAPORTU_EWIDENCJI[k], i) for i, k in enumerate(uklady)],
-                wybor["uklad"], zmien_uklad)
             kontener_formatu.content = utils.segmented_control(
                 self._page, [("PDF", 0, ft.Icons.PICTURE_AS_PDF), ("CSV", 1, ft.Icons.TABLE_CHART)],
                 wybor["format"], zmien_format)
@@ -492,7 +496,7 @@ class EwidencjaPrzebieguView(ft.View):
         odswiez()
         dlg = ft.AlertDialog(
             title=ft.Text(f"Raport: {db.nazwa_miesiaca(self.rok, self.miesiac)}", weight="bold"),
-            content=ft.Column([kontener_ukladu, opis, kontener_formatu], tight=True, spacing=12, width=420),
+            content=ft.Column([grupa_ukladu, opis, kontener_formatu], tight=True, spacing=12, width=420),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
                 ft.Button("Zapisz raport", icon=ft.Icons.IOS_SHARE, on_click=generuj,
@@ -527,7 +531,8 @@ class EwidencjaPrzebieguView(ft.View):
         styl = utils.styl_pola()
         grupa = ft.RadioGroup(
             value=tryb["wartosc"],
-            content=ft.Column([ft.Radio(value=k, label=v) for k, v in db.TRYBY_EWIDENCJI.items()], spacing=0),
+            content=ft.Column([utils.pole_wyboru(ft.Radio(value=k, label=v)) for k, v in db.TRYBY_EWIDENCJI.items()],
+                              spacing=0),
         )
         domyslna = db.domyslna_stawka_kilometrowki(auto_id)
         e_stawka = ft.TextField(

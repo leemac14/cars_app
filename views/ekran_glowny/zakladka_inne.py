@@ -79,14 +79,14 @@ class MiksinZakladkiInne:
                 utils.dopasuj_wysokosc_listy(self.lista_kart_inne, self._page, wysokosc_pozycji=190)
                 self.update()
 
-            self.elementy.append(
+            self.elementy.append(utils.na_cala_szerokosc(
                 ft.TextField(
-                    hint_text="Szukaj kosztu (opis, kategoria, kwota, data, notatka)...",
+                    hint_text="Szukaj (opis, kategoria, kwota)",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_inne),
                     **utils.styl_pola()
                 )
-            )
+            ))
             self.lista_kart_inne = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_inne, "lista:koszty_inne")
             self.uzyj_wirtualizacji = True
@@ -131,7 +131,7 @@ class MiksinZakladkiInne:
             else:
                 mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
                 for w in po_filtrach:
-                    cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))}  {utils.symbol_waluty()}"
+                    cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))} {utils.symbol_waluty()}"
                     iid = w.get('id')
                     tresc_i = [
                         ft.Row([

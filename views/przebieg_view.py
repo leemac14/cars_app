@@ -104,14 +104,14 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                     utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
                     self.update()
 
-                elementy.append(
+                elementy.append(utils.na_cala_szerokosc(
                     ft.TextField(
-                        hint_text="Szukaj (data, przebieg, źródło, notatka)...",
+                        hint_text="Szukaj (data, przebieg, źródło)",
                         prefix_icon=ft.Icons.SEARCH,
                         on_change=utils.z_opoznieniem(self._page, filtruj_odczyty),
                         **utils.styl_pola()
                     )
-                )
+                ))
 
                 self.lista_kart = ft.ListView(spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:odczyty")
@@ -242,7 +242,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             ft.Row([
                 utils.odznaka_zrodla_przebiegu(w["zrodlo"], w["etykieta_zrodla"], w.get("podzrodlo")),
                 ft.Text(w["opis"], size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
-                        expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                        expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ], spacing=6),
         ]
 

@@ -106,11 +106,11 @@ class FormularzAutoView(ft.View):
         self.k_kolor, self.get_kolor = utils.komponent_wyboru_koloru(page, self.kolor_auta_val)
 
         # Nowe 3 pola zamiast jednego pola nazwy
-        self.e_marka = ft.TextField(label="Marka pojazdu*", value=m_val, **utils.styl_pola(page=page))
-        self.e_model = ft.TextField(label="Model pojazdu*", value=mod_val, **utils.styl_pola(page=page))
+        self.e_marka = ft.TextField(label="Marka*", value=m_val, **utils.styl_pola(page=page))
+        self.e_model = ft.TextField(label="Model*", value=mod_val, **utils.styl_pola(page=page))
         self.e_generacja = ft.TextField(label="Generacja (opcjonalnie)", value=gen_val, **utils.styl_pola(page=page))
         
-        self.e_rej = ft.TextField(label="Nr Rejestracyjny", value=r_val, **utils.styl_pola(page=page))
+        self.e_rej = ft.TextField(label="Nr rejestracyjny", value=r_val, **utils.styl_pola(page=page))
         self.e_rok = ft.TextField(label="Rok produkcji", value=ro_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_vin = ft.TextField(label="Numer VIN", value=v_val, **utils.styl_pola(page=page))
         self.btn_dekoduj_vin = ft.IconButton(
@@ -220,15 +220,15 @@ class FormularzAutoView(ft.View):
         odswiez_podglad_odznaki()
         self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
 
-        self.e_wp = ft.TextField(label="Wycieraczki (przód)", value=wp_val, hint_text="np. 60cm", **utils.styl_pola(page=page))
-        self.e_wt = ft.TextField(label="Wycieraczki (tył)", value=wt_val, hint_text="np. 40cm", **utils.styl_pola(page=page))
-        self.e_cp = ft.TextField(label="Ciśnienie opon (przód)", value=cp_val, hint_text="np. 2.2 bar", **utils.styl_pola(page=page))
-        self.e_ct = ft.TextField(label="Ciśnienie opon (tył)", value=ct_val, hint_text="np. 2.0 bar", **utils.styl_pola(page=page))
-        self.e_ot = ft.TextField(label="Typ oleju silnikowego", value=ot_val, hint_text="np. 5W-30", **utils.styl_pola(page=page))
-        self.e_op = ft.TextField(label="Pojemność oleju", value=op_val, hint_text="np. 4.5L", **utils.styl_pola(page=page))
+        self.e_wp = ft.TextField(label="Przód", value=wp_val, hint_text="np. 60cm", **utils.styl_pola(page=page))
+        self.e_wt = ft.TextField(label="Tył", value=wt_val, hint_text="np. 40cm", **utils.styl_pola(page=page))
+        self.e_cp = ft.TextField(label="Przód", value=cp_val, hint_text="np. 2.2 bar", **utils.styl_pola(page=page))
+        self.e_ct = ft.TextField(label="Tył", value=ct_val, hint_text="np. 2.0 bar", **utils.styl_pola(page=page))
+        self.e_ot = ft.TextField(label="Typ", value=ot_val, hint_text="np. 5W-30", **utils.styl_pola(page=page))
+        self.e_op = ft.TextField(label="Ilość", value=op_val, hint_text="np. 4.5L", **utils.styl_pola(page=page))
         self.e_akum = ft.TextField(label="Akumulator", value=akum_val, hint_text="np. 60Ah 540A, prawy +", **utils.styl_pola(page=page))
-        self.e_zm = ft.TextField(label="Żarówki (mijania)", value=zm_val, hint_text="np. H7", **utils.styl_pola(page=page))
-        self.e_zd = ft.TextField(label="Żarówki (drogowe)", value=zd_val, hint_text="np. H1", **utils.styl_pola(page=page))
+        self.e_zm = ft.TextField(label="Mijania", value=zm_val, hint_text="np. H7", **utils.styl_pola(page=page))
+        self.e_zd = ft.TextField(label="Drogowe", value=zd_val, hint_text="np. H1", **utils.styl_pola(page=page))
 
         self.e_ac = utils.pole_daty(page, "Polisa AC (Autocasco)", ac_val)
         self.e_asy = utils.pole_daty(page, "Ważność Assistance", asy_val)
@@ -269,16 +269,16 @@ class FormularzAutoView(ft.View):
             label="Kod lakieru", value=lak_val, hint_text="np. Z20R / LY9B",
             **utils.styl_pola(page=page))
         self.e_opony = ft.TextField(
-            label="Rozmiar opon", value=opon_val, hint_text="np. 205/55 R16",
+            label="Rozmiar opon", value=opon_val, hint_text="205/55 R16",
             **utils.styl_pola(page=page))
         self.e_felgi = ft.TextField(
-            label="Felgi", value=felg_val, hint_text="np. 6.5Jx16 ET40",
+            label="Felgi", value=felg_val, hint_text="6.5Jx16",
             **utils.styl_pola(page=page))
         self.e_srub = ft.TextField(
             label="Rozstaw śrub", value=srub_val, hint_text="np. 5x115",
             **utils.styl_pola(page=page))
         self.e_moment = ft.TextField(
-            label="Moment dokręcania kół", value=mom_val, hint_text="np. 110 Nm",
+            label="Moment kół", value=mom_val, hint_text="np. 110 Nm",
             **utils.styl_pola(page=page))
         self.e_zlacze = ft.TextField(
             label="Typ złącza ładowania", value=zlacze_val, hint_text="np. Type 2 / CCS",
@@ -292,13 +292,18 @@ class FormularzAutoView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pojazdu" if auto_id else "Nowy pojazd", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         wiersz_auto = ft.Row([ft.Container(self.e_marka, expand=True), ft.Container(self.e_model, expand=True)], spacing=10)
-        wiersz_wycieraczki = ft.Row([ft.Container(self.e_wp, expand=True), ft.Container(self.e_wt, expand=True)], spacing=10)
-        wiersz_cisnienie = ft.Row([ft.Container(self.e_cp, expand=True), ft.Container(self.e_ct, expand=True)], spacing=10)
-        wiersz_olej = ft.Row([ft.Container(self.e_ot, expand=True), ft.Container(self.e_op, expand=True)], spacing=10)
-        wiersz_zarowki = ft.Row([ft.Container(self.e_zm, expand=True), ft.Container(self.e_zd, expand=True)], spacing=10)
+        def para_pol(nazwa, lewe, prawe):
+            """Dwa pola pod wspólnym podpisem — w połowie ekranu mieści się „Przód”, nie „Wycieraczki (przód)”."""
+            return ft.Column([utils.podpis(nazwa), ft.Row([ft.Container(lewe, expand=True),
+                                                          ft.Container(prawe, expand=True)], spacing=10)], spacing=6)
+
+        wiersz_wycieraczki = para_pol("Wycieraczki", self.e_wp, self.e_wt)
+        wiersz_cisnienie = para_pol("Ciśnienie opon", self.e_cp, self.e_ct)
+        wiersz_olej = para_pol("Olej silnikowy", self.e_ot, self.e_op)
+        wiersz_zarowki = para_pol("Żarówki", self.e_zm, self.e_zd)
         wiersz_opon = ft.Row([ft.Container(self.e_opony, expand=True), ft.Container(self.e_felgi, expand=True)], spacing=10)
         wiersz_srub = ft.Row([ft.Container(self.e_srub, expand=True), ft.Container(self.e_moment, expand=True)], spacing=10)
-        wiersz_zakup = ft.Row([ft.Container(self.e_cena_zakupu, expand=True), ft.Container(self.e_przebieg_zakupu, expand=True)], spacing=10)
+        wiersz_zakup = ft.Column([self.e_cena_zakupu, self.e_przebieg_zakupu], spacing=utils.SPACING["md"])
         
         k0 = utils.karta_formularza([self.k_zdjecie], "Zdjęcie profilowe", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
         # Zastąpiono pojedyncze pole e_nazwa rzędem i polem generacji

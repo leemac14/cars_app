@@ -9,7 +9,7 @@ from .stale import FS, formatuj_liczba
 from .format import _odmiana_liczby, parsuj_float, symbol_waluty
 from .typografia import KOLOR_DRUGIEGO_PLANU
 from .zgodnosc import ustaw_blad
-from .formularze import karta_formularza, styl_pola
+from .formularze import karta_formularza, pole_wyboru, styl_pola
 
 
 def _liczba_zwiezle(wartosc, najwiecej=2, najmniej=0):
@@ -135,7 +135,7 @@ class ZuzycieMagazynu:
         if not self._pozycje:
             return None
         return karta_formularza(
-            [self.c_uzyj, self.lista, self.podsumowanie],
+            [pole_wyboru(self.c_uzyj), self.lista, self.podsumowanie],
             "Magazyn części", ft.Icons.INVENTORY_2,
             domyslnie_otwarte=bool(self.poprzednie),
         )

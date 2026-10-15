@@ -161,13 +161,16 @@ class RatyView(ft.View):
     # ================= KARTA UMOWY =================
 
     def _wiersz(self, etykieta, wartosc, kolor=None, sufiks=None):
-        tresc = [
-            utils.etykieta(etykieta, expand=True),
-            utils.wartosc(wartosc, color=kolor) if kolor else utils.wartosc(wartosc),
-        ]
+        # Dopisek POD wartością i stałe proporcje 2:3 — obok wartości zgniatał
+        # etykietę do zera i „Następna płatność” szła literami w dół.
+        prawa = [utils.wartosc(wartosc, color=kolor, text_align=ft.TextAlign.END) if kolor
+                 else utils.wartosc(wartosc, text_align=ft.TextAlign.END)]
         if sufiks:
-            tresc.append(utils.podpis(sufiks))
-        return ft.Row(tresc, spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            prawa.append(utils.podpis(sufiks, text_align=ft.TextAlign.END))
+        return ft.Row([
+            utils.etykieta(etykieta, expand=2),
+            ft.Column(prawa, spacing=0, expand=3, horizontal_alignment=ft.CrossAxisAlignment.END),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.START)
 
     def _menu(self, umowa):
         if self.podglad:
@@ -293,7 +296,7 @@ class RatyView(ft.View):
             wiersze.append(self._wiersz("Kapitał do spłaty", self._kwota(h["kapital_do_splaty"])))
         wiersze.append(self._wiersz(
             f"{nazwa} łącznie", self._kwota(h["odsetki_razem"]),
-            sufiks=f"zapłacono {utils.formatuj_liczba(h['odsetki_zaplacone'])}",
+            sufiks=f"zapłacono {self._kwota(h['odsetki_zaplacone'])}",
         ))
         if h["oprocentowanie"]:
             skad = "z umowy" if h["oprocentowanie_z"] == "umowa" else "wyliczone z raty"

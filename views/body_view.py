@@ -48,10 +48,10 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
                 utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=260, na_wiersz=2)
                 self.update()
 
-            pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)...", prefix_icon=ft.Icons.SEARCH, on_change=utils.z_opoznieniem(self._page, filtruj_galerie), **utils.styl_pola())
+            pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)", prefix_icon=ft.Icons.SEARCH, on_change=utils.z_opoznieniem(self._page, filtruj_galerie), **utils.styl_pola())
             
             elementy.append(ft.Row([utils.etykieta("Filtruj:", size=13)] + chipy_filtrow))
-            elementy.append(pole_szukaj)
+            elementy.append(utils.na_cala_szerokosc(pole_szukaj))
             
             zdjecia = zdjecia_po_filtrach
             

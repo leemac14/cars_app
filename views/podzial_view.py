@@ -237,7 +237,7 @@ class PodzialKosztowView(ft.View):
 
         e_data = utils.pole_daty(page, "Data rozliczenia", datetime.now().strftime(db.FORMAT_DATY_ROZLICZENIA),
                                  po_zmianie=odswiez_podglad)
-        e_notatka = utils.pole_notatki("", page, label="Notatka (np. przelew, gotówka)")
+        e_notatka = utils.pole_notatki("", page, podpowiedz="np. przelew, gotówka")
         odswiez_podglad()
 
         def zapisz(e):

@@ -53,7 +53,7 @@ class SzukajView(ft.View):
             return
 
         self.pole_wyszukiwarki = ft.TextField(
-            hint_text="Szukaj wpisów i ekranów (stacja, część, kwota, „rok w pigułce”)...",
+            hint_text="Szukaj wpisów i ekranów",
             prefix_icon=ft.Icons.SEARCH,
             autofocus=True,
             on_change=utils.z_opoznieniem(self._page, self._wyszukaj),
@@ -114,7 +114,7 @@ class SzukajView(ft.View):
         utils.pamietaj_pozycje(self._page, self.state, self.lista_wynikow, "lista:wyszukiwarka")
 
         elementy = [
-            self.pole_wyszukiwarki, self.sekcja_ostatnich, self.podpowiedz_skladni, self.pasek_trybu,
+            utils.na_cala_szerokosc(self.pole_wyszukiwarki), self.sekcja_ostatnich, self.podpowiedz_skladni, self.pasek_trybu,
             self.sekcja_ekranow, self.kontener_pomocniczy, self.lista_wynikow,
             self.sekcja_ekranow_pod,
         ]

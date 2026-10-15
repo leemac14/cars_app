@@ -83,11 +83,13 @@ def podglad_notatki(page: ft.Page, tresc, autor=None, data=None, tytul="Notatka"
     )
 
 
-def pole_notatki(wartosc="", page: ft.Page = None, label="Notatka (krótka uwaga do tego wpisu)"):
+def pole_notatki(wartosc="", page: ft.Page = None, label="Notatka", podpowiedz="Krótka uwaga do wpisu"):
     """Pole notatki w formularzu — ten sam limit co przy szybkiej edycji, więc
-    treści nie da się „przemycić” dłuższej jedną z dwóch dróg."""
+    treści nie da się „przemycić” dłuższej jedną z dwóch dróg. Etykieta krótka
+    (mieści się w połowie ekranu), objaśnienie w podpowiedzi."""
     return ft.TextField(
         label=label,
+        hint_text=podpowiedz,
         value=str(wartosc or ""),
         multiline=True, min_lines=1, max_lines=3,
         max_length=db.MAKS_DLUGOSC_NOTATKI,

@@ -103,9 +103,9 @@ class PojazdView(ft.View):
 
         naglowek = ft.Column([
             ft.Text(str(d.get("nazwa") or "Pojazd"), size=22, weight="bold",
-                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                    max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ft.Text(podtytul, size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
-                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, visible=bool(podtytul)),
+                    max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, visible=bool(podtytul)),
             ft.Container(height=4),
             utils.tablica_rejestracyjna(
                 d.get("nr_rej"), wysokosc=34,
@@ -163,13 +163,13 @@ class PojazdView(ft.View):
                         ft.Icon(ikona, size=15, color=kolor),
                         ft.Text(etykieta, size=utils.FS["caption"],
                                 color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
-                                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ], spacing=6),
                     ft.Text(wartosc, size=utils.FS["title"], weight="bold",
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Text(podpis or "", size=utils.FS["caption"],
                             color=ft.Colors.ON_SURFACE_VARIANT, visible=bool(podpis),
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=3),
             )
 
@@ -214,7 +214,7 @@ class PojazdView(ft.View):
                             ft.Text("Kondycja", size=utils.FS["caption"],
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Text(etykieta_kond, size=utils.FS["body_strong"], weight="bold",
-                                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                                    max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                         ], spacing=2, expand=True),
                     ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ),

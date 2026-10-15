@@ -255,7 +255,7 @@ def wiersz_osi(pozycja, j=None, pokaz_dzien=True, z_miesiacem=False):
     gora = [
         ft.Icon(ikona_z_mapy(IKONY_OSI, pozycja.get("ikona"), ft.Icons.EVENT), size=16, color=kolor),
         ft.Text(tytul_pozycji_osi(pozycja, j), size=FS["body_strong"], weight="bold", expand=True,
-                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
     ]
     kwota = kwota_osi(pozycja)
     if kwota:
@@ -284,7 +284,7 @@ def wiersz_osi_kafla(pozycja, j=None):
         ft.Text(dzien.strftime("%d.%m") if dzien else "—", size=FS["caption"], color=kolor,
                 width=SZEROKOSC_DNIA, no_wrap=True),
         ft.Text(tytul_pozycji_osi(pozycja, j), size=FS["caption"], expand=True,
-                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
     ]
     kwota = kwota_osi(pozycja)
     if kwota:
@@ -322,7 +322,7 @@ def naglowek_grupy_osi(page, tytul, opis="", wartosc="", kolor=None, pasek=None)
     szczebel wyżej niż karty, jak separator miesięcy na długich listach."""
     elementy = [ft.Row([
         ft.Text(tytul, size=FS["label"], weight="bold", color=kolor or ft.Colors.PRIMARY,
-                expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
         ft.Text(wartosc, size=FS["body_strong"], weight="bold", no_wrap=True),
     ], spacing=SPACING["sm"])]
     if opis:

@@ -48,7 +48,7 @@ class FormularzDokumentuView(ft.View):
                                     **utils.styl_pola(page=page))
         self.e_numer = ft.TextField(label="Numer dokumentu (opcjonalnie)", value=(dokument or {}).get("numer") or "",
                                     **utils.styl_pola(page=page))
-        self.e_od = self._pole_daty_z_czyszczeniem("Wystawiony / od (opcjonalnie)",
+        self.e_od = self._pole_daty_z_czyszczeniem("Wystawiony / od",
                                                    (dokument or {}).get("data_wystawienia") or "")
         self.e_do = self._pole_daty_z_czyszczeniem("Ważny do (opcjonalnie)", waznosc)
         self.t_karta = utils.podpis("")

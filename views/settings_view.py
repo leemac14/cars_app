@@ -89,7 +89,7 @@ class UstawieniaView(ft.View):
 
         opcje_dni_tekst = {7: "7 dni", 14: "14 dni", 30: "1 miesiąc", 60: "60 dni", 90: "90 dni"}
         self.e_prog_dni = ft.Dropdown(
-            label="Powiadamiaj o dokumentach i terminach na tyle dni przed",
+            label="Terminy: przypomnij na tyle dni przed",
             options=[ft.DropdownOption(key=str(d), text=opcje_dni_tekst.get(d, f"{d} dni")) for d in db.PROGI_DNI_OPCJE],
             value=str(prog_dni_val) if prog_dni_val in db.PROGI_DNI_OPCJE else str(db.PROGI_DNI_OPCJE[2]),
             **utils.styl_dropdown()
@@ -982,7 +982,7 @@ class UstawieniaView(ft.View):
         zostaje jako dodatkowa opcja — nic nie zmienia się bez ruchu człowieka."""
         j = self.jednostka_dystansu
         prog_km = prog_km or db.najblizszy_prog_km(db.PROG_KM_POWIADOMIEN, j)
-        self.e_prog_km.label = f"Powiadamiaj o wymianie na tyle {db.slowo_dystansu('dopelniacz', j)} przed"
+        self.e_prog_km.label = f"Wymiany: przypomnij na tyle {db.slowo_dystansu('dopelniacz', j)} przed"
         self.e_prog_km.options = [ft.DropdownOption(key=str(km), text=tekst)
                                   for km, tekst in db.opcje_progow_km(j, obecny_km=prog_km)]
         self.e_prog_km.value = str(int(prog_km))

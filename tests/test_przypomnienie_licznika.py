@@ -297,7 +297,8 @@ def test_panel_wpisuje_stan_i_odklada_pod_kluczem_cyklu(baza, monkeypatch):
 
     (kafel,) = [k for k in kontrolki(arkusze[0].content.content, ft.ListTile)
                 if k.title is not None and "Odczyt licznika" in napisy(k.title)]
-    wpisz, drzemka = kafel.trailing.controls
+    # Przycisk stoi pod opisem, odkładanie po prawej (w `trailing` ściskały tytuł).
+    wpisz, drzemka = kafel.subtitle.controls[-1], kafel.trailing
     assert wpisz.content == "Wpisz stan"
     assert kafel.leading.icon == ft.Icons.SPEED
 
@@ -305,7 +306,7 @@ def test_panel_wpisuje_stan_i_odklada_pod_kluczem_cyklu(baza, monkeypatch):
     ((dla_auta, po_zapisie),) = okna
     assert dla_auta == auto_id
     po_zapisie()
-    assert znaczniki == ["Zapisano"] and kafel.trailing.value == "Zapisano"
+    assert znaczniki == ["Zapisano"] and kafel.trailing.value == "Zapisano" and wpisz.visible is False
 
     drzemka.items[0].on_click(None)
     assert db.pobierz_wyciszone_klucze(auto_id) == {f"licznik:{iso_dni_temu(45)}"}

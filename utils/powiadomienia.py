@@ -11,7 +11,7 @@ from .typografia import podpis
 from .zgodnosc import ustaw_blad, ustaw_ikone
 from .wyglad import dol_bezpieczny, tlo_stanu
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, potwierdz, przejdz, zamknij_dialog, zamknij_dno
-from .formularze import pole_daty, styl_dropdown, styl_pola
+from .formularze import pole_daty, pole_wyboru, styl_dropdown, styl_pola
 from .pojazd import dialog_odczytu_przebiegu
 from .komponenty import znacznik_wykonania
 from .kopie import zrob_kopie_teraz
@@ -228,11 +228,11 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             # Przycisk zamienia się w ptaszka, który „wskakuje” na swoje miejsce,
             # i dopiero po tej chwili lista się przebudowuje — inaczej wiersz
             # znikał w tej samej klatce, w której użytkownik go dotknął.
-            kafelek.trailing = znacznik_wykonania(
+            pokaz_wykonanie(kafelek, znacznik_wykonania(
                 page,
                 etykieta_wykonania_cyklicznego(typ, czy_koszt),
                 po_zakonczeniu=dokoncz,
-            )
+            ))
             try:
                 page.update()
             except Exception:
@@ -251,7 +251,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                     odswiez()
                     przejdz(page, page.route)
 
-                kafelek.trailing = znacznik_wykonania(page, "Zapisano", po_zakonczeniu=dokoncz)
+                pokaz_wykonanie(kafelek, znacznik_wykonania(page, "Zapisano", po_zakonczeniu=dokoncz))
                 try:
                     page.update()
                 except Exception:
@@ -274,7 +274,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                     odswiez()
                     przejdz(page, page.route)
 
-                kafelek.trailing = znacznik_wykonania(page, "Zapisano", po_zakonczeniu=dokoncz)
+                pokaz_wykonanie(kafelek, znacznik_wykonania(page, "Zapisano", po_zakonczeniu=dokoncz))
                 try:
                     page.update()
                 except Exception:
@@ -432,6 +432,23 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             *[podpis(linia) for linia in linie[1:]],
         ], spacing=1, tight=True)
 
+    przyciski_akcji = {}
+
+    def z_akcja(kafelek, przycisk, p):
+        """Przycisk akcji pod opisem, odkładanie po prawej. Oba w `trailing` zabierały
+        ~160 dp i tytuł łamał się po kilka liter w linii."""
+        przycisk.style = ft.ButtonStyle(padding=ft.Padding(0, 0, 8, 0))
+        kafelek.subtitle = ft.Column([kafelek.subtitle, przycisk], spacing=0, tight=True)
+        kafelek.trailing = przycisk_odlozenia(p)
+        przyciski_akcji[id(kafelek)] = przycisk
+        return kafelek
+
+    def pokaz_wykonanie(kafelek, znacznik):
+        """Ptaszek po prawej, a przycisk akcji pod opisem znika — jak dawniej w `trailing`."""
+        kafelek.trailing = znacznik
+        if id(kafelek) in przyciski_akcji:
+            przyciski_akcji[id(kafelek)].visible = False
+
     def odswiez():
         nonlocal nowe_przy_otwarciu
         powiadomienia = db.pobierz_powiadomienia(state.auto_id)
@@ -472,16 +489,11 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         title=tytul_pozycji(p),
                         subtitle=podtytul_pozycji(p, kolor),
                     )
-                    akcje = [ft.TextButton(
+                    pozycje.append(z_akcja(kafelek, ft.TextButton(
                         etykieta_wykonania_cyklicznego(typ_p, czy_koszt_p),
                         icon=ft.Icons.CHECK,
                         on_click=zaplac_cykliczny(p["wydatek_id"], czy_koszt_p, kafelek, typ_p),
-                    )]
-                    drzemka = przycisk_odlozenia(p)
-                    if drzemka:
-                        akcje.append(drzemka)
-                    kafelek.trailing = ft.Row(akcje, spacing=0, tight=True)
-                    pozycje.append(kafelek)
+                    ), p))
                 elif p["typ"] == "licznik":
                     # Dotknięcie wiersza prowadzi do historii licznika jak każde
                     # inne powiadomienie; sam odczyt wpisuje się przyciskiem, bez
@@ -492,13 +504,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         subtitle=podtytul_pozycji(p, kolor),
                         on_click=idz_do(p["trasa"]),
                     )
-                    akcje = [ft.TextButton("Wpisz stan", icon=ft.Icons.EDIT,
-                                           on_click=wpisz_stan_licznika(kafelek))]
-                    drzemka = przycisk_odlozenia(p)
-                    if drzemka:
-                        akcje.append(drzemka)
-                    kafelek.trailing = ft.Row(akcje, spacing=0, tight=True)
-                    pozycje.append(kafelek)
+                    pozycje.append(z_akcja(kafelek, ft.TextButton(
+                        "Wpisz stan", icon=ft.Icons.EDIT, on_click=wpisz_stan_licznika(kafelek)), p))
                 elif p["typ"] == "kopia":
                     # Wiersz prowadzi do Ustawień (folder, rytm, lista kopii),
                     # a samą kopię robi przycisk, bez schodzenia z panelu.
@@ -508,13 +515,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         subtitle=podtytul_pozycji(p, kolor),
                         on_click=idz_do(p["trasa"]),
                     )
-                    akcje = [ft.TextButton("Zrób teraz", icon=ft.Icons.BACKUP,
-                                           on_click=zrob_kopie_z_panelu(kafelek))]
-                    drzemka = przycisk_odlozenia(p)
-                    if drzemka:
-                        akcje.append(drzemka)
-                    kafelek.trailing = ft.Row(akcje, spacing=0, tight=True)
-                    pozycje.append(kafelek)
+                    pozycje.append(z_akcja(kafelek, ft.TextButton(
+                        "Zrób teraz", icon=ft.Icons.BACKUP, on_click=zrob_kopie_z_panelu(kafelek)), p))
                 else:
                     # Gwarancja naprawy ma swoją tarczę: to nie termin do
                     # dotrzymania, tylko ostatnia chwila na reklamację za darmo.
@@ -838,7 +840,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
         dlg = ft.AlertDialog(
             title=ft.Text("Edytuj wpis" if edycja else "Nowy wydatek cykliczny / przypomnienie", weight="bold"),
             content=ft.Column(
-                [e_nazwa, e_rodzaj, podpowiedz_opon, e_tylko_przypomnienie, e_kwota, e_okres, e_data],
+                [e_nazwa, e_rodzaj, podpowiedz_opon, pole_wyboru(e_tylko_przypomnienie), e_kwota, e_okres, e_data],
                 tight=True, spacing=10, scroll=ft.ScrollMode.AUTO,
             ),
             actions=[

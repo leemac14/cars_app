@@ -60,8 +60,8 @@ class EksportView(ft.View):
             value=PRESETY_OKRESU[0],
             **utils.styl_dropdown()
         )
-        self.e_od = utils.pole_daty(page, "Od (włącznie)")
-        self.e_do = utils.pole_daty(page, "Do (włącznie)")
+        self.e_od = utils.pole_daty(page, "Od", podpowiedz="Data")
+        self.e_do = utils.pole_daty(page, "Do", podpowiedz="Data")
         self.wiersz_niestandardowy = ft.Row(
             [ft.Container(self.e_od, expand=True), ft.Container(self.e_do, expand=True)],
             spacing=10, visible=False
@@ -130,7 +130,7 @@ class EksportView(ft.View):
              wiersz_szybkie] + self.checkboxy_kategorii + [self.blad_kategorii],
             "Dane do uwzględnienia", ft.Icons.CHECKLIST, domyslnie_otwarte=True
         )
-        elementy_k3 = [self.e_format, self.c_podsumowanie, self.c_paszport]
+        elementy_k3 = [self.e_format, utils.pole_wyboru(self.c_podsumowanie), utils.pole_wyboru(self.c_paszport)]
         if not pdf_dostepny:
             elementy_k3.append(ft.Text(
                 "Aby włączyć eksport do PDF, doinstaluj bibliotekę: pip install fpdf2",

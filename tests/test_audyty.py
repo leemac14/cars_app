@@ -14,13 +14,18 @@ Plik ma dwie części:
 2. **Audyty na prawdziwym kodzie** — mają nie znaleźć nic.
 """
 
+import asyncio
+import inspect
 import textwrap
+import types
 
 import flet as ft
 import pytest
 
 import audyty
+import db
 import pomoce
+import utils
 
 
 # ============================================================================
@@ -786,3 +791,215 @@ def test_ciche_wyjatki_nie_przybywaja():
         + "\n\npython tests/audyty.py --zapisz"
     )
 
+
+# ============================================================================
+#  AUDYT UCIĘTYCH NAPISÓW (telefon 360 dp)
+# ============================================================================
+# Flutter o uciętym napisie milczy. Na telefonie znikały końcówki nazw w kafelkach
+# („…”), etykiety przełączników (Flet ich nie zawija), podpowiedzi pól o domyślnych
+# 300 dp, a „Kilometrówka” w przełączniku segmentów łamała się litera po literze.
+
+DLUGI_NAPIS = "Wymiana oleju silnikowego i filtra powietrza kabiny"
+
+PRZYPADKI_NAPISOW = [
+    # (nazwa, drzewo, rodzaje znalezisk)
+    (
+        "jedna linia z wielokropkiem w wierszu",
+        lambda: ft.Row([ft.Icon(ft.Icons.BUILD), ft.Text(DLUGI_NAPIS, no_wrap=True, expand=True), ft.Text("1 260 zł")]),
+        ["tekst"],
+    ),
+    (
+        "ten sam napis w dwóch liniach",
+        lambda: ft.Row([ft.Icon(ft.Icons.BUILD), ft.Text(DLUGI_NAPIS, max_lines=2, expand=True), ft.Text("1 260 zł")]),
+        [],
+    ),
+    (
+        "napis bez expand rozpycha wiersz",
+        lambda: ft.Row([ft.Icon(ft.Icons.BUILD), ft.Text(DLUGI_NAPIS), ft.Text("1 260 zł")]),
+        ["wiersz"],
+    ),
+    (
+        "etykieta przełącznika",
+        lambda: ft.Column([ft.Checkbox(label=f"{DLUGI_NAPIS} na ekranie głównym")]),
+        ["pole wyboru"],
+    ),
+    (
+        "ta sama etykieta przez pole_wyboru",
+        lambda: ft.Column([utils.pole_wyboru(ft.Checkbox(label=f"{DLUGI_NAPIS} na ekranie głównym"))]),
+        [],
+    ),
+    (
+        "podpowiedź w polu o domyślnej szerokości",
+        lambda: ft.Column([ft.TextField(label="Szukaj", hint_text="Szukaj po nazwie, warsztacie, notatce i części")]),
+        ["podpowiedź"],
+    ),
+    (
+        "pole na całą szerokość",
+        lambda: ft.Column([utils.na_cala_szerokosc(ft.TextField(label="Szukaj", hint_text="Nazwa, warsztat albo notatka"))]),
+        [],
+    ),
+    (
+        "słowo łamane w ściśniętych segmentach",
+        lambda: ft.Container(width=232, content=ft.Row(
+            [ft.Container(ft.Text("Kilometrówka", size=12, weight="bold"), expand=True) for _ in range(3)], spacing=4)),
+        ["słowo"] * 3,
+    ),
+    (
+        "opcja listy szersza niż lista",
+        lambda: ft.Column([ft.Row([ft.Dropdown(label="Rodzaj", width=200, options=[
+            ft.DropdownOption(key="a", text="Tankowania"),
+            ft.DropdownOption(key="b", text="Przejazdy (ewidencja przebiegu)"),
+        ])])]),
+        ["opcja"],
+    ),
+    (
+        "przewijany pasek chipów",
+        lambda: ft.Row([ft.Chip(label=ft.Text(f"Filtr numer {i}")) for i in range(8)], scroll=ft.ScrollMode.ADAPTIVE),
+        [],
+    ),
+    (
+        "napis mieści się na ekranie, ale nie w oknie",
+        lambda: ft.AlertDialog(title=ft.Text("Raport"), content=ft.Column(
+            [ft.Text("Podział prywatne / służbowe miesiąca", no_wrap=True)], tight=True)),
+        ["tekst"],
+    ),
+]
+
+
+@pytest.mark.parametrize("nazwa, drzewo, rodzaje", PRZYPADKI_NAPISOW, ids=[p[0] for p in PRZYPADKI_NAPISOW])
+def test_audyt_napisow(nazwa, drzewo, rodzaje):
+    znaleziska = audyty.znajdz_uciete_napisy(drzewo())
+
+    assert [z["rodzaj"] for z in znaleziska] == rodzaje, "\n".join(z["opis"] for z in znaleziska)
+
+
+def test_szerokosc_napisu_liczy_litery_a_nie_znaki():
+    """Metryka Roboto, nie liczba znaków — inaczej audyt albo krzyczy przy
+    każdym „iii”, albo przepuszcza każde „mmm”."""
+    assert audyty.szerokosc_tekstu("mmm") > 3 * audyty.szerokosc_tekstu("iii")
+
+
+def _strona_telefonu():
+    strona = pomoce.zbuduj_strone()
+    strona.page.width = audyty.SZEROKOSC_TELEFONU
+    return strona
+
+
+def _opis_napisow(znaleziska):
+    return "\n".join(f"[{z['rodzaj']}] {z['opis']}\n    {z['sciezka']}" for z in znaleziska) + (
+        "\n\nNapis na telefonie się zawija, a element rośnie: max_lines=2 zamiast no_wrap, "
+        "etykieta przełącznika przez utils.pole_wyboru, pole tekstowe w kolumnie przez "
+        "utils.na_cala_szerokosc. Krótszy tekst tylko tam, gdzie zawijanie psuje układ."
+    )
+
+
+@pytest.mark.parametrize("scenariusz", SCENARIUSZE_AUDYTU)
+@pytest.mark.parametrize("nazwa_widoku", list(pomoce.klasy_widokow()))
+def test_widok_nie_ucina_napisow_na_telefonie(baza, nazwa_widoku, scenariusz):
+    stan, identyfikatory = pomoce.przygotuj_scenariusz(scenariusz)
+    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()[nazwa_widoku], _strona_telefonu(), stan, identyfikatory)
+
+    znaleziska = audyty.znajdz_uciete_napisy(widok)
+
+    assert znaleziska == [], _opis_napisow(znaleziska)
+
+
+@pytest.mark.parametrize("zakladka, podzakladka_kosztow, podzakladka_statystyk", UKLADY_EKRANU_GLOWNEGO)
+def test_ekran_glowny_nie_ucina_napisow_na_telefonie(baza, zakladka, podzakladka_kosztow, podzakladka_statystyk):
+    stan, _ = pomoce.przygotuj_scenariusz("pojazd_z_historia")
+    stan.zakladka = zakladka
+    stan.koszty_podzakladka = podzakladka_kosztow
+    stan.stat_podzakladka = podzakladka_statystyk
+    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()["MainView"], _strona_telefonu(), stan)
+
+    znaleziska = audyty.znajdz_uciete_napisy(widok)
+
+    assert znaleziska == [], _opis_napisow(znaleziska)
+
+
+@pytest.mark.parametrize("edycja", [False, True], ids=["kokpit", "edycja kokpitu"])
+def test_kokpit_z_kompletem_kafelkow_nie_ucina_napisow(baza, edycja):
+    """Najciaśniejszy kokpit: wszystkie kafelki naraz, długa nazwa auta i długi status."""
+    stan, _ = pomoce.przygotuj_scenariusz("pojazd_z_historia")
+    db.zapisz_widgety_kokpitu(list(db.KOKPIT_WIDGETY), stan.auto_id)
+    nazwa = "Skoda Octavia Combi 2.0 TDI"
+    with db.polacz_baze() as conn:
+        conn.execute("UPDATE samochody SET nazwa=?, wiadomosc_statusu=? WHERE id=?",
+                     (nazwa, "Zatankowany do pełna, kluczyki w szufladzie", stan.auto_id))
+    stan.auto_nazwa = nazwa
+    stan.zakladka = 0
+    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()["MainView"], _strona_telefonu(), stan)
+    if edycja:
+        widok.kokpit_edycja = True
+        widok._odswiez_kokpit()
+
+    znaleziska = audyty.znajdz_uciete_napisy(widok)
+
+    assert znaleziska == [], _opis_napisow(znaleziska)
+
+
+def _obslugi_zdarzen(korzen, limit=400):
+    """(kontrolka, nazwa zdarzenia, obsługa) dla wszystkiego, co da się dotknąć."""
+    wynik, kolejka, widziane = [], [korzen], set()
+    while kolejka and len(wynik) < limit:
+        kontrolka = kolejka.pop(0)
+        if id(kontrolka) in widziane:
+            continue
+        widziane.add(id(kontrolka))
+        for zdarzenie in ("on_click", "on_long_press", "on_tap", "on_select", "on_change"):
+            obsluga = getattr(kontrolka, zdarzenie, None)
+            if callable(obsluga):
+                wynik.append((kontrolka, zdarzenie, obsluga))
+        for pole in audyty.POLA_DZIECI + ("appbar", "floating_action_button", "drawer", "navigation_bar", "destinations"):
+            wartosc = getattr(kontrolka, pole, None)
+            if isinstance(wartosc, (list, tuple)):
+                kolejka.extend(w for w in wartosc if isinstance(w, ft.Control))
+            elif isinstance(wartosc, ft.Control):
+                kolejka.append(wartosc)
+    return wynik
+
+
+def _dotknij(obsluga, zdarzenie):
+    """Wywołuje obsługę jak palec. Błąd samej obsługi (zdarzenie bez danych, brak
+    pliku do wybrania) nie jest tematem tego testu — tu liczą się otwarte okna."""
+    try:
+        wynik = obsluga(zdarzenie)
+        if inspect.iscoroutine(wynik):
+            asyncio.run(asyncio.wait_for(wynik, 3))
+    except (Exception, asyncio.CancelledError):
+        pass
+
+
+def _zamknij_korutyne(strona, obsluga, *args, **kwargs):
+    """Strona testowa nie ma pętli zdarzeń — zadanie w tle tylko się zamyka,
+    zamiast zostawiać ostrzeżenie o nigdy nieuruchomionej korutynie."""
+    wynik = obsluga(*args, **kwargs)
+    if inspect.iscoroutine(wynik):
+        wynik.close()
+
+
+@pytest.mark.parametrize("scenariusz", SCENARIUSZE_AUDYTU)
+@pytest.mark.parametrize("nazwa_widoku", list(pomoce.klasy_widokow()))
+def test_okna_otwierane_z_widoku_nie_ucinaja_napisow(baza, monkeypatch, nazwa_widoku, scenariusz):
+    """Okno ma na telefonie ok. 230 dp treści — o jedną trzecią mniej niż ekran,
+    więc napis, który mieści się w widoku, w oknie bywa już ucięty. Test dotyka
+    po kolei wszystkiego na ekranie i audytuje każde okno i arkusz, które się otworzą."""
+    stan, identyfikatory = pomoce.przygotuj_scenariusz(scenariusz)
+    if scenariusz == "pojazd_z_historia":
+        db.zapisz_widgety_kokpitu(list(db.KOKPIT_WIDGETY), stan.auto_id)
+    strona = _strona_telefonu()
+    strona.page.on_route_change = lambda e: None
+    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()[nazwa_widoku], strona, stan, identyfikatory)
+
+    otwarte = []
+    monkeypatch.setattr(ft.Page, "show_dialog", lambda self, okno: otwarte.append(okno))
+    monkeypatch.setattr(ft.Page, "pop_dialog", lambda self: None)
+    monkeypatch.setattr(ft.Page, "run_task", _zamknij_korutyne)
+    for kontrolka, nazwa, obsluga in _obslugi_zdarzen(widok):
+        _dotknij(obsluga, types.SimpleNamespace(control=kontrolka, page=strona.page, data="", name=nazwa))
+
+    znaleziska = [(okno, z) for okno in otwarte for z in audyty.znajdz_uciete_napisy(okno)]
+
+    assert znaleziska == [], _opis_napisow([
+        {**z, "sciezka": f"{type(okno).__name__}: {z['sciezka']}"} for okno, z in znaleziska
+    ])

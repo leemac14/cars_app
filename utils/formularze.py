@@ -11,15 +11,15 @@ from .zgodnosc import ustaw_blad, ustaw_ikone
 from .dialogi import otworz_dialog, pokaz_komunikat, przejdz
 
 
-def pole_daty(page: ft.Page, label, wartosc_poczatkowa=None, po_zmianie=None):
+def pole_daty(page: ft.Page, label, wartosc_poczatkowa=None, po_zmianie=None, podpowiedz="Wybierz datę"):
     """Pole daty tylko do wyboru z kalendarza. `po_zmianie` (bez argumentów)
     woła się po wyborze nowej daty — pole jest tylko do odczytu, więc jego
-    własne `on_change` nigdy nie zadziała."""
+    własne `on_change` nigdy nie zadziała. W połowie ekranu — krótsza `podpowiedz`."""
     pole = ft.TextField(
         label=label, 
         value=str(wartosc_poczatkowa) if wartosc_poczatkowa else "",
         read_only=True, 
-        hint_text="Wybierz datę",
+        hint_text=podpowiedz,
         **styl_pola()
     )
 
@@ -171,6 +171,36 @@ def styl_pola(page: ft.Page = None):
     }
 
 
+def pole_wyboru(kontrolka, rozmiar=None):
+    """Checkbox, Switch albo Radio z etykietą, która się zawija — Flet rysuje `label` w jednej
+    linii i ucina końcówkę. Tekst idzie do ListTile; dotknięcie wiersza przełącza pole."""
+    tekst = kontrolka.label
+    if not isinstance(tekst, str) or not tekst:
+        return kontrolka
+    kontrolka.label = None
+    return ft.ListTile(
+        leading=kontrolka, title=ft.Text(tekst, size=rozmiar or FS["body_strong"]),
+        toggle_inputs=True, dense=True, content_padding=ft.Padding(0, 0, 0, 0),
+        horizontal_spacing=SPACING["xs"], min_vertical_padding=0,
+        # ListTile przełącza także pole wyłączone, więc wyłącza się razem z nim.
+        disabled=kontrolka.disabled, visible=kontrolka.visible,
+    )
+
+
+def ustaw_etykiete_wyboru(wiersz, tekst):
+    """Nowa etykieta pola zbudowanego przez `pole_wyboru`."""
+    if isinstance(wiersz, ft.ListTile) and isinstance(wiersz.title, ft.Text):
+        wiersz.title.value = tekst
+    else:
+        wiersz.label = tekst
+
+
+def na_cala_szerokosc(pole):
+    """Pole na całą szerokość kolumny — samo w ft.Column ma 300 dp i ucina podpowiedź."""
+    pole.expand = True
+    return ft.Row([pole])
+
+
 def styl_dropdown(page: ft.Page = None):
     return {
         "border_radius": RADIUS["md"],
@@ -287,8 +317,10 @@ def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj, ikona_
 __all__ = [
     "dopasuj_wysokosc_listy",
     "karta_formularza",
+    "na_cala_szerokosc",
     "pokaz_bledy_formularza",
     "pole_daty",
+    "pole_wyboru",
     "przyciski_akcji",
     "sprawdz_duplikat_kosztu",
     "sprawdz_duplikat_tankowania",
@@ -296,5 +328,6 @@ __all__ = [
     "sprawdz_podejrzany_przebieg",
     "styl_dropdown",
     "styl_pola",
+    "ustaw_etykiete_wyboru",
     "wysokosc_listy",
 ]

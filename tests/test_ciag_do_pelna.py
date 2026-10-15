@@ -223,7 +223,7 @@ def test_pasek_pod_do_pelna_przed_zapisem(baza, otworz_formularz):
     _tankuj(auto, "01.09.2026", 10000, 40, True)
     _tankuj(auto, "10.09.2026", 10300, 20, False)
     widok = otworz_formularz(auto)
-    assert _zaraz_po(widok, widok.c_pel) is widok.baner_ciagu, "pasek stoi pod polem, którego dotyczy"
+    assert _zaraz_po(widok, widok.w_pel) is widok.baner_ciagu, "pasek stoi pod polem, którego dotyczy"
 
     assert widok.c_pel.value and not widok.baner_ciagu.visible, "nowe tankowanie jest domyślnie do pełna"
 

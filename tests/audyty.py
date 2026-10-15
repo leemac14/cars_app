@@ -1372,6 +1372,557 @@ def audyt_porzuconych_korutyn(sciezki=None, korzen=None):
 
 
 # ============================================================================
+#  AUDYT 10 — tekst ucięty na wąskim telefonie (drzewo kontrolek)
+# ============================================================================
+# Flutter o uciętym napisie milczy: linia z `no_wrap` kończy się „…”, wiersz
+# szerszy niż ekran gubi koniec, za długa etykieta pola łamie się w dwie linie
+# w środku pustego pola, a ściśnięta kolumna łamie słowo litera po literze.
+# Audyt rozkłada szerokość jak RenderFlex (wiersz: najpierw dzieci sztywne,
+# reszta po równo dla `expand`) na telefonie 360 dp i mierzy napisy metryką
+# Roboto. Pomija przewijane paski i rozwijane menu — tam szerokości nie brakuje.
+
+SZEROKOSC_TELEFONU = 360
+TOLERANCJA_DP = 1.0
+ZNAK_SPOZA_TABELI_EM = 0.6
+
+# Szerokości znaków Roboto w em (Google Fonts, wagi 400/500/700).
+_SZEROKOSCI_ROBOTO = {
+    400: {
+        0.17: "'", 0.2: ',‘’‚', 0.21: ';', 0.24: ':ijl|', 0.25: ' \xa0í', 0.26: '!.·', 0.27: 'I[]ł',
+        0.28: '-', 0.31: '`', 0.32: '"', 0.33: 't', 0.34: '(r{}„•', 0.35: ')f“', 0.36: '”', 0.37: '°²³',
+        0.41: '/\\', 0.42: '^', 0.43: '*', 0.45: '_', 0.47: '?y«»', 0.48: 'v', 0.5: 'xzźż', 0.51: '<k',
+        0.52: '>csçćś', 0.53: 'e×éèêëę±', 0.54: 'LaäáąŁ', 0.55: '=FJhnuüúñń', 0.56: '$0123456789bdgp€',
+        0.57: '+EoqöóÉóĘ−', 0.59: 'SŚ', 0.6: 'TYZŹŻ', 0.62: '#&BR', 0.63: 'KPX™', 0.64: 'V',
+        0.65: 'ACUÜÄÁĄĆ', 0.66: 'D–', 0.67: '…', 0.68: 'G~', 0.69: 'OQÖÓ', 0.71: 'HNŃ', 0.73: '%', 0.75: 'w',
+        0.78: '—', 0.87: 'M', 0.88: 'm', 0.89: 'W', 0.9: '@',
+    },
+    500: {
+        0.17: "'", 0.22: ',‘’', 0.23: '‚', 0.24: ';', 0.25: ' j|\xa0', 0.26: 'ilí', 0.27: '!:[]',
+        0.28: '.I·', 0.29: 'ł', 0.32: '"`', 0.33: '-t', 0.34: '{}', 0.35: '()fr•', 0.37: '²³', 0.38: '°“„',
+        0.39: '”', 0.4: '/', 0.42: '\\', 0.43: '^', 0.44: '*', 0.45: '_', 0.49: '?vy«»', 0.5: 'xzźż',
+        0.51: '<', 0.52: '>cksçćś', 0.53: '×', 0.54: 'Laeéèêëäáąę±', 0.55: 'FŁ', 0.56: '+=Jbdhnpuüúñń−',
+        0.57: '$0123456789EgoqöóÉóĘ€', 0.6: 'SZŚŹŻ', 0.61: '#TY', 0.62: 'R', 0.63: 'BKX™', 0.64: '&P',
+        0.65: 'CDUVÜĆ–', 0.66: '~', 0.67: 'AÄÁĄ', 0.68: 'G', 0.69: 'OQÖÓ', 0.71: 'HNŃ…', 0.73: '%',
+        0.74: 'w', 0.77: '—', 0.87: 'm', 0.88: 'MW', 0.89: '@',
+    },
+    700: {
+        0.16: "'", 0.23: '‘’', 0.24: ',', 0.25: ' |\xa0‚', 0.26: ';j', 0.27: '!ilí', 0.28: ':[]', 0.29: '.I',
+        0.3: '·', 0.31: 'ł', 0.32: '"', 0.33: '`{}', 0.34: 't', 0.35: '()', 0.36: 'fr•', 0.37: '/²³',
+        0.39: '-°', 0.4: '„', 0.41: '“”', 0.42: '\\', 0.44: '^', 0.45: '*_', 0.5: '?y«»', 0.51: '<svxzśźż',
+        0.52: '>cçć', 0.53: 'k×', 0.54: 'Laeéèêëäáąę±', 0.55: '+F', 0.56: 'EJbdhnpquüúñÉńĘŁ−',
+        0.57: '$0123456789=goöóó€', 0.6: '#', 0.61: 'SZŚŹŻ', 0.62: 'TY', 0.63: 'K–™', 0.64: 'BRX',
+        0.65: 'CDPV~Ć', 0.66: '&UÜ', 0.67: 'AÄÁĄ', 0.68: 'G', 0.69: 'OQÖÓ', 0.71: 'HNŃ', 0.73: 'w',
+        0.74: '%…', 0.76: '—', 0.87: 'Wm', 0.88: 'M', 0.9: '@',
+    },
+}
+
+_ZNAKI_ROBOTO = {waga: {znak: em for em, znaki in grupy.items() for znak in znaki}
+                 for waga, grupy in _SZEROKOSCI_ROBOTO.items()}
+
+# Style Material 3: (rozmiar, waga, odstęp liter).
+STYL_TRESCI = (14, 400, 0.25)       # bodyMedium — ft.Text bez stylu
+STYL_POLA = (16, 400, 0.5)          # bodyLarge — wartość, etykieta i podpowiedź pola
+STYL_ETYKIETY_UNIESIONEJ = (12, 400, 0.5)
+STYL_PRZYCISKU = (14, 500, 0.1)     # labelLarge
+STYL_TYTULU_PASKA = (22, 400, 0.0)  # titleLarge
+STYL_PODPISU_NAWIGACJI = (12, 500, 0.5)
+STYLE_MOTYWU = {
+    "displaylarge": (57, 400, -0.25), "displaymedium": (45, 400, 0.0), "displaysmall": (36, 400, 0.0),
+    "headlinelarge": (32, 400, 0.0), "headlinemedium": (28, 400, 0.0), "headlinesmall": (24, 400, 0.0),
+    "titlelarge": STYL_TYTULU_PASKA, "titlemedium": (16, 500, 0.15), "titlesmall": (14, 500, 0.1),
+    "bodylarge": STYL_POLA, "bodymedium": STYL_TRESCI, "bodysmall": (12, 400, 0.4),
+    "labellarge": STYL_PRZYCISKU, "labelmedium": STYL_PODPISU_NAWIGACJI, "labelsmall": (11, 500, 0.5),
+}
+
+# Stałe układu Fleta/Material 3 potrzebne do policzenia miejsca na napis (dp).
+POLE_SZEROKOSC_W_KOLUMNIE = 300     # TextField w ft.Column bez width — zmierzone na flet-web 0.86
+POLE_PADDING_DOMYSLNY = 24
+POLE_IKONA_PRZEDROSTKA = 45         # ikona przed tekstem razem z lewym marginesem
+POLE_IKONA_ZA = 48
+LISTA_POZA_TEKSTEM = 71             # ft.Dropdown: lewy margines + strzałka (zmierzone na flet-web 0.86)
+LISTA_DOPELNIENIE_OPCJI = 88        # szerokość listy bez `width`: najdłuższa opcja (14 dp) + to
+LISTA_DOPELNIENIE_ETYKIETY = 99     # … albo etykieta (12 dp) + to, jeśli dłuższa
+POLE_WYBORU_KWADRAT = {"Checkbox": 40, "Radio": 40, "Switch": 60}
+PRZYCISK_PADDING = 48               # Button / FilledButton / OutlinedButton: 24 + 24
+PRZYCISK_TEKSTOWY_PADDING = 24      # TextButton: 12 + 12
+PRZYCISK_IKONA = 26                 # ikona 18 + odstęp 8
+IKONA_PRZYCISKU_ROZMIAR = 48
+KARTA_MARGINES = 8                  # ft.Card: 4 + 4
+OKNO_MARGINES = 80                  # ft.AlertDialog: 40 dp z każdej strony ekranu
+OKNO_PADDING = 48                   # tytuł i treść okna: 24 + 24
+STYL_TYTULU_OKNA = (24, 400, 0.0)   # headlineSmall
+SZUFLADA_ODSTEP = 56                # szuflada nawigacji zostawia pas ekranu z prawej
+WIERSZ_ODSTEP_DOMYSLNY = 10
+
+
+def _waga_pisma(waga):
+    if waga is None:
+        return None
+    tekst = str(getattr(waga, "value", waga)).lower()
+    if tekst in ("bold", "w600", "w700", "w800", "w900"):
+        return 700
+    if tekst == "w500":
+        return 500
+    return 400
+
+
+def szerokosc_tekstu(tekst, styl=STYL_TRESCI):
+    """Szerokość napisu w jednej linii (dp) — metryka Roboto, odstęp liter z Material 3."""
+    rozmiar, waga, odstep = styl
+    tabela = _ZNAKI_ROBOTO[waga]
+    return sum(tabela.get(znak, ZNAK_SPOZA_TABELI_EM) for znak in tekst) * rozmiar + odstep * len(tekst)
+
+
+def _styl_napisu(napis, domyslny=STYL_TRESCI):
+    rozmiar, waga, odstep = domyslny
+    motyw = getattr(napis, "theme_style", None)
+    if motyw is not None:
+        klucz = str(getattr(motyw, "value", motyw)).replace("_", "").lower()
+        rozmiar, waga, odstep = STYLE_MOTYWU.get(klucz, domyslny)
+    styl = getattr(napis, "style", None)
+    if styl is not None:
+        rozmiar = getattr(styl, "size", None) or rozmiar
+        waga = _waga_pisma(getattr(styl, "weight", None)) or waga
+        if getattr(styl, "letter_spacing", None) is not None:
+            odstep = styl.letter_spacing
+    rozmiar = getattr(napis, "size", None) or rozmiar
+    waga = _waga_pisma(getattr(napis, "weight", None)) or waga
+    return rozmiar, waga, odstep
+
+
+def _tresc_spanu(span):
+    return (getattr(span, "text", None) or "") + "".join(_tresc_spanu(s) for s in (getattr(span, "spans", None) or []))
+
+
+def _tresc_napisu(napis):
+    tresc = napis.value if isinstance(napis.value, str) else ("" if napis.value is None else str(napis.value))
+    return tresc + "".join(_tresc_spanu(s) for s in (napis.spans or []))
+
+
+def _skrot(tekst, ile=40):
+    tekst = " ".join(str(tekst).split())
+    return tekst if len(tekst) <= ile else tekst[:ile - 1] + "…"
+
+
+def _czesci_slowa(slowo):
+    """Słowo pocięte w miejscach, w których Flutter wolno złamać linię (po „/” i „-”)."""
+    czesci, biezaca = [], ""
+    for i, znak in enumerate(slowo):
+        biezaca += znak
+        if znak in "/-" and i + 1 < len(slowo):
+            czesci.append(biezaca)
+            biezaca = ""
+    return czesci + ([biezaca] if biezaca else [])
+
+
+def linie_tekstu(tekst, szerokosc, styl=STYL_TRESCI):
+    """(liczba linii, słowo łamane w środku albo None) przy zawijaniu po słowach."""
+    spacja = szerokosc_tekstu(" ", styl)
+    linie, lamane = 0, None
+    for akapit in str(tekst).split("\n"):
+        linie += 1
+        biezaca = 0.0
+        for slowo in akapit.split(" "):
+            for kawalek in _czesci_slowa(slowo) or [""]:
+                w = szerokosc_tekstu(kawalek, styl)
+                if w > szerokosc + TOLERANCJA_DP and lamane is None:
+                    lamane = slowo
+                if biezaca and biezaca + spacja + w > szerokosc + TOLERANCJA_DP:
+                    linie += 1
+                    biezaca = w
+                else:
+                    biezaca += (spacja if biezaca else 0) + w
+    return linie, lamane
+
+
+def _poziomo(odstep):
+    """Suma lewego i prawego odstępu (padding/margin) w dp."""
+    if odstep is None:
+        return 0
+    if isinstance(odstep, (int, float)):
+        return 2 * odstep
+    return (getattr(odstep, "left", 0) or 0) + (getattr(odstep, "right", 0) or 0)
+
+
+def _elastycznosc(kontrolka):
+    rozciagnij = getattr(kontrolka, "expand", None) or getattr(kontrolka, "expand_loose", None)
+    if rozciagnij is True:
+        return 1
+    return rozciagnij if isinstance(rozciagnij, int) and rozciagnij > 0 else 0
+
+
+def _kolumna_responsywna(kontrolka):
+    col = getattr(kontrolka, "col", None)
+    if isinstance(col, dict):
+        for klucz in ("xs", "sm", "md", "lg", "xl", "xxl"):
+            if klucz in col:
+                return col[klucz]
+        return 12
+    return col if isinstance(col, (int, float)) and col else 12
+
+
+def _klasy(*nazwy):
+    return tuple(k for k in (getattr(ft, n, None) for n in nazwy) if isinstance(k, type))
+
+
+PRZYCISKI = _klasy("Button", "ElevatedButton", "FilledButton", "FilledTonalButton", "OutlinedButton", "TextButton")
+PRZYCISKI_TEKSTOWE = _klasy("TextButton")
+POLA_WYBORU = _klasy("Checkbox", "Switch", "Radio")
+OPAKOWANIA_BEZ_ZMIANY_SZEROKOSCI = _klasy(
+    "GestureDetector", "AnimatedSwitcher", "Semantics", "MergeSemantics", "TransparentPointer",
+    "Draggable", "DragTarget", "Dismissible", "SafeArea", "WindowDragArea", "Tooltip", "Hero",
+)
+
+
+class _AudytNapisow:
+    """Jedno przejście po drzewie: szerokość dostępna dla każdej kontrolki i zgłoszenia."""
+
+    def __init__(self, szerokosc):
+        self.szerokosc = szerokosc
+        self.znaleziska = []
+        self._odwiedzone = set()
+
+    def zglos(self, rodzaj, przodkowie, kontrolka, opis):
+        self.znaleziska.append({"rodzaj": rodzaj, "sciezka": _sciezka(przodkowie, kontrolka), "opis": opis})
+
+    # ---------------- szerokość własna (jak intrinsic width) ----------------
+
+    def naturalna(self, k, styl=STYL_TRESCI):
+        """Szerokość, którą kontrolka zajmie, gdy nikt jej nie ogranicza."""
+        if not isinstance(k, ft.Control) or getattr(k, "visible", True) is False:
+            return 0.0
+        if isinstance(k, ft.Text):
+            if getattr(k, "width", None):
+                return k.width
+            return max((szerokosc_tekstu(linia, _styl_napisu(k, styl)) for linia in _tresc_napisu(k).split("\n")),
+                       default=0.0)
+        szer = getattr(k, "width", None)
+        if isinstance(k, (ft.Container, ft.Card)):
+            margines = _poziomo(getattr(k, "margin", None)) + (KARTA_MARGINES if isinstance(k, ft.Card) else 0)
+            if szer is not None:
+                return szer + margines
+            return self.naturalna(k.content, styl) + _poziomo(getattr(k, "padding", None)) + margines
+        if szer is not None:
+            return szer
+        if isinstance(k, ft.Icon):
+            return k.size or 24
+        if isinstance(k, ft.IconButton):
+            return IKONA_PRZYCISKU_ROZMIAR
+        if isinstance(k, POLA_WYBORU):
+            etykieta = k.label if isinstance(k.label, str) else ""
+            return POLE_WYBORU_KWADRAT[type(k).__name__] + szerokosc_tekstu(etykieta)
+        if isinstance(k, (ft.TextField, ft.Dropdown)):
+            return POLE_SZEROKOSC_W_KOLUMNIE
+        if isinstance(k, ft.ProgressRing):
+            return 36
+        if isinstance(k, PRZYCISKI):
+            return self._przycisk_naturalny(k)
+        if isinstance(k, ft.PopupMenuButton):
+            return self.naturalna(k.content, styl) if isinstance(k.content, ft.Control) else IKONA_PRZYCISKU_ROZMIAR
+        if _jest_wierszem(k):
+            widoczne = [d for _, d in _dzieci(k, ("controls",)) if getattr(d, "visible", True) is not False]
+            odstep = k.spacing if k.spacing is not None else WIERSZ_ODSTEP_DOMYSLNY
+            return sum(self.naturalna(d, styl) for d in widoczne) + odstep * max(0, len(widoczne) - 1)
+        if isinstance(k, (ft.ResponsiveRow, ft.ProgressBar, ft.Divider, ft.Image)):
+            return 0.0
+        if isinstance(k, ft.ListView) and getattr(k, "horizontal", False):
+            return 0.0
+        dzieci = [d for _, d in _dzieci(k, ("controls", "content"))]
+        return max((self.naturalna(d, styl) for d in dzieci), default=0.0) + _poziomo(getattr(k, "padding", None))
+
+    def _przycisk_naturalny(self, k):
+        tresc = k.content
+        if isinstance(tresc, str):
+            w = szerokosc_tekstu(tresc, STYL_PRZYCISKU)
+        else:
+            w = self.naturalna(tresc, STYL_PRZYCISKU)
+        if getattr(k, "icon", None):
+            w += PRZYCISK_IKONA
+        return max(64.0, w + self._padding_przycisku(k))
+
+    @staticmethod
+    def _padding_przycisku(k):
+        styl = getattr(k, "style", None)
+        padding = getattr(styl, "padding", None) if styl is not None else None
+        if padding is not None and not isinstance(padding, dict):
+            return _poziomo(padding)
+        return PRZYCISK_TEKSTOWY_PADDING if isinstance(k, PRZYCISKI_TEKSTOWE) else PRZYCISK_PADDING
+
+    # ---------------- zejście z szerokością dostępną ----------------
+
+    def zejdz(self, k, szer, przodkowie, styl=STYL_TRESCI, w_kolumnie=False, jedna_linia=False):
+        if not isinstance(k, ft.Control) or id(k) in self._odwiedzone:
+            return
+        self._odwiedzone.add(id(k))
+        sciezka = przodkowie + [k]
+
+        if isinstance(k, ft.Text):
+            self._napis(k, szer, przodkowie, styl, jedna_linia)
+        elif isinstance(k, ft.TextField):
+            self._pole(k, szer, przodkowie, w_kolumnie)
+        elif isinstance(k, ft.Dropdown):
+            self._lista(k, szer, przodkowie)
+        elif isinstance(k, POLA_WYBORU):
+            self._pole_wyboru(k, szer, przodkowie)
+        elif isinstance(k, ft.View):
+            self._widok(k, szer, przodkowie)
+        elif isinstance(k, ft.AppBar):
+            self._pasek_tytulu(k, szer, przodkowie)
+        elif isinstance(k, ft.AlertDialog):
+            self._okno(k, szer, przodkowie)
+        elif isinstance(k, ft.NavigationDrawer):
+            for _, d in _dzieci(k, ("controls",)):
+                self.zejdz(d, None if szer is None else min(szer - SZUFLADA_ODSTEP, 360), sciezka)
+        elif isinstance(k, ft.ResponsiveRow):
+            odstep = k.spacing if isinstance(k.spacing, (int, float)) else WIERSZ_ODSTEP_DOMYSLNY
+            for _, d in _dzieci(k, ("controls",)):
+                udzial = _kolumna_responsywna(d) / 12
+                self.zejdz(d, None if szer is None else (szer + odstep) * udzial - odstep, sciezka, styl)
+        elif _jest_wierszem(k):
+            self._wiersz(k, szer, przodkowie, styl, jedna_linia)
+        elif isinstance(k, ft.GridView):
+            self._siatka(k, szer, sciezka, styl)
+        elif isinstance(k, ft.ListTile):
+            self._kafel_listy(k, szer, przodkowie)
+        elif isinstance(k, PRZYCISKI):
+            wewn = None
+            if szer is not None:
+                wewn = szer - self._padding_przycisku(k) - (PRZYCISK_IKONA if getattr(k, "icon", None) else 0)
+            if isinstance(k.content, ft.Control):
+                self.zejdz(k.content, wewn, sciezka, STYL_PRZYCISKU, jedna_linia=jedna_linia)
+        elif isinstance(k, ft.PopupMenuButton):
+            if isinstance(k.content, ft.Control):
+                self.zejdz(k.content, None, sciezka, styl)
+        elif isinstance(k, (ft.Container, ft.Card)):
+            wewn = szer
+            if wewn is not None:
+                wewn -= _poziomo(getattr(k, "margin", None)) + (KARTA_MARGINES if isinstance(k, ft.Card) else 0)
+            if getattr(k, "width", None) is not None:
+                wewn = k.width if wewn is None else min(wewn, k.width)
+            if wewn is not None:
+                wewn -= _poziomo(getattr(k, "padding", None))
+            self.zejdz(k.content, wewn, sciezka, styl, w_kolumnie=w_kolumnie, jedna_linia=jedna_linia)
+        elif isinstance(k, ft.ListView):
+            wewn = None if (szer is None or k.horizontal) else szer - _poziomo(k.padding)
+            for _, d in _dzieci(k, ("controls",)):
+                self.zejdz(d, wewn, sciezka, styl)
+        elif isinstance(k, ft.Column):
+            rozciaga = str(getattr(k.horizontal_alignment, "value", k.horizontal_alignment)).lower() == "stretch"
+            if getattr(k, "width", None) is not None:
+                szer = k.width if szer is None else min(szer, k.width)
+            for _, d in _dzieci(k, ("controls",)):
+                self.zejdz(d, szer, sciezka, styl, w_kolumnie=not rozciaga)
+        elif isinstance(k, ft.Stack):
+            for _, d in _dzieci(k, ("controls",)):
+                self.zejdz(d, szer, sciezka, styl)
+        else:
+            for _, d in _dzieci(k, ("controls", "content")):
+                self.zejdz(d, szer, sciezka, styl, w_kolumnie=w_kolumnie, jedna_linia=jedna_linia)
+
+    def _napis(self, napis, szer, przodkowie, styl, jedna_linia):
+        tekst = _tresc_napisu(napis)
+        if szer is None or not tekst.strip():
+            return
+        if getattr(napis, "width", None):
+            szer = min(szer, napis.width)
+        st = _styl_napisu(napis, styl)
+        # Pasek tytułu nie zawija tekstu, chyba że ten sam poda `max_lines` > 1.
+        if (jedna_linia and not (napis.max_lines or 0) > 1) or napis.no_wrap or napis.max_lines == 1:
+            w = max(szerokosc_tekstu(linia, st) for linia in tekst.split("\n"))
+            if w > szer + TOLERANCJA_DP:
+                self.zglos("tekst", przodkowie, napis,
+                           f"„{_skrot(tekst)}” w jednej linii: potrzeba {w:.0f} dp, jest {szer:.0f} dp")
+            return
+        linie, lamane = linie_tekstu(tekst, szer, st)
+        if lamane:
+            self.zglos("słowo", przodkowie, napis,
+                       f"słowo „{_skrot(lamane, 30)}” łamie się w środku: kolumna ma {szer:.0f} dp")
+        elif napis.max_lines and linie > napis.max_lines:
+            self.zglos("tekst", przodkowie, napis,
+                       f"„{_skrot(tekst)}” potrzebuje {linie} linii, dostaje {napis.max_lines} ({szer:.0f} dp)")
+
+    def _wiersz(self, wiersz, szer, przodkowie, styl, jedna_linia):
+        sciezka = przodkowie + [wiersz]
+        dzieci = [d for _, d in _dzieci(wiersz, ("controls",))]
+        if szer is None or _przewijany(wiersz):
+            for d in dzieci:
+                self.zejdz(d, None, sciezka, styl, jedna_linia=jedna_linia)
+            return
+        if wiersz.wrap:
+            for d in dzieci:
+                w = self.naturalna(d, styl)
+                if w > szer + TOLERANCJA_DP and not _elastycznosc(d):
+                    self.zglos("wiersz", sciezka, d, f"element szerszy niż linia paska: {w:.0f} dp z {szer:.0f} dp")
+                self.zejdz(d, szer, sciezka, styl, jedna_linia=jedna_linia)
+            return
+        widoczne = [d for d in dzieci if getattr(d, "visible", True) is not False]
+        odstep = wiersz.spacing if wiersz.spacing is not None else WIERSZ_ODSTEP_DOMYSLNY
+        sztywne = sum(self.naturalna(d, styl) for d in widoczne if not _elastycznosc(d))
+        potrzeba = sztywne + odstep * max(0, len(widoczne) - 1)
+        if potrzeba > szer + TOLERANCJA_DP:
+            napisy = [_skrot(_tresc_napisu(n), 25) for n in _napisy_w(wiersz)][:3]
+            self.zglos("wiersz", przodkowie, wiersz,
+                       f"wiersz potrzebuje {potrzeba:.0f} dp, ma {szer:.0f} dp — {' | '.join(napisy)}")
+        suma_flex = sum(_elastycznosc(d) for d in widoczne) or 1
+        reszta = max(0.0, szer - potrzeba)
+        for d in dzieci:
+            flex = _elastycznosc(d)
+            self.zejdz(d, reszta * flex / suma_flex if flex else None, sciezka, styl, jedna_linia=jedna_linia)
+
+    def _siatka(self, siatka, szer, sciezka, styl):
+        dzieci = [d for _, d in _dzieci(siatka, ("controls",))]
+        if szer is None or getattr(siatka, "horizontal", False):
+            for d in dzieci:
+                self.zejdz(d, None, sciezka, styl)
+            return
+        szer -= _poziomo(getattr(siatka, "padding", None))
+        odstep = getattr(siatka, "spacing", None) or 0
+        if getattr(siatka, "runs_count", None):
+            n = siatka.runs_count
+        else:
+            n = max(1, -(-int(szer) // int((siatka.max_extent or szer) + odstep)))
+        for d in dzieci:
+            self.zejdz(d, (szer - odstep * (n - 1)) / n, sciezka, styl)
+
+    def _kafel_listy(self, kafel, szer, przodkowie):
+        sciezka = przodkowie + [kafel]
+        if szer is not None:
+            szer -= _poziomo(kafel.content_padding) if kafel.content_padding is not None else 40
+            odstep = kafel.horizontal_spacing if kafel.horizontal_spacing is not None else 16
+            for boczny in (kafel.leading, kafel.trailing):
+                if isinstance(boczny, ft.Control):
+                    szer -= max(self.naturalna(boczny), 24) + odstep
+        for pole, styl in (("title", STYL_POLA), ("subtitle", STYL_TRESCI)):
+            wartosc = getattr(kafel, pole, None)
+            if isinstance(wartosc, ft.Control):
+                self.zejdz(wartosc, szer, sciezka, styl)
+
+    def _pasek_tytulu(self, pasek, szer, przodkowie):
+        if szer is None or not isinstance(pasek.title, ft.Control):
+            return
+        akcje = [a for a in (pasek.actions or []) if getattr(a, "visible", True) is not False]
+        lewa = (pasek.leading_width or 56) + 16 if (pasek.leading or pasek.automatically_imply_leading) else 16
+        prawa = sum(max(self.naturalna(a), IKONA_PRZYCISKU_ROZMIAR) for a in akcje) or 16
+        self.zejdz(pasek.title, szer - lewa - prawa, przodkowie + [pasek], STYL_TYTULU_PASKA, jedna_linia=True)
+
+    def _okno(self, okno, szer, przodkowie):
+        sciezka = przodkowie + [okno]
+        szerokosc = min(szer - OKNO_MARGINES, 560) if szer is not None else None
+        for pole, padding, styl in (("title", okno.title_padding, STYL_TYTULU_OKNA),
+                                    ("content", okno.content_padding, STYL_TRESCI)):
+            wartosc = getattr(okno, pole, None)
+            if isinstance(wartosc, ft.Control):
+                odstep = _poziomo(padding) if padding is not None else OKNO_PADDING
+                self.zejdz(wartosc, None if szerokosc is None else szerokosc - odstep, sciezka, styl)
+
+    def _widok(self, widok, szer, przodkowie):
+        sciezka = przodkowie + [widok]
+        if isinstance(getattr(widok, "drawer", None), ft.Control):
+            self.zejdz(widok.drawer, szer, sciezka)
+        if isinstance(widok.appbar, ft.Control):
+            self.zejdz(widok.appbar, szer, sciezka)
+        wewn = szer - _poziomo(widok.padding)
+        for _, d in _dzieci(widok, ("controls",)):
+            self.zejdz(d, wewn, sciezka, w_kolumnie=True)
+        pasek = getattr(widok, "navigation_bar", None)
+        cele = getattr(pasek, "destinations", None) or []
+        for cel in cele:
+            etykieta = getattr(cel, "label", None)
+            if isinstance(etykieta, str) and szerokosc_tekstu(etykieta, STYL_PODPISU_NAWIGACJI) > szer / len(cele) - 8:
+                self.zglos("tekst", sciezka, cel, f"podpis zakładki „{etykieta}” nie mieści się w {szer / len(cele):.0f} dp")
+
+    # ---------------- pola formularzy ----------------
+
+    def _szerokosc_pola(self, pole, szer, w_kolumnie):
+        if getattr(pole, "width", None):
+            return pole.width if szer is None else min(szer, pole.width)
+        if szer is None:
+            return POLE_SZEROKOSC_W_KOLUMNIE
+        if w_kolumnie and isinstance(pole, ft.TextField):
+            return min(szer, POLE_SZEROKOSC_W_KOLUMNIE)
+        return szer
+
+    def _pole(self, pole, szer, przodkowie, w_kolumnie):
+        szerokosc = self._szerokosc_pola(pole, szer, w_kolumnie)
+        padding = _poziomo(pole.content_padding) if pole.content_padding is not None else POLE_PADDING_DOMYSLNY
+        lewa = padding / 2
+        prawa = padding / 2
+        if pole.prefix_icon is not None or pole.icon is not None:
+            lewa = POLE_IKONA_PRZEDROSTKA
+        if pole.suffix_icon is not None or isinstance(pole.suffix, ft.Control):
+            prawa = POLE_IKONA_ZA
+        miejsce = szerokosc - lewa - prawa
+        etykieta = pole.label if isinstance(pole.label, str) else None
+        if etykieta and szerokosc_tekstu(etykieta, STYL_POLA) > miejsce + TOLERANCJA_DP:
+            self.zglos("etykieta", przodkowie, pole,
+                       f"etykieta „{_skrot(etykieta)}” zawija się w pustym polu: "
+                       f"{szerokosc_tekstu(etykieta, STYL_POLA):.0f} dp w {miejsce:.0f} dp")
+        # Przedrostek i przyrostek widać dopiero przy pisaniu — razem z podpowiedzią.
+        for tekst_obok in (pole.prefix, pole.suffix):
+            if isinstance(tekst_obok, str):
+                miejsce -= szerokosc_tekstu(tekst_obok, STYL_POLA) + 4
+        if pole.hint_text and not pole.multiline and szerokosc_tekstu(pole.hint_text, STYL_POLA) > miejsce + TOLERANCJA_DP:
+            self.zglos("podpowiedź", przodkowie, pole,
+                       f"podpowiedź „{_skrot(pole.hint_text)}” ucięta: "
+                       f"{szerokosc_tekstu(pole.hint_text, STYL_POLA):.0f} dp w {miejsce:.0f} dp")
+
+    def _lista(self, lista, szer, przodkowie):
+        teksty = [o.text or o.key for o in (lista.options or [])
+                  if isinstance(getattr(o, "text", None) or getattr(o, "key", None), str)]
+        styl = ((lista.text_size or STYL_POLA[0]), 400, STYL_POLA[2])
+        najdluzszy = max(teksty, key=lambda t: szerokosc_tekstu(t, styl), default="")
+        etykieta = lista.label if isinstance(lista.label, str) else ""
+        ikona = POLE_IKONA_PRZEDROSTKA if lista.leading_icon else 0
+        # Bez `width` i `expand` Flutter mierzy listę po najdłuższej opcji w 14 dp
+        # (i po etykiecie), choć pole pisze `text_size` — dłuższa opcja wychodzi pod strzałkę.
+        if getattr(lista, "width", None):
+            szerokosc = lista.width
+        elif _elastycznosc(lista) and szer is not None:
+            szerokosc = szer
+        else:
+            szerokosc = max(max((szerokosc_tekstu(t) for t in teksty), default=0) + LISTA_DOPELNIENIE_OPCJI,
+                            szerokosc_tekstu(etykieta, STYL_ETYKIETY_UNIESIONEJ) + LISTA_DOPELNIENIE_ETYKIETY) + ikona
+        if szer is not None:
+            szerokosc = min(szerokosc, szer)
+        miejsce = szerokosc - LISTA_POZA_TEKSTEM - ikona
+        if najdluzszy and szerokosc_tekstu(najdluzszy, styl) > miejsce + TOLERANCJA_DP:
+            self.zglos("opcja", przodkowie, lista,
+                       f"opcja „{_skrot(najdluzszy)}” ucięta: {szerokosc_tekstu(najdluzszy, styl):.0f} dp w {miejsce:.0f} dp")
+        padding = _poziomo(lista.content_padding) if lista.content_padding is not None else POLE_PADDING_DOMYSLNY
+        if etykieta and szerokosc_tekstu(etykieta, STYL_ETYKIETY_UNIESIONEJ) > szerokosc - padding + TOLERANCJA_DP:
+            self.zglos("etykieta", przodkowie, lista,
+                       f"etykieta listy „{_skrot(etykieta)}” łamie się nad polem: "
+                       f"{szerokosc_tekstu(etykieta, STYL_ETYKIETY_UNIESIONEJ):.0f} dp w {szerokosc - padding:.0f} dp")
+
+    def _pole_wyboru(self, pole, szer, przodkowie):
+        if szer is None or not isinstance(pole.label, str) or not pole.label:
+            return
+        potrzeba = POLE_WYBORU_KWADRAT[type(pole).__name__] + szerokosc_tekstu(pole.label)
+        if potrzeba > szer + TOLERANCJA_DP:
+            self.zglos("pole wyboru", przodkowie, pole,
+                       f"etykieta „{_skrot(pole.label)}” ucięta (Flet jej nie zawija): {potrzeba:.0f} dp w {szer:.0f} dp")
+
+
+def _napisy_w(kontrolka, limit=50):
+    """Napisy (ft.Text) w poddrzewie — do opisu zgłoszenia."""
+    wynik, kolejka = [], [kontrolka]
+    while kolejka and len(wynik) < limit:
+        k = kolejka.pop(0)
+        if isinstance(k, ft.Text) and _tresc_napisu(k).strip():
+            wynik.append(k)
+        kolejka.extend(d for _, d in _dzieci(k))
+    return wynik
+
+
+def znajdz_uciete_napisy(korzen, szerokosc=SZEROKOSC_TELEFONU):
+    """Lista {'rodzaj', 'sciezka', 'opis'} — napisy, które na telefonie o danej
+    szerokości zostaną ucięte, złamane w środku słowa albo wyjdą poza wiersz."""
+    audyt = _AudytNapisow(szerokosc)
+    audyt.zejdz(korzen, szerokosc, [])
+    return audyt.znaleziska
+
+
+# ============================================================================
 #  RAPORT
 # ============================================================================
 
@@ -1441,5 +1992,5 @@ if __name__ == "__main__":
     for z in audyt_porzuconych_korutyn():
         print(f"  {z['plik']}:{z['linia']} — {z['opis']}")
 
-    print("\nAudyty drzewa kontrolek (expand, chipy, powierzchnie) uruchamia pytest:")
+    print("\nAudyty drzewa kontrolek (expand, chipy, powierzchnie, ucięte napisy) uruchamia pytest:")
     print("  python -m pytest tests/test_audyty.py tests/test_powierzchnie.py -q")

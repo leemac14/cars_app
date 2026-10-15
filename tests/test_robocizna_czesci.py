@@ -599,7 +599,7 @@ def test_obserwacje_robocizny_i_czesci(baza):
     obserwacje = {o["klucz"]: o for o in db.obserwacje_analityczne(auto)}
     robocizna = obserwacje["robocizna_czesci"]
     # 100 + 0 + 400 + 100 + 100 = 700 z 1800.
-    assert robocizna["tekst"].startswith("W ostatnich 12 miesiącach robocizna to 39% kosztu napraw (700 PLN z 1800 PLN)")
+    assert robocizna["tekst"].startswith("W ostatnich 12 miesiącach robocizna to 39% kosztu napraw (700 PLN z 1 800 PLN)")
     assert "— w tym 200 PLN z własnego magazynu" in robocizna["tekst"]
     assert "Najdrożej liczy „AutoFix”: średnio 250 PLN robocizny na naprawę, a „Tani Serwis” 100 PLN." in robocizna["tekst"]
     assert robocizna["tekst"].endswith("Naprawy bez podziału pominięte: 1.")

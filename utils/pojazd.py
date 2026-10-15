@@ -73,7 +73,7 @@ def sprzedaj_auto(page: ft.Page, state, plik_dla_kupujacego=None):
 
     e_data = pole_daty(page, "Data sprzedaży", datetime.now().strftime("%d.%m.%Y"))
     e_cena = ft.TextField(
-        label=f"Cena sprzedaży ({symbol_waluty()}) — opcjonalnie",
+        label=f"Cena sprzedaży ({symbol_waluty()})",
         keyboard_type=ft.KeyboardType.NUMBER, **styl_pola()
     )
 
@@ -464,7 +464,7 @@ def wiersz_odliczania(page: ft.Page, pozycja, j=None, scena=None):
     elementy = [ft.Row([
         ft.Icon(ikona_z_mapy(IKONY_ODLICZAN, pozycja.get("ikona"), ft.Icons.EVENT), size=16, color=kolor),
         ft.Text(tytul_odliczania(pozycja, j), size=FS["body_strong"], weight="bold", expand=True,
-                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
         ft.Text(data_odliczania(pozycja), size=FS["body"], weight="bold", color=kolor, no_wrap=True),
     ], spacing=6)]
 
@@ -498,7 +498,7 @@ def wiersz_odliczania_kafla(page: ft.Page, pozycja, j=None, scena=None):
     kolor = kolor_odliczania(pozycja)
     elementy = [ft.Row([
         ft.Text(tytul_odliczania(pozycja, j), size=FS["caption"], expand=True,
-                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
         ft.Text(krotki_opis_odliczania(pozycja, j), size=FS["caption"], color=kolor, no_wrap=True),
     ], spacing=6)]
     if pozycja.get("udzial") is not None:

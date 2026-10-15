@@ -8,7 +8,7 @@ from typing import Any
 
 from .stale import ENERGIA_PALIWO, ENERGIA_PRAD, STATUS_POJAZDU_AKTYWNY, STATUS_POJAZDU_SPRZEDANY
 from .polaczenie import polacz_baze
-from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, parsuj_int_bezpiecznie
+from .pomocnicze import SEPARATOR_TYSIECY, _liczba_lub_none, formatuj_liczba_eksport, liczba_na_tekst, liczba_z_odmiana, parsuj_int_bezpiecznie
 from .daty import warunek_zakresu_dat
 from .ustawienia import pobierz_okno_kroczace, pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
@@ -629,7 +629,11 @@ def _porownanie_dystansu(km):
                 return f"prawie {wiekszy[1]}"
             razy = km / dystans
             if razy >= 1.9:
-                return f"{opis} — {formatuj_liczba_eksport(razy, 1)} raza"
+                # „2 razy”, ale „2,1 raza” — przy pełnej krotności „2,0 raza” brzmiało obco.
+                krotnosc = round(razy, 1)
+                if krotnosc == int(krotnosc):
+                    return f"{opis} — {int(krotnosc)} razy"
+                return f"{opis} — {formatuj_liczba_eksport(krotnosc, 1)} raza"
             return f"więcej niż {opis}"
     najmniejszy, opis = _DYSTANSE_ODNIESIENIA[-1]
     return f"prawie {opis}" if km >= najmniejszy * PROG_PRAWIE else None
@@ -1389,7 +1393,10 @@ def _obserwacja(klucz, ton, ikona, tytul, tekst, waga, trasa=None):
 
 
 def _kwota_txt(wartosc, decimale=0):
-    return f"{formatuj_liczba_eksport(wartosc, decimale)} {pobierz_walute()}"
+    """Kwota do zdania na ekranie — ze spacją co trzy cyfry, jak reszta kwot
+    w aplikacji („1 260 zł”, nie „1260 zł”)."""
+    tekst = liczba_na_tekst(wartosc, decimale, SEPARATOR_TYSIECY)
+    return f"{formatuj_liczba_eksport(wartosc, decimale) if tekst is None else tekst} {pobierz_walute()}"
 
 
 def obserwacje_analityczne(auto_id, limit=None):

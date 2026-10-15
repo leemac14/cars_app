@@ -171,7 +171,7 @@ class MiksinNaglowkaAuta:
                             content=ft.Column([
                                 ft.Text(
                                     str(a_nazwa), size=utils.FS["body_strong"], weight="bold",
-                                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                                    max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
                                     color=ft.Colors.PRIMARY if zaznaczone else ft.Colors.ON_SURFACE,
                                 ),
                                 # Ta sama tablica, co na kaflu głównym — w showroomie
@@ -353,7 +353,7 @@ class MiksinNaglowkaAuta:
                 content=ft.Row([
                     ft.Text(
                         str(self.state.auto_nazwa), size=16, weight="bold", color=ft.Colors.PRIMARY,
-                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+                        max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
                     ),
                     ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=18)
                 ], spacing=0, tight=True),
@@ -381,7 +381,7 @@ class MiksinNaglowkaAuta:
                 content=ft.Row([
                     ft.Icon(ft.Icons.BADGE, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Text("Dodaj numer rejestracyjny", size=12, italic=True,
-                            color=ft.Colors.ON_SURFACE_VARIANT),
+                            color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
                 ], spacing=4),
                 on_click=lambda e: utils.przejdz(self._page, f"/auto/edytuj/{self.state.auto_id}"),
                 tooltip="Dotknij, aby uzupełnić dane pojazdu",
@@ -389,7 +389,7 @@ class MiksinNaglowkaAuta:
 
         def pokaz_edycja_statusu(e):
             pole_status = ft.TextField(
-                label="Status / wiadomość dla domowników",
+                label="Status dla domowników",
                 value=str(wiadomosc_statusu) if wiadomosc_statusu else "",
                 hint_text="np. Zatankowany do pełna, Odebrałem z myjni",
                 multiline=True,
@@ -439,8 +439,8 @@ class MiksinNaglowkaAuta:
 
         # Stary licznik mówimy przy samej liczbie: to z niej liczą się interwały,
         # zasięg i opony, więc „sprzed 34 dni” musi stać tam, gdzie się ją czyta.
-        # Dopisek idzie jako pierwszy kawałek TEGO SAMEGO tekstu co wiek i km/rok
-        # — osobny, sztywny tekst w tym wierszu wychodziłby pod przyciski.
+        # Dopiski (wiek, km/rok) idą linijką POD liczbą, na całą szerokość kolumny —
+        # obok liczby zostawało im ~60 dp i „sprzed 38 dni” urywało się w pół słowa.
         licznik_stary = bool(swiezosc and swiezosc["nieswiezy"] and swiezosc["dni"] is not None)
         kolor_licznika = utils.KOLOR_STATUS["warning"] if licznik_stary else ft.Colors.ON_SURFACE_VARIANT
         metryki_bity = [
@@ -449,30 +449,26 @@ class MiksinNaglowkaAuta:
                     no_wrap=True),
             ft.Icon(ft.Icons.EDIT, size=11, color=ft.Colors.PRIMARY),
         ]
+        kawalki = []
         if licznik_stary:
-            kawalki = [
-                ft.TextSpan("•  "),
-                ft.TextSpan(f"sprzed {utils.formatuj_dni_dopelniacz(swiezosc['dni'])}",
-                            style=ft.TextStyle(color=kolor_licznika)),
-            ]
-            if dopiski:
-                kawalki.append(ft.TextSpan("  •  " + "  •  ".join(dopiski)))
-            metryki_bity.append(ft.Text(
-                spans=kawalki,
-                size=12, color=ft.Colors.ON_SURFACE_VARIANT,
-                expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
-        elif dopiski:
-            metryki_bity.append(ft.Text(
-                "•  " + "  •  ".join(dopiski),
-                size=12, color=ft.Colors.ON_SURFACE_VARIANT,
-                expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS))
+            kawalki.append(ft.TextSpan(f"sprzed {utils.formatuj_dni_dopelniacz(swiezosc['dni'])}",
+                                       style=ft.TextStyle(color=kolor_licznika)))
+        if dopiski:
+            kawalki.append(ft.TextSpan(("  •  " if kawalki else "") + "  •  ".join(dopiski)))
+        wiersze_przebiegu = [ft.Row(metryki_bity, spacing=5)]
+        if kawalki:
+            wiersze_przebiegu.append(ft.Container(
+                padding=ft.Padding(18, 0, 0, 0),
+                content=ft.Text(spans=kawalki, size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                                max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+            ))
 
         podpowiedz_licznika = "Dotknij: aktualizuj  •  Przytrzymaj: historia licznika"
         if licznik_stary:
             podpowiedz_licznika = (f"Ostatni przebieg sprzed {utils.formatuj_dni_dopelniacz(swiezosc['dni'])}"
                                    f" — prognozy {db.slowo_dystansu()} są w tyle. " + podpowiedz_licznika)
         wiersz_przebieg = ft.Container(
-            content=ft.Row(metryki_bity, spacing=5),
+            content=ft.Column(wiersze_przebiegu, spacing=1),
             on_click=pokaz_szybka_aktualizacja_przebiegu,
             on_long_press=lambda e: utils.przejdz(self._page, "/przebieg"),
             tooltip=podpowiedz_licznika,
@@ -499,7 +495,7 @@ class MiksinNaglowkaAuta:
                         f"{najblizszy_termin['etykieta']} — "
                         f"{utils.opis_dni_terminu(najblizszy_termin['dni'])}",
                         size=12, weight="bold", color=kolor_terminu, expand=True,
-                        no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                        max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                     ft.Text(najblizszy_termin["data"], size=11, color=kolor_terminu),
                 ], spacing=5),
             )
@@ -514,7 +510,7 @@ class MiksinNaglowkaAuta:
                     size=13,
                     italic=not bool(wiadomosc_statusu),
                     color=ft.Colors.ON_SURFACE if wiadomosc_statusu else ft.Colors.ON_SURFACE_VARIANT,
-                    no_wrap=True,
+                    max_lines=2,
                     overflow=ft.TextOverflow.ELLIPSIS,
                     expand=True,
                 ),

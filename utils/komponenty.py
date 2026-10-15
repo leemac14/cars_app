@@ -16,41 +16,48 @@ from .formularze import styl_dropdown, styl_pola
 from .system import kopiuj_do_schowka, pokaz_na_mapie, zadzwon
 
 
-def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click):
+def _ikona_przycisku_pustego_ekranu(tekst):
+    """Ikona z czasownika na przycisku: „Dodaj…” dodaje, „Wróć…” wraca, reszta prowadzi dalej."""
+    poczatek = str(tekst).lower()
+    for przedrostek, ikona in (("dodaj", ft.Icons.ADD), ("wróć", ft.Icons.ARROW_BACK),
+                               ("zrób zdjęcie", ft.Icons.PHOTO_CAMERA), ("wybierz zdjęcia", ft.Icons.PHOTO_LIBRARY),
+                               ("uzupełnij", ft.Icons.EDIT)):
+        if poczatek.startswith(przedrostek):
+            return ikona
+    return ft.Icons.ARROW_FORWARD
+
+
+def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click, ikona_przycisku=None):
+    # Napisy wprost w kolumnie, nie w wierszu: wiersz nie daje tekstowi szerokości,
+    # więc dłuższy opis wychodził za ekran zamiast się zawinąć.
     return ft.Container(
         padding=30,
         content=ft.Column([
             ft.Container(height=10),
-            ft.Row([
-                ft.Container(
-                    width=104, height=104, border_radius=52,
-                    alignment=ft.Alignment.CENTER,
-                    gradient=ft.RadialGradient(colors=[
-                        ft.Colors.with_opacity(0.22, ft.Colors.PRIMARY),
-                        ft.Colors.with_opacity(0.0, ft.Colors.PRIMARY),
-                    ]),
-                    content=ft.Icon(ikona, size=46, color=ft.Colors.PRIMARY),
-                )
-            ], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Container(
+                width=104, height=104, border_radius=52,
+                alignment=ft.Alignment.CENTER,
+                gradient=ft.RadialGradient(colors=[
+                    ft.Colors.with_opacity(0.22, ft.Colors.PRIMARY),
+                    ft.Colors.with_opacity(0.0, ft.Colors.PRIMARY),
+                ]),
+                content=ft.Icon(ikona, size=46, color=ft.Colors.PRIMARY),
+            ),
             ft.Container(height=10),
-            ft.Row([
-                ft.Text(tytul, size=FS["heading"], weight="bold", color=ft.Colors.ON_SURFACE)
-            ], alignment=ft.MainAxisAlignment.CENTER),
-            ft.Row([
-                ft.Text(opis, size=FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER)
-            ], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Text(tytul, size=FS["heading"], weight="bold", color=ft.Colors.ON_SURFACE,
+                    text_align=ft.TextAlign.CENTER),
+            ft.Text(opis, size=FS["body"], color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
             ft.Container(height=15),
-            ft.Row([
-                ft.ElevatedButton(
-                    content=ft.Row([
-                        ft.Icon(ft.Icons.ADD, size=18, color=ft.Colors.ON_PRIMARY),
-                        ft.Text(tekst_przycisku, color=ft.Colors.ON_PRIMARY, weight="bold")
-                    ], tight=True, spacing=6),
-                    bgcolor=ft.Colors.PRIMARY,
-                    style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]), padding=ft.Padding(20, 14, 20, 14)),
-                    on_click=on_click
-                )
-            ], alignment=ft.MainAxisAlignment.CENTER),
+            ft.Button(
+                content=ft.Row([
+                    ft.Icon(ikona_przycisku or _ikona_przycisku_pustego_ekranu(tekst_przycisku), size=18,
+                            color=ft.Colors.ON_PRIMARY),
+                    ft.Text(tekst_przycisku, color=ft.Colors.ON_PRIMARY, weight="bold"),
+                ], tight=True, spacing=6),
+                bgcolor=ft.Colors.PRIMARY,
+                style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]), padding=ft.Padding(20, 14, 20, 14)),
+                on_click=on_click
+            ),
             ft.Container(height=20)
         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     )
@@ -402,7 +409,7 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
     pokaz_reczne = bool(aktualna_nazwa and not pasujacy_start)
 
     def zbuduj_opcje():
-        opcje = [ft.DropdownOption(key="", text="— Brak przypisanego —")]
+        opcje = [ft.DropdownOption(key="", text="— Brak —")]
         for w_id, w_nazwa, w_tel, w_adr, w_not in wpisy_warsztatow():
             opcje.append(ft.DropdownOption(key=w_nazwa, text=w_nazwa))
         return opcje
@@ -417,7 +424,7 @@ def komponent_wyboru_warsztatu(page: ft.Page, state, aktualna_nazwa=""):
     )
 
     e_recznie = ft.TextField(
-        label="Wpisz nazwę (zapisze się automatycznie)",
+        label="Nowy warsztat", hint_text="Zapisze się w bazie",
         value=aktualna_nazwa if pokaz_reczne else "",
         visible=pokaz_reczne,
         expand=True,

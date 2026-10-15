@@ -1032,11 +1032,13 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
     if akcje_dodatkowe:
         actions.extend(akcje_dodatkowe)
 
-    etykieta = ft.Text(tytul, weight="bold", size=18, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)
+    # Dwie linie zamiast wielokropka: tytuł z nazwą podzespołu („Interwał: Olej
+    # silnikowy i filtr”) nie mieści się obok przycisków paska.
+    etykieta = ft.Text(tytul, weight="bold", size=18, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
     tytul_kontrolka = etykieta if not ikona else ft.Row([
         ft.Icon(ikona, size=20, color=ft.Colors.PRIMARY),
-        etykieta,
-    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
+        ft.Container(etykieta, expand=True),
+    ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     return ft.AppBar(
         title=tytul_kontrolka,

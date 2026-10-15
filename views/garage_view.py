@@ -224,14 +224,14 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             utils.dopasuj_wysokosc_listy(self.lista_kart_opony, self._page, wysokosc_pozycji=210)
             self.update()
 
-        elementy.append(
+        elementy.append(utils.na_cala_szerokosc(
             ft.TextField(
-                hint_text="Szukaj opon (sezon, rozmiar, marka, DOT)...",
+                hint_text="Szukaj (sezon, rozmiar, DOT)",
                 prefix_icon=ft.Icons.SEARCH,
                 on_change=utils.z_opoznieniem(self._page, filtruj_opony),
                 **utils.styl_pola()
             )
-        )
+        ))
         self.lista_kart_opony = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
         utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_opony, "lista:opony")
         self.wszystkie_karty_opony = []
@@ -362,7 +362,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
         stopka = f"Ilość: {ilosc or 4} szt."
         if cena is not None and str(cena).strip():
-            stopka += f"  |  Cena: {utils.formatuj_liczba(cena)}  {utils.symbol_waluty()}"
+            stopka += f"  |  Cena: {utils.formatuj_liczba(cena)} {utils.symbol_waluty()}"
         if data_pomiaru:
             stopka += f"\nPomiar bieżnika: {data_pomiaru}"
 
@@ -485,14 +485,14 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             utils.dopasuj_wysokosc_listy(self.lista_kart_czesci, self._page, wysokosc_pozycji=180)
             self.update()
 
-        elementy.append(
+        elementy.append(utils.na_cala_szerokosc(
             ft.TextField(
-                hint_text="Szukaj części (nazwa, kategoria, sklep)...",
+                hint_text="Szukaj części (nazwa, sklep)",
                 prefix_icon=ft.Icons.SEARCH,
                 on_change=utils.z_opoznieniem(self._page, filtruj_czesci),
                 **utils.styl_pola()
             )
-        )
+        ))
         self.lista_kart_czesci = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
         utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_czesci, "lista:magazyn_czesci")
         self.wszystkie_karty_czesci = []
@@ -768,7 +768,7 @@ class FormularzOponyView(ft.View):
         
         self.e_gl = ft.TextField(label="Głębokość bieżnika (mm)", value=gl_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_dp = utils.pole_daty(page, "Data pomiaru bieżnika", dp_val)
-        self.e_dot = ft.TextField(label="Numer DOT (np. 2321 = tydz. 23 / 2021)", value=dot_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_dot = ft.TextField(label="Numer DOT", hint_text="np. 2321 = tydz. 23/2021", value=dot_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_il = ft.TextField(label="Ilość opon w zestawie", value=il_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_zam = ft.Checkbox(label="Ten zestaw jest aktualnie zamontowany na aucie", value=zam_val)
         self.e_os = ft.Dropdown(
@@ -794,7 +794,7 @@ class FormularzOponyView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja zestawu opon" if zestaw_id else "Nowy zestaw opon", "/magazyn", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza([self.e_sezon, self.e_rozmiar, self.e_marka], "Specyfikacja opony", ft.Icons.INFO_OUTLINE, domyslnie_otwarte=True)
-        k2 = utils.karta_formularza([self.e_gl, self.e_dp, self.e_dot, self.e_il, self.e_zam, self.e_os], "Stan i pomiary", ft.Icons.SEARCH)
+        k2 = utils.karta_formularza([self.e_gl, self.e_dp, self.e_dot, self.e_il, utils.pole_wyboru(self.e_zam), self.e_os], "Stan i pomiary", ft.Icons.SEARCH)
         k3 = utils.karta_formularza([self.e_dz, self.e_pz, self.e_cena, self.e_not], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
         k4 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (faktura, zdjęcia opon)", ft.Icons.ATTACH_FILE,
                                     domyslnie_otwarte=bool(self.pliki.pozycje))
@@ -932,14 +932,14 @@ class FormularzCzesciView(ft.View):
             options=[ft.DropdownOption(key=k, text=k) for k in db.KATEGORIE_MAGAZYNU],
             value=kat_val, **utils.styl_dropdown()
         )
-        self.e_ilosc = ft.TextField(label="Ilość na stanie", value=il_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_ilosc = ft.TextField(label="Na stanie", value=il_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_jedn = ft.Dropdown(
             label="Jednostka",
             options=[ft.DropdownOption(key=j, text=j) for j in db.JEDNOSTKI_MAGAZYNU],
             value=jedn_val, **utils.styl_dropdown()
         )
         self.e_prog = ft.TextField(
-            label="Próg niskiego stanu (ostrzegaj poniżej)", value=prog_val, hint_text="np. 1",
+            label="Ostrzegaj poniżej", value=prog_val, hint_text="np. 1",
             keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola()
         )
         self.e_cena = ft.TextField(label=f"Koszt zakupu ({utils.symbol_waluty()}, opcjonalnie)", value=cena_val, hint_text="ile zapłaciłeś za całą ilość", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
@@ -949,7 +949,7 @@ class FormularzCzesciView(ft.View):
         # Sklep z podpowiedziami i link do produktu (M-15).
         self.sklep = utils.PoleSklepu(page, db.sklepy_czesci(state.auto_id), sklep_val)
         self.e_sklep = self.sklep.pole
-        self.e_link = ft.TextField(label="Link do produktu (opcjonalnie)", value=link_val,
+        self.e_link = ft.TextField(label="Link do produktu", value=link_val,
                                    hint_text="np. allegro.pl/oferta/…", keyboard_type=ft.KeyboardType.URL,
                                    prefix_icon=ft.Icons.LINK, **utils.styl_pola())
         # Przy nazwie: ile ta część kosztowała ostatnio. Historia czytana raz —

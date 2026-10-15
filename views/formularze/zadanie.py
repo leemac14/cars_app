@@ -24,7 +24,7 @@ class FormularzZadanieView(ft.View):
                     stara_nazwa = str(w[0])
                     dotyczy_opon_val = bool(w[1])
 
-        self.e_n = ft.TextField(label="Nazwa (np. Olej silnikowy, Tarcze przód)", value=stara_nazwa, **utils.styl_pola(page=page))
+        self.e_n = ft.TextField(label="Nazwa podzespołu", hint_text="np. Olej silnikowy", value=stara_nazwa, **utils.styl_pola(page=page))
         self.c_dotyczy_opon = ft.Checkbox(
             label="Podzespół dotyczy opon / kół (pokaże wybór sezonu przy wpisach)",
             value=dotyczy_opon_val
@@ -38,7 +38,7 @@ class FormularzZadanieView(ft.View):
         p_val = db.wartosc_pola_dystansu(self.p_km)
         
         self.e_d = utils.pole_daty(page, "Data wymiany", d_val)
-        self.e_p = ft.TextField(label=f"Przebieg w momencie wymiany ({utils.jednostka_dystansu()})", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
+        self.e_p = ft.TextField(label=f"Przebieg przy wymianie ({utils.jednostka_dystansu()})", value=p_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.e_c = ft.TextField(label=f"Koszt usługi / części ({utils.symbol_waluty()})", value="", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, "")
         
@@ -62,7 +62,7 @@ class FormularzZadanieView(ft.View):
         self._stan_poczatkowy = self._migawka_formularza()
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja podzespołu" if z_id else "Nowy podzespół", "/", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
-        k1 = utils.karta_formularza([self.e_n, self.c_dotyczy_opon, self.c_dodaj_wymiane], "Śledzony podzespół", ft.Icons.HANDYMAN, domyslnie_otwarte=True, page=page)
+        k1 = utils.karta_formularza([self.e_n, utils.pole_wyboru(self.c_dotyczy_opon), self.c_dodaj_wymiane], "Śledzony podzespół", ft.Icons.HANDYMAN, domyslnie_otwarte=True, page=page)
         elementy = [k1, self.karta_wymiany, utils.przyciski_akcji(page, "Zapisz podzespół", self.zapisz, "/")]
 
         super().__init__(

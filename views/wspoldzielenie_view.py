@@ -70,7 +70,7 @@ class WspoldzielenieView(ft.View):
         """Pole kodu z „Wklej” obok: przyjmie sam kod, link carsapp:// albo całe
         zaproszenie z SMS-a. Z linku przychodzi otwarta i z wpisanym kodem —
         dołącza dopiero dotknięcie przycisku, nigdy sam link."""
-        self.e_kod = ft.TextField(label="Kod zaproszenia", hint_text="np. A1B2C3 albo link zaproszenia",
+        self.e_kod = ft.TextField(label="Kod zaproszenia", hint_text="Kod albo link",
                                   value=kod, expand=True, **utils.styl_pola())
         if z_linku and kod:
             opis = ("Kod z zaproszenia jest już wpisany. Dotknij „Dołącz”, a na liście pojawi się nowy pojazd "

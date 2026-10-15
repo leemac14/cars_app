@@ -132,14 +132,14 @@ class MiksinZakladkiTankowania:
                 utils.dopasuj_wysokosc_listy(self.lista_kart_tankowania, self._page, wysokosc_pozycji=200)
                 self.update()
 
-            self.elementy.append(
+            self.elementy.append(utils.na_cala_szerokosc(
                 ft.TextField(
-                    hint_text="Szukaj tankowania (stacja, data, kwota, dystans, notatka)...",
+                    hint_text="Szukaj (stacja, data, kwota)",
                     prefix_icon=ft.Icons.SEARCH,
                     on_change=utils.z_opoznieniem(self._page, filtruj_tankowania),
                     **utils.styl_pola()
                 )
-            )
+            ))
             self.lista_kart_tankowania = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_tankowania, "lista:tankowania")
             self.uzyj_wirtualizacji = True
@@ -191,7 +191,7 @@ class MiksinZakladkiTankowania:
                     sp_str = utils.formatuj_spalanie(spalanie, elektryczny=czy_prad_w)
                     kwota_val = float(w.get('kwota') or 0)
                     litry_val = float(w.get('litry') or 0)
-                    cena_str = f"{utils.formatuj_liczba(kwota_val)}  {utils.symbol_waluty()}"
+                    cena_str = f"{utils.formatuj_liczba(kwota_val)} {utils.symbol_waluty()}"
                     cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/{etykiety_w['jednostka']}" if litry_val > 0 else "-"
                     dystans_val = utils.formatuj_dystans(w.get('dystans') or 0, 0, j)
 

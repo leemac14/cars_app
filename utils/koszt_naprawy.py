@@ -170,14 +170,14 @@ class KosztNaprawy:
             on_change=lambda e: self.przelacz(bool(self.przelacznik.value)),
         )
         self.e_robocizna = ft.TextField(
-            label=f"Robocizna ({self._waluta})",
+            label="Robocizna", suffix=self._waluta,
             value=_kwota_do_pola(rozbicie["robocizna"]) if podzial else "",
             keyboard_type=ft.KeyboardType.NUMBER, expand=1,
             on_change=lambda e: self._zmiana_robocizny(),
             **styl_pola(page=page)
         )
         self.e_czesci = ft.TextField(
-            label=f"Części ({self._waluta})",
+            label="Części", suffix=self._waluta,
             value=_kwota_do_pola(rozbicie["czesci"]) if podzial else "",
             keyboard_type=ft.KeyboardType.NUMBER, expand=1,
             on_change=lambda e: self._zmiana_czesci(),

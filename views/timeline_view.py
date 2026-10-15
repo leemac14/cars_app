@@ -100,14 +100,14 @@ class TimelineView(ft.View):
                     utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
                     self.update()
 
-                elementy.append(
+                elementy.append(utils.na_cala_szerokosc(
                     ft.TextField(
-                        hint_text="Szukaj (typ, tytuł, opis, data)...",
+                        hint_text="Szukaj (typ, tytuł, opis, data)",
                         prefix_icon=ft.Icons.SEARCH,
                         on_change=utils.z_opoznieniem(self._page, filtruj_timeline),
                         **utils.styl_pola()
                     )
-                )
+                ))
 
                 # spacing=0 celowo: odstęp między kartami robi teraz dolny padding
                 # WEWNĄTRZ wiersza osi, dzięki czemu pionowa linia biegnie przez
