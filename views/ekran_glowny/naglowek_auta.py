@@ -335,8 +335,7 @@ class MiksinNaglowkaAuta:
                     value=wartosc_pierscienia, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA,
                     stroke_width=4, color=kolor_pierscienia, stroke_cap=ft.StrokeCap.ROUND,
                     bgcolor=utils.tlo_toru(self._page),
-                    semantics_label="Kondycja pojazdu",
-                    semantics_value=f"{kondycja}/100" if kondycja is not None else None,
+                    semantics_label="Kondycja pojazdu",  # wartość czytnik poda sam, w procentach
                 ),
                 ft.Container(tresc_awatara, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA, alignment=ft.Alignment.CENTER),
             ], width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA),
@@ -623,8 +622,7 @@ class MiksinNaglowkaAuta:
             content=ft.Stack([
                 ft.ProgressRing(value=wartosc, width=wymiar, height=wymiar, stroke_width=3, color=kolor,
                                 stroke_cap=ft.StrokeCap.ROUND, bgcolor=utils.tlo_toru(self._page),
-                                semantics_label="Kondycja pojazdu",
-                                semantics_value=f"{kondycja}/100" if kondycja is not None else None),
+                                semantics_label="Kondycja pojazdu"),
                 ft.Container(srodek, width=wymiar, height=wymiar, alignment=ft.Alignment.CENTER),
             ], width=wymiar, height=wymiar),
         )

@@ -402,6 +402,12 @@ def opis_dni_terminu(dni):
     return f"za {dni} dni"
 
 
+def _tor_z_opisem(tor, etykieta, opis):
+    """Pasek, który czytnik ekranu czyta jako „OC, za 16 dni” — `semantics_value` paska
+    Flet przyjmuje tylko jako liczbę."""
+    return ft.Semantics(content=tor, label=etykieta, value=opis, exclude_semantics=True)
+
+
 def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
     """Wiersz terminu dokumentu z odliczaniem i paskiem okna ostrzegawczego (wypełnia
     się dopiero w progu powiadomienia). `scena` (utils.ScenaWejscia) wypełnia go od zera
@@ -424,12 +430,11 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
 
     elementy = [gorny]
     if pelny:
-        elementy.append(scena.wskaznik(ft.ProgressBar(
+        elementy.append(_tor_z_opisem(scena.wskaznik(ft.ProgressBar(
             value=udzial, color=kolor,
             bgcolor=tlo_toru(page),
             height=6, border_radius=3,
-            semantics_label=termin["etykieta"], semantics_value=opis_dni_terminu(termin["dni"]),
-        )))
+        )), termin["etykieta"], opis_dni_terminu(termin["dni"])))
         elementy.append(ft.Row([
             ft.Icon(ikona_z_mapy(IKONY_STATUSU_TERMINU, termin["status"], ft.Icons.EVENT),
                     size=12, color=kolor),
@@ -479,11 +484,10 @@ def wiersz_odliczania(page: ft.Page, pozycja, j=None, scena=None):
     ], spacing=6)]
 
     if pozycja.get("udzial") is not None:
-        elementy.append(scena.wskaznik(ft.ProgressBar(
+        elementy.append(_tor_z_opisem(scena.wskaznik(ft.ProgressBar(
             value=pozycja["udzial"], color=kolor, bgcolor=tlo_toru(page),
             height=6, border_radius=3,
-            semantics_label=tytul_odliczania(pozycja, j), semantics_value=opis_odliczania(pozycja, j),
-        )))
+        )), tytul_odliczania(pozycja, j), opis_odliczania(pozycja, j)))
 
     elementy.append(ft.Row([
         ft.Icon(ikona_z_mapy(IKONY_STATUSU_ODLICZANIA, pozycja.get("status"), ft.Icons.EVENT),
@@ -513,11 +517,10 @@ def wiersz_odliczania_kafla(page: ft.Page, pozycja, j=None, scena=None):
         ft.Text(krotki_opis_odliczania(pozycja, j), size=FS["caption"], color=kolor, no_wrap=True),
     ], spacing=6)]
     if pozycja.get("udzial") is not None:
-        elementy.append(scena.wskaznik(ft.ProgressBar(
+        elementy.append(_tor_z_opisem(scena.wskaznik(ft.ProgressBar(
             value=pozycja["udzial"], color=kolor, bgcolor=tlo_toru(page),
             height=4, border_radius=2,
-            semantics_label=tytul_odliczania(pozycja, j), semantics_value=krotki_opis_odliczania(pozycja, j),
-        )))
+        )), tytul_odliczania(pozycja, j), krotki_opis_odliczania(pozycja, j)))
     return ft.Column(elementy, spacing=3)
 
 

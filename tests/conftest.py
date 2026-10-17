@@ -133,6 +133,19 @@ def schemat_wzorcowy(wzorzec_bazy):
 
 
 @pytest.fixture(autouse=True)
+def wysylka_jak_we_flecie():
+    """Strona testowa sprawdza kontrolki jak Flet przed wysłaniem (`pomoce.bledy_kontrolek`);
+    błąd połknięty po drodze przez aplikację i tak oblewa test."""
+    import pomoce
+
+    pomoce.BLEDY_WYSYLKI.clear()
+    yield
+    bledy = list(pomoce.BLEDY_WYSYLKI)
+    pomoce.BLEDY_WYSYLKI.clear()
+    assert not bledy, "Flet odrzuciłby kontrolki:\n" + "\n".join(bledy)
+
+
+@pytest.fixture(autouse=True)
 def bez_sieci(monkeypatch):
     """Żaden test nie ma prawa dobić do Supabase.
 

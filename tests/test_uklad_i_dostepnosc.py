@@ -146,16 +146,40 @@ def test_tablica_czyta_sie_jako_numer():
     assert tablica.exclude_semantics
 
 
-def test_pasek_terminu_i_kondycja_maja_opis(baza):
+def test_paski_maja_opis_ktory_flet_wysle(baza):
+    """`semantics_value` paska Flet 1.0 przyjmuje tylko jako liczbę — opis tekstem wywalał
+    wejście w kartę pojazdu („'<' not supported between instances of 'str' and 'int'”)."""
     pasek = utils.pasek_terminu(None, {"klucz": "oc", "etykieta": "OC", "data": "01.11.2026",
                                        "dni": 16, "status": "blisko", "prog": 30})
-    (tor,) = pomoce.kontrolki(pasek, ft.ProgressBar)
-    assert tor.semantics_label == "OC" and tor.semantics_value == "za 16 dni"
+    (opis,) = pomoce.kontrolki(pasek, ft.Semantics)
+    assert (opis.label, opis.value, opis.exclude_semantics) == ("OC", "za 16 dni", True)
+    assert isinstance(opis.content, ft.ProgressBar) and pomoce.bledy_kontrolek(pasek) == []
 
-    stan, _ = pomoce.przygotuj_scenariusz("pojazd_z_danymi")
+    stan, _ = pomoce.przygotuj_scenariusz("pojazd_z_historia")
+    pozycje = [p for p in db.odliczania_pojazdu(stan.auto_id) if p.get("udzial") is not None]
+    assert pozycje
+    for wiersz in (utils.wiersz_odliczania(None, pozycje[0]), utils.wiersz_odliczania_kafla(None, pozycje[0])):
+        (opis,) = pomoce.kontrolki(wiersz, ft.Semantics)
+        assert opis.value and isinstance(opis.content, ft.ProgressBar)
+        assert pomoce.bledy_kontrolek(wiersz) == []
+
     _strona, widok = _glowny(stan)
     pierscienie = pomoce.kontrolki(widok.naglowek_auta, ft.ProgressRing)
-    assert pierscienie and all(p.semantics_label == "Kondycja pojazdu" for p in pierscienie)
+    assert pierscienie and all(p.semantics_label == "Kondycja pojazdu" and p.semantics_value is None
+                               for p in pierscienie)
+
+
+def test_strona_testowa_odrzuca_to_co_flet(baza):
+    """Atrapa nie może być łatwiejsza od oryginału: tekst w polu liczbowym i złamana
+    reguła pola wywalają wysyłkę tak jak w aplikacji."""
+    strona = pomoce.zbuduj_strone()
+    tor = ft.ProgressBar(value=0.5, semantics_value="za 16 dni")
+    strona.page.views.append(ft.View(route="/", controls=[ft.Column([tor])]))
+    with pytest.raises(ValueError, match="semantics_value"):
+        strona.page.update()
+    pomoce.BLEDY_WYSYLKI.clear()
+    assert pomoce.bledy_kontrolek(ft.ProgressRing(semantics_value="85/100")) != []
+    assert pomoce.bledy_kontrolek(ft.ProgressRing(value=0.85, semantics_label="Kondycja")) == []
 
 
 def test_przyciski_ikon_maja_cel_dotyku_co_najmniej_40_dp():

@@ -382,11 +382,109 @@ class ChmuraWPamieci:
 # `page.update()` wywala się na „An attempt to fetch destroyed session".
 # Dlatego strona i jej sesja wracają razem, w jednym obiekcie.
 
+# Flet 1.0 sprawdza każdą kontrolkę przed wysłaniem (reguły pól, np. `semantics_value >= 0`)
+# i wtedy `page.update()` rzuca — strona testowa robi to samo. Błąd, który aplikacja
+# połknie po drodze, zostaje w BLEDY_WYSYLKI i oblewa test na końcu (conftest).
+BLEDY_WYSYLKI = []
+_POLA_KLAS = {}
+_PRZESTRZEN_FLETA = {}
+
+
+def _przestrzen_fleta():
+    """Nazwy ze wszystkich modułów Fleta — jego podpowiedzi typów sięgają po nazwy
+    importowane tylko pod TYPE_CHECKING (`KeyValue`, `Page`…)."""
+    if not _PRZESTRZEN_FLETA:
+        import contextlib
+        import sys
+
+        import flet as ft
+
+        for nazwa in getattr(ft, "__all__", ()):  # Flet ładuje moduły dopiero przy dostępie
+            with contextlib.suppress(ImportError, AttributeError):
+                getattr(ft, nazwa)
+        for nazwa, modul in list(sys.modules.items()):
+            if nazwa == "flet" or nazwa.startswith("flet."):
+                _PRZESTRZEN_FLETA.update((k, v) for k, v in vars(modul).items() if not k.startswith("__"))
+    return _PRZESTRZEN_FLETA
+
+
+def _pola_klasy(klasa):
+    """(pola do przejścia, pola przyjmujące tylko liczbę) — liczone raz na klasę."""
+    if klasa not in _POLA_KLAS:
+        import dataclasses
+        import types
+        import typing
+
+        podpowiedzi = {}
+        for baza in klasa.__mro__:  # klasa aplikacji z nieznaną nazwą → podpowiedzi przodka z Fleta
+            if dataclasses.is_dataclass(baza):
+                try:
+                    podpowiedzi = typing.get_type_hints(baza, localns=_przestrzen_fleta())
+                    break
+                except Exception:
+                    continue
+        przejscie, liczbowe = [], []
+        for pole in dataclasses.fields(klasa):
+            if pole.metadata.get("skip", False):
+                continue
+            przejscie.append(pole.name)
+            typ = podpowiedzi.get(pole.name)
+            sklad = typing.get_args(typ) if typing.get_origin(typ) in (typing.Union, types.UnionType) else (typ,)
+            sklad = [t for t in sklad if t is not type(None)]
+            if sklad and all(isinstance(t, type) and issubclass(t, (int, float)) for t in sklad):
+                liczbowe.append(pole.name)
+        _POLA_KLAS[klasa] = (tuple(przejscie), tuple(liczbowe))
+    return _POLA_KLAS[klasa]
+
+
+def bledy_kontrolek(korzen, sprawdzone=None):
+    """Kontrolki poddrzewa, których Flet nie wyśle: złamana reguła pola albo tekst w polu
+    liczbowym (przejście jak we Flecie: pola dataclass, listy, słowniki). `sprawdzone`
+    (id → kontrolka) pomija już obejrzane."""
+    import dataclasses
+
+    from flet.controls.base_control import BaseControl
+    from flet.utils.validation import validate
+
+    sprawdzone = {} if sprawdzone is None else sprawdzone
+    bledy, kolejka, odwiedzone = [], [korzen], set()
+    while kolejka:
+        obiekt = kolejka.pop()
+        if isinstance(obiekt, (list, tuple)):
+            kolejka.extend(obiekt)
+            continue
+        if isinstance(obiekt, dict):
+            kolejka.extend(obiekt.values())
+            continue
+        if not dataclasses.is_dataclass(obiekt) or isinstance(obiekt, type) or id(obiekt) in odwiedzone:
+            continue
+        odwiedzone.add(id(obiekt))
+        przejscie, liczbowe = _pola_klasy(type(obiekt))
+        if isinstance(obiekt, BaseControl) and id(obiekt) not in sprawdzone:
+            sprawdzone[id(obiekt)] = obiekt
+            try:
+                validate(obiekt)
+            except (ValueError, TypeError) as blad:
+                bledy.append(f"{type(obiekt).__name__}: {blad}")
+            bledy.extend(f"{type(obiekt).__name__}.{pole}: tekst {getattr(obiekt, pole)!r} zamiast liczby"
+                         for pole in liczbowe if isinstance(getattr(obiekt, pole, None), str))
+        kolejka.extend(getattr(obiekt, pole, None) for pole in przejscie)
+    return bledy
+
+
 class _SesjaZastepcza:
-    """Minimum, którego oczekuje ft.Page. Każda inna metoda jest pustym gestem."""
+    """Minimum, którego oczekuje ft.Page. Wysyłka sprawdza kontrolki jak Flet; każda inna
+    metoda jest pustym gestem."""
 
     def __init__(self):
         self.index = {}
+        self.sprawdzone = {}
+
+    def patch_control(self, kontrolka, *_args, **_kwargs):
+        bledy = bledy_kontrolek(kontrolka, self.sprawdzone)
+        if bledy:
+            BLEDY_WYSYLKI.extend(bledy)
+            raise ValueError("Flet odrzuciłby wysyłkę:\n" + "\n".join(bledy))
 
     def __getattr__(self, _nazwa):
         return lambda *args, **kwargs: None
@@ -553,7 +651,10 @@ def zbuduj_widok(klasa, strona, stan, identyfikatory=None):
                 f"{klasa.__name__}: nieznany argument konstruktora `{nazwa}` — dopisz go do "
                 "ARGUMENTY_IDENTYFIKATOROW albo ARGUMENTY_WYWOLYWALNE w tests/pomoce.py"
             )
-    return klasa(*wartosci)
+    widok = klasa(*wartosci)
+    bledy = bledy_kontrolek(widok, getattr(getattr(strona, "sesja", None), "sprawdzone", None))
+    assert not bledy, f"{klasa.__name__}: Flet nie wyśle tego ekranu:\n" + "\n".join(bledy)
+    return widok
 
 
 SCENARIUSZE = [
