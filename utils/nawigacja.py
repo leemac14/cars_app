@@ -78,7 +78,7 @@ EKRANY = [
      "slowa": ["licznik", "kilometry", "km", "mile", "odczyt", "stan licznika", "przebiegi"]},
     {"id": "karoseria", "tytul": "Karoseria", "opis": "Zdjęcia lakieru, rys i uszkodzeń",
      "ikona": ft.Icons.PHOTO_CAMERA, "grupa": "pojazd", "trasa": "/karoseria",
-     "slowa": ["lakier", "rysy", "wgniecenia", "zdjęcia", "szkody", "blacharka"]},
+     "slowa": ["lakier", "rysy", "wgniecenia", "zdjęcia", "szkody", "blacharka", "obchód", "przed i po"]},
     {"id": "timeline", "tytul": "Dziennik życia auta", "opis": "Oś czasu wszystkich zdarzeń",
      "ikona": ft.Icons.TIMELINE, "grupa": "pojazd", "trasa": "/timeline",
      "slowa": ["oś czasu", "kronika", "historia", "zdarzenia", "chronologia"]},

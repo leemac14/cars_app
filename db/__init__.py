@@ -20,6 +20,7 @@ from .notatki import *
 from .zalaczniki import *
 from .dokumenty import *
 from .szkice import *
+from .karoseria import *
 from .kopie import *
 from .ceny_czesci import *
 from .magazyn import *
@@ -71,6 +72,7 @@ from . import (
     zalaczniki,
     dokumenty,
     szkice,
+    karoseria,
     kopie,
     ceny_czesci,
     magazyn,

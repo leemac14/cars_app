@@ -22,6 +22,7 @@ from views.settings_view import UstawieniaView
 from views.todo_view import DoZrobieniaView, FormularzDoZrobieniaView
 from views.garage_view import MagazynView, FormularzOponyView, FormularzCzesciView
 from views.body_view import KaroseriaView, FormularzZdjecieKaroseriiView
+from views.obchod_view import ObchodKaroseriiView
 from views.porownanie_view import PorownanieView
 from views.przebieg_view import OdczytyPrzebieguView
 from views.eksport_view import EksportView
@@ -118,7 +119,8 @@ def _cel_trasy(segmenty):
     # Dokument skarbca (/dokumenty/nowy[/<rodzaj>], /dokumenty/edytuj/<id>) — tak samo.
     if glowa in ("tankowanie", "inne", "wizyty", "wpis", "zadanie", "do-zrobienia", "karoseria", "raty", "dokumenty",
                  "dolewki"):
-        if drugi in AKCJE_DODAWANIA:
+        # Obchód auta aparatem (/karoseria/obchod) od razu zapisuje nowe zdjęcia.
+        if drugi in AKCJE_DODAWANIA or (glowa == "karoseria" and drugi == "obchod"):
             return True, True, None, None
         if drugi == "edytuj":
             tabela = TABELE_TRAS.get(glowa)
@@ -681,6 +683,8 @@ def main(page: ft.Page):
             page.views.append(KaroseriaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":
                 page.views.append(FormularzZdjecieKaroseriiView(page, app_state, None))
+            elif len(segmenty) >= 2 and segmenty[1] == "obchod":
+                page.views.append(ObchodKaroseriiView(page, app_state))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 page.views.append(FormularzZdjecieKaroseriiView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "ustawienia":

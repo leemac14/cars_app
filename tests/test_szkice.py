@@ -15,13 +15,11 @@ i trasy. Kosz, schemat i migracje sprawdzają test_kosz / test_schemat / test_mi
 """
 
 import asyncio
-import io
 import os
 from datetime import datetime, timedelta
 
 import flet as ft
 import pytest
-from PIL import Image
 
 import audyty
 import db
@@ -33,15 +31,7 @@ from date import na_iso
 
 # ---------------------------------------------------------------- pomocnicy
 
-def _jpeg(kiedy=None, kolor=(200, 180, 160)):
-    """Bajty małego JPEG-a, opcjonalnie z datą zdjęcia w EXIF."""
-    obraz = Image.new("RGB", (40, 30), kolor)
-    exif = obraz.getexif()
-    if kiedy:
-        exif.get_ifd(0x8769)[0x9003] = kiedy.strftime("%Y:%m:%d %H:%M:%S")
-    bufor = io.BytesIO()
-    obraz.save(bufor, "JPEG", exif=exif)
-    return bufor.getvalue()
+_jpeg = pomoce.jpeg
 
 
 def _plik(tmp_path, nazwa, dane):

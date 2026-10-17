@@ -121,35 +121,58 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
     return kontener, pobierz_wynik
 
 
+# Siatka wybranych zdjęć w formularzu: 3 miniatury w rzędzie na telefonie.
+KOLUMNY_MINIATUR = {"xs": 4, "sm": 3, "md": 2}
+
+
 def komponent_wielu_nowych_zdjec(page: ft.Page):
-    """MASOWE dodawanie nowych zdjęć (np. karoseria), w kilku turach (nowe dopisują się
-    do listy). Zwraca (kontrolka, pobierz_wynik) — ścieżki źródłowe; kopiowanie dopiero
-    przy zapisie formularza."""
+    """MASOWE dodawanie nowych zdjęć (karoseria), w kilku turach — nowe dopisują się do siatki
+    miniatur, kafel „Dodaj” stoi na jej początku. Zwraca (kontrolka, pobierz_wynik) — ścieżki
+    źródłowe; kopiowanie dopiero przy zapisie formularza."""
     stan = {"pliki": []}
-    lista_podgladow = ft.Column(spacing=8)
-    licznik = ft.Text("Nie wybrano jeszcze żadnego zdjęcia.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+    siatka = ft.ResponsiveRow(spacing=SPACING["sm"], run_spacing=SPACING["sm"])
+    licznik = podpis("Nie wybrano jeszcze żadnego zdjęcia.")
 
     def usun(sciezka):
         stan["pliki"] = [s for s in stan["pliki"] if s != sciezka]
         odswiez()
 
-    def odswiez():
-        lista_podgladow.controls.clear()
-        for sciezka in stan["pliki"]:
-            lista_podgladow.controls.append(
-                ft.Row([
-                    ft.Container(
-                        width=52, height=52, border_radius=8,
-                        content=ft.Image(src=sciezka, width=52, height=52, fit="cover", border_radius=8),
-                    ),
-                    ft.Text(os.path.basename(sciezka), size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
-                    ft.IconButton(icon=ft.Icons.CLOSE, icon_size=18, icon_color=KOLOR_STATUS["destructive"], on_click=lambda e, s=sciezka: usun(s)),
-                ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
-            )
+    def miniatura(sciezka):
+        return ft.Container(
+            col=KOLUMNY_MINIATUR, aspect_ratio=1, border_radius=RADIUS["md"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            bgcolor=powierzchnia(page, "blok")["bgcolor"],
+            content=ft.Stack([
+                ft.Container(left=0, top=0, right=0, bottom=0, content=ft.Image(
+                    src=sciezka, fit=ft.BoxFit.COVER, cache_width=320, gapless_playback=True,
+                    semantics_label=os.path.basename(sciezka))),
+                ft.Container(right=0, top=0, content=ft.IconButton(
+                    icon=ft.Icons.CLOSE, icon_size=16, icon_color=ft.Colors.WHITE,
+                    bgcolor=ft.Colors.with_opacity(0.45, ft.Colors.BLACK), tooltip="Usuń z wybranych",
+                    on_click=lambda e, s=sciezka: usun(s))),
+            ]),
+        )
+
+    def kafel_dodaj():
+        return ft.Container(
+            col=KOLUMNY_MINIATUR, aspect_ratio=1, border_radius=RADIUS["md"], ink=True, on_click=wybierz,
+            border=ft.Border.all(1.5, ft.Colors.with_opacity(0.45, ft.Colors.PRIMARY)),
+            bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY), alignment=ft.Alignment.CENTER,
+            tooltip="Wybierz zdjęcia — można zaznaczyć od razu kilka",
+            content=ft.Column([
+                ft.Icon(ft.Icons.ADD_PHOTO_ALTERNATE, size=26, color=ft.Colors.PRIMARY),
+                ft.Text("Dodaj", size=FS["label"], weight="bold", color=ft.Colors.PRIMARY),
+            ], spacing=2, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
+    def odswiez(z_aktualizacja=True):
+        siatka.controls = [kafel_dodaj()] + [miniatura(s) for s in stan["pliki"]]
         n = len(stan["pliki"])
-        licznik.value = "Nie wybrano jeszcze żadnego zdjęcia." if n == 0 else f"Wybrano zdjęć: {n}"
+        licznik.value = ("Nie wybrano jeszcze żadnego zdjęcia." if n == 0
+                         else f"Wybrane: {db.liczba_z_odmiana(n, 'zdjęcie', 'zdjęcia', 'zdjęć')}")
+        if not z_aktualizacja:
+            return
         try:
-            lista_podgladow.update()
+            siatka.update()
             licznik.update()
         except Exception:
             log.polkniety("odświeżenie listy wybranych zdjęć")
@@ -181,8 +204,8 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
         except Exception as ex:
             pokaz_komunikat(page, f"Błąd wczytywania plików: {ex}", KOLOR_STATUS["error"])
 
-    btn_dodaj = ft.TextButton("Wybierz zdjęcia (można zaznaczyć od razu kilka)", icon=ft.Icons.PHOTO_CAMERA, on_click=wybierz)
-    kontener = ft.Column([btn_dodaj, licznik, lista_podgladow], spacing=8)
+    odswiez(z_aktualizacja=False)
+    kontener = ft.Column([siatka, licznik], spacing=8)
     return kontener, lambda: list(stan["pliki"])
 
 
@@ -543,6 +566,7 @@ __all__ = [
     "ROZSZERZENIA_ZALACZNIKOW",
     "abs_zalacznik",
     "etykieta_rodzaju_pliku",
+    "KOLUMNY_MINIATUR",
     "komponent_wielu_nowych_zdjec",
     "komponent_zalacznika",
     "miniatura_zalacznika",

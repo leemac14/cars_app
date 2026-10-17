@@ -67,6 +67,9 @@ WYWOLANIA = {
     "odliczania_pojazdu": lambda k: (k["id"]["auto_id"],),
     "opcje_progow_km": lambda k: ("mi", 1500),
     "pakiety_dla_pojazdu": lambda k: (k["id"]["auto_id"],),
+    # Scenariusz nie ma zdjęć „przed” i „po” — para z dwóch zdjęć, żeby lista nie była pusta.
+    "pary_przed_po": lambda k: ([{"id": 1, "strefa": "Przód", "typ": db.TYP_ZDJECIA_PRZED, "porzadek": 20260101},
+                                 {"id": 2, "strefa": "Przód", "typ": db.TYP_ZDJECIA_PO, "porzadek": 20260201}],),
     "parsuj_zapytanie_kwotowe": lambda k: ("powyżej 100 zł",),
     "parsuj_zapytanie_datowe": lambda k: ("marzec 2026",),
     "pobierz_budzety": lambda k: (k["id"]["auto_id"],),
@@ -135,6 +138,7 @@ WYWOLANIA = {
     "wydania_po": lambda k: ("2026.9.30",),
     # Luty 2026 z utworz_pojazd (przejazd służbowy z licznikiem) w układzie VAT.
     "zdania_ewidencji": lambda k: (db.podsumowanie_ewidencji(k["id"]["auto_id"], 2026, 2), "vat"),
+    "zdjecia_karoserii_pojazdu": lambda k: (k["id"]["auto_id"],),
     "znajdz_duplikaty_nazw": lambda k: (k["id"]["auto_id"],),
 }
 

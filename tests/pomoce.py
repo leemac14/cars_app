@@ -128,6 +128,21 @@ def _plik_zalacznika(katalog, nazwa, tresc):
     return sciezka
 
 
+def jpeg(kiedy=None, kolor=(200, 180, 160)):
+    """Bajty małego JPEG-a (jak z aparatu), opcjonalnie z datą zdjęcia w EXIF."""
+    import io
+
+    from PIL import Image
+
+    obraz = Image.new("RGB", (40, 30), kolor)
+    exif = obraz.getexif()
+    if kiedy:
+        exif.get_ifd(0x8769)[0x9003] = kiedy.strftime("%Y:%m:%d %H:%M:%S")
+    bufor = io.BytesIO()
+    obraz.save(bufor, "JPEG", exif=exif)
+    return bufor.getvalue()
+
+
 def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_wzgledne=True):
     """Pojazd z wpisem w KAŻDEJ tabeli potomnej kosza plus załączniki na dysku.
 

@@ -1,124 +1,272 @@
-import flet as ft
+"""Rejestr karoserii: galeria zdjęć auta z mapą stref i parami „przed / po” oraz formularz
+zdjęć. Dane: db/karoseria.py; kafle, mapa, porównanie i przeglądarka: utils/karoseria.py;
+obchód aparatem: views/obchod_view.py."""
+
 from datetime import datetime
+
+import flet as ft
+
 import db
+import log
 import utils
-from date import na_iso, parsuj_date
+from date import na_iso
+
+KLUCZ_FILTRA_STREFY = "karoseria_strefa"
+KLUCZ_FILTRA_TYPU = "karoseria_typ"
+KLUCZ_SORTOWANIA = "karoseria"
+
+
+def _kolejnosc_strefy(strefa):
+    try:
+        return db.STREFY_KAROSERII.index(strefa)
+    except ValueError:
+        return len(db.STREFY_KAROSERII)
+
+
+# Po dacie — sekcje miesięcy; po strefie — sekcje stref (utils.sekcje_galerii).
+OPCJE_SORTOWANIA = [
+    ("Data", "data", lambda z: (z["porzadek"], z["id"])),
+    ("Strefa", "strefa", lambda z: (_kolejnosc_strefy(z["strefa"]), z["porzadek"], z["id"])),
+]
+
 
 class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
+    """Galeria przewija się razem z ekranem (dawniej siatka w okienku na pół ekranu urywała
+    zdjęcia w połowie). Dotknięcie zdjęcia — przeglądarka, ⋮ — menu, przytrzymanie —
+    zaznaczanie; filtry, sortowanie i mapa odświeżają ekran w miejscu."""
+
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
-
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Rejestr karoserii", "/", ikona=ft.Icons.PHOTO_CAMERA)
-        
+
         self.tryb_zaznaczania = False
         self.zaznaczone_id = set()
         self.tabela_cel = "zdjecia_karoserii"
         self.oryginalny_appbar = appbar
         self.karty_ref = {}
         self.uzyj_wirtualizacji = False
+        self.zdjecia, self.po_filtrach, self.widoczne, self.pary = [], [], [], {}
+        self.tresc = ft.Column(spacing=utils.SPACING["md"])
+        self.galeria = ft.Column(spacing=utils.SPACING["lg"])
+        self.pole_szukaj = ft.TextField(
+            hint_text="Szukaj (strefa, opis, data)", prefix_icon=ft.Icons.SEARCH,
+            on_change=utils.z_opoznieniem(page, self._szukaj), **utils.styl_pola(),
+        )
+        self.wiersz_szukaj = utils.na_cala_szerokosc(self.pole_szukaj)
+        self.moge_dodawac = self.aparat = False
 
-        elementy = []
-        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/karoseria/nowe"))
+        if not state.auto_id:
+            super().__init__(route="/karoseria", padding=15, spacing=15, appbar=appbar, controls=[
+                utils.ekran_braku_danych(
+                    ikona=ft.Icons.DIRECTIONS_CAR, tytul="Brak wybranego pojazdu",
+                    opis="Dodaj pojazd, a potem dokumentuj zdjęciami stan lakieru, rysy i naprawy.",
+                    tekst_przycisku="Dodaj pojazd", on_click=lambda e: utils.przejdz(self._page, "/auto/nowy"),
+                )])
+            return
 
-        # Pobieranie danych
-        with db.polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id, data, strefa, zalacznik, typ_porownania, opis FROM zdjecia_karoserii WHERE auto_id=? ORDER BY id DESC", (self.state.auto_id,))
-            zdjecia = c.fetchall()
+        self.moge_dodawac = db.czy_moge_dodawac(state.auto_id)
+        self.aparat = utils.aparat_dostepny(page)
 
-        if not zdjecia:
-            elementy.append(utils.ekran_braku_danych(
-                ikona=ft.Icons.PHOTO_CAMERA,
-                tytul="Brak zdjęć karoserii",
-                opis="Dodaj pierwsze zdjęcie, aby dokumentować stan auta, uszkodzenia i naprawy.",
-                tekst_przycisku="Dodaj zdjęcie",
-                on_click=lambda e: utils.przejdz(self._page, "/karoseria/nowe")
-            ))
-        else:
-            chipy_filtrow, zdjecia_po_filtrach = utils.pasek_filtrow(
-                self._page, self.state, zdjecia,
-                [("kategoria", "karoseria_strefa", 2, "Strefa auta")])
-            
-            def filtruj_galerie(e):
-                zapytanie = e.control.value.lower().strip()
-                self.lista_kart.controls.clear()
-                for k in self.wszystkie_karty:
-                    if zapytanie in k["szukaj"]: self.lista_kart.controls.append(k["karta"])
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=260, na_wiersz=2)
-                self.update()
-
-            pole_szukaj = ft.TextField(hint_text="Szukaj (strefa, opis, typ)", prefix_icon=ft.Icons.SEARCH, on_change=utils.z_opoznieniem(self._page, filtruj_galerie), **utils.styl_pola())
-            
-            elementy.append(ft.Row([utils.etykieta("Filtruj:", size=13)] + chipy_filtrow))
-            elementy.append(utils.na_cala_szerokosc(pole_szukaj))
-            
-            zdjecia = zdjecia_po_filtrach
-            
-            self.lista_kart = ft.GridView(
-                height=utils.wysokosc_listy(self._page), max_extent=185, spacing=10, run_spacing=10,
-                padding=0, child_aspect_ratio=0.72
-            )
-            self.wszystkie_karty = []
-            self.uzyj_wirtualizacji = True
-
-            def otworz_menu(zid, z_sciezka):
-                def wykonaj():
-                    wynik = db.usun_z_cofnieciem("zdjecia_karoserii", zid)
-                    utils.przejdz(self._page, "/karoseria")
-                    utils.pokaz_komunikat_cofnij(self._page, "Usunięto wpis z galerii.", wynik)
-
-                utils.pokaz_menu_kontekstowe(self._page, "Opcje zdjęcia", utils.odsiej_akcje(self.state.auto_id, [
-                    {"ikona": ft.Icons.IMAGE, "tekst": "Pełny ekran", "czyta": True, "akcja": lambda: utils.pokaz_podglad_zalacznika(self._page, z_sciezka, "Galeria")},
-                    {"ikona": ft.Icons.COMPARE, "tekst": "Wybierz do porównania", "czyta": True, "akcja": lambda: self.wymus_tryb_zaznaczania(zid)},
-                    {"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/karoseria/edytuj/{zid}")},
-                    {"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": lambda: utils.potwierdz(self._page, "Usunąć?", "Na pewno?", wykonaj), "kolor": utils.KOLOR_STATUS["destructive"]}
-                ], "zdjecia_karoserii", zid))
-
-            for z in zdjecia:
-                z_id, z_data, z_strefa, z_zal, z_typ, z_opis = z
-                # `z_typ` bywa NULL-em (wpisy sprzed dodania pola), a `str(None)`
-                # wypisywało na karcie dosłowne „None". Brak typu to zwykłe zdjęcie.
-                typ_zdjecia = str(z_typ) if z_typ and z_typ != "Brak" else "Zwykłe"
-                wyrozniony = typ_zdjecia in ("Przed naprawą", "Po naprawie")
-                kolor_typu = ft.Colors.BLUE if typ_zdjecia == "Przed naprawą" else ft.Colors.GREEN if typ_zdjecia == "Po naprawie" else ft.Colors.ON_SURFACE_VARIANT
-                
-                karta, kontener = utils.karta_listy(
-                    ft.Column([
-                        ft.Image(src=utils.abs_zalacznik(z_zal), height=110, width=165, fit="cover", border_radius=8),
-                        ft.Text(f"{z_data} • {z_strefa}", size=12, weight="bold", no_wrap=True),
-                        # Pogrubiony tylko typ, który coś znaczy — „Zwykłe" jest
-                        # tłem, a nie wiadomością.
-                        ft.Text(typ_zdjecia, size=11, color=kolor_typu,
-                                weight="bold" if wyrozniony else "normal")
-                    ], spacing=4),
-                    tlo=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
-                    page=self._page,
-                )
-                kontener.width = 165
-                kontener.padding = 10
-
-                self.karty_ref[z_id] = kontener
-                self.podepnij_zdarzenia_grupowe(kontener, z_id, lambda zid=z_id, zal=z_zal: otworz_menu(zid, zal))
-
-                self.wszystkie_karty.append({"karta": karta, "szukaj": f"{z_strefa} {z_opis} {z_typ} {z_data}".lower()})
-                self.lista_kart.controls.append(karta)
-
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=260, na_wiersz=2)
-            elementy.append(self.lista_kart)
-
-        elementy.append(utils.dol_bezpieczny(10))
+        def tresc():
+            self._przelicz()
+            return self.tresc
 
         super().__init__(
-            route="/karoseria", padding=15,
-            appbar=appbar, floating_action_button=fab,
-            spacing=15,
-            controls=elementy,          # lub self.elementy, w zależności jak masz w tym pliku
-            scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
+            route="/karoseria", padding=15, appbar=appbar, floating_action_button=self._fab(),
+            controls=[utils.zbuduj_etapami(
+                page, utils.szkielet_ekranu(page, kafle=2, karty=3), tresc, widok=self,
+            )],
+            scroll=ft.ScrollMode.AUTO,
         )
-        
-    # --- NOWE: Wymuszenie zaznaczania z menu kontekstowego zdjęcia ---
+
+    # ================= TREŚĆ =================
+
+    def _fab(self):
+        if not self.moge_dodawac:
+            return None
+        if not self.aparat:
+            return utils.fab_animowany(ft.Icons.ADD_A_PHOTO, lambda e: utils.przejdz(self._page, "/karoseria/nowe"),
+                                       tooltip="Dodaj zdjęcia")
+        return utils.fab_speed_dial(self._page, [
+            (ft.Icons.THREESIXTY, "Obchód auta aparatem", lambda e: utils.przejdz(self._page, "/karoseria/obchod")),
+            (ft.Icons.PHOTO_LIBRARY, "Zdjęcia z galerii", lambda e: utils.przejdz(self._page, "/karoseria/nowe")),
+        ], ikona_glowna=ft.Icons.ADD_A_PHOTO, tooltip="Dodaj zdjęcia")
+
+    def _przelicz(self):
+        """Dane, mapa, pary, filtry i galeria od nowa — przy wejściu i przy odświeżeniu w miejscu."""
+        self.zdjecia = db.zdjecia_karoserii_pojazdu(self.state.auto_id)
+        lista_par = db.pary_przed_po(self.zdjecia)
+        self.pary = {z["id"]: para for para in lista_par for z in (para["przed"], para["po"])}
+        if not self.zdjecia:
+            self.karty_ref = {}
+            self.tresc.controls = [self._pusto()]
+            return
+
+        sort_ui = utils.przycisk_sortowania(self._page, self.state, KLUCZ_SORTOWANIA, OPCJE_SORTOWANIA)
+        chipy, po_filtrach = utils.pasek_filtrow(self._page, self.state, self.zdjecia, [
+            ("kategoria", KLUCZ_FILTRA_STREFY, "strefa", "Strefa"),
+            ("kategoria", KLUCZ_FILTRA_TYPU, "etykieta_typu", "Rodzaj"),
+        ])
+        self.po_filtrach = utils.posortuj_liste(list(po_filtrach), self.state, KLUCZ_SORTOWANIA, OPCJE_SORTOWANIA)
+        aktywna = self.state.filtry.get(KLUCZ_FILTRA_STREFY)
+
+        elementy = [utils.mapa_karoserii(
+            self._page, db.podsumowanie_stref(self.zdjecia),
+            aktywna=None if aktywna == utils.WSZYSTKO else aktywna, on_strefa=self._wybierz_strefe,
+            moge_dodawac=self.moge_dodawac,
+        )]
+        if lista_par:
+            elementy.append(utils.pasek_par_przed_po(self._page, lista_par, self._porownaj_pare))
+        elementy += [
+            ft.Row([sort_ui] + chipy, scroll=ft.ScrollMode.ADAPTIVE, spacing=8),
+            self.wiersz_szukaj,
+            self.galeria,
+            utils.dol_bezpieczny(80),  # miejsce pod FAB-em
+        ]
+        self.tresc.controls = elementy
+        self._uloz_galerie()
+
+    def _uloz_galerie(self):
+        zapytanie = (self.pole_szukaj.value or "").lower().strip()
+        self.widoczne = [z for z in self.po_filtrach if zapytanie in z["szukaj"]]
+        self.karty_ref = {}
+        if not self.widoczne:
+            self.galeria.controls = [self._brak_wynikow()]
+            return
+        po_dacie = utils.czy_po_dacie(self.state, KLUCZ_SORTOWANIA)
+        self.galeria.controls = [
+            utils.sekcja_galerii(tytul, opis, [self._kafel(z) for z in lista])
+            for tytul, opis, lista in utils.sekcje_galerii(self.widoczne, po_dacie=po_dacie)
+        ]
+
+    def _kafel(self, z):
+        kafel, nakladka = utils.kafel_zdjecia_karoserii(self._page, z, on_menu=lambda: self._menu(z))
+        self.karty_ref[z["id"]] = nakladka
+        if z["id"] in self.zaznaczone_id:
+            nakladka.bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.PRIMARY)
+            nakladka.border = ft.Border.all(2, ft.Colors.PRIMARY)
+        self.podepnij_zdarzenia_grupowe(nakladka, z["id"], lambda: self._otworz(z["id"]))
+        return kafel
+
+    def _pusto(self):
+        if not self.moge_dodawac:
+            return ft.Container(padding=30, content=ft.Column([
+                utils.rysunek_pustego_stanu(ft.Icons.PHOTO_CAMERA),
+                utils.podpis("Ten pojazd nie ma jeszcze zdjęć karoserii.", text_align=ft.TextAlign.CENTER),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=12))
+        ekran = utils.ekran_braku_danych(
+            ikona=ft.Icons.PHOTO_CAMERA, tytul="Brak zdjęć karoserii",
+            opis="Udokumentuj stan auta: przód, boki, tył i wnętrze. Zdjęcia „przed naprawą” i „po "
+                 "naprawie” tej samej strefy same połączą się w pary do porównania.",
+            tekst_przycisku="Obchód auta aparatem" if self.aparat else "Dodaj zdjęcia",
+            ikona_przycisku=ft.Icons.THREESIXTY if self.aparat else ft.Icons.ADD_A_PHOTO,
+            on_click=lambda e: utils.przejdz(self._page, "/karoseria/obchod" if self.aparat else "/karoseria/nowe"),
+        )
+        if self.aparat:
+            ekran.content.controls.insert(len(ekran.content.controls) - 1, ft.TextButton(
+                "Wybierz zdjęcia z galerii", icon=ft.Icons.PHOTO_LIBRARY,
+                on_click=lambda e: utils.przejdz(self._page, "/karoseria/nowe"),
+            ))
+        return ekran
+
+    def _brak_wynikow(self):
+        return ft.Container(padding=ft.Padding(0, 16, 0, 16), content=ft.Column([
+            utils.podpis("Żadne zdjęcie nie pasuje do filtrów i wyszukiwania.", text_align=ft.TextAlign.CENTER),
+            ft.TextButton("Pokaż wszystkie zdjęcia", icon=ft.Icons.FILTER_ALT_OFF, on_click=self._wyczysc_filtry),
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4))
+
+    # ================= AKCJE =================
+
+    def odswiez_w_miejscu(self):
+        """Filtr, sortowanie, mapa i usunięcie (utils.odswiez_ekran): galeria liczy się od nowa,
+        ekran zostaje w tym samym miejscu."""
+        if not self.state.auto_id:
+            utils.przejdz(self._page, "/karoseria")
+            return
+        self._przelicz()
+        self.update()
+
+    def _szukaj(self, e):
+        self._uloz_galerie()
+        try:
+            self.galeria.update()
+        except RuntimeError:
+            log.polkniety("odświeżenie galerii karoserii po wyszukiwaniu")
+
+    def _wyczysc_filtry(self, e=None):
+        for klucz in (KLUCZ_FILTRA_STREFY, KLUCZ_FILTRA_TYPU):
+            self.state.filtry[klucz] = utils.WSZYSTKO
+        self.pole_szukaj.value = ""
+        utils.odswiez_ekran(self._page)
+
+    def _wybierz_strefe(self, strefa):
+        """Strefa z mapy: ze zdjęciami — filtr (drugie dotknięcie go zdejmuje); bez zdjęć —
+        formularz nowych zdjęć z tą strefą."""
+        if not any(z["strefa"] == strefa for z in self.zdjecia):
+            if self.moge_dodawac:
+                self.state.karoseria_nowa_strefa = strefa
+                utils.przejdz(self._page, "/karoseria/nowe")
+            else:
+                utils.pokaz_komunikat(self._page, f"{strefa}: brak zdjęć.", utils.KOLOR_STATUS["info"])
+            return
+        obecna = self.state.filtry.get(KLUCZ_FILTRA_STREFY)
+        self.state.filtry[KLUCZ_FILTRA_STREFY] = utils.WSZYSTKO if obecna == strefa else strefa
+        utils.wibracja(self._page, "wybor")
+        utils.odswiez_ekran(self._page)
+
+    def _otworz(self, zid):
+        indeks = next((i for i, z in enumerate(self.widoczne) if z["id"] == zid), None)
+        if indeks is not None:
+            utils.pokaz_przegladarke_karoserii(self._page, self.widoczne, indeks, on_menu=self._menu, pary=self.pary)
+
+    def _porownaj_pare(self, para):
+        utils.porownaj_zdjecia_karoserii(self._page, para["przed"], para["po"])
+
+    def _menu(self, z, przegladarka=None):
+        """Menu zdjęcia — z kafla albo z przeglądarki (wtedy edycja i usunięcie najpierw ją zamykają)."""
+        zid = z["id"]
+
+        def zamknij_przegladarke():
+            if przegladarka is not None:
+                przegladarka.zamknij()
+
+        def edytuj():
+            zamknij_przegladarke()
+            utils.przejdz(self._page, f"/karoseria/edytuj/{zid}")
+
+        def usun():
+            def wykonaj():
+                zamknij_przegladarke()
+                wynik = db.usun_z_cofnieciem("zdjecia_karoserii", zid)
+                utils.odswiez_ekran(self._page)
+                utils.pokaz_komunikat_cofnij(self._page, "Usunięto zdjęcie z rejestru.", wynik)
+            utils.potwierdz(self._page, "Usunąć zdjęcie?", "Wpis i plik zdjęcia znikną z rejestru karoserii.", wykonaj)
+
+        pozycje = []
+        para = self.pary.get(zid)
+        if para:
+            pozycje.append({"ikona": ft.Icons.COMPARE, "tekst": "Porównaj przed i po", "czyta": True,
+                            "akcja": lambda: self._porownaj_pare(para)})
+        if przegladarka is None:
+            pozycje += [
+                {"ikona": ft.Icons.FULLSCREEN, "tekst": "Pełny ekran", "czyta": True, "akcja": lambda: self._otworz(zid)},
+                {"ikona": ft.Icons.CHECKLIST, "tekst": "Wybierz do porównania", "czyta": True,
+                 "akcja": lambda: self.wymus_tryb_zaznaczania(zid)},
+            ]
+        pozycje += [
+            {"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": edytuj},
+            {"ikona": ft.Icons.DELETE, "tekst": "Usuń zdjęcie", "akcja": usun,
+             "kolor": utils.KOLOR_STATUS["destructive"]},
+        ]
+        utils.pokaz_menu_kontekstowe(self._page, f"{z['strefa']} · {z['data']}",
+                                     utils.odsiej_akcje(self.state.auto_id, pozycje, "zdjecia_karoserii", zid))
+
+    # ================= ZAZNACZANIE =================
+
     def wymus_tryb_zaznaczania(self, element_id):
+        if element_id not in self.karty_ref:
+            return
         self.tryb_zaznaczania = True
         self.zaznacz_odznacz(element_id, self.karty_ref[element_id])
         utils.pokaz_komunikat(self._page, "Zaznacz jeszcze jedno zdjęcie do porównania.", ft.Colors.PRIMARY)
@@ -133,6 +281,13 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         if len(self.zaznaczone_id) == 2:
             extra.append(ft.IconButton(ft.Icons.COMPARE, tooltip="Porównaj zaznaczone", on_click=self.otworz_porownanie))
         super().aktualizuj_appbar_zaznaczania(dodatkowe_akcje=extra)
+        # Przy trzech akcjach „Zaznaczono: 2” nie mieści się na telefonie — „2 zdjęcia” tak.
+        if isinstance(self.appbar.title, ft.Text):
+            self.appbar.title.value = db.liczba_z_odmiana(len(self.zaznaczone_id), "zdjęcie", "zdjęcia", "zdjęć")
+            try:
+                self.update()
+            except RuntimeError:
+                log.polkniety("tytuł paska zaznaczania karoserii")
 
     def edytuj_zaznaczone_zbiorczo(self, e):
         ids = list(self.zaznaczone_id)
@@ -146,8 +301,9 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
             **utils.styl_dropdown()
         )
         e_typ = ft.Dropdown(
-            label="Typ zdjęcia",
-            options=[ft.DropdownOption(BRAK_ZMIAN)] + [ft.DropdownOption(t) for t in db.TYPY_ZDJECIA],
+            label="Rodzaj zdjęcia",
+            options=[ft.DropdownOption(BRAK_ZMIAN)] + [ft.DropdownOption(key=t, text=db.ETYKIETY_TYPOW_ZDJECIA[t])
+                                                      for t in db.TYPY_ZDJECIA],
             value=BRAK_ZMIAN,
             **utils.styl_dropdown()
         )
@@ -171,8 +327,8 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
             db.aktualizuj_wiele_zdjec_karoserii(ids, strefa=strefa, typ_porownania=typ, opis=opis)
             utils.zamknij_dialog(self._page, dlg)
             self.zakoncz_zaznaczanie()
-            utils.przejdz(self._page, "/karoseria")
-            utils.pokaz_komunikat(self._page, f"Zaktualizowano {ile} zdjęć.")
+            utils.odswiez_ekran(self._page)
+            utils.pokaz_komunikat(self._page, f"Zaktualizowano: {db.liczba_z_odmiana(ile, 'zdjęcie', 'zdjęcia', 'zdjęć')}.")
 
         dlg = ft.AlertDialog(
             modal=True,
@@ -194,114 +350,21 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
-        
+
         def wykonaj():
             wynik = db.usun_wiele_z_cofnieciem(self.tabela_cel, list(self.zaznaczone_id))
             self.zakoncz_zaznaczanie()
-            utils.przejdz(self._page, "/karoseria")
-            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} zdjęć.", wynik)
-            
-        utils.potwierdz(self._page, "Usuwanie grupowe", f"Czy na pewno usunąć {ile} zaznaczonych zdjęć?", wykonaj)
+            utils.odswiez_ekran(self._page)
+            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto: {db.liczba_z_odmiana(ile, 'zdjęcie', 'zdjęcia', 'zdjęć')}.", wynik)
+
+        utils.potwierdz(self._page, "Usuwanie grupowe", f"Czy na pewno usunąć zaznaczone ({ile})?", wykonaj)
 
     def otworz_porownanie(self, e):
-        ids = list(self.zaznaczone_id)
-        with db.polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute("SELECT data, strefa, zalacznik, opis FROM zdjecia_karoserii WHERE id IN (?, ?)", (ids[0], ids[1]))
-            zdjecia = c.fetchall()
-
-        if len(zdjecia) != 2: return
-
-        # Starsze zdjęcie = "przed", nowsze = "po" (sortowanie po dacie)
-        zdjecia.sort(key=lambda z: parsuj_date(z[0]))
-        (d_przed, s_przed, zal_przed, op_przed), (d_po, s_po, zal_po, op_po) = zdjecia
-
-        SZER, WYS = 320, 420
-        pozycja_startowa = SZER / 2
-
-        obraz_po = ft.Image(src=utils.abs_zalacznik(zal_po), width=SZER, height=WYS, fit="cover")
-        obraz_przed = ft.Image(src=utils.abs_zalacznik(zal_przed), width=SZER, height=WYS, fit="cover")
-
-        # „Okienko ujawnienia”: kontener o szerokości = pozycja suwaka; obraz „przed” w
-        # PEŁNYM rozmiarze, przypięty (left=0, top=0) w Stacku, PRZYCINANY (nie
-        # skalowany) — klasyczny slider „przed/po”.
-        warstwa_przed = ft.Container(
-            width=pozycja_startowa, height=WYS,
-            clip_behavior=ft.ClipBehavior.HARD_EDGE,
-            content=ft.Stack([ft.Container(left=0, top=0, content=obraz_przed)]),
-        )
-
-        uchwyt_linia = ft.Container(width=3, height=WYS, bgcolor=ft.Colors.WHITE, left=pozycja_startowa - 1.5)
-        uchwyt_kolko = ft.Container(
-            width=36, height=36, border_radius=18, bgcolor=ft.Colors.WHITE,
-            left=pozycja_startowa - 18, top=(WYS / 2) - 18, alignment=ft.Alignment.CENTER,
-            shadow=ft.BoxShadow(blur_radius=8, color=ft.Colors.with_opacity(0.4, ft.Colors.BLACK)),
-            content=ft.Icon(ft.Icons.COMPARE_ARROWS, color=ft.Colors.BLACK, size=18),
-        )
-        etykieta_przed = ft.Container(
-            top=10, left=10, padding=ft.Padding(8, 4, 8, 4), border_radius=8,
-            bgcolor=ft.Colors.with_opacity(0.55, ft.Colors.BLACK),
-            content=ft.Text(f"PRZED • {d_przed}", size=11, weight="bold", color=ft.Colors.WHITE),
-        )
-        etykieta_po = ft.Container(
-            top=10, right=10, padding=ft.Padding(8, 4, 8, 4), border_radius=8,
-            bgcolor=ft.Colors.with_opacity(0.55, ft.Colors.BLACK),
-            content=ft.Text(f"PO • {d_po}", size=11, weight="bold", color=ft.Colors.WHITE),
-        )
-
-        obszar = ft.Stack(
-            [obraz_po, warstwa_przed, uchwyt_linia, uchwyt_kolko, etykieta_przed, etykieta_po],
-            width=SZER, height=WYS,
-        )
-
-        def przesun(nowy_x):
-            nowy_x = max(0.0, min(float(SZER), nowy_x))
-            warstwa_przed.width = nowy_x
-            uchwyt_linia.left = nowy_x - 1.5
-            uchwyt_kolko.left = nowy_x - 18
-            obszar.update()
-
-        suwak = ft.Slider(
-            min=0, max=SZER, value=pozycja_startowa,
-            active_color=ft.Colors.PRIMARY,
-            on_change=lambda e2: przesun(float(e2.control.value)),
-        )
-
-        bits_podpisu = [f"{s_przed} → {s_po}" if s_przed != s_po else str(s_przed)]
-        if op_przed: bits_podpisu.append(f"Przed: {op_przed}")
-        if op_po: bits_podpisu.append(f"Po: {op_po}")
-
-        dlg = ft.AlertDialog(
-            title=ft.Row([
-                ft.Icon(ft.Icons.COMPARE, color=ft.Colors.PRIMARY),
-                ft.Text("Przesuń suwak, by porównać", weight="bold", size=15)
-            ]),
-            content=ft.Container(
-                width=SZER,
-                content=ft.Column([
-                    ft.Container(
-                        width=SZER, height=WYS, border_radius=12,
-                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-                        content=obszar,
-                    ),
-                    suwak,
-                    ft.Text("  •  ".join(bits_podpisu), size=12, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
-                ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True)
-            ),
-            actions=[ft.TextButton("Zamknij", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg))],
-            content_padding=15
-        )
-        utils.otworz_dialog(self._page, dlg)
+        wybrane = [z for z in self.zdjecia if z["id"] in self.zaznaczone_id]
+        if len(wybrane) != 2:
+            return
         self.zakoncz_zaznaczanie()
-
-def _forma_zdjec(n):
-    """Poprawna polska odmiana słowa 'zdjęcie' w zależności od liczby."""
-    if n == 1:
-        return "zdjęcie"
-    ostatnia, dziesiatki = n % 10, n % 100
-    if 2 <= ostatnia <= 4 and not (12 <= dziesiatki <= 14):
-        return "zdjęcia"
-    return "zdjęć"
+        utils.porownaj_zdjecia_karoserii(self._page, *wybrane)
 
 
 class FormularzZdjecieKaroseriiView(ft.View):
@@ -313,7 +376,10 @@ class FormularzZdjecieKaroseriiView(ft.View):
         d_val = datetime.now().strftime("%d.%m.%Y")
         # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
         self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
-        strefa_val = db.STREFY_KAROSERII[0]
+        # Strefa dotknięta na mapie karoserii (bez zdjęć) przychodzi już wybrana.
+        z_mapy = getattr(state, "karoseria_nowa_strefa", None)
+        strefa_val = z_mapy if z_mapy in db.STREFY_KAROSERII else db.STREFY_KAROSERII[0]
+        state.karoseria_nowa_strefa = None
         typ_val = db.TYPY_ZDJECIA[0]
         opis_val = ""
         self.zalacznik_val = None
@@ -339,8 +405,10 @@ class FormularzZdjecieKaroseriiView(ft.View):
         self.e_d = utils.pole_daty(page, "Data zrobienia zdjęcia", d_val)
         self.e_p = ft.TextField(label=f"Przebieg ({utils.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(self.p_km), keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
 
-        self.e_strefa = ft.Dropdown(label="Strefa karoserii", options=[ft.DropdownOption(s) for s in db.STREFY_KAROSERII], value=strefa_val, **utils.styl_dropdown())
-        self.e_typ = ft.Dropdown(label="Typ zdjęcia", options=[ft.DropdownOption(t) for t in db.TYPY_ZDJECIA], value=typ_val, **utils.styl_dropdown())
+        # Strefa spoza słownika (stary wpis) zostaje jako własny chip — zapis jej nie podmieni.
+        strefy = db.STREFY_KAROSERII + ([strefa_val] if strefa_val not in db.STREFY_KAROSERII else [])
+        self.e_strefa = utils.WyborChipami(strefy, strefa_val)
+        self.e_typ = utils.WyborChipami(db.TYPY_ZDJECIA, typ_val, etykiety=db.ETYKIETY_TYPOW_ZDJECIA)
         self.e_opis = ft.TextField(label="Opis / Notatki", value=opis_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
 
         self._stan_poczatkowy = self._migawka_formularza()
@@ -353,15 +421,19 @@ class FormularzZdjecieKaroseriiView(ft.View):
             k1 = utils.karta_formularza([self.k_zalacznik], "Wymagane zdjęcie", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
             tytul_k2 = "Co widać na zdjęciu"
         else:
-            opis_pomocy = ft.Text(
-                "Zaznacz od razu kilka zdjęć — każde trafi jako osobny wpis w galerii, "
-                "ze wspólną strefą/opisem/datą ustawionymi poniżej.",
-                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            opis_pomocy = utils.podpis(
+                "Zaznacz od razu kilka zdjęć — każde trafi do galerii osobno, ze wspólną strefą, "
+                "rodzajem, opisem i datą ustawionymi poniżej."
             )
             k1 = utils.karta_formularza([opis_pomocy, self.k_zalacznik], "Zdjęcia", ft.Icons.ADD_A_PHOTO, domyslnie_otwarte=True)
             tytul_k2 = "Co widać na zdjęciach (wspólne dla wszystkich)"
 
-        k2 = utils.karta_formularza([self.e_strefa, self.e_typ, self.e_opis], tytul_k2, ft.Icons.INFO_OUTLINE)
+        k2 = utils.karta_formularza([
+            utils.etykieta("Strefa auta"), self.e_strefa.kontrolka,
+            utils.etykieta("Rodzaj zdjęcia"), self.e_typ.kontrolka,
+            utils.podpis("„Przed naprawą” i „Po naprawie” tej samej strefy połączą się w galerii w parę do porównania."),
+            self.e_opis,
+        ], tytul_k2, ft.Icons.INFO_OUTLINE, domyslnie_otwarte=True)
         k3 = utils.karta_formularza([self.e_d, self.e_p], "Kontekst", ft.Icons.SPEED)
 
         tekst_przycisku = "Zapisz zdjęcie" if wpis_id else "Zapisz zdjęcia"
@@ -382,7 +454,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        for pole in (self.e_p, self.e_strefa, self.e_typ, self.e_opis): utils.ustaw_blad(pole)
+        for pole in (self.e_p, self.e_opis):
+            utils.ustaw_blad(pole)
         # Pole w jednostce z Ustawień, baza w km; nieruszone pole wraca bez przeliczania.
         prz = db.dystans_na_km(utils.parsuj_int(self.e_p.value, 0), calkowity=True, km_przy_otwarciu=self.p_km)
 
@@ -444,4 +517,4 @@ class FormularzZdjecieKaroseriiView(ft.View):
                 utils.KOLOR_STATUS["warning"]
             )
         else:
-            utils.pokaz_komunikat(self._page, f"Dodano {ile_zapisanych} {_forma_zdjec(ile_zapisanych)} do galerii!")
+            utils.pokaz_komunikat(self._page, f"Dodano do galerii: {db.liczba_z_odmiana(ile_zapisanych, 'zdjęcie', 'zdjęcia', 'zdjęć')}.")

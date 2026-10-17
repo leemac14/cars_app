@@ -28,6 +28,21 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.17", "pozycje": [
+        {"tytul": "Karoseria na cały ekran", "ikona": "PHOTO_LIBRARY", "ekran": "karoseria",
+         "opis": "Galeria karoserii przewija się razem z ekranem — zdjęcia nie urywają się już w połowie pod pustym "
+                 "polem. Kafelki są większe i ułożone w miesiące, a dotknięcie otwiera zdjęcie na pełnym ekranie, "
+                 "z przybliżaniem i przejściem do następnego."},
+        {"tytul": "Mapa karoserii", "ikona": "DIRECTIONS_CAR", "ekran": "karoseria",
+         "opis": "Schemat auta pokazuje, ile zdjęć mają przód, boki, tył i wnętrze i kiedy zrobiono ostatnie. "
+                 "Dotknięcie strefy zawęża galerię, a strefa bez zdjęć od razu otwiera ich dodawanie."},
+        {"tytul": "Przed i po naprawie", "ikona": "COMPARE", "ekran": "karoseria",
+         "opis": "Zdjęcia „przed naprawą” i „po naprawie” tej samej strefy same łączą się w pary. Porównujesz je, "
+                 "przeciągając palcem linię po zdjęciu."},
+        {"tytul": "Obchód auta aparatem", "ikona": "THREESIXTY", "ekran": "karoseria",
+         "opis": "Na telefonie aparat prowadzi dookoła auta: przód, prawy bok, tył, lewy bok i wnętrze. Każde "
+                 "zdjęcie od razu trafia do galerii z właściwą strefą, datą i stanem licznika."},
+    ]},
     {"wersja": "2026.10.16.2", "pozycje": [
         {"tytul": "Nowocześniejszy wygląd", "ikona": "AUTO_AWESOME", "ekran": "kokpit",
          "opis": "Pasek u góry ma kolor ekranu, okna i arkusze są bardziej zaokrąglone, a arkusz ma uchwyt do "
