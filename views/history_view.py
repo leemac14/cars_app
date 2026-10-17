@@ -85,7 +85,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
                 # --- POPRAWNA INICJALIZACJA WYSZUKIWARKI ---
-                self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:historia")
                 self.uzyj_wirtualizacji = True
                 self.wszystkie_karty = []
@@ -115,6 +115,22 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 wpisy = wpisy_po_filtrach
                 utils.posortuj_liste(wpisy, self.state, "historia", opcje_sort)
 
+                def usun_wpis_od_razu(h_id):
+                    wynik = db.usun_z_cofnieciem("historia", h_id)
+                    if wynik:
+                        oryginalne_cofnij = wynik["cofnij"]
+                        def nowe_cofnij():
+                            oryginalne_cofnij()
+                            db.aktualizuj_najnowszy_wpis(z_id)
+                        wynik["cofnij"] = nowe_cofnij
+                    db.aktualizuj_najnowszy_wpis(z_id)
+                    utils.przejdz(self._page, f"/historia/{z_id}")
+                    utils.pokaz_komunikat_cofnij(self._page, "Usunięto wpis.", wynik)
+
+                def notatka_wpisu(h_id):
+                    utils.szybka_notatka(self._page, "historia", h_id,
+                                         lambda: utils.przejdz(self._page, f"/historia/{z_id}"), "Notatka do wpisu")
+
                 def otworz_menu_historii(h_id, w_id, pliki=None, notatka=None):
                     # Wpisu z wizyty zbiorczej nie edytujemy stąd (dane w wizycie), ale
                     # NOTATKĘ i gwarancję (wyjątek dla podzespołu) tak — należą do
@@ -137,18 +153,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         return
 
                     def usun_wpis():
-                        def wykonaj():
-                            wynik = db.usun_z_cofnieciem("historia", h_id)
-                            if wynik:
-                                oryginalne_cofnij = wynik["cofnij"]
-                                def nowe_cofnij():
-                                    oryginalne_cofnij()
-                                    db.aktualizuj_najnowszy_wpis(z_id)
-                                wynik["cofnij"] = nowe_cofnij
-                            db.aktualizuj_najnowszy_wpis(z_id)
-                            utils.przejdz(self._page, f"/historia/{z_id}")
-                            utils.pokaz_komunikat_cofnij(self._page, "Usunięto wpis.", wynik)
-                        utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten wpis z historii?", wykonaj)
+                        utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten wpis z historii?",
+                                        lambda: usun_wpis_od_razu(h_id))
 
                     pozycje = utils.pozycje_menu_zalacznikow(
                         self._page, "historia", h_id, pliki, "Wpis historii",
@@ -166,6 +172,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     utils.pokaz_menu_kontekstowe(self._page, "Opcje wpisu", pozycje)
 
                 j = utils.jednostka_dystansu()  # raz na całą listę
+                gesty = utils.wolno_zmieniac(self.state.auto_id)  # podgląd: bez gestów
                 for w in wpisy:
                     (h_id, data, prz, cena, w_id, w_koszt, kategoria, pliki, dodane_przez,
                      zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data,
@@ -245,6 +252,12 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     tekst_szukaj = (f"{data} {sub_tekst} {k_str} {utils.opis_rozbicia_kosztu(rozbicia.get(h_id))} "
                                     f"{opis_magazynu} {tekst_gwarancji} {notatka or ''} "
                                     f"{etykieta_rodzaju if db.rodzaj_serwisu(rodzaje.get(h_id)) else ''}").lower()
+                    # Wpisu z wizyty zbiorczej nie usuwa się stąd (całą wizytę) — zostaje mu notatka.
+                    karta = utils.gesty_karty(
+                        self._page, karta, widok=self,
+                        usun=(lambda hid=h_id: usun_wpis_od_razu(hid)) if gesty and not jest_zbiorcza else None,
+                        notatka=(lambda hid=h_id: notatka_wpisu(hid)) if gesty else None,
+                    )
                     self.wszystkie_karty.append({
                         "karta": karta, "szukaj": tekst_szukaj, "data": data,
                         # Wpis z wizyty zbiorczej niesie koszt CAŁEJ wizyty — do
@@ -471,7 +484,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         )
         elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
 
-        self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+        self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
         utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:wizyty")
         self.uzyj_wirtualizacji = True
         self.wszystkie_karty = []

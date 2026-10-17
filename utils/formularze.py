@@ -6,8 +6,10 @@ from datetime import date, datetime, timezone
 
 from .stale import FS, KOLOR_STATUS, RADIUS, SPACING
 from .format import opis_nietypowej_ceny
+from .typografia import rozmiar_tekstu
 from .wyglad import dol_bezpieczny, powierzchnia, tlo_karty
 from .zgodnosc import ustaw_blad, ustaw_ikone
+from .haptyka import z_wibracja
 from .dialogi import otworz_dialog, pokaz_komunikat, przejdz
 
 
@@ -158,13 +160,20 @@ def sprawdz_duplikat_kosztu(page: ft.Page, pole_kwoty: ft.TextField, auto_id, da
     return False
 
 
+def _ramka_pola():
+    """Ramka pola (Flet 1.0 `border`): niewidoczna, na focus kolor wiodący; błąd i wyłączenie
+    bierze z motywu."""
+    return {
+        ft.ControlState.DEFAULT: ft.OutlineInputBorder(
+            border_radius=RADIUS["md"], side=ft.BorderSide(1.5, ft.Colors.TRANSPARENT)),
+        ft.ControlState.FOCUSED: ft.OutlineInputBorder(
+            border_radius=RADIUS["md"], side=ft.BorderSide(2, ft.Colors.PRIMARY)),
+    }
+
+
 def styl_pola(page: ft.Page = None):
     return {
-        "border_radius": RADIUS["md"],
-        "border_color": ft.Colors.TRANSPARENT,   # ramka niewidoczna...
-        "border_width": 1.5,
-        "focused_border_color": ft.Colors.PRIMARY,  # ...i pojawia się tylko na focus
-        "focused_border_width": 2,
+        "border": _ramka_pola(),
         "content_padding": ft.Padding(16, 14, 16, 14),  # 16 poziomo / 14 pionowo — pole ~52-56px
         "filled": True,
         "bgcolor": tlo_karty(page, poziom=2),
@@ -203,15 +212,11 @@ def na_cala_szerokosc(pole):
 
 def styl_dropdown(page: ft.Page = None):
     return {
-        "border_radius": RADIUS["md"],
-        "border_color": ft.Colors.TRANSPARENT,
-        "border_width": 1.5,
-        "focused_border_color": ft.Colors.PRIMARY,
-        "focused_border_width": 2,
+        "border": _ramka_pola(),
         "content_padding": ft.Padding(16, 14, 16, 14),
         "filled": True,
         "fill_color": tlo_karty(page, poziom=2),  # UWAGA: nie "bgcolor" — patrz niżej
-        "text_size": 15,
+        "text_size": rozmiar_tekstu(15),
     }
 
 
@@ -295,10 +300,10 @@ def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False,
 
 
 def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj, ikona_zapisu=ft.Icons.CHECK):
-    btn_zapisz = ft.ElevatedButton(
+    btn_zapisz = ft.Button(
         tekst_zapisu,
         icon=ikona_zapisu,
-        on_click=on_zapisz, 
+        on_click=z_wibracja(page, on_zapisz, "zapis"),
         bgcolor=ft.Colors.PRIMARY, 
         color=ft.Colors.ON_PRIMARY, 
         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]), padding=15),

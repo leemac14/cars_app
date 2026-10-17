@@ -26,6 +26,28 @@ KOL_KAFLA_1X1 = {"xs": 6, "sm": 4, "md": 3}
 KOL_KAFLA_2X1 = {"xs": 12, "sm": 8, "md": 6}
 
 
+def upakuj_kafelki(kafelki, w_wierszu=2):
+    """Kolejność siatki bez dziur (telefon: dwie komórki w wierszu): mały kafelek przed dużym
+    zostawiłby lukę, więc dostaje sąsiada — najbliższy następny mały. Reszta w kolejności
+    z Ustawień; tryb układania pokazuje kolejność zapisaną."""
+    kolejka = [(k, 2 if k.col == KOL_KAFLA_2X1 else 1) for k in kafelki]
+    wynik, zajete = [], 0
+    while kolejka:
+        kafel, szer = kolejka[0]
+        if zajete and zajete + szer > w_wierszu:
+            wolne = w_wierszu - zajete
+            i = next((i for i, (_, s) in enumerate(kolejka) if s <= wolne), None)
+            if i is None:
+                zajete = 0  # luki nie ma czym wypełnić
+                continue
+            kafel, szer = kolejka.pop(i)
+        else:
+            kolejka.pop(0)
+        wynik.append(kafel)
+        zajete = (zajete + szer) % w_wierszu
+    return wynik
+
+
 class MiksinKokpitu:
     """Kokpit: kafelki wybrane przez użytkownika w siatce, tryb układania i skróty."""
 
@@ -1392,6 +1414,7 @@ class MiksinKokpitu:
                     utils.etykieta("Ułóż kafelki", expand=True),
                 ], spacing=6),
             ))
+            kafelki = upakuj_kafelki(kafelki)
 
         return ft.ResponsiveRow(kafelki, spacing=10, run_spacing=10)
 
@@ -1584,7 +1607,7 @@ class MiksinKokpitu:
             ft.IconButton(
                 icon=ft.Icons.TUNE, icon_size=18, tooltip="Które kafelki pokazywać",
                 on_click=lambda e: utils.przejdz(self._page, "/ustawienia"),
-                width=36, height=36, style=ft.ButtonStyle(padding=0),
+                style=ft.ButtonStyle(padding=0),
             )
         )
         self.elementy.append(ft.Row(naglowek, vertical_alignment=ft.CrossAxisAlignment.CENTER))

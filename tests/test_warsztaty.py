@@ -249,33 +249,36 @@ def test_link_mapy_bez_adresu_jest_pusty():
 
 
 class _StronaMap:
-    """Tyle strony, ile potrzebuje pokaz_na_mapie: platforma, launch_url, run_task."""
+    """Tyle strony, ile potrzebuje pokaz_na_mapie: platforma i run_task."""
 
     platform = "android"
-
-    def __init__(self, blad=False):
-        self.blad = blad
-        self.otwarte = []
-
-    def launch_url(self, url):
-        if self.blad:
-            raise RuntimeError("brak aplikacji map")
-        self.otwarte.append(url)
 
     def run_task(self, zadanie):
         asyncio.run(zadanie())
 
 
+def _mapy(otwarte, blad=False):
+    """Atrapa usługi UrlLauncher (Flet 1.0 nie ma page.launch_url)."""
+    class Uruchamiacz:
+        async def launch_url(self, url, **_):
+            if blad:
+                raise RuntimeError("brak aplikacji map")
+            otwarte.append(url)
+
+    return Uruchamiacz
+
+
 def test_pokaz_na_mapie_otwiera_link_a_bez_map_kopiuje_adres(monkeypatch):
-    skopiowane = []
+    skopiowane, otwarte = [], []
     monkeypatch.setattr(utils.system, "kopiuj_do_schowka",
                         lambda strona, wartosc, komunikat="": skopiowane.append(wartosc))
 
-    strona = _StronaMap()
-    utils.pokaz_na_mapie(strona, "Konin")
-    assert strona.otwarte == ["geo:0,0?q=Konin"] and skopiowane == []
+    monkeypatch.setattr(ft, "UrlLauncher", _mapy(otwarte))
+    utils.pokaz_na_mapie(_StronaMap(), "Konin")
+    assert otwarte == ["geo:0,0?q=Konin"] and skopiowane == []
 
-    utils.pokaz_na_mapie(_StronaMap(blad=True), "Konin")
+    monkeypatch.setattr(ft, "UrlLauncher", _mapy(otwarte, blad=True))
+    utils.pokaz_na_mapie(_StronaMap(), "Konin")
     assert skopiowane == ["Konin"]
 
 

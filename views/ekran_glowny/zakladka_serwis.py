@@ -130,7 +130,7 @@ class MiksinZakladkiSerwis:
                     **utils.styl_pola()
                 )
             ))
-            self.lista_kart_serwis = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+            self.lista_kart_serwis = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_serwis, "lista:serwis")
             self.uzyj_wirtualizacji = True
             self.wszystkie_karty_serwis = []

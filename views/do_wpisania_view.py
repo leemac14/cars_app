@@ -125,7 +125,7 @@ class DoWpisaniaView(ft.View):
             return ft.Container(
                 padding=30,
                 content=ft.Column([
-                    ft.Icon(ft.Icons.PENDING_ACTIONS, size=46, color=ft.Colors.PRIMARY),
+                    utils.rysunek_pustego_stanu(ft.Icons.PENDING_ACTIONS),
                     ft.Text("Nic nie czeka na wpisanie", size=utils.FS["heading"], weight="bold"),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
             )

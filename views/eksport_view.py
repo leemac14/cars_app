@@ -150,7 +150,7 @@ class EksportView(ft.View):
             ], spacing=8)
         )
 
-        self.btn_eksportuj = ft.ElevatedButton(
+        self.btn_eksportuj = ft.Button(
             "Eksportuj",
             on_click=self.eksportuj,
             bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY,

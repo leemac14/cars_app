@@ -128,7 +128,7 @@ def sprzedaj_auto(page: ft.Page, state, plik_dla_kupujacego=None):
         ),
         actions=[
             ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
-            ft.ElevatedButton("Przenieś do archiwum", on_click=wykonaj,
+            ft.Button("Przenieś do archiwum", on_click=wykonaj,
                               bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
         ],
     )
@@ -311,6 +311,15 @@ def tablica_rejestracyjna(nr_rej, wysokosc=30, on_click=None):
     if not numer:
         return ft.Container(width=0, height=0)
 
+    # Czytnik ekranu (W-19) dostaje sam numer — bez „gwiazdka, PL” z paska UE.
+    return ft.Semantics(
+        label=f"Numer rejestracyjny {numer}", button=bool(on_click), exclude_semantics=True,
+        on_tap=on_click,
+        content=_rysunek_tablicy(numer, wysokosc, on_click),
+    )
+
+
+def _rysunek_tablicy(numer, wysokosc, on_click):
     return ft.Container(
         height=wysokosc,
         border_radius=RADIUS["xs"],
@@ -419,6 +428,7 @@ def pasek_terminu(page: ft.Page, termin, pelny=True, scena=None):
             value=udzial, color=kolor,
             bgcolor=tlo_toru(page),
             height=6, border_radius=3,
+            semantics_label=termin["etykieta"], semantics_value=opis_dni_terminu(termin["dni"]),
         )))
         elementy.append(ft.Row([
             ft.Icon(ikona_z_mapy(IKONY_STATUSU_TERMINU, termin["status"], ft.Icons.EVENT),
@@ -472,6 +482,7 @@ def wiersz_odliczania(page: ft.Page, pozycja, j=None, scena=None):
         elementy.append(scena.wskaznik(ft.ProgressBar(
             value=pozycja["udzial"], color=kolor, bgcolor=tlo_toru(page),
             height=6, border_radius=3,
+            semantics_label=tytul_odliczania(pozycja, j), semantics_value=opis_odliczania(pozycja, j),
         )))
 
     elementy.append(ft.Row([
@@ -505,6 +516,7 @@ def wiersz_odliczania_kafla(page: ft.Page, pozycja, j=None, scena=None):
         elementy.append(scena.wskaznik(ft.ProgressBar(
             value=pozycja["udzial"], color=kolor, bgcolor=tlo_toru(page),
             height=4, border_radius=2,
+            semantics_label=tytul_odliczania(pozycja, j), semantics_value=krotki_opis_odliczania(pozycja, j),
         )))
     return ft.Column(elementy, spacing=3)
 
@@ -575,7 +587,7 @@ def dialog_odczytu_przebiegu(page: ft.Page, auto_id, odczyt=None, po_zapisie=Non
         ], tight=True, spacing=10),
         actions=[
             ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
-            ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+            ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
         ],
         actions_alignment=ft.MainAxisAlignment.END
     )

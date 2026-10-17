@@ -195,6 +195,32 @@ class UstawieniaView(ft.View):
             ),
         ], spacing=4)
 
+        # --- WIBRACJE, SKALA TEKSTU, GĘSTOŚĆ LIST --- zapis od razu, jak przy animacjach.
+        self.e_wibracje = ft.Switch(
+            label="Wibracje",
+            value=db.czy_wibracje(),
+            on_change=lambda e: db.zapisz_wibracje(bool(self.e_wibracje.value)),
+        )
+        wibracje_sekcja = ft.Column([
+            self.e_wibracje,
+            ft.Text(
+                "Krótkie, delikatne drgnięcie telefonu przy zapisie formularza, usunięciu wpisu "
+                "i przełączaniu zakładek — potwierdzenie bez patrzenia na ekran.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+        ], spacing=4)
+        uklad_sekcja = ft.Column([
+            utils.etykieta("Wielkość tekstu", size=utils.FS["label"]),
+            self._przelacznik_skali_tekstu(),
+            utils.etykieta("Gęstość list", size=utils.FS["label"]),
+            self._przelacznik_gestosci(),
+            ft.Text(
+                "Tekst w całej aplikacji, także w oknach i formularzach. Zwarte listy mają mniejsze "
+                "odstępy między kartami — więcej wpisów na ekranie naraz.",
+                size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
+            ),
+        ], spacing=6)
+
         # --- CHOWANIE PUSTYCH KAFELKÓW ---
         # Zapis od razu, jak przy animacjach: skutek widać na kokpicie, więc
         # trzymanie tego w „niezapisanych zmianach” formularza tylko odsuwałoby
@@ -274,7 +300,9 @@ class UstawieniaView(ft.View):
         k1 = utils.karta_formularza(
             [self.e_waluta, wiersz_jednostek, self.e_jednostka_ev, podpis_jednostek,
              paleta_sekcja, ft.Divider(height=1), czern_sekcja,
-             ft.Divider(height=1), animacje_sekcja, ft.Divider(height=1), puste_kafelki_sekcja,
+             ft.Divider(height=1), uklad_sekcja,
+             ft.Divider(height=1), animacje_sekcja, ft.Divider(height=1), wibracje_sekcja,
+             ft.Divider(height=1), puste_kafelki_sekcja,
              ft.Divider(height=1), historia_wyszukiwan_sekcja],
             "Wyświetlanie i wygląd", ft.Icons.TUNE, domyslnie_otwarte=True, page=page
         )
@@ -976,6 +1004,47 @@ class UstawieniaView(ft.View):
             self._page, [(j, i) for i, j in enumerate(db.JEDNOSTKI_DYSTANSU)],
             db.JEDNOSTKI_DYSTANSU.index(self.jednostka_dystansu), self._przelacz_dystans,
         )
+
+    ETYKIETY_SKALI_TEKSTU = {"mniejszy": "Mniejszy", "normalny": "Normalny", "wiekszy": "Większy"}
+
+    def _przelacznik_skali_tekstu(self):
+        skale = list(db.SKALE_TEKSTU)
+        kontener = ft.Container()
+
+        def wybierz(idx):
+            skala = skale[idx]
+            if skala == db.pobierz_skale_tekstu():
+                return
+            db.zapisz_skale_tekstu(skala)
+            utils.ustaw_skale_tekstu(db.SKALE_TEKSTU[skala])
+            utils.zastosuj_motywy(self._page, self.wybrany_kolor)
+            if self._czy_zmieniono():
+                kontener.content = utils.segmented_control(
+                    self._page, [(self.ETYKIETY_SKALI_TEKSTU[s], i) for i, s in enumerate(skale)], idx, wybierz)
+                self._page.update()
+                utils.pokaz_komunikat(self._page, "Napisy tego ekranu zmienią się po zapisaniu ustawień.")
+            else:
+                utils.przejdz(self._page, "/ustawienia")
+
+        kontener.content = utils.segmented_control(
+            self._page, [(self.ETYKIETY_SKALI_TEKSTU[s], i) for i, s in enumerate(skale)],
+            skale.index(db.pobierz_skale_tekstu()), wybierz)
+        return kontener
+
+    def _przelacznik_gestosci(self):
+        gestosci = list(db.GESTOSCI_LIST)
+        kontener = ft.Container()
+
+        def wybierz(idx):
+            db.zapisz_gestosc_list(gestosci[idx])
+            kontener.content = utils.segmented_control(
+                self._page, [(g.capitalize(), i) for i, g in enumerate(gestosci)], idx, wybierz)
+            self._page.update()
+
+        kontener.content = utils.segmented_control(
+            self._page, [(g.capitalize(), i) for i, g in enumerate(gestosci)],
+            gestosci.index(db.pobierz_gestosc_list()), wybierz)
+        return kontener
 
     def _ustaw_opcje_progu(self, prog_km):
         """Lista progów w bieżącej jednostce; zapis dalej w km. Próg spoza listy

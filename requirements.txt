@@ -1,6 +1,6 @@
-flet==0.86.5
-flet-charts==0.86.5
-flet-camera==0.86.5
+flet==1.0.4
+flet-charts==1.0.4
+flet-camera==1.0.4
 Pillow
 fpdf2
 supabase

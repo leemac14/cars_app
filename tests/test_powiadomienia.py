@@ -431,11 +431,9 @@ def pojazd_z_trzema_powiadomieniami():
 
 
 def odznaka_dzwonka(dzwonek):
-    """(widoczna, napis) — albo (False, None) dla dzwonka bez powiadomień."""
-    if not isinstance(dzwonek, ft.Stack):
-        return False, None
-    pozycja = dzwonek.controls[1]
-    return bool(pozycja.visible), pozycja.content.content.value
+    """(widoczna, napis) — odznaka M3 siedzi na ikonie dzwonka; bez nowych jej nie ma."""
+    odznaka = dzwonek.icon.badge
+    return (True, odznaka.label) if odznaka is not None else (False, None)
 
 
 def test_dzwonek_liczy_tylko_nowe(baza):
@@ -447,7 +445,7 @@ def test_dzwonek_liczy_tylko_nowe(baza):
     dzwonek = utils.przycisk_dzwonka(pomoce.zbuduj_strone().page, pomoce.stan_aplikacji(auto_id))
 
     assert odznaka_dzwonka(dzwonek) == (True, "1")
-    assert dzwonek.controls[0].tooltip == "3 powiadomienia, w tym 1 nowe"
+    assert dzwonek.tooltip == "3 powiadomienia, w tym 1 nowe"
 
 
 def test_obejrzane_nie_zapalaja_dzwonka_po_ponownym_uruchomieniu(baza):
@@ -457,8 +455,8 @@ def test_obejrzane_nie_zapalaja_dzwonka_po_ponownym_uruchomieniu(baza):
 
     dzwonek = utils.przycisk_dzwonka(pomoce.zbuduj_strone().page, pomoce.stan_aplikacji(auto_id))
 
-    assert odznaka_dzwonka(dzwonek) == (False, "0")
-    assert dzwonek.controls[0].icon_color == ft.Colors.ON_SURFACE
+    assert odznaka_dzwonka(dzwonek) == (False, None)
+    assert dzwonek.icon.color == ft.Colors.ON_SURFACE
 
 
 def test_panel_zapisuje_obejrzenie_i_oznacza_nowe(baza, monkeypatch):

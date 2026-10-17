@@ -166,7 +166,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 )
                 elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
 
-                self.lista_kart = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:do_zrobienia")
                 self.wszystkie_karty = []
                 self.uzyj_wirtualizacji = True
@@ -382,7 +382,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             ], tight=True, spacing=10, scroll=ft.ScrollMode.AUTO),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
-                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+                ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
             ],
         )
         utils.otworz_dialog(self._page, dlg)

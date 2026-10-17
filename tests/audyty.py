@@ -349,12 +349,8 @@ def znajdz_expand_w_kontenerze(korzen):
 # dokładnie raz, wprost wywołaniem `ft.Cokolwiek(...)`. Inaczej audyt sypałby
 # fałszywkami przy każdej zmiennej o wspólnej nazwie.
 
-# Świadome wyjątki — miejsca, w których niezgodność jest zamierzona.
-DOZWOLONE_POLA = {
-    # Ścieżka dla starszych wersji Fleta, w których pick_files() nie zwracało
-    # wyniku. Na 0.8x warunek `hasattr` jest fałszywy i wynik przychodzi z await.
-    ("main.py", "FilePicker", "on_result"),
-}
+# Świadome wyjątki — miejsca, w których niezgodność jest zamierzona: (plik, klasa, pole).
+DOZWOLONE_POLA = set()
 
 
 def _pliki_projektu():
@@ -1281,15 +1277,10 @@ KLASY_FLETA_DO_SKANU = ("Page", "View", "Control", "ListView", "FilePicker")
 # Nazwy, które kolidują z czymś własnym albo są wołane wyłącznie przez Fleta.
 POMIJANE_NAZWY_ASYNC = {"login", "logout"}
 
-# Świadome wyjątki: (plik, metoda). Wszystkie trzy to gałąź dla STARSZYCH Fletów,
-# w których `save_file`/`pick_files` były synchroniczne, a wynik przychodził przez
-# `on_result`. Na 0.8x warunek `hasattr(page, "services")` jest prawdziwy, więc
-# ta gałąź w ogóle się nie wykonuje — ale ma zostać, bo to ona obsługuje starsze
-# wersje (ta sama sytuacja, co wpis FilePicker/on_result w DOZWOLONE_POLA).
-DOZWOLONE_KORUTYNY = {
-    ("main.py", "save_file"),
-    ("main.py", "pick_files"),
-}
+# Świadome wyjątki: (plik, metoda). Gałąź dla Fletów sprzed 0.8x (synchroniczne
+# `save_file`/`pick_files` z wynikiem przez `on_result`) zniknęła przy przejściu na 1.0 —
+# na 1.0 to `on_result` obsługuje tylko akcje klienta, więc tamta gałąź gubiła wybór pliku.
+DOZWOLONE_KORUTYNY = set()
 
 
 def nazwy_metod_async_fleta():
@@ -1565,7 +1556,7 @@ def _klasy(*nazwy):
     return tuple(k for k in (getattr(ft, n, None) for n in nazwy) if isinstance(k, type))
 
 
-PRZYCISKI = _klasy("Button", "ElevatedButton", "FilledButton", "FilledTonalButton", "OutlinedButton", "TextButton")
+PRZYCISKI = _klasy("Button", "FilledButton", "FilledTonalButton", "OutlinedButton", "TextButton")
 PRZYCISKI_TEKSTOWE = _klasy("TextButton")
 POLA_WYBORU = _klasy("Checkbox", "Switch", "Radio")
 OPAKOWANIA_BEZ_ZMIANY_SZEROKOSCI = _klasy(

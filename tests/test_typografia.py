@@ -166,7 +166,7 @@ PRZYPADKI = [
     ),
     (
         "inna kontrolka z ta sama para",
-        'x = ft.ElevatedButton("Zapisz", weight="bold", color=ft.Colors.ON_SURFACE_VARIANT)',
+        'x = ft.Button("Zapisz", weight="bold", color=ft.Colors.ON_SURFACE_VARIANT)',
         0,
     ),
 ]

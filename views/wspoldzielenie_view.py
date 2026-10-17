@@ -52,7 +52,7 @@ class WspoldzielenieView(ft.View):
                 ft.Text("Po udostępnieniu dostaniesz trzy różne kody:", size=12, weight="bold"),
             ] + [self._wiersz_opisu_roli(rola, ikona, opis) for _, rola, ikona, opis in utils.OPIS_KODOW] + [
                 ft.Container(height=6),
-                ft.ElevatedButton("Udostępnij ten pojazd", on_click=self._udostepnij,
+                ft.Button("Udostępnij ten pojazd", on_click=self._udostepnij,
                                   bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ], "Udostępnij", ft.Icons.SHARE, domyslnie_otwarte=True))
 
@@ -169,7 +169,7 @@ class WspoldzielenieView(ft.View):
                     size=11, color=utils.KOLOR_STATUS["warning"]
                 ),
             ))
-            elementy.append(ft.ElevatedButton("Utwórz kody ról", icon=ft.Icons.ADD_MODERATOR,
+            elementy.append(ft.Button("Utwórz kody ról", icon=ft.Icons.ADD_MODERATOR,
                                               on_click=self._utworz_kody))
         else:
             elementy.append(ft.OutlinedButton("Wygeneruj nowe kody ról", icon=ft.Icons.AUTORENEW,
@@ -251,7 +251,7 @@ class WspoldzielenieView(ft.View):
             else "Kliknij, aby wysłać swoje nowe i zmienione dane oraz pobrać te od pozostałych.",
             size=13, color=ft.Colors.ON_SURFACE_VARIANT
         ))
-        elementy.append(ft.ElevatedButton(
+        elementy.append(ft.Button(
             "Pobierz zmiany" if tylko_czytam else "Synchronizuj teraz",
             icon=ft.Icons.SYNC, on_click=self._synchronizuj,
             bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY
@@ -308,7 +308,7 @@ class WspoldzielenieView(ft.View):
                     "ale przestaną się synchronizować z innymi.",
                     size=13, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
-                ft.ElevatedButton("Rozłącz pojazd", on_click=self._odlacz,
+                ft.Button("Rozłącz pojazd", on_click=self._odlacz,
                                   bgcolor=utils.KOLOR_STATUS["destructive"], color=ft.Colors.WHITE)
             ], "Niebezpieczna strefa", ft.Icons.WARNING_AMBER_ROUNDED)
 
@@ -318,7 +318,7 @@ class WspoldzielenieView(ft.View):
                 "pobrane, zostanie na telefonie jako zwykły, offline'owy pojazd. Właściciela to nie dotknie.",
                 size=13, color=ft.Colors.ON_SURFACE_VARIANT
             ),
-            ft.ElevatedButton("Przestań obserwować", on_click=self._odlacz,
+            ft.Button("Przestań obserwować", on_click=self._odlacz,
                               bgcolor=utils.KOLOR_STATUS["destructive"], color=ft.Colors.WHITE)
         ], "Niebezpieczna strefa", ft.Icons.WARNING_AMBER_ROUNDED)
 

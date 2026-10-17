@@ -28,6 +28,25 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.16.2", "pozycje": [
+        {"tytul": "Nowocześniejszy wygląd", "ikona": "AUTO_AWESOME", "ekran": "kokpit",
+         "opis": "Pasek u góry ma kolor ekranu, okna i arkusze są bardziej zaokrąglone, a arkusz ma uchwyt do "
+                 "przeciągania. Komunikaty unoszą się nad ekranem, paski postępu są w nowym stylu, a „+” rozwija "
+                 "pigułki z napisami. Gest „wstecz” na Androidzie pokazuje ekran, do którego wracasz."},
+        {"tytul": "Przesuń kartę", "ikona": "SWIPE", "ekran": "paliwo",
+         "opis": "Na listach tankowań, innych kosztów, wpisów serwisu i odczytów licznika przesuń kartę w lewo, "
+                 "żeby ją usunąć (z „Cofnij”), albo w prawo, żeby dopisać notatkę. Telefon lekko drgnie przy "
+                 "zapisie i usunięciu — wyłączysz to w Ustawieniach."},
+        {"tytul": "Więcej miejsca na treść", "ikona": "VIEW_AGENDA", "ekran": "serwis",
+         "opis": "Na Serwisie, w Kosztach i Analizie auto zajmuje jeden wiersz zamiast dużej karty, a kafelki "
+                 "kokpitu układają się bez pustych miejsc. Na Kokpicie zdjęcie auta jest na całą szerokość karty."},
+        {"tytul": "Wielkość tekstu i gęstość list", "ikona": "FORMAT_SIZE", "ekran": "ustawienia",
+         "opis": "W Ustawieniach zmniejszysz albo powiększysz tekst w całej aplikacji i wybierzesz zwarte listy, "
+                 "żeby widzieć więcej wpisów naraz."},
+        {"tytul": "Dostępność i puste ekrany", "ikona": "ACCESSIBILITY_NEW", "ekran": "pojazd",
+         "opis": "Czytnik ekranu przeczyta numer rejestracyjny, kondycję auta i paski terminów, a małe przyciski "
+                 "mają większe pole dotyku. Puste ekrany dostały rysunki zamiast samej ikony."},
+    ]},
     {"wersja": "2026.10.16", "pozycje": [
         {"tytul": "Napisy bez ucinania", "ikona": "WRAP_TEXT", "ekran": "kokpit",
          "opis": "Nazwy na kafelkach i kartach, tytuły, etykiety przełączników i podpowiedzi pól nie urywają się "

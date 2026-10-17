@@ -7,6 +7,7 @@ import log
 from .stale import FS, KOLOR_STATUS, RADIUS
 from .wyglad import dol_bezpieczny
 from .zgodnosc import ustaw_ikone
+from .haptyka import wibracja
 
 
 def pokaz_komunikat(page: ft.Page, wiadomosc, kolor=KOLOR_STATUS["ok"]):
@@ -30,6 +31,7 @@ def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5, 
             KOLOR_STATUS["error"]
         )
 
+    wibracja(page, "usuniecie")
     pominiete = wynik_usuwania.get("pominiete") if isinstance(wynik_usuwania, dict) else 0
     if pominiete:
         wiadomosc = f"{wiadomosc} Pominięto {pominiete} cudzych wpisów."
@@ -117,8 +119,24 @@ def ukryj_ladowanie(page: ft.Page, dlg):
         zamknij_dialog(page, dlg)
 
 
+def _bez_marginesu_u_gory(padding):
+    """Uchwyt arkusza sam robi odstęp nad treścią — górny margines treści by go podwajał."""
+    if isinstance(padding, (int, float)):
+        return ft.Padding(padding, 0, padding, padding)
+    if isinstance(padding, ft.Padding):
+        return ft.Padding(padding.left, 0, padding.right, padding.bottom)
+    return padding
+
+
 def otworz_dno(page: ft.Page, bottom_sheet):
-    """Automatycznie zabezpiecza dolne menu przed zasłonięciem przez przyciski systemowe telefonu."""
+    """Arkusz dolny M3 (uchwyt, tło i zaokrąglenie z motywu) zabezpieczony przed zasłonięciem
+    przez przyciski systemowe telefonu."""
+    # Flet wysyła show_drag_handle=False wprost, więc motyw sam uchwytu nie włączy.
+    bottom_sheet.show_drag_handle = True
+    if isinstance(bottom_sheet.content, ft.Container):
+        if bottom_sheet.content.bgcolor == ft.Colors.SURFACE:
+            bottom_sheet.content.bgcolor = None
+        bottom_sheet.content.padding = _bez_marginesu_u_gory(bottom_sheet.content.padding)
     if hasattr(bottom_sheet, "content") and bottom_sheet.content:
         kontener = bottom_sheet.content
         if isinstance(kontener, ft.Container):

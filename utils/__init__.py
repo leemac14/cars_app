@@ -15,6 +15,7 @@ from .szkielet import *
 from .pozycja import *
 from .miesiace import *
 from .zgodnosc import *
+from .haptyka import *
 from .dialogi import *
 from .listy import *
 from .filtry import *
@@ -54,6 +55,7 @@ from . import (
     pozycja,
     miesiace,
     zgodnosc,
+    haptyka,
     dialogi,
     listy,
     filtry,

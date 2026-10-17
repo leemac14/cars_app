@@ -232,7 +232,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 **utils.styl_pola()
             )
         ))
-        self.lista_kart_opony = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+        self.lista_kart_opony = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
         utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_opony, "lista:opony")
         self.wszystkie_karty_opony = []
         self.uzyj_wirtualizacji = True
@@ -493,7 +493,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 **utils.styl_pola()
             )
         ))
-        self.lista_kart_czesci = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+        self.lista_kart_czesci = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
         utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_czesci, "lista:magazyn_czesci")
         self.wszystkie_karty_czesci = []
         self.uzyj_wirtualizacji = True

@@ -186,7 +186,7 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
             ], tight=True, spacing=10, scroll=ft.ScrollMode.AUTO),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
-                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ],
             actions_alignment=ft.MainAxisAlignment.END
         )

@@ -5,6 +5,7 @@ import db
 import flet as ft
 
 from .stale import KOLOR_STATUS, MAPA_KOLOROW, RADIUS
+from .typografia import SKALA_TEKSTU
 
 
 def _czy_ciemny(page: ft.Page = None) -> bool:
@@ -60,21 +61,117 @@ POWIERZCHNIE_OLED = {
 }
 
 
-def zbuduj_motyw_ciemny(kolor_seed):
-    """Motyw ciemny dla zadanego koloru wiodącego. Przy włączonej „czystej
-    czerni” podmieniamy wszystkie powierzchnie na czarne — reszta schematu
-    (kolor wiodący, akcenty, kolory tekstu) nadal pochodzi z ziarna, więc
-    aplikacja wygląda tak samo, tylko na czarnym tle."""
-    if not db.pobierz_czysta_czern():
-        return ft.Theme(color_scheme_seed=kolor_seed)
+# Przejścia ekranów M3. Android: przewidywany gest wstecz — od Androida 14 pod palcem widać
+# ekran, do którego się wraca (manifest Fleta 1.0 ma enableOnBackInvokedCallback).
+PRZEJSCIA_EKRANOW = ft.PageTransitionsTheme(
+    android=ft.PageTransitionTheme.PREDICTIVE,
+    ios=ft.PageTransitionTheme.CUPERTINO,
+    macos=ft.PageTransitionTheme.CUPERTINO,
+    linux=ft.PageTransitionTheme.FADE_FORWARDS,
+    windows=ft.PageTransitionTheme.FADE_FORWARDS,
+)
 
+# Górne rogi arkusza dolnego i rogi okien (M3: „extra large”).
+PROMIEN_ARKUSZA = RADIUS["xl"]
+
+# Stopnie pisma M3: (rozmiar, wysokość linii, odstęp liter, waga). Przy skali tekstu ≠ 1
+# motyw dostaje je przemnożone — Flet PODMIENIA styl motywu (nie łączy), więc kolor
+# i odstępy idą jawnie, inaczej napis bez rozmiaru straciłby kolor.
+STOPNIE_PISMA_M3 = {
+    "display_large": (57, 64, -0.25, ft.FontWeight.W_400),
+    "display_medium": (45, 52, 0, ft.FontWeight.W_400),
+    "display_small": (36, 44, 0, ft.FontWeight.W_400),
+    "headline_large": (32, 40, 0, ft.FontWeight.W_400),
+    "headline_medium": (28, 36, 0, ft.FontWeight.W_400),
+    "headline_small": (24, 32, 0, ft.FontWeight.W_400),
+    "title_large": (22, 28, 0, ft.FontWeight.W_400),
+    "title_medium": (16, 24, 0.15, ft.FontWeight.W_500),
+    "title_small": (14, 20, 0.1, ft.FontWeight.W_500),
+    "body_large": (16, 24, 0.5, ft.FontWeight.W_400),
+    "body_medium": (14, 20, 0.25, ft.FontWeight.W_400),
+    "body_small": (12, 16, 0.4, ft.FontWeight.W_400),
+    "label_large": (14, 20, 0.1, ft.FontWeight.W_500),
+    "label_medium": (12, 16, 0.5, ft.FontWeight.W_500),
+    "label_small": (11, 16, 0.5, ft.FontWeight.W_500),
+}
+
+
+def style_tekstu_motywu():
+    """Stopnie pisma motywu w skali z Ustawień; przy skali 1 None (domyślne M3)."""
+    mnoznik = SKALA_TEKSTU["mnoznik"]
+    if mnoznik == 1.0:
+        return None
+    return ft.TextTheme(**{
+        nazwa: ft.TextStyle(size=round(rozmiar * mnoznik, 1), height=linia / rozmiar,
+                            letter_spacing=odstep, weight=waga, color=ft.Colors.ON_SURFACE)
+        for nazwa, (rozmiar, linia, odstep, waga) in STOPNIE_PISMA_M3.items()
+    })
+
+
+# Gęstość list (W-10): (odstęp między kartami, wypełnienie karty) w dp.
+ODSTEPY_LIST = {"przestronne": (15, 16), "zwarte": (8, 10)}
+
+
+def _gestosc_list():
+    try:
+        return db.z_pamieci("gestosc_list", None, db.pobierz_gestosc_list)
+    except Exception:
+        return "przestronne"
+
+
+def odstep_listy():
+    """Odstęp między kartami listy wg gęstości z Ustawień."""
+    return ODSTEPY_LIST.get(_gestosc_list(), ODSTEPY_LIST["przestronne"])[0]
+
+
+def wypelnienie_karty():
+    """Wewnętrzny margines karty listy wg gęstości z Ustawień."""
+    return ODSTEPY_LIST.get(_gestosc_list(), ODSTEPY_LIST["przestronne"])[1]
+
+
+def zbuduj_motyw(kolor_seed, oled=False):
+    """Motyw M3 całej aplikacji: schemat z koloru pojazdu i jeden wygląd komponentów
+    (paski, arkusze, okna, komunikaty, paski postępu, przełączniki, przejścia). `oled` —
+    powierzchnie czarne, reszta schematu nadal z ziarna."""
+    tla = POWIERZCHNIE_OLED if oled else {}
     return ft.Theme(
         color_scheme_seed=kolor_seed,
-        color_scheme=ft.ColorScheme(**POWIERZCHNIE_OLED),
-        scaffold_bgcolor=POWIERZCHNIE_OLED["surface"],
-        card_bgcolor=POWIERZCHNIE_OLED["surface"],
-        canvas_color=POWIERZCHNIE_OLED["surface"],
+        color_scheme=ft.ColorScheme(**POWIERZCHNIE_OLED) if oled else None,
+        scaffold_bgcolor=tla.get("surface"),
+        card_bgcolor=tla.get("surface"),
+        canvas_color=tla.get("surface"),
+        text_theme=style_tekstu_motywu(),
+        page_transitions=PRZEJSCIA_EKRANOW,
+        # Pasek górny w kolorze tła; przewijana treść podbarwia go (scrolled under).
+        appbar_theme=ft.AppBarTheme(
+            bgcolor=tla.get("surface", ft.Colors.SURFACE), elevation=0, elevation_on_scroll=3,
+            center_title=False,
+        ),
+        # Uchwyt arkusza włącza otworz_dno (Flet wysyła show_drag_handle=False wprost).
+        bottom_sheet_theme=ft.BottomSheetTheme(
+            bgcolor=tla.get("surface_container_low", ft.Colors.SURFACE_CONTAINER_LOW),
+            drag_handle_color=ft.Colors.with_opacity(0.4, ft.Colors.ON_SURFACE_VARIANT),
+            shape=ft.RoundedRectangleBorder(radius=ft.BorderRadius.only(
+                top_left=PROMIEN_ARKUSZA, top_right=PROMIEN_ARKUSZA)),
+            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+        ),
+        dialog_theme=ft.DialogTheme(shape=ft.RoundedRectangleBorder(radius=PROMIEN_ARKUSZA)),
+        snackbar_theme=ft.SnackBarTheme(
+            behavior=ft.SnackBarBehavior.FLOATING,
+            shape=ft.RoundedRectangleBorder(radius=RADIUS["md"]),
+        ),
+        popup_menu_theme=ft.PopupMenuTheme(shape=ft.RoundedRectangleBorder(radius=RADIUS["md"])),
+        # Paski postępu i suwaki w wersji M3 z 2024 r. (zaokrąglone, z przerwą na torze).
+        progress_indicator_theme=ft.ProgressIndicatorTheme(year_2023=False),
+        slider_theme=ft.SliderTheme(year_2023=False),
+        switch_theme=ft.SwitchTheme(thumb_icon={ft.ControlState.SELECTED: ft.Icons.CHECK}),
     )
+
+
+def zbuduj_motyw_ciemny(kolor_seed):
+    """Motyw ciemny dla zadanego koloru wiodącego; przy „czystej czerni” powierzchnie
+    czarne, a aplikacja wygląda tak samo, tylko na czarnym tle."""
+    return zbuduj_motyw(kolor_seed, oled=db.pobierz_czysta_czern())
 
 
 # Nazwa koloru FAKTYCZNIE zastosowanego do interfejsu. Router (main.trasa_zmieniona)
@@ -95,7 +192,7 @@ def zastosuj_motywy(page: ft.Page, nazwa_koloru):
     i w Ustawieniach, przez co wariant OLED trzeba by dokładać w czterech
     miejscach. Zwraca użyte ziarno koloru."""
     kolor_seed = MAPA_KOLOROW.get(nazwa_koloru, ft.Colors.INDIGO)
-    page.theme = ft.Theme(color_scheme_seed=kolor_seed)
+    page.theme = zbuduj_motyw(kolor_seed)
     page.dark_theme = zbuduj_motyw_ciemny(kolor_seed)
     _OSTATNI_MOTYW["nazwa"] = nazwa_koloru
     return kolor_seed
@@ -325,7 +422,11 @@ __all__ = [
     "DRABINKA_POWIERZCHNI",
     "MIEJSCE_NA_SUWAK",
     "NAJWYZSZY_POZIOM",
+    "ODSTEPY_LIST",
+    "PROMIEN_ARKUSZA",
+    "PRZEJSCIA_EKRANOW",
     "ROLE_POWIERZCHNI",
+    "STOPNIE_PISMA_M3",
     "STANY_PODNOSZACE",
     "UDZIAL_TLA_STANU",
     "UDZIAL_TLA_ODZNAKI",
@@ -339,6 +440,7 @@ __all__ = [
     "czy_czysta_czern",
     "dol_bezpieczny",
     "obramowanie_karty",
+    "odstep_listy",
     "odswiez_cache_czerni",
     "ostatni_zastosowany_motyw",
     "pasek_przewijany",
@@ -346,10 +448,13 @@ __all__ = [
     "poziom_karty",
     "powierzchnia",
     "stan_z_koloru",
+    "style_tekstu_motywu",
     "tlo_karty",
     "tlo_odznaki",
     "tlo_stanu",
     "tlo_toru",
+    "wypelnienie_karty",
     "zastosuj_motywy",
+    "zbuduj_motyw",
     "zbuduj_motyw_ciemny",
 ]

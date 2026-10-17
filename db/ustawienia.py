@@ -96,6 +96,42 @@ def zapisz_animacje_interfejsu(wlaczone):
     zapisz_ustawienie("animacje_interfejsu", "1" if wlaczone else "0")
 
 
+def czy_wibracje():
+    """Krótkie wibracje przy zapisie, usuwaniu i przełączaniu — domyślnie włączone."""
+    return (pobierz_ustawienie("wibracje", "1") or "1") == "1"
+
+
+def zapisz_wibracje(wlaczone):
+    zapisz_ustawienie("wibracje", "1" if wlaczone else "0")
+
+
+# Skala tekstu (W-10): mnożnik KAŻDEGO rozmiaru napisu (utils.typografia, motyw).
+SKALE_TEKSTU = {"mniejszy": 0.9, "normalny": 1.0, "wiekszy": 1.15}
+
+# Gęstość list (W-10): odstęp między kartami i wypełnienie karty (utils.wyglad).
+GESTOSCI_LIST = ("przestronne", "zwarte")
+
+
+def pobierz_skale_tekstu():
+    skala = pobierz_ustawienie("skala_tekstu", "normalny")
+    return skala if skala in SKALE_TEKSTU else "normalny"
+
+
+def zapisz_skale_tekstu(skala):
+    if skala in SKALE_TEKSTU:
+        zapisz_ustawienie("skala_tekstu", skala)
+
+
+def pobierz_gestosc_list():
+    gestosc = pobierz_ustawienie("gestosc_list", GESTOSCI_LIST[0])
+    return gestosc if gestosc in GESTOSCI_LIST else GESTOSCI_LIST[0]
+
+
+def zapisz_gestosc_list(gestosc):
+    if gestosc in GESTOSCI_LIST:
+        zapisz_ustawienie("gestosc_list", gestosc)
+
+
 def czy_chowac_puste_kafelki():
     """Czy kafelek bez treści (budżet bez limitu, zasięg EV w spalinowym, brak
     checklisty, pusty magazyn) ma zniknąć zamiast myślnika. JEDNO ustawienie na
@@ -697,6 +733,14 @@ __all__ = [
     "INTERWAL_AUTO_SYNC_MINUTY",
     "MIN_INTERWAL_AUTO_SYNC_MINUTY",
     "czy_animacje_interfejsu",
+    "czy_wibracje",
+    "zapisz_wibracje",
+    "SKALE_TEKSTU",
+    "GESTOSCI_LIST",
+    "pobierz_skale_tekstu",
+    "zapisz_skale_tekstu",
+    "pobierz_gestosc_list",
+    "zapisz_gestosc_list",
     "czy_chowac_puste_kafelki",
     "czy_skumulowany_z_cena_zakupu",
     "czy_zapamietywac_wyszukiwania",

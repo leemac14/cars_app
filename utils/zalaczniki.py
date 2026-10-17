@@ -1,6 +1,5 @@
 """Załączniki i zdjęcia: wybór, podgląd, wskaźniki."""
 
-import asyncio
 import db
 import flet as ft
 import log
@@ -48,7 +47,6 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
     """Jeden plik (zdjęcie pojazdu, zdjęcie karoserii): podgląd, wybór, usunięcie. Zwraca
     (kontrolka, pobierz_wynik) — wynik dla db.przygotuj_nowy_zalacznik."""
     stan = {"nowa_sciezka": None, "usuniete": False}
-    obsluzono = {"wartosc": False}  # zabezpiecza przed podwójnym zadziałaniem on_result + await
 
     def zawartosc_podgladu(sciezka):
         if sciezka:
@@ -81,7 +79,6 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
             log.polkniety("odświeżenie podglądu załącznika")
 
     def _obsluz_wybrane(pliki):
-        """Wspólna logika dla on_result i ścieżki await."""
         if not pliki:
             return
         sciezki = [p.path for p in pliki if getattr(p, "path", None)]
@@ -92,27 +89,13 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
         stan["usuniete"] = False
         odswiez(sciezki[0], os.path.basename(sciezki[0]), True)
 
-    def po_wyborze(e):
-        if obsluzono["wartosc"]:
-            return
-        obsluzono["wartosc"] = True
-        _obsluz_wybrane(getattr(e, "files", None))
-
     async def wybierz(e):
-        obsluzono["wartosc"] = False
-        page.zalacznik_picker.on_result = po_wyborze
-        page.zalacznik_picker.update()
-
         try:
-            wynik = await page.zalacznik_picker.pick_files(
+            _obsluz_wybrane(await page.zalacznik_picker.pick_files(
                 file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=ROZSZERZENIA_ZALACZNIKOW,
                 allow_multiple=False
-            )
-            if wynik is not None and not obsluzono["wartosc"]:
-                obsluzono["wartosc"] = True
-                pliki = getattr(wynik, "files", wynik)
-                _obsluz_wybrane(pliki if isinstance(pliki, list) else None)
+            ))
         except Exception as ex:
             pokaz_komunikat(page, f"Błąd wczytywania pliku: {ex}", KOLOR_STATUS["error"])
 
@@ -143,7 +126,6 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
     do listy). Zwraca (kontrolka, pobierz_wynik) — ścieżki źródłowe; kopiowanie dopiero
     przy zapisie formularza."""
     stan = {"pliki": []}
-    obsluzono = {"wartosc": False}
     lista_podgladow = ft.Column(spacing=8)
     licznik = ft.Text("Nie wybrano jeszcze żadnego zdjęcia.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
@@ -189,22 +171,13 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
         elif not nowe:
             pokaz_komunikat(page, "Brak dostępu do wybranych plików (uprawnienia).", KOLOR_STATUS["error"])
 
-    def po_wyborze(e):
-        obsluzono["wartosc"] = True
-        dodaj_pliki(getattr(e, "files", None))
-
     async def wybierz(e):
-        obsluzono["wartosc"] = False
-        page.zalacznik_picker.on_result = po_wyborze
-        page.zalacznik_picker.update()
         try:
-            wynik = await page.zalacznik_picker.pick_files(
+            dodaj_pliki(await page.zalacznik_picker.pick_files(
                 file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=["jpg", "jpeg", "png", "webp"],
                 allow_multiple=True,
-            )
-            if wynik is not None and not obsluzono["wartosc"]:
-                dodaj_pliki(getattr(wynik, "files", wynik))
+            ))
         except Exception as ex:
             pokaz_komunikat(page, f"Błąd wczytywania plików: {ex}", KOLOR_STATUS["error"])
 
@@ -224,17 +197,12 @@ async def udostepnij_pliki(page: ft.Page, sciezki):
     serwis = getattr(page, "share_service", None)
     if serwis is not None:
         try:
-            if hasattr(serwis, "share_files_async"):
-                await serwis.share_files_async(sciezki)
-            else:
-                wynik = serwis.share_files(sciezki)
-                if asyncio.iscoroutine(wynik):
-                    await wynik
+            await serwis.share_files([ft.ShareFile.from_path(s) for s in sciezki])
             return
         except Exception:
             log.polkniety("udostępnianie plików przez system")
     try:
-        await page.launch_url(pathlib.Path(sciezki[0]).as_uri())
+        await ft.UrlLauncher().launch_url(pathlib.Path(sciezki[0]).as_uri())
     except Exception:
         pokaz_komunikat(page, "Nie można otworzyć pliku na tym urządzeniu.", KOLOR_STATUS["error"])
 
@@ -364,12 +332,10 @@ def wskaznik_zalacznikow(page: ft.Page, zalaczniki, tytul="Załącznik"):
 
 async def szybkie_dodanie_zalacznikow(page: ft.Page, tabela, rekord_id, po_zapisie):
     """„Dodaj plik” z menu karty: wybrane zdjęcia i PDF-y dopisują się na koniec wpisu."""
-    obsluzone = {"wartosc": False}
 
     def zapisz(pliki):
-        if obsluzone["wartosc"] or not pliki:
+        if not pliki:
             return
-        obsluzone["wartosc"] = True
         sciezki = [p.path for p in pliki if getattr(p, "path", None)]
         if not sciezki:
             pokaz_komunikat(page, "Brak dostępu do pliku (uprawnienia).", KOLOR_STATUS["error"])
@@ -381,13 +347,9 @@ async def szybkie_dodanie_zalacznikow(page: ft.Page, tabela, rekord_id, po_zapis
         pokaz_komunikat(page, f"Dodano {db.liczba_z_odmiana(ile, 'plik', 'pliki', 'plików')}.")
         po_zapisie()
 
-    page.zalacznik_picker.on_result = lambda e: zapisz(getattr(e, "files", None))
-    page.zalacznik_picker.update()
     try:
-        wynik = await page.zalacznik_picker.pick_files(
-            file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=ROZSZERZENIA_ZALACZNIKOW, allow_multiple=True)
-        pliki = getattr(wynik, "files", wynik) if wynik is not None else None
-        zapisz(pliki if isinstance(pliki, list) else None)
+        zapisz(await page.zalacznik_picker.pick_files(
+            file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=ROZSZERZENIA_ZALACZNIKOW, allow_multiple=True))
     except Exception as ex:
         pokaz_komunikat(page, f"Błąd wczytywania: {ex}", KOLOR_STATUS["error"])
 
@@ -426,7 +388,6 @@ class PolaZalacznikow:
         self._kopie = {}
         self._do_skasowania = []
         self._zapisano = False
-        self._obsluzono = False
         self._lista = ft.Column(spacing=SPACING["sm"])
         tekst = ("Dodaj strony (zdjęcia, PDF — można kilka naraz)" if dokument
                  else "Dodaj pliki (zdjęcia, PDF — można kilka naraz)")
@@ -518,9 +479,8 @@ class PolaZalacznikow:
         self._odswiez()
 
     def _po_wyborze(self, pliki):
-        if self._obsluzono or not pliki:
+        if not pliki:
             return
-        self._obsluzono = True
         sciezki = [p.path for p in pliki if getattr(p, "path", None)]
         if not sciezki:
             pokaz_komunikat(self._page, "Brak dostępu do pliku (uprawnienia telefonu).", KOLOR_STATUS["error"])
@@ -528,15 +488,10 @@ class PolaZalacznikow:
         self.dodaj_pliki(sciezki)
 
     async def _wybierz(self, e):
-        self._obsluzono = False
-        self._page.zalacznik_picker.on_result = lambda ev: self._po_wyborze(getattr(ev, "files", None))
-        self._page.zalacznik_picker.update()
         try:
-            wynik = await self._page.zalacznik_picker.pick_files(
+            self._po_wyborze(await self._page.zalacznik_picker.pick_files(
                 file_type=ft.FilePickerFileType.CUSTOM, allowed_extensions=ROZSZERZENIA_ZALACZNIKOW,
-                allow_multiple=True)
-            pliki = getattr(wynik, "files", wynik) if wynik is not None else None
-            self._po_wyborze(pliki if isinstance(pliki, list) else None)
+                allow_multiple=True))
         except Exception as ex:
             pokaz_komunikat(self._page, f"Błąd wczytywania pliku: {ex}", KOLOR_STATUS["error"])
 

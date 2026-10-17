@@ -87,7 +87,7 @@ class MiksinZakladkiInne:
                     **utils.styl_pola()
                 )
             ))
-            self.lista_kart_inne = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+            self.lista_kart_inne = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_inne, "lista:koszty_inne")
             self.uzyj_wirtualizacji = True
             self.wszystkie_karty_inne = []
@@ -100,13 +100,19 @@ class MiksinZakladkiInne:
 
             # Menu kosztu jak menu tankowania i wpisu: słownikami przez
             # pokaz_menu_kontekstowe (przechodzi przez utils.odsiej_akcje).
+            def usun_koszt_od_razu(iid):
+                wynik = db.usun_z_cofnieciem("inne_koszty", iid)
+                utils.przejdz(self._page, "/")
+                utils.pokaz_komunikat_cofnij(self._page, "Usunięto koszt.", wynik)
+
+            def notatka_kosztu(iid):
+                utils.szybka_notatka(self._page, "inne_koszty", iid, lambda: utils.przejdz(self._page, "/"),
+                                     "Notatka do kosztu")
+
             def otworz_menu_i(iid, pliki=None, notatka=None):
                 def usun_koszt():
-                    def wykonaj():
-                        wynik = db.usun_z_cofnieciem("inne_koszty", iid)
-                        utils.przejdz(self._page, "/")
-                        utils.pokaz_komunikat_cofnij(self._page, "Usunięto koszt.", wynik)
-                    utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten koszt?", wykonaj)
+                    utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten koszt?",
+                                    lambda: usun_koszt_od_razu(iid))
 
                 pozycje = utils.pozycje_menu_zalacznikow(self._page, "inne_koszty", iid, pliki, "Koszt",
                                                          lambda: utils.przejdz(self._page, "/"))
@@ -130,6 +136,7 @@ class MiksinZakladkiInne:
                 self.elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
             else:
                 mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
+                gesty = utils.wolno_zmieniac(self.state.auto_id)  # podgląd: bez gestów
                 for w in po_filtrach:
                     cena_str = f"{utils.formatuj_liczba(float(w.get('kwota') or 0))} {utils.symbol_waluty()}"
                     iid = w.get('id')
@@ -165,12 +172,16 @@ class MiksinZakladkiInne:
                     ))
                     if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
                         tresc_i.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
-                    kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_i))
+                    kontener = ft.Container(padding=utils.wypelnienie_karty(), border_radius=10, ink=True, content=ft.Column(tresc_i))
 
                     self.karty_ref[iid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, iid, lambda id_el=iid, pl=w.get('pliki'), nt=w.get('notatka'): otworz_menu_i(id_el, pl, nt), "inne_koszty")
 
-                    karta_i = ft.Card(elevation=1, content=kontener)
+                    karta_i = utils.gesty_karty(
+                        self._page, ft.Card(elevation=1, content=kontener), widok=self,
+                        usun=(lambda rid=iid: usun_koszt_od_razu(rid)) if gesty else None,
+                        notatka=(lambda rid=iid: notatka_kosztu(rid)) if gesty else None,
+                    )
                     tekst_szukaj = f"{w.get('data')} {w.get('nazwa')} {w.get('kategoria')} {cena_str} {w.get('notatka') or ''}".lower()
                     self.wszystkie_karty_inne.append({
                         "karta": karta_i, "szukaj": tekst_szukaj,

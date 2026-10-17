@@ -78,7 +78,7 @@ class ImportCSVView(ft.View):
         )
 
         self.t_plik = ft.Text("Nie wybrano jeszcze pliku.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-        self.btn_plik = ft.ElevatedButton(
+        self.btn_plik = ft.Button(
             "Wybierz plik CSV",
             on_click=lambda e: self._page.run_task(self._wybierz_plik),
             bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY,
@@ -111,7 +111,7 @@ class ImportCSVView(ft.View):
         self.kolumna_mapowania = ft.Column([], spacing=10, visible=False)
         self.kolumna_podgladu = ft.Column([], spacing=6, visible=False)
 
-        self.btn_importuj = ft.ElevatedButton(
+        self.btn_importuj = ft.Button(
             "Importuj",
             on_click=self._importuj,
             bgcolor=ft.Colors.GREEN_700, color=ft.Colors.WHITE,  # paleta: tożsamość — zielony przycisk akcji, nie stan

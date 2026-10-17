@@ -8,6 +8,7 @@ import re
 from .stale import FS, KOLOR_STATUS, RADIUS
 from .format import bez_ogonkow
 from .wyglad import dol_bezpieczny, pasek_przewijany, pasek_zawijany, tlo_karty
+from .haptyka import z_wibracja
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_menu_grupowane, przejdz, zamknij_dialog, zamknij_dno
 from .zalaczniki import abs_zalacznik
 from .pojazd import ikona_nadwozia, sprzedaj_auto, usun_auto
@@ -954,10 +955,10 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme, on
         ], spacing=0)
     ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
+    # Tło paska z motywu (zbuduj_motyw): kolor ekranu, podbarwiony pod przewijaną treścią.
     return ft.AppBar(
         title=nowoczesny_naglowek,
         center_title=False,
-        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY),
         leading=ft.IconButton(
             icon=ft.Icons.MENU,
             icon_size=22,
@@ -967,11 +968,9 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme, on
         actions=[
             ft.IconButton(
                 icon=ft.Icons.SEARCH,
-                icon_size=20,
+                icon_size=22,
                 tooltip="Szukaj wpisów i ekranów",
                 on_click=lambda e: przejdz(page, "/szukaj"),
-                width=36, height=36,
-                style=ft.ButtonStyle(padding=0),
             ),
             przycisk_dzwonka(page, state),
         ]
@@ -1005,7 +1004,7 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
                 icon=ft.Icons.SAVE,
                 icon_color=ft.Colors.PRIMARY,
                 tooltip="Zapisz formularz",
-                on_click=on_save
+                on_click=z_wibracja(page, on_save, "zapis")
             )
         )
         actions.append(
@@ -1043,13 +1042,30 @@ def zbuduj_pasek_z_powrotem(page: ft.Page, tytul, trasa_powrotu, on_save=None, a
     return ft.AppBar(
         title=tytul_kontrolka,
         center_title=False,
-        bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.PRIMARY),
         leading=ft.IconButton(
             icon=ft.Icons.ARROW_BACK,
+            tooltip="Wróć",
             on_click=wroc
         ),
         actions=actions
     )
+
+
+def pilnuj_gestu_wstecz(widok):
+    """Gest „wstecz” na formularzu idzie tą samą drogą co strzałka paska — przy niezapisanych
+    zmianach pyta, zamiast zamknąć formularz bez słowa. Inne ekrany cofają się gestem jak dotąd."""
+    czy_zmieniono = getattr(widok, "_czy_zmieniono", None)
+    wroc = getattr(getattr(getattr(widok, "appbar", None), "leading", None), "on_click", None)
+    if not callable(czy_zmieniono) or not callable(wroc):
+        return
+
+    async def _przy_cofnieciu(e):
+        # Stos ekranów buduje router, więc Flutter niczego nie zdejmuje sam.
+        await widok.confirm_pop(False)
+        wroc(None)
+
+    widok.can_pop = False
+    widok.on_confirm_pop = _przy_cofnieciu
 
 
 __all__ = [
@@ -1078,6 +1094,7 @@ __all__ = [
     "otworz_ekran",
     "uruchom_akcje",
     "pasek_sekcji",
+    "pilnuj_gestu_wstecz",
     "pokaz_edytor_skrotow",
     "pokaz_nawigacje_awaryjna",
     "rozstaw_ekrany",

@@ -13,6 +13,34 @@ from .stale import FS
 # drugi plan” miała jedno miejsce, a nie piętnaście powtórzeń w widokach.
 KOLOR_DRUGIEGO_PLANU = ft.Colors.ON_SURFACE_VARIANT
 
+# Skala tekstu z Ustawień (W-10). Flet nie ma skali tekstu dla całej strony, więc mnożnik
+# dostaje KAŻDY ft.Text z jawnym rozmiarem w chwili utworzenia (ft.Text.init niżej); napisy
+# bez rozmiaru biorą go z motywu (utils.zbuduj_motyw → text_theme).
+SKALA_TEKSTU = {"mnoznik": 1.0}
+
+
+def ustaw_skale_tekstu(mnoznik):
+    """Mnożnik dla napisów tworzonych od tej chwili — ekran przebudowuje router."""
+    SKALA_TEKSTU["mnoznik"] = float(mnoznik or 1.0)
+
+
+def rozmiar_tekstu(rozmiar):
+    """Rozmiar w skali z Ustawień — dla miejsc poza ft.Text (TextStyle, `text_size` pól)."""
+    if isinstance(rozmiar, bool) or not isinstance(rozmiar, (int, float)):
+        return rozmiar
+    return rozmiar if SKALA_TEKSTU["mnoznik"] == 1.0 else round(rozmiar * SKALA_TEKSTU["mnoznik"], 1)
+
+
+def _init_tekstu_ze_skala(self):
+    _INIT_TEKSTU(self)
+    self.size = rozmiar_tekstu(self.size)
+
+
+if not getattr(ft.Text.init, "_ze_skala", False):
+    _INIT_TEKSTU = ft.Text.init
+    _init_tekstu_ze_skala._ze_skala = True
+    ft.Text.init = _init_tekstu_ze_skala
+
 
 def _tekst(tekst, pola, nadpisania):
     """Wspólny składak: domyślne pola ustępują temu, co poda wywołujący.
@@ -53,8 +81,11 @@ def pole(nazwa, tresc, odstep=2, **nadpisania):
 
 __all__ = [
     "KOLOR_DRUGIEGO_PLANU",
+    "SKALA_TEKSTU",
     "etykieta",
     "podpis",
     "pole",
+    "rozmiar_tekstu",
+    "ustaw_skale_tekstu",
     "wartosc",
 ]

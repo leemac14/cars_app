@@ -214,13 +214,11 @@ def wiersz_warsztatu_wizyty(page: ft.Page, state, nazwa, kontakt=None):
         wiersz.append(ft.IconButton(
             ft.Icons.PHONE, icon_size=16, icon_color=ft.Colors.PRIMARY, tooltip="Zadzwoń",
             on_click=lambda e: zadzwon(page, telefon), style=ft.ButtonStyle(padding=0),
-            width=30, height=30,
         ))
     if adres:
         wiersz.append(ft.IconButton(
             ft.Icons.MAP, icon_size=16, icon_color=ft.Colors.PRIMARY, tooltip="Pokaż na mapie",
             on_click=lambda e: pokaz_na_mapie(page, adres), style=ft.ButtonStyle(padding=0),
-            width=30, height=30,
         ))
     return ft.Row(wiersz, spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 

@@ -296,7 +296,7 @@ class MiksinNaglowkaAuta:
                 ], tight=True, spacing=10),
                 actions=[
                     ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
-                    ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                    ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
                 ],
                 actions_alignment=ft.MainAxisAlignment.END
             )
@@ -335,6 +335,8 @@ class MiksinNaglowkaAuta:
                     value=wartosc_pierscienia, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA,
                     stroke_width=4, color=kolor_pierscienia, stroke_cap=ft.StrokeCap.ROUND,
                     bgcolor=utils.tlo_toru(self._page),
+                    semantics_label="Kondycja pojazdu",
+                    semantics_value=f"{kondycja}/100" if kondycja is not None else None,
                 ),
                 ft.Container(tresc_awatara, width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA, alignment=ft.Alignment.CENTER),
             ], width=WYM_PIERSCIENIA, height=WYM_PIERSCIENIA),
@@ -423,7 +425,7 @@ class MiksinNaglowkaAuta:
                 ], tight=True, spacing=10),
                 actions=[
                     ft.TextButton("Anuluj", on_click=lambda e2: utils.zamknij_dialog(self._page, dlg)),
-                    ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+                    ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
                 ],
             )
             utils.otworz_dialog(self._page, dlg)
@@ -532,56 +534,28 @@ class MiksinNaglowkaAuta:
             icon=ft.Icons.INFO_OUTLINE, icon_size=20, icon_color=ft.Colors.PRIMARY,
             tooltip="Karta pojazdu: terminy, wartość, ubezpieczenie, ściągawka",
             on_click=pokaz_info_auta,
-            style=ft.ButtonStyle(padding=0), width=36, height=36,
-        )
-
-        # --- TŁO KARTY: rozmyte zdjęcie pojazdu zamiast płaskiego koloru ---
-        # Zdjęcie mocno rozmyte pod gradientem w kolorze powierzchni — tło niesie barwę,
-        # a kontrast treści zostaje przewidywalny.
-        PROMIEN_KARTY = 12  # zgodny z domyślnym kształtem ft.Card (RoundedRectangleBorder 12)
-
-        tresc_karty = ft.Container(
-            padding=12, border_radius=PROMIEN_KARTY,
-            content=ft.Column([
-                ft.Row([awatar, kolumna_tekstowa, przyciski_karty], spacing=12,
-                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                wiersz_termin_kafla,
-            ], spacing=8),
         )
 
         if zdjecie_glowne:
-            wnetrze_karty = ft.Stack([
-                # Warstwa 1 — zdjęcie wypełniające całą kartę (kadrowane, nie skalowane).
+            # W-18: zdjęcie 16:9 na całą szerokość karty, nazwa i tablica na gradiencie u dołu
+            # (zamiast rozmytego tła, które chowało auto); pod zdjęciem przebieg, status, termin.
+            wnetrze_karty = ft.Column([
+                self._zdjecie_16_9(zdjecie_glowne, w["nr_rej"], pokaz_wybor_aut, pokaz_info_auta,
+                                   wartosc_pierscienia, kolor_pierscienia, kondycja, etykieta_kond),
                 ft.Container(
-                    left=0, top=0, right=0, bottom=0,
-                    border_radius=PROMIEN_KARTY,
-                    image=ft.DecorationImage(
-                        src=utils.abs_zalacznik(zdjecie_glowne),
-                        fit=ft.BoxFit.COVER,
-                        alignment=ft.Alignment.CENTER,
-                    ),
+                    padding=ft.Padding(12, 0, 12, 12),
+                    content=ft.Column([wiersz_przebieg, wiersz_status, wiersz_termin_kafla], spacing=6),
                 ),
-                # Warstwa 2 — rozmycie tego, co pod spodem, plus gradient w kolorze
-                # motywu. Gradient jest lżejszy w lewym górnym rogu (przy awatarze),
-                # a gęstnieje w stronę wiersza statusu, czyli tam, gdzie tekstu
-                # jest najwięcej.
-                ft.Container(
-                    left=0, top=0, right=0, bottom=0,
-                    border_radius=PROMIEN_KARTY,
-                    blur=ft.Blur(18, 18),
-                    gradient=ft.LinearGradient(
-                        begin=ft.Alignment.TOP_LEFT,
-                        end=ft.Alignment.BOTTOM_RIGHT,
-                        colors=[
-                            ft.Colors.with_opacity(0.74, ft.Colors.SURFACE),
-                            ft.Colors.with_opacity(0.93, ft.Colors.SURFACE),
-                        ],
-                    ),
-                ),
-                tresc_karty,
-            ])
+            ], spacing=8)
         else:
-            wnetrze_karty = tresc_karty
+            wnetrze_karty = ft.Container(
+                padding=12,
+                content=ft.Column([
+                    ft.Row([awatar, kolumna_tekstowa, przyciski_karty], spacing=12,
+                           vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    wiersz_termin_kafla,
+                ], spacing=8),
+            )
 
         karta_auta = ft.Card(
             elevation=1,
@@ -625,4 +599,116 @@ class MiksinNaglowkaAuta:
             ),
         ], spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
-        self.elementy.append(wiersz_karty_z_nawigacja)
+        # Pełna karta tylko na Kokpicie; Serwis, Koszty i Analiza dostają pasek auta —
+        # karta zajmowała tam ćwierć ekranu nad listą, po którą się przyszło.
+        self._naglowek_pelny = wiersz_karty_z_nawigacja
+        self._naglowek_kompaktowy = self._pasek_auta(
+            zdjecie_glowne, w["nr_rej"], aktualny_przebieg, licznik_stary,
+            pokaz_wybor_aut, pokaz_info_auta, wartosc_pierscienia, kolor_pierscienia, kondycja, etykieta_kond)
+        self.naglowek_auta = ft.Container()
+        self.pokaz_naglowek_auta()
+        self.elementy.append(self.naglowek_auta)
+
+    def pokaz_naglowek_auta(self):
+        """Kokpit — pełna karta auta, inne zakładki — pasek auta (przełącza przelacz_zakladke)."""
+        if getattr(self, "naglowek_auta", None) is not None:
+            self.naglowek_auta.content = (self._naglowek_pelny if int(self.state.zakladka or 0) == 0
+                                          else self._naglowek_kompaktowy)
+
+    def _pierscien_kondycji(self, wymiar, wartosc, kolor, srodek, kondycja, etykieta_kond, on_click, tlo=None):
+        """Pierścień kondycji wokół `srodek` — ten sam kolor i wartość co na karcie i kafelku."""
+        return ft.Container(
+            width=wymiar, height=wymiar, bgcolor=tlo, border_radius=wymiar / 2, on_click=on_click,
+            tooltip=f"Kondycja: {kondycja if kondycja is not None else '-'}/100 ({etykieta_kond})",
+            content=ft.Stack([
+                ft.ProgressRing(value=wartosc, width=wymiar, height=wymiar, stroke_width=3, color=kolor,
+                                stroke_cap=ft.StrokeCap.ROUND, bgcolor=utils.tlo_toru(self._page),
+                                semantics_label="Kondycja pojazdu",
+                                semantics_value=f"{kondycja}/100" if kondycja is not None else None),
+                ft.Container(srodek, width=wymiar, height=wymiar, alignment=ft.Alignment.CENTER),
+            ], width=wymiar, height=wymiar),
+        )
+
+    def _zdjecie_16_9(self, zdjecie, nr_rej, on_wybor, on_info, wartosc, kolor, kondycja, etykieta_kond):
+        """Zdjęcie auta 16:9 (W-18): biała nazwa i tablica na przyciemnieniu u dołu, kondycja
+        i karta pojazdu w rogach."""
+        tytul = ft.Container(
+            on_click=on_wybor, tooltip="Dotknij, aby wybrać z listy",
+            content=ft.Row([
+                ft.Text(str(self.state.auto_nazwa), size=utils.FS["display"], weight="bold",
+                        color=ft.Colors.WHITE, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.WHITE, size=22),
+            ], spacing=0),
+        )
+        tablica = (utils.tablica_rejestracyjna(
+            nr_rej, wysokosc=24,
+            on_click=lambda e: utils.kopiuj_do_schowka(self._page, nr_rej, "Skopiowano numer rejestracyjny"))
+            if nr_rej else ft.Container())
+        wynik_kondycji = ft.Text(str(kondycja) if kondycja is not None else "–", size=13, weight="bold",
+                                 color=ft.Colors.WHITE)
+        return ft.Container(
+            aspect_ratio=16 / 9,
+            image=ft.DecorationImage(src=utils.abs_zalacznik(zdjecie), fit=ft.BoxFit.COVER),
+            content=ft.Stack([
+                ft.Container(
+                    left=0, top=0, right=0, bottom=0,
+                    gradient=ft.LinearGradient(
+                        begin=ft.Alignment.TOP_CENTER, end=ft.Alignment.BOTTOM_CENTER, stops=[0.35, 1.0],
+                        colors=[ft.Colors.with_opacity(0, ft.Colors.BLACK),
+                                ft.Colors.with_opacity(0.72, ft.Colors.BLACK)],
+                    ),
+                ),
+                ft.Container(
+                    left=12, right=10, bottom=10,
+                    content=ft.Row([
+                        ft.Column([tytul, ft.Row([tablica], tight=True)], spacing=6, tight=True, expand=True),
+                        self._pierscien_kondycji(44, wartosc, kolor, wynik_kondycji, kondycja, etykieta_kond,
+                                                 on_info, tlo=ft.Colors.with_opacity(0.35, ft.Colors.BLACK)),
+                    ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.END),
+                ),
+                ft.Container(
+                    right=6, top=6,
+                    content=ft.IconButton(
+                        icon=ft.Icons.INFO_OUTLINE, icon_color=ft.Colors.WHITE,
+                        bgcolor=ft.Colors.with_opacity(0.35, ft.Colors.BLACK),
+                        tooltip="Karta pojazdu: terminy, wartość, ubezpieczenie, ściągawka",
+                        on_click=on_info,
+                    ),
+                ),
+            ]),
+        )
+
+    def _pasek_auta(self, zdjecie, nr_rej, przebieg, licznik_stary, on_wybor, on_info,
+                    wartosc, kolor, kondycja, etykieta_kond):
+        """Pasek auta nad Serwisem, Kosztami i Analizą: kondycja, nazwa, licznik i tablica w jednym
+        wierszu; dotknięcie — wybór pojazdu."""
+        if zdjecie:
+            srodek = ft.Image(src=utils.abs_zalacznik(zdjecie), width=30, height=30, fit=ft.BoxFit.COVER,
+                              border_radius=15)
+        else:
+            srodek = ft.Icon(ft.Icons.DIRECTIONS_CAR, size=18, color=ft.Colors.PRIMARY)
+        dopisek = [ft.TextSpan(utils.formatuj_dystans(przebieg),
+                               style=ft.TextStyle(color=utils.KOLOR_STATUS["warning"]) if licznik_stary else None)]
+        if nr_rej:
+            dopisek.append(ft.TextSpan(f"  ·  {nr_rej}"))
+        return ft.Container(
+            padding=ft.Padding(10, 6, 2, 6), ink=True, on_click=on_wybor,
+            tooltip="Dotknij, aby wybrać pojazd",
+            **utils.powierzchnia(self._page, "karta"),
+            content=ft.Row([
+                self._pierscien_kondycji(40, wartosc, kolor, srodek, kondycja, etykieta_kond, on_info),
+                ft.Column([
+                    ft.Row([
+                        ft.Text(str(self.state.auto_nazwa), size=utils.FS["title"], weight="bold",
+                                color=ft.Colors.PRIMARY, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
+                                expand=True),
+                        ft.Icon(ft.Icons.ARROW_DROP_DOWN, color=ft.Colors.PRIMARY, size=18),
+                    ], spacing=0),
+                    ft.Text(spans=dopisek, size=utils.FS["label"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=0, expand=True),
+                utils.wskaznik_synchronizacji(self._page, self.state.auto_id),
+                ft.IconButton(icon=ft.Icons.INFO_OUTLINE, icon_color=ft.Colors.PRIMARY, on_click=on_info,
+                              tooltip="Karta pojazdu: terminy, wartość, ubezpieczenie, ściągawka"),
+            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        )

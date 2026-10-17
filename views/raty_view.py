@@ -115,7 +115,7 @@ class RatyView(ft.View):
             return ft.Container(
                 padding=30,
                 content=ft.Column([
-                    ft.Icon(ft.Icons.ACCOUNT_BALANCE, size=46, color=ft.Colors.PRIMARY),
+                    utils.rysunek_pustego_stanu(ft.Icons.ACCOUNT_BALANCE),
                     ft.Text("Brak leasingu ani kredytu", size=utils.FS["heading"], weight="bold"),
                     ft.Text(opis, size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
                             text_align=ft.TextAlign.CENTER),

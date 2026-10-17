@@ -113,7 +113,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                     )
                 ))
 
-                self.lista_kart = ft.ListView(spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:odczyty")
                 self.wszystkie_karty = []
                 self.uzyj_wirtualizacji = True
@@ -299,9 +299,24 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         else:
             kontener.on_click = lambda e, wpis=w: self._menu_wpisu(wpis)
 
+        if not hasattr(self, "_gesty"):
+            self._gesty = utils.wolno_zmieniac(self.state.auto_id)  # podgląd: bez gestów
+        karta = utils.gesty_karty(
+            self._page, karta, widok=self,
+            usun=(lambda oid=w["id"]: self._usun_odczyt_od_razu(oid)) if self._gesty and w["edytowalny"] else None,
+            notatka=(lambda wpis=w: utils.szybka_notatka(
+                self._page, self.TABELE_NOTATKI[wpis["zrodlo"]], wpis["id"],
+                lambda: utils.przejdz(self._page, "/przebieg"), "Notatka")) if self._gesty else None,
+        )
+
         tekst_szukaj = (f"{w['data']} {w['przebieg']} {w['etykieta_zrodla']} {w['opis']} "
                         f"{w.get('notatka') or ''}").lower()
         return {"karta": karta, "szukaj": tekst_szukaj, "data": w["data"]}
+
+    def _usun_odczyt_od_razu(self, odczyt_id):
+        wynik = db.usun_z_cofnieciem("odczyty_przebiegu", odczyt_id)
+        utils.przejdz(self._page, "/przebieg")
+        utils.pokaz_komunikat_cofnij(self._page, "Usunięto odczyt.", wynik)
 
     # ================= MENU =================
 
@@ -325,11 +340,8 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
 
         if w["edytowalny"]:
             def usun():
-                def wykonaj():
-                    wynik = db.usun_z_cofnieciem("odczyty_przebiegu", w["id"])
-                    utils.przejdz(self._page, "/przebieg")
-                    utils.pokaz_komunikat_cofnij(self._page, "Usunięto odczyt.", wynik)
-                utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten odczyt przebiegu?", wykonaj)
+                utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć ten odczyt przebiegu?",
+                                lambda: self._usun_odczyt_od_razu(w["id"]))
 
             pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń odczyt",
                             "akcja": usun, "kolor": utils.KOLOR_STATUS["destructive"]})

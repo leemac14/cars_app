@@ -63,7 +63,7 @@ class KoszView(ft.View):
                     padding=30,
                     alignment=ft.Alignment.CENTER,
                     content=ft.Column([
-                        ft.Icon(ft.Icons.DELETE_OUTLINE, size=44, color=ft.Colors.ON_SURFACE_VARIANT),
+                        utils.rysunek_pustego_stanu(ft.Icons.DELETE_OUTLINE),
                         ft.Text("Kosz jest pusty", weight="bold", size=15),
                         ft.Text(
                             "Usunięte pojazdy trafiają tutaj razem z całą historią i zdjęciami.",
@@ -151,7 +151,7 @@ class KoszView(ft.View):
         ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
         przyciski = ft.Row([
-            ft.ElevatedButton(
+            ft.Button(
                 "Przywróć",
                 icon=ft.Icons.RESTORE_FROM_TRASH,
                 bgcolor=ft.Colors.PRIMARY,

@@ -107,7 +107,7 @@ class PrzyszloscView(ft.View):
             return ft.Container(
                 padding=30,
                 content=ft.Column([
-                    ft.Icon(ft.Icons.EVENT_AVAILABLE, size=46, color=ft.Colors.PRIMARY),
+                    utils.rysunek_pustego_stanu(ft.Icons.EVENT_AVAILABLE),
                     ft.Text("Nic tu jeszcze nie wypada", size=utils.FS["heading"], weight="bold"),
                     ft.Text(opis, size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
                             text_align=ft.TextAlign.CENTER),

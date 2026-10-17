@@ -1120,7 +1120,7 @@ class MiksinZakladkiStatystyki:
                     )
                 ))
 
-                self.lista_kart_stat = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+                self.lista_kart_stat = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
                 utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_stat, "lista:statystyki")
                 self.wszystkie_karty_stat = []
 

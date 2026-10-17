@@ -492,7 +492,7 @@ class FormularzWizytyView(ft.View):
         tresc.append(lista_kontener)
         tresc.append(ft.Row([
             ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dno(self._page, bs)),
-            ft.ElevatedButton("Zapisz pakiet", icon=ft.Icons.CHECK, on_click=zapisz,
+            ft.Button("Zapisz pakiet", icon=ft.Icons.CHECK, on_click=zapisz,
                               bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
         ], spacing=8, alignment=ft.MainAxisAlignment.END))
 

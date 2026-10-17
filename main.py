@@ -1,7 +1,6 @@
 import flet as ft
 import os
 import shutil
-import inspect
 import dataclasses
 import zipfile
 import tempfile
@@ -217,6 +216,7 @@ def main(page: ft.Page):
     # „czysta czerń (OLED)”, więc nie trzeba go powtarzać w każdym z miejsc,
     # w których przebudowujemy motyw.
     with log.zmierz("motyw"):
+        utils.ustaw_skale_tekstu(db.SKALE_TEKSTU[db.pobierz_skale_tekstu()])
         utils.zastosuj_motywy(page, kolor_ustawiony)
         zastosuj_tryb_motywu()
 
@@ -413,53 +413,21 @@ def main(page: ft.Page):
     # Okno wczytania pojazdu oddaje tu kopię bazy wybraną zamiast pliku pojazdu.
     page.zapytaj_o_import = zapytaj_o_import
 
+    # Flet 1.0: wybór i zapis pliku tylko przez `await` (on_result FilePickera obsługuje
+    # wyłącznie akcje klienta, nie pick_files/save_file).
     file_picker = ft.FilePicker()
-    _pending_export = {"bajty": None}  # bufor na dane, gdy plik zapisu pochodzi z eksportu innego niż kopia bazy
-
-    def on_file_result(e):
-        async def _obsluz():
-            if getattr(e, "files", None) and len(e.files) > 0:
-                zapytaj_o_import(e.files[0].path)
-            elif getattr(e, "path", None):
-                try:
-                    kopia_bazy = _pending_export["bajty"] is None
-                    if not kopia_bazy:
-                        dane_zapisu = _pending_export["bajty"]
-                        _pending_export["bajty"] = None
-                    else:
-                        dane_zapisu = await asyncio.to_thread(_przygotuj_zip_eksportu)
-                    with open(e.path, "wb") as f:
-                        f.write(dane_zapisu)
-                    if kopia_bazy:
-                        _zanotuj_kopie_reczna()
-                    utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
-                except Exception as ex:
-                    utils.pokaz_komunikat(page, f"Błąd zapisu: {ex}", utils.KOLOR_STATUS["error"])
-        page.run_task(_obsluz)
-
-    if hasattr(file_picker, "on_result"):
-        file_picker.on_result = on_file_result
-
-    if hasattr(page, "services"):
-        page.services.append(file_picker)
-    else:
-        page.overlay.append(file_picker)
+    page.services.append(file_picker)
 
     zalacznik_picker = ft.FilePicker()
-    if hasattr(page, "services"):
-        page.services.append(zalacznik_picker)
-    else:
-        page.overlay.append(zalacznik_picker)
+    page.services.append(zalacznik_picker)
     page.zalacznik_picker = zalacznik_picker
 
-    share_service = None
-    if hasattr(ft, "Share"):
-        share_service = ft.Share()
-        if hasattr(page, "services"):
-            page.services.append(share_service)
-        else:
-            page.overlay.append(share_service)
-    page.share_service = share_service  # <-- NOWE: udostępniamy serwis widokom (np. podgląd PDF)
+    share_service = ft.Share()
+    page.services.append(share_service)
+    page.share_service = share_service  # widoki udostępniają nim pliki (np. podgląd PDF)
+
+    page.haptyka = ft.HapticFeedback()  # utils.wibracja
+    page.services.append(page.haptyka)
 
     async def eksportuj_baze(e=None):
         dlg_ladowania = utils.pokaz_ladowanie(page, "Przygotowywanie kopii zapasowej...")
@@ -475,12 +443,7 @@ def main(page: ft.Page):
                 try:
                     sciezka_zip = await asyncio.to_thread(_zapisz_tymczasowy_zip)
                     _schowaj_ladowanie()
-                    if hasattr(share_service, "share_files_async"):
-                        res = await share_service.share_files_async([sciezka_zip])
-                    else:
-                        res = share_service.share_files([sciezka_zip])
-                        if inspect.iscoroutine(res):
-                            res = await res
+                    res = await share_service.share_files([ft.ShareFile.from_path(sciezka_zip)])
                     # Liczy się tylko arkusz, w którym wybrano aplikację (Dysk,
                     # Gmail, Pliki) — zamknięty bez wyboru niczego nie zapisał.
                     if utils.czy_udostepniono(res):
@@ -492,20 +455,9 @@ def main(page: ft.Page):
             zip_bytes = await asyncio.to_thread(_przygotuj_zip_eksportu)
             _schowaj_ladowanie()
 
-            if hasattr(page, "services") and not hasattr(file_picker, "on_result"):
-                if hasattr(file_picker, "save_file_async"):
-                    res = await file_picker.save_file_async(file_name="kopia_baza.zip", src_bytes=zip_bytes)
-                else:
-                    res = await file_picker.save_file(file_name="kopia_baza.zip", src_bytes=zip_bytes)
-
-                if res:
-                    _zanotuj_kopie_reczna()
-                    utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
-            else:
-                # Starsza ścieżka (on_result): bufor po przerwanym eksporcie
-                # CSV/PDF zapisałby się zamiast kopii bazy — czyścimy go.
-                _pending_export["bajty"] = None
-                file_picker.save_file(file_name="kopia_baza.zip")
+            if await file_picker.save_file(file_name="kopia_baza.zip", src_bytes=zip_bytes):
+                _zanotuj_kopie_reczna()
+                utils.pokaz_komunikat(page, "Zapisano pomyślnie!", utils.KOLOR_STATUS["ok"])
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])
         finally:
@@ -519,27 +471,14 @@ def main(page: ft.Page):
                 sciezka_tmp = os.path.join(tempfile.gettempdir(), nazwa_pliku)
                 with open(sciezka_tmp, "wb") as f:
                     f.write(dane_bytes)
-                if hasattr(share_service, "share_files_async"):
-                    await share_service.share_files_async([sciezka_tmp])
-                else:
-                    res = share_service.share_files([sciezka_tmp])
-                    if inspect.iscoroutine(res):
-                        await res
+                await share_service.share_files([ft.ShareFile.from_path(sciezka_tmp)])
                 return
             except Exception:
                 log.polkniety(f"udostępnianie pliku {nazwa_pliku} przez system")
 
         try:
-            if hasattr(page, "services") and not hasattr(file_picker, "on_result"):
-                if hasattr(file_picker, "save_file_async"):
-                    res = await file_picker.save_file_async(file_name=nazwa_pliku, src_bytes=dane_bytes)
-                else:
-                    res = await file_picker.save_file(file_name=nazwa_pliku, src_bytes=dane_bytes)
-                if res:
-                    utils.pokaz_komunikat(page, "Wyeksportowano pomyślnie!", utils.KOLOR_STATUS["ok"])
-            else:
-                _pending_export["bajty"] = dane_bytes
-                file_picker.save_file(file_name=nazwa_pliku)
+            if await file_picker.save_file(file_name=nazwa_pliku, src_bytes=dane_bytes):
+                utils.pokaz_komunikat(page, "Wyeksportowano pomyślnie!", utils.KOLOR_STATUS["ok"])
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])
 
@@ -603,16 +542,9 @@ def main(page: ft.Page):
 
     async def importuj_baze(e=None):
         try:
-            if hasattr(page, "services") and not hasattr(file_picker, "on_result"):
-                if hasattr(file_picker, "pick_files_async"):
-                    files = await file_picker.pick_files_async(file_type=ft.FilePickerFileType.ANY)
-                else:
-                    files = await file_picker.pick_files(file_type=ft.FilePickerFileType.ANY)
-
-                if files and len(files) > 0:
-                    zapytaj_o_import(files[0].path)
-            else:
-                file_picker.pick_files()
+            files = await file_picker.pick_files(file_type=ft.FilePickerFileType.ANY)
+            if files:
+                zapytaj_o_import(files[0].path)
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])
 
@@ -910,6 +842,7 @@ def main(page: ft.Page):
         for widok in page.views:
             utils.pamietaj_pozycje(page, app_state, widok,
                                    lambda w=widok: utils.klucz_ekranu(w, app_state))
+            utils.pilnuj_gestu_wstecz(widok)
 
         page.update()
 

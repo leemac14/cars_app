@@ -9,7 +9,8 @@ from .stale import (
     ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych, kolory_chipa_tagu,
 )
 from .typografia import etykieta, podpis
-from .wyglad import pasek_zawijany, powierzchnia, tlo_karty
+from .wyglad import pasek_zawijany, powierzchnia, tlo_karty, wypelnienie_karty
+from .haptyka import wibracja
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
 from .formularze import styl_dropdown, styl_pola
@@ -27,6 +28,39 @@ def _ikona_przycisku_pustego_ekranu(tekst):
     return ft.Icons.ARROW_FORWARD
 
 
+def _kolo(lewo, gora, srednica, kolor):
+    return ft.Container(left=lewo, top=gora, width=srednica, height=srednica,
+                        border_radius=srednica / 2, bgcolor=kolor)
+
+
+def rysunek_pustego_stanu(ikona):
+    """Rysunek pustego ekranu (W-12): kartka z linijkami na barwnym kole, ikona tematu
+    w odznace, dwa akcenty. Same kolory motywu — działa w jasnym, ciemnym i OLED."""
+    linijki = [ft.Container(width=szer, height=6, border_radius=3,
+                            bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.ON_SURFACE))
+               for szer in (40, 30, 22)]
+    kartka = ft.Container(
+        left=50, top=24, width=64, height=80, rotate=-0.08, border_radius=RADIUS["md"],
+        bgcolor=ft.Colors.SURFACE, padding=ft.Padding(11, 14, 11, 11),
+        shadow=ft.BoxShadow(blur_radius=10, offset=ft.Offset(0, 3),
+                            color=ft.Colors.with_opacity(0.16, ft.Colors.BLACK)),
+        content=ft.Column(linijki, spacing=7),
+    )
+    odznaka = ft.Container(
+        left=94, top=72, width=46, height=46, border_radius=23, bgcolor=ft.Colors.PRIMARY,
+        alignment=ft.Alignment.CENTER, content=ft.Icon(ikona, size=24, color=ft.Colors.ON_PRIMARY),
+    )
+    return ft.Semantics(exclude_semantics=True, content=ft.Stack([
+        _kolo(22, 6, 120, ft.Colors.with_opacity(0.55, ft.Colors.PRIMARY_CONTAINER)),
+        _kolo(128, 10, 26, ft.Colors.TERTIARY_CONTAINER),
+        _kolo(14, 100, 12, ft.Colors.with_opacity(0.45, ft.Colors.SECONDARY)),
+        ft.Container(left=24, top=20, content=ft.Icon(
+            ft.Icons.AUTO_AWESOME, size=18, color=ft.Colors.with_opacity(0.7, ft.Colors.PRIMARY))),
+        kartka,
+        odznaka,
+    ], width=164, height=132))
+
+
 def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click, ikona_przycisku=None):
     # Napisy wprost w kolumnie, nie w wierszu: wiersz nie daje tekstowi szerokości,
     # więc dłuższy opis wychodził za ekran zamiast się zawinąć.
@@ -34,15 +68,7 @@ def ekran_braku_danych(ikona, tytul, opis, tekst_przycisku, on_click, ikona_przy
         padding=30,
         content=ft.Column([
             ft.Container(height=10),
-            ft.Container(
-                width=104, height=104, border_radius=52,
-                alignment=ft.Alignment.CENTER,
-                gradient=ft.RadialGradient(colors=[
-                    ft.Colors.with_opacity(0.22, ft.Colors.PRIMARY),
-                    ft.Colors.with_opacity(0.0, ft.Colors.PRIMARY),
-                ]),
-                content=ft.Icon(ikona, size=46, color=ft.Colors.PRIMARY),
-            ),
+            rysunek_pustego_stanu(ikona),
             ft.Container(height=10),
             ft.Text(tytul, size=FS["heading"], weight="bold", color=ft.Colors.ON_SURFACE,
                     text_align=ft.TextAlign.CENTER),
@@ -237,7 +263,7 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                         actions=[
                             ft.TextButton("Usuń", style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"]), on_click=usun_tag),
                             ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
-                            ft.ElevatedButton("Zapisz", on_click=zapisz_zmiany, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                            ft.Button("Zapisz", on_click=zapisz_zmiany, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
                         ]
                     )
                     otworz_dialog(page, dlg)
@@ -311,7 +337,7 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
             content=tresc_okna(e_nazwa, k_kolor),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
-                ft.ElevatedButton("Zapisz" if nazwa_spoza_slownika else "Dodaj", on_click=zapisz_nowy, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                ft.Button("Zapisz" if nazwa_spoza_slownika else "Dodaj", on_click=zapisz_nowy, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ]
         )
         otworz_dialog(page, dlg)
@@ -730,13 +756,12 @@ def wiersz_danych(page: ft.Page, ikona, etykieta, wartosc, kopiowalne=False, tel
         akcje.append(ft.IconButton(
             ft.Icons.PHONE, icon_size=18, icon_color=ft.Colors.GREEN_700, tooltip="Zadzwoń",  # paleta: tożsamość — zielona słuchawka to afordancja, nie stan
             on_click=lambda e: zadzwon(page, tekst), style=ft.ButtonStyle(padding=0),
-            width=34, height=34,
         ))
     if tekst and kopiowalne:
         akcje.append(ft.IconButton(
             ft.Icons.COPY, icon_size=16, icon_color=ft.Colors.ON_SURFACE_VARIANT, tooltip="Kopiuj",
             on_click=lambda e: kopiuj_do_schowka(page, tekst, f"Skopiowano: {etykieta}"),
-            style=ft.ButtonStyle(padding=0), width=34, height=34,
+            style=ft.ButtonStyle(padding=0),
         ))
 
     return ft.Row(
@@ -790,7 +815,7 @@ def karta_listy(tresc, kolor_paska=None, tlo=None, page=None):
     tlo_finalne = tlo if tlo is not None else plaszczyzna["bgcolor"]
 
     kontener = ft.Container(
-        padding=SPACING["md"], ink=True,
+        padding=wypelnienie_karty(), ink=True,
         border_radius=0 if kolor_paska else RADIUS["lg"],
         bgcolor=tlo_finalne,
         expand=True if kolor_paska else None,
@@ -836,6 +861,11 @@ def z_efektem_nacisniecia(kontener: ft.Container, funkcja):
 def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
     """Animowany przełącznik segmentów (zamiast 'btn_zakladki'). opcje: (etykieta,
     indeks) albo (etykieta, indeks, ikona); on_zmiana(nowy_idx) po kliknięciu."""
+    def _wybierz(i):
+        if i != aktywny_idx:
+            wibracja(page, "wybor")
+        return on_zmiana(i)
+
     segmenty = []
     for opcja in opcje:
         etykieta, idx = opcja[0], opcja[1]
@@ -859,7 +889,7 @@ def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
                 animate=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
                 animate_scale=ft.Animation(220, ft.AnimationCurve.EASE_OUT),
                 scale=1.0 if aktywny else 0.96,
-                on_click=lambda e, i=idx: on_zmiana(i),
+                on_click=lambda e, i=idx: _wybierz(i),
                 content=tresc,
             )
         )
@@ -869,25 +899,61 @@ def segmented_control(page: ft.Page, opcje, aktywny_idx, on_zmiana):
     )
 
 
+def pigulka_fab(ikona, napis, on_click):
+    """Pozycja menu FAB w stylu M3 z 2025 r.: pigułka z ikoną i napisem (cel dotyku 52 dp)."""
+    return ft.Container(
+        height=52, padding=ft.Padding(16, 0, 20, 0), border_radius=RADIUS["pill"],
+        bgcolor=ft.Colors.PRIMARY_CONTAINER, ink=True, on_click=on_click,
+        shadow=ft.BoxShadow(blur_radius=8, offset=ft.Offset(0, 2),
+                            color=ft.Colors.with_opacity(0.18, ft.Colors.BLACK)),
+        content=ft.Row([
+            ft.Icon(ikona, size=22, color=ft.Colors.ON_PRIMARY_CONTAINER),
+            ft.Text(napis, size=FS["body_strong"], weight=ft.FontWeight.W_500,
+                    color=ft.Colors.ON_PRIMARY_CONTAINER),
+        ], spacing=10, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    )
+
+
 def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szybkie akcje"):
-    """FAB speed-dial: główny przycisk odsłania stos szybkich akcji. `akcje`: [(ikona,
-    etykieta, on_click)] — on_click z `e`, sync albo async. Zamyka się po wyborze albo
-    ponownym dotknięciu."""
+    """Menu FAB: główny przycisk odsłania stos pigułek (`pigulka_fab`) i sam zmienia się w okrągłe
+    „zamknij”. `akcje`: [(ikona, etykieta, on_click)] — on_click z `e`, sync albo async. Zamyka
+    się po wyborze albo ponownym dotknięciu."""
     stan = {"otwarte": False}
-    kontener_akcji = ft.Column(spacing=10, horizontal_alignment=ft.CrossAxisAlignment.END, visible=False)
+    kontener_akcji = ft.Column(
+        spacing=SPACING["sm"], horizontal_alignment=ft.CrossAxisAlignment.END, visible=False,
+        animate_opacity=ft.Animation(160, ft.AnimationCurve.EASE_OUT),
+        animate_offset=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC),
+    )
 
     fab_glowny = ft.FloatingActionButton(
         icon=ikona_glowna, bgcolor=ft.Colors.PRIMARY, foreground_color=ft.Colors.ON_PRIMARY, tooltip=tooltip,
     )
 
-    def odswiez():
-        kontener_akcji.visible = stan["otwarte"]
-        fab_glowny.icon = ft.Icons.CLOSE if stan["otwarte"] else ikona_glowna
-        fab_glowny.bgcolor = ft.Colors.ON_SURFACE_VARIANT if stan["otwarte"] else ft.Colors.PRIMARY
+    def _odswiez():
         try:
             page.update()
         except Exception:
             pass
+
+    async def _wjazd_pigulek():
+        await asyncio.sleep(0.02)
+        kontener_akcji.opacity, kontener_akcji.offset = 1, ft.Offset(0, 0)
+        _odswiez()
+
+    def odswiez():
+        otwarte = stan["otwarte"]
+        kontener_akcji.visible = otwarte
+        fab_glowny.icon = ft.Icons.CLOSE if otwarte else ikona_glowna
+        fab_glowny.shape = ft.CircleBorder() if otwarte else None
+        animuj = otwarte and db.czy_animacje_interfejsu()
+        kontener_akcji.opacity = 0 if animuj else 1
+        kontener_akcji.offset = ft.Offset(0, 0.06) if animuj else ft.Offset(0, 0)
+        _odswiez()
+        if animuj:
+            try:
+                page.run_task(_wjazd_pigulek)
+            except Exception:
+                kontener_akcji.opacity, kontener_akcji.offset = 1, ft.Offset(0, 0)
 
     def zamknij():
         stan["otwarte"] = False
@@ -907,25 +973,9 @@ def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szy
                 await wynik
         return wrapper
 
-    wiersze = []
-    for ikona, etykieta, akcja in akcje:
-        wiersze.append(
-            ft.Row([
-                ft.Container(
-                    padding=ft.Padding(10, 6, 10, 6), border_radius=8,
-                    bgcolor=ft.Colors.SURFACE,
-                    shadow=ft.BoxShadow(blur_radius=4, color=ft.Colors.with_opacity(0.25, ft.Colors.BLACK)),
-                    content=ft.Text(etykieta, size=12, weight="bold")
-                ),
-                ft.FloatingActionButton(
-                    icon=ikona, mini=True, bgcolor=ft.Colors.SURFACE, foreground_color=ft.Colors.PRIMARY,
-                    on_click=opakuj_akcje(akcja)
-                )
-            ], alignment=ft.MainAxisAlignment.END, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
-        )
-
-    kontener_akcji.controls = wiersze
-    return ft.Column([kontener_akcji, fab_glowny], horizontal_alignment=ft.CrossAxisAlignment.END, spacing=10, tight=True)
+    kontener_akcji.controls = [pigulka_fab(ikona, napis, opakuj_akcje(akcja)) for ikona, napis, akcja in akcje]
+    return ft.Column([kontener_akcji, fab_glowny], horizontal_alignment=ft.CrossAxisAlignment.END,
+                     spacing=SPACING["md"], tight=True)
 
 
 def fab_animowany(icon, on_click, tooltip=None):
@@ -966,6 +1016,8 @@ __all__ = [
     "komponent_wyboru_stacji",
     "komponent_wyboru_warsztatu",
     "odznaka_kategorii_innych",
+    "pigulka_fab",
+    "rysunek_pustego_stanu",
     "segmented_control",
     "tytul_sekcji",
     "wiersz_danych",

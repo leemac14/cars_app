@@ -94,7 +94,7 @@ class DokumentyView(ft.View):
                 "ważności, o której przypomni dzwonek.")
         if not self.moge_dodawac:
             return ft.Container(padding=30, content=ft.Column([
-                ft.Icon(ft.Icons.FOLDER_SHARED, size=46, color=ft.Colors.PRIMARY),
+                utils.rysunek_pustego_stanu(ft.Icons.FOLDER_SHARED),
                 ft.Text("Brak dokumentów", size=utils.FS["heading"], weight="bold"),
             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10))
         return ft.Column([

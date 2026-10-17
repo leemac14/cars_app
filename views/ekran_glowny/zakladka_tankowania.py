@@ -140,7 +140,7 @@ class MiksinZakladkiTankowania:
                     **utils.styl_pola()
                 )
             ))
-            self.lista_kart_tankowania = ft.ListView(spacing=15, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
+            self.lista_kart_tankowania = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
             utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_tankowania, "lista:tankowania")
             self.uzyj_wirtualizacji = True
             self.wszystkie_karty_tankowania = []
@@ -153,13 +153,19 @@ class MiksinZakladkiTankowania:
             po_filtrach = tankowania_po_filtrach
             utils.posortuj_liste(po_filtrach, self.state, "tankowania", opcje_sort)
 
+            def usun_tankowanie_od_razu(tid):
+                wynik = db.usun_z_cofnieciem("tankowania", tid)
+                utils.przejdz(self._page, "/")
+                utils.pokaz_komunikat_cofnij(self._page, "Usunięto tankowanie.", wynik)
+
+            def notatka_tankowania(tid):
+                utils.szybka_notatka(self._page, "tankowania", tid, lambda: utils.przejdz(self._page, "/"),
+                                     "Notatka do tankowania")
+
             def otworz_menu_t(tid, pliki=None, notatka=None):
                 def usun_tankowanie():
-                    def wykonaj():
-                        wynik = db.usun_z_cofnieciem("tankowania", tid)
-                        utils.przejdz(self._page, "/")
-                        utils.pokaz_komunikat_cofnij(self._page, "Usunięto tankowanie.", wynik)
-                    utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć to tankowanie?", wykonaj)
+                    utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć to tankowanie?",
+                                    lambda: usun_tankowanie_od_razu(tid))
 
                 pozycje = utils.pozycje_menu_zalacznikow(self._page, "tankowania", tid, pliki, "Tankowanie",
                                                          lambda: utils.przejdz(self._page, "/"))
@@ -181,6 +187,7 @@ class MiksinZakladkiTankowania:
                 mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
                 dwuzrodlowy_lista = len(db.rodzaje_energii_pojazdu(self.state.auto_id)) > 1
                 j = utils.jednostka_dystansu()  # raz na całą listę
+                gesty = utils.wolno_zmieniac(self.state.auto_id)  # podgląd: bez gestów
                 for w in po_filtrach:
                     # Etykiety idą za RODZAJEM WPISU, nie za typem pojazdu —
                     # w jednej liście plug-ina stoją obok siebie litry i kWh.
@@ -239,12 +246,16 @@ class MiksinZakladkiTankowania:
                     if wspolny_id and (w.get('dodane_przez') or w.get('zmodyfikowane_przez')):
                         tresc_karty.append(utils.znacznik_atrybucji(w.get('dodane_przez'), w.get('zmodyfikowane_przez'), w.get('data_modyfikacji')))
 
-                    kontener = ft.Container(padding=15, border_radius=10, ink=True, content=ft.Column(tresc_karty))
+                    kontener = ft.Container(padding=utils.wypelnienie_karty(), border_radius=10, ink=True, content=ft.Column(tresc_karty))
 
                     self.karty_ref[tid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, tid, lambda id_el=tid, pl=w.get('pliki'), nt=w.get('notatka'): otworz_menu_t(id_el, pl, nt), "tankowania")
 
-                    karta_t = ft.Card(elevation=1, content=kontener)
+                    karta_t = utils.gesty_karty(
+                        self._page, ft.Card(elevation=1, content=kontener), widok=self,
+                        usun=(lambda rid=tid: usun_tankowanie_od_razu(rid)) if gesty else None,
+                        notatka=(lambda rid=tid: notatka_tankowania(rid)) if gesty else None,
+                    )
                     tekst_szukaj = f"{w.get('data')} {w.get('stacja')} {cena_str} {dystans_val} {sp_str} {w.get('tagi')} {db.ETYKIETY_RODZAJU[rodzaj_w]} {w.get('typ_ladowania') or ''} {w.get('notatka') or ''}".lower()
                     self.wszystkie_karty_tankowania.append({
                         "karta": karta_t, "szukaj": tekst_szukaj,

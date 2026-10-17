@@ -2,7 +2,6 @@
 systemowe „Udostępnij” i jasność ekranu."""
 
 import flet as ft
-import inspect
 import urllib.parse
 
 import log
@@ -128,9 +127,7 @@ def zadzwon(page: ft.Page, numer):
 
     async def _zadanie():
         try:
-            wynik = page.launch_url(f"tel:{czysty}")
-            if inspect.isawaitable(wynik):
-                await wynik
+            await ft.UrlLauncher().launch_url(f"tel:{czysty}")
         except Exception:
             kopiuj_do_schowka(page, numer, "Nie udało się zadzwonić — numer w schowku")
 
@@ -164,9 +161,7 @@ def pokaz_na_mapie(page: ft.Page, adres):
 
     async def _zadanie():
         try:
-            wynik = page.launch_url(link)
-            if inspect.isawaitable(wynik):
-                await wynik
+            await ft.UrlLauncher().launch_url(link)
         except Exception:
             kopiuj_do_schowka(page, adres, "Nie udało się otworzyć map — adres w schowku")
 

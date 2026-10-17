@@ -151,38 +151,26 @@ def przycisk_dzwonka(page: ft.Page, state) -> ft.Control:
     else:
         kolor_ikony = KOLOR_STATUS["warning"]
 
-    ikona = ft.IconButton(
-        icon=ft.Icons.NOTIFICATIONS_ROUNDED if liczba else ft.Icons.NOTIFICATIONS_OUTLINED,
-        icon_color=kolor_ikony,
-        icon_size=20,
-        tooltip=opis_dzwonka(liczba, len(nowe)),
-        width=36, height=36,
-        style=ft.ButtonStyle(padding=0),
+    # Odznaka M3 na samej ikonie (nie w rogu przycisku); przycisk ma pełne 48 dp dotyku.
+    znak = ft.Icon(
+        ft.Icons.NOTIFICATIONS_ROUNDED if liczba else ft.Icons.NOTIFICATIONS_OUTLINED,
+        color=kolor_ikony, size=22,
+        badge=ft.Badge(label=str(len(nowe)) if len(nowe) < 10 else "9+",
+                       bgcolor=KOLOR_STATUS["critical"], text_color=ft.Colors.WHITE) if nowe else None,
     )
-
-    if liczba == 0:
-        ikona.on_click = lambda e: pokaz_panel_powiadomien(page, state)
-        return ikona
-
-    odznaka = ft.Container(
-        content=ft.Text(str(len(nowe)) if len(nowe) < 10 else "9+", size=9, color=ft.Colors.WHITE, weight="bold"),
-        width=14, height=14, border_radius=7, bgcolor=KOLOR_STATUS["critical"],
-        alignment=ft.Alignment.CENTER,
-    )
-    odznaka_pozycja = ft.Container(odznaka, right=0, top=0, visible=bool(nowe))
+    ikona = ft.IconButton(icon=znak, tooltip=opis_dzwonka(liczba, len(nowe)))
 
     def po_kliknieciu(e):
         # Samo zapamiętanie obejrzenia robi panel — dzięki temu działa też
         # wtedy, gdy otwiera się go z kafla „Termin” na kokpicie.
-        ikona.icon_color = ft.Colors.ON_SURFACE
+        znak.color = ft.Colors.ON_SURFACE
+        znak.badge = None
         ikona.tooltip = opis_dzwonka(liczba, 0)
-        odznaka_pozycja.visible = False
         page.update()
         pokaz_panel_powiadomien(page, state)
 
-    ikona.on_click = po_kliknieciu
-
-    return ft.Stack([ikona, odznaka_pozycja], width=36, height=36)
+    ikona.on_click = po_kliknieciu if liczba else (lambda e: pokaz_panel_powiadomien(page, state))
+    return ikona
 
 
 def pokaz_panel_powiadomien(page: ft.Page, state):
@@ -317,7 +305,7 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             ], tight=True, spacing=10),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
-                ft.ElevatedButton("Odłóż", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+                ft.Button("Odłóż", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
             ],
         )
         otworz_dialog(page, dlg)
@@ -845,7 +833,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
             ),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
-                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
+                ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY)
             ]
         )
         otworz_dialog(page, dlg)

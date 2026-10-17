@@ -133,6 +133,7 @@ class MainView(
         self._gotowy = True
 
     def zmien_zakladke(self, e):
+        utils.wibracja(self._page, "wybor")
         self.przelacz_zakladke(int(e.control.selected_index))
 
     def _zawartosc_zakladki(self):
@@ -278,6 +279,13 @@ class MainView(
             self.state.koszty_podzakladka = int(podzakladka)
 
         self._wyczysc_stan_zakladki()
+        # Kokpit — pełna karta auta, reszta — pasek auta (MiksinNaglowkaAuta).
+        if getattr(self, "naglowek_auta", None) is not None:
+            self.pokaz_naglowek_auta()
+            try:
+                self.naglowek_auta.update()
+            except Exception:
+                log.polkniety("podmiana nagłówka auta przy zmianie zakładki")
         # Liczniki przy skrótach i w szufladzie liczyły się dotąd w konstruktorze,
         # czyli przy każdym przełączeniu zakładki. Skoro konstruktor już nie
         # powstaje, przeliczamy je tutaj — inaczej kafelek pokazywałby stan sprzed

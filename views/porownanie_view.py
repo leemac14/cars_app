@@ -120,7 +120,7 @@ class PorownanieView(ft.View):
                     ft.Container(
                         padding=30,
                         content=ft.Column([
-                            ft.Icon(ft.Icons.TOUCH_APP, size=48, color=ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY)),
+                            utils.rysunek_pustego_stanu(ft.Icons.TOUCH_APP),
                             ft.Container(height=8),
                             ft.Text(
                                 "Zaznacz co najmniej 2 pojazdy powyżej, aby zobaczyć porównanie.",

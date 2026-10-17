@@ -158,7 +158,6 @@ def wybierz_z_galerii(page: ft.Page, state, po_dodaniu=None):
     if not _wolno_dodac_szkic(page, state):
         return
     auto_id = state.auto_id
-    obsluzono = {"wartosc": False}
 
     async def dodaj(pliki):
         sciezki = [p.path for p in (pliki or []) if getattr(p, "path", None)]
@@ -175,15 +174,7 @@ def wybierz_z_galerii(page: ft.Page, state, po_dodaniu=None):
         if po_dodaniu:
             po_dodaniu()
 
-    def po_wyborze(e):
-        if obsluzono["wartosc"]:
-            return
-        obsluzono["wartosc"] = True
-        page.run_task(dodaj, getattr(e, "files", None))
-
     async def wybierz():
-        page.zalacznik_picker.on_result = po_wyborze
-        page.zalacznik_picker.update()
         try:
             wynik = await page.zalacznik_picker.pick_files(
                 file_type=ft.FilePickerFileType.CUSTOM,
@@ -193,10 +184,7 @@ def wybierz_z_galerii(page: ft.Page, state, po_dodaniu=None):
         except Exception as ex:
             pokaz_komunikat(page, f"Błąd wczytywania pliku: {ex}", KOLOR_STATUS["error"])
             return
-        if wynik is not None and not obsluzono["wartosc"]:
-            obsluzono["wartosc"] = True
-            pliki = getattr(wynik, "files", wynik)
-            await dodaj(pliki if isinstance(pliki, list) else None)
+        await dodaj(wynik)
 
     page.run_task(wybierz)
 

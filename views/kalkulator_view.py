@@ -260,7 +260,7 @@ class KalkulatorTrasyView(ft.View):
             content=ft.Column([e_nazwa, podsumowanie], tight=True, spacing=10),
             actions=[
                 ft.TextButton("Anuluj", on_click=lambda e: utils.zamknij_dialog(self._page, dlg)),
-                ft.ElevatedButton("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
+                ft.Button("Zapisz", on_click=zapisz, bgcolor=ft.Colors.PRIMARY, color=ft.Colors.ON_PRIMARY),
             ],
         )
         utils.otworz_dialog(self._page, dlg)

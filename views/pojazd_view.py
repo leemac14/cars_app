@@ -298,7 +298,7 @@ class PojazdView(ft.View):
                 wiersz.controls.append(ft.IconButton(
                     ft.Icons.EDIT, icon_size=16, icon_color=ft.Colors.ON_SURFACE_VARIANT,
                     tooltip="Zmień notatkę", on_click=self._edytuj_oferte,
-                    style=ft.ButtonStyle(padding=0), width=34, height=34))
+                    style=ft.ButtonStyle(padding=0)))
             return wiersz
         if mozna_zmieniac and jest_polisa:
             return ft.Container(

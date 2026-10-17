@@ -447,6 +447,25 @@ def napisy(korzen):
     return wynik
 
 
+def kontrolki(korzen, typ=None):
+    """Kontrolki poddrzewa wszerz — wszystkie albo danego typu (też tła gestów i paski)."""
+    import flet as ft
+
+    wynik, kolejka = [], [korzen]
+    while kolejka:
+        kontrolka = kolejka.pop(0)
+        if typ is None or isinstance(kontrolka, typ):
+            wynik.append(kontrolka)
+        for pole in ("controls", "content", "title", "subtitle", "leading", "trailing", "actions",
+                     "appbar", "background", "secondary_background"):
+            dziecko = getattr(kontrolka, pole, None)
+            if isinstance(dziecko, (list, tuple)):
+                kolejka.extend(d for d in dziecko if isinstance(d, ft.Control))
+            elif isinstance(dziecko, ft.Control):
+                kolejka.append(dziecko)
+    return wynik
+
+
 # ============================================================================
 #  WIDOKI
 # ============================================================================
