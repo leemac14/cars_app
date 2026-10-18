@@ -10,7 +10,7 @@ import log
 from .stale import FS, IKONY_RODZAJU_SERWISU, KOLORY_RODZAJU_SERWISU, RADIUS, SPACING, formatuj_liczba
 from .format import formatuj_dni, formatuj_dystans, jednostka_dystansu, symbol_waluty
 from .typografia import KOLOR_DRUGIEGO_PLANU, etykieta, podpis, wartosc
-from .wyglad import dol_bezpieczny, pasek_zawijany, powierzchnia, tlo_toru
+from .wyglad import dol_bezpieczny, pasek_zawijany, powierzchnia, wiersz_udzialu
 from .dialogi import otworz_dno, zamknij_dno
 from .sync_ui import wypchnij_w_tle
 from .wykresy import _kropka_legendy, okresy_slupkow, znacznik_trendu
@@ -97,31 +97,14 @@ def chip_rodzaju_serwisu(rodzaj, planowe=False):
 def paski_rodzajow(page: ft.Page, dane, scena=None):
     """Koszt serwisu wg rodzaju — trzy paski zawsze, „Bez rodzaju” tylko z kosztem albo
     naprawą. `dane` z db.awarie_i_eksploatacja."""
-    w = symbol_waluty()
     wiersze = []
     for rodzaj in (*db.RODZAJE_SERWISU, None):
         grupa = dane["rodzaje"][rodzaj]
         if rodzaj is None and not grupa["liczba"]:
             continue
-        kolor = KOLORY_RODZAJU_SERWISU[rodzaj]
-        procent = grupa["udzial"] or 0.0
-        tor = ft.ProgressBar(value=procent / 100 if procent > 0 else 0, color=kolor,
-                             bgcolor=tlo_toru(page), height=6, border_radius=3)
-        if scena is not None:
-            scena.nastepny_wiersz()
-            tor = scena.wskaznik(tor)
-        wiersze.append(ft.Column([
-            ft.Row([
-                ft.Row([
-                    ft.Icon(IKONY_RODZAJU_SERWISU[rodzaj], size=15, color=kolor),
-                    ft.Text(ETYKIETY_SERII[rodzaj], weight="bold", size=13, color=ft.Colors.ON_SURFACE,
-                            no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
-                ], spacing=6, expand=True),
-                ft.Text(f"{formatuj_liczba(grupa['kwota'])} {w} ({formatuj_liczba(procent, 0)}%)",
-                        weight="bold", size=13, color=kolor, no_wrap=True),
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            tor,
-        ], spacing=3))
+        wiersze.append(wiersz_udzialu(page, IKONY_RODZAJU_SERWISU[rodzaj], ETYKIETY_SERII[rodzaj],
+                                      grupa["kwota"], grupa["udzial"] or 0.0,
+                                      KOLORY_RODZAJU_SERWISU[rodzaj], scena=scena))
     return wiersze
 
 
@@ -212,11 +195,13 @@ def wykres_awarii(page: ft.Page, dane, zakres, dzisiaj=None):
             # ostatnia kolumna wychodzi poza kartę na wąskim telefonie.
             ft.Text(etyk.replace("/", "\n") if ile > 9 or len(etyk) > 5 else etyk, size=rozmiar_etykiety,
                     text_align=ft.TextAlign.CENTER, color=ft.Colors.ON_SURFACE_VARIANT),
-        ], alignment=ft.MainAxisAlignment.END, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4))
+        ], alignment=ft.MainAxisAlignment.END, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4,
+            expand=True))
 
     obecne = [r for r in KOLEJNOSC_SEGMENTOW if any(s[r] > 0 for s in sumy)]
+    # Kolumny po równo (expand): dwanaście kwartałów z podpisami nie mieściło się na 360 dp.
     return ft.Column([
-        ft.Row(kolumny, alignment=ft.MainAxisAlignment.SPACE_EVENLY, vertical_alignment=ft.CrossAxisAlignment.END),
+        ft.Row(kolumny, spacing=2, vertical_alignment=ft.CrossAxisAlignment.END),
         pasek_zawijany([_kropka_legendy(KOLORY_RODZAJU_SERWISU[r], ETYKIETY_SERII[r]) for r in obecne],
                        spacing=12, run_spacing=4),
     ], spacing=10)

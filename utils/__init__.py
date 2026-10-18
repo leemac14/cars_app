@@ -42,6 +42,7 @@ from .plik_pojazdu import *
 from .zaproszenia import *
 from .powiadomienia import *
 from .przyszlosc import *
+from .wykresy_analizy import *
 from .nawigacja import *
 from .zaznaczanie import *
 
@@ -83,6 +84,7 @@ from . import (
     zaproszenia,
     powiadomienia,
     przyszlosc,
+    wykresy_analizy,
     nawigacja,
     zaznaczanie,
 )

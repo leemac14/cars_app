@@ -4,8 +4,9 @@ import colorsys
 import db
 import flet as ft
 
-from .stale import KOLOR_STATUS, MAPA_KOLOROW, RADIUS
-from .typografia import SKALA_TEKSTU
+from .stale import FS, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, formatuj_liczba
+from .format import symbol_waluty
+from .typografia import KOLOR_DRUGIEGO_PLANU, SKALA_TEKSTU, podpis
 
 
 def _czy_ciemny(page: ft.Page = None) -> bool:
@@ -344,6 +345,32 @@ def tlo_toru(page: ft.Page = None):
     return ft.Colors.with_opacity(UDZIAL_TLA_TORU, ft.Colors.ON_SURFACE)
 
 
+def wiersz_udzialu(page: ft.Page, ikona, nazwa, kwota, procent, kolor, dopisek=None, scena=None):
+    """Udział w całości: ikona w kolorze serii, nazwa, kwota i procent tekstem, pod spodem
+    pasek w kolorze serii (z `scena` napełnia się kaskadą). Wspólny dla kart udziałów Analizy."""
+    procent = float(procent or 0.0)
+    tor = ft.ProgressBar(value=procent / 100 if procent > 0 else 0, color=kolor,
+                         bgcolor=tlo_toru(page), height=6, border_radius=3)
+    if scena is not None:
+        scena.nastepny_wiersz()
+        tor = scena.wskaznik(tor)
+    wiersz = [
+        ft.Row([
+            ft.Icon(ikona, size=16, color=kolor),
+            ft.Text(nazwa, size=FS["body"], color=ft.Colors.ON_SURFACE, max_lines=2,
+                    overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+            ft.Text(f"{formatuj_liczba(kwota)} {symbol_waluty()}", size=FS["body"], weight="bold",
+                    color=ft.Colors.ON_SURFACE, no_wrap=True),
+            ft.Text(f"{formatuj_liczba(procent, 0)}%", size=FS["label"], color=KOLOR_DRUGIEGO_PLANU,
+                    no_wrap=True, width=34, text_align=ft.TextAlign.RIGHT),
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        tor,
+    ]
+    if dopisek:
+        wiersz.append(podpis(dopisek))
+    return ft.Column(wiersz, spacing=4)
+
+
 # Tło neutralnej odznaki („rok w toku", autor wpisu, kółko pod ikoną). Też jedna
 # wartość: pigułka jest pigułką niezależnie od ekranu, a chodziła w 0,10 i 0,14.
 UDZIAL_TLA_ODZNAKI = 0.10
@@ -453,6 +480,7 @@ __all__ = [
     "tlo_odznaki",
     "tlo_stanu",
     "tlo_toru",
+    "wiersz_udzialu",
     "wypelnienie_karty",
     "zastosuj_motywy",
     "zbuduj_motyw",

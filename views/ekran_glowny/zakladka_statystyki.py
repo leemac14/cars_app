@@ -2,7 +2,6 @@
 
 import db
 import flet as ft
-import flet_charts as fc
 import sqlite3
 import utils
 from date import parsuj_date
@@ -41,13 +40,6 @@ class MiksinZakladkiStatystyki:
         liczniki = [int(t.get('przebieg') or 0) for t in tankowania if int(t.get('przebieg') or 0) > 0]
         dystans = (max(liczniki) - min(liczniki)) if len(liczniki) > 1 else 0
 
-        # Wykresy zużycia i cen mówią o JEDNYM źródle energii: podstawowym dla
-        # auta (paliwo, u elektryka prąd). Plug-in miesza tu litry z kWh tak
-        # samo, jak wcześniej mieszał je ranking stacji.
-        rodzaj_wykresow = db.domyslny_rodzaj_energii(self.state.auto_id)
-        etykiety_wykresow = db.etykiety_energii(rodzaj_wykresow)
-        jednostka_wykresow = etykiety_wykresow["jednostka"]
-
         razem = pal + serw + inn
         koszt_km = (razem / dystans) if dystans > 0 else 0.0
 
@@ -60,25 +52,7 @@ class MiksinZakladkiStatystyki:
         def kafel(ikona, tytul, wartosc, kolor=ft.Colors.PRIMARY, expand=None):
             # Ikona nad wartością, nie obok: w połówce ekranu obok ikony zostawało
             # ~74 dp i „Zatankowano” łamało się w środku słowa.
-            return ft.Card(
-                elevation=1,
-                expand=expand,
-                content=ft.Container(
-                    padding=15,
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Container(
-                                content=ft.Icon(ikona, color=kolor, size=18),
-                                bgcolor=ft.Colors.with_opacity(0.13, kolor),
-                                border_radius=8,
-                                padding=6
-                            ),
-                            ft.Text(tytul, size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
-                        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Text(wartosc, weight="bold", size=17),
-                    ], spacing=8)
-                )
-            )
+            return utils.kafel_liczby(self._page, ikona, tytul, wartosc, kolor, expand)
 
         # Rok w pigułce, budżet, historia przebiegu i porównanie pojazdów to
         # wszystko „patrzenie na dane” — ale każde mieszkało gdzie indziej
@@ -113,7 +87,7 @@ class MiksinZakladkiStatystyki:
             dwuzrodlowy = len(statystyki_energii) > 1
 
             self.elementy.extend([
-                ft.Row(utils.tytul_sekcji(ft.Icons.PIE_CHART, "Podsumowanie kosztów"), spacing=8),
+                utils.naglowek_analizy(ft.Icons.PIE_CHART, "Podsumowanie kosztów"),
                 kafel(ft.Icons.ATTACH_MONEY, "Całkowity koszt", f"{utils.formatuj_liczba(razem)} {utils.symbol_waluty()}", ft.Colors.RED_700),  # paleta: tożsamość — kolor kategorii kosztu
                 ft.Row([
                     kafel(ft.Icons.LOCAL_GAS_STATION, "Na energię" if dwuzrodlowy else "Na paliwo",
@@ -123,7 +97,7 @@ class MiksinZakladkiStatystyki:
                 ft.Row([
                     kafel(ft.Icons.RECEIPT_LONG, "Inne koszty", f"{utils.formatuj_liczba(inn)} {utils.symbol_waluty()}", ft.Colors.GREEN_700, expand=1),  # paleta: tożsamość — kolor kategorii kosztu
                     kafel(ft.Icons.ADD_ROAD, f"Koszt 1 {j}",
-                          utils.formatuj_na_dystans(koszt_km, f" {utils.symbol_waluty()}/", 2, j),
+                          utils.formatuj_na_dystans(koszt_km, f"{utils.symbol_waluty()}/", 2, j),
                           ft.Colors.PURPLE_700, expand=1),
                 ], spacing=10),
             ])
@@ -139,7 +113,7 @@ class MiksinZakladkiStatystyki:
                                 if dwuzrodlowy else "Wskaźniki i paliwo")
                 ikona_sekcji = ft.Icons.EV_STATION if czy_prad else ft.Icons.INSIGHTS
 
-                self.elementy.append(ft.Row(utils.tytul_sekcji(ikona_sekcji, tytul_sekcji), spacing=8))
+                self.elementy.append(utils.naglowek_analizy(ikona_sekcji, tytul_sekcji))
                 self.elementy.append(ft.Row([
                     kafel(ft.Icons.SPEED, etyk["zuzycie"],
                           utils.formatuj_spalanie(stat["zuzycie"], elektryczny=czy_prad)
@@ -178,7 +152,7 @@ class MiksinZakladkiStatystyki:
 
             udzial = db.pobierz_udzial_energii(self.state.auto_id)
             if udzial:
-                self.elementy.append(ft.Row(utils.tytul_sekcji(ft.Icons.PIE_CHART_OUTLINE, "Wydatek na energię"), spacing=8))
+                self.elementy.append(utils.naglowek_analizy(ft.Icons.PIE_CHART_OUTLINE, "Wydatek na energię"))
                 self.elementy.append(ft.Row([
                     kafel(ft.Icons.EV_STATION, "Wydatek na prąd",
                           f"{utils.formatuj_liczba(udzial['procent_prad'], 0)}%",
@@ -218,7 +192,7 @@ class MiksinZakladkiStatystyki:
                 ], spacing=10))
 
             self.elementy.extend([
-                ft.Row(utils.tytul_sekcji(ft.Icons.INSIGHTS, "Przebieg"), spacing=8),
+                utils.naglowek_analizy(ft.Icons.INSIGHTS, "Przebieg"),
                 ft.Row([
                     kafel(ft.Icons.ROUTE, "Zanotowany dystans", utils.formatuj_dystans(dystans, 0, j), ft.Colors.INDIGO_700, expand=1),
                     kafel(ft.Icons.TIMELAPSE, "Średnio dziennie", sredni_dz_str, ft.Colors.BLUE_GREY_700, expand=1),
@@ -226,587 +200,9 @@ class MiksinZakladkiStatystyki:
             ])
 
         elif self.state.stat_podzakladka == 1:
-            # Każda karta w tej podzakładce pyta o swój zakres osobno — chipy
-            # utils.pasek_zakresu_czasu nad wykresem. Wcześniej wydatki miały
-            # zaszyte sześć miesięcy, a reszta liczyła się z całej historii;
-            # przy kilkuletnim dzienniku obie wartości były złe, tylko
-            # w przeciwnych kierunkach.
-            def suma_w_zakresie(pary, granica):
-                suma = 0.0
-                for data_str, kwota in pary:
-                    d = parsuj_date(data_str)
-                    if d == datetime.min.date() or (granica and d < granica):
-                        continue
-                    suma += float(kwota or 0.0)
-                return suma
-
-            pary_paliwa = [(t.get('data'), t.get('kwota')) for t in tankowania]
-            pary_serwisu = ([(r['data'], r['cena']) for r in wh]
-                            + [(r['data'], r['koszt_calkowity']) for r in ww])
-            pary_innych = [(r['data'], r['kwota']) for r in wi]
-
-            # Najstarszy miesiąc z jakimkolwiek wpisem — od niego zaczyna oś
-            # przy zakresie „Wszystko”.
-            najstarszy_mc = None
-            for data_str, _ in pary_paliwa + pary_serwisu + pary_innych:
-                d = parsuj_date(data_str)
-                if d == datetime.min.date():
-                    continue
-                klucz_mc = f"{d.year}-{d.month:02d}"
-                if najstarszy_mc is None or klucz_mc < najstarszy_mc:
-                    najstarszy_mc = klucz_mc
-
-            granica_struktury = utils.granica_zakresu(utils.zakres_wykresu(self.state, "struktura"))
-            pal_z = suma_w_zakresie(pary_paliwa, granica_struktury)
-            serw_z = suma_w_zakresie(pary_serwisu, granica_struktury)
-            inn_z = suma_w_zakresie(pary_innych, granica_struktury)
-            razem_z = pal_z + serw_z + inn_z
-
-            proc_pal = (pal_z / razem_z * 100) if razem_z > 0 else 0
-            proc_ser = (serw_z / razem_z * 100) if razem_z > 0 else 0
-            proc_inn = (inn_z / razem_z * 100) if razem_z > 0 else 0
-
-            def segment_procentowy(ikona, tytul, kwota, procent, kolor):
-                # Każdy pasek to osobny wiersz kaskady — ruszają jeden po drugim,
-                # więc widać, która kategoria zjadła ile, zanim się je przeczyta.
-                self._scena_zakladki.nastepny_wiersz()
-                return ft.Column([
-                    ft.Row([
-                        ft.Row([
-                            ft.Icon(ikona, size=15, color=kolor),
-                            ft.Text(tytul, weight="bold", size=13, color=ft.Colors.ON_SURFACE,
-                                    expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
-                        ], spacing=6, expand=True),
-                        ft.Text(
-                            f"{utils.formatuj_liczba(kwota)} {utils.symbol_waluty()} ({utils.formatuj_liczba(procent, 0)}%)",
-                            weight="bold", size=13, color=kolor, no_wrap=True,
-                        )
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    self._scena_zakladki.wskaznik(ft.ProgressBar(
-                        value=(procent / 100) if procent > 0 else 0,
-                        color=kolor,
-                        bgcolor=utils.tlo_toru(self._page),
-                        height=8,
-                        border_radius=4
-                    ))
-                ], spacing=4)
-
-            karta_struktury = ft.Container(
-                padding=utils.SPACING["lg"],
-                **utils.powierzchnia(self._page, "karta", cien="md"),
-                content=ft.Column([
-                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["paliwo"], "Paliwo", pal_z, proc_pal, ft.Colors.BLUE_700),
-                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["serwis"], "Serwis", serw_z, proc_ser, ft.Colors.ORANGE_700),  # paleta: tożsamość — kolor kategorii kosztu
-                    segment_procentowy(utils.IKONY_KATEGORII_KOSZTOW["inne"], "Inne", inn_z, proc_inn, ft.Colors.GREEN_700),  # paleta: tożsamość — kolor kategorii kosztu
-                ], spacing=12)
-            )
-
-            # ----- Rozbicie „Innych kosztów” na kategorie -----
-            # Pokazuje, czy „inne” rosną od opłat drogowych (jeżdżenia), czy od czegoś
-            # innego.
-            granica_kategorii = utils.granica_zakresu(utils.zakres_wykresu(self.state, "kategorie"))
-            rozbicie_innych = db.pobierz_koszty_innych_wg_kategorii(self.state.auto_id, granica_kategorii)
-            inn_kat = sum(suma_kat for _, suma_kat, _ in rozbicie_innych)
-            if rozbicie_innych:
-                wiersze_kategorii = []
-                for nazwa_kat, suma_kat, liczba_kat in rozbicie_innych:
-                    procent_kat = (suma_kat / inn_kat * 100) if inn_kat > 0 else 0
-                    self._scena_zakladki.nastepny_wiersz()
-                    wiersze_kategorii.append(ft.Column([
-                        ft.Row([
-                            ft.Row([
-                                ft.Icon(utils.ikona_kategorii_innych(nazwa_kat), size=15,
-                                        color=utils.kolor_kategorii_innych(nazwa_kat)),
-                                ft.Text(nazwa_kat, weight="bold", size=13, color=ft.Colors.ON_SURFACE,
-                                        max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
-                            ], spacing=6, expand=True),
-                            ft.Text(
-                                f"{utils.formatuj_liczba(suma_kat)} {utils.symbol_waluty()} ({utils.formatuj_liczba(procent_kat, 0)}%)",
-                                weight="bold", size=13, color=utils.kolor_kategorii_innych(nazwa_kat), no_wrap=True
-                            ),
-                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self._scena_zakladki.wskaznik(ft.ProgressBar(
-                            value=(procent_kat / 100) if procent_kat > 0 else 0,
-                            color=utils.kolor_kategorii_innych(nazwa_kat),
-                            bgcolor=utils.tlo_toru(self._page),
-                            height=6, border_radius=3,
-                        )),
-                        ft.Text(db.liczba_z_odmiana(liczba_kat, "wpis", "wpisy", "wpisów"),
-                                size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
-                    ], spacing=3))
-                karta_kategorii_innych = ft.Container(
-                    padding=utils.SPACING["lg"],
-                    **utils.powierzchnia(self._page, "karta", cien="md"),
-                    content=ft.Column(wiersze_kategorii, spacing=12),
-                )
-            else:
-                karta_kategorii_innych = ft.Container(
-                    padding=utils.SPACING["lg"],
-                    **utils.powierzchnia(self._page, "karta", cien="md"),
-                    content=ft.Text("Brak innych kosztów w wybranym okresie.", size=13, italic=True,
-                                    color=ft.Colors.ON_SURFACE_VARIANT),
-                )
-
-            # ----- Robocizna czy części -----
-            # Sam koszt serwisu nie mówi, czy drogi jest warsztat, czy części —
-            # a od tego zależy, czy szukać innego mechanika, czy kupować części
-            # samemu. Zakres jak przy pozostałych kartach: własny klucz.
-            granica_robocizny = utils.granica_zakresu(utils.zakres_wykresu(self.state, "robocizna"))
-            rozbicie_napraw = db.pobierz_rozbicie_napraw(self.state.auto_id, granica_robocizny)
-            karta_robocizny = utils.karta_robocizny_i_czesci(
-                self._page, rozbicie_napraw,
-                db.porownaj_czesci_wlasne(self.state.auto_id, granica_robocizny),
-                self._scena_zakladki,
-            )
-
-            # ----- Awarie kontra eksploatacja -----
-            # Suma serwisu rośnie też wtedy, gdy po prostu jeździsz więcej; udział awarii
-            # i odstępy między nimi mówią, czy auto zaczyna się sypać. Domyślnie cała historia.
-            zakres_awarii = utils.zakres_wykresu(self.state, "awarie")
-            dane_awarii = db.awarie_i_eksploatacja(self.state.auto_id, utils.granica_zakresu(zakres_awarii))
-            karta_awarii = utils.karta_awarii(
-                self._page, self.state.auto_id, dane_awarii, zakres_awarii, self._scena_zakladki,
-                po_zmianie=lambda: utils.odswiez_ekran(self._page),
-            )
-
-            dzisiaj = datetime.now()
-            zakres_wydatkow = utils.zakres_wykresu(self.state, "wydatki")
-            # Słupek to miesiąc tylko do roku wstecz. Przy „Wszystko” i dłuższej
-            # historii miesiące zbijają się w kwartały, a powyżej trzech lat
-            # w lata — patrz utils.okresy_slupkow.
-            okresy_wydatkow = utils.okresy_slupkow(zakres_wydatkow, najstarszy_mc, dzisiaj.date())
-            okres_miesiaca = {
-                mk: i for i, (_, klucze_okresu) in enumerate(okresy_wydatkow) for mk in klucze_okresu
-            }
-
-            wartosci_okresow = [0.0] * len(okresy_wydatkow)
-            for d_str, kw in pary_paliwa + pary_innych + pary_serwisu:
-                d = parsuj_date(d_str)
-                if d != datetime.min.date():
-                    i_okresu = okres_miesiaca.get(f"{d.year}-{d.month:02d}")
-                    if i_okresu is not None:
-                        wartosci_okresow[i_okresu] += float(kw or 0.0)
-
-            max_val = max(wartosci_okresow) if wartosci_okresow else 0
-            suma_okresu = sum(wartosci_okresow)
-            wysokosc_max_slupka = 120
-            biezacy_okres = okres_miesiaca.get(f"{dzisiaj.year}-{dzisiaj.month:02d}")
-
-            # Im więcej słupków, tym węższe i drobniej podpisane — przy dwunastu
-            # kwartałach sześć sztywnych szerokości z sześciu miesięcy nie
-            # zmieściłoby się na żadnym telefonie.
-            ile_slupkow = len(okresy_wydatkow)
-            szerokosc_slupka = 32 if ile_slupkow <= 6 else 26 if ile_slupkow <= 9 else 18
-            rozmiar_kwoty = 10 if ile_slupkow <= 6 else 9 if ile_slupkow <= 9 else 8
-            rozmiar_etykiety = 11 if ile_slupkow <= 6 else 10 if ile_slupkow <= 9 else 9
-
-            kolumny_wykresu = []
-            for i_okresu, (etyk, _) in enumerate(okresy_wydatkow):
-                val = wartosci_okresow[i_okresu]
-                wysokosc = int((val / max_val) * wysokosc_max_slupka) if max_val > 0 and val > 0 else 4
-                tekst_kwota = f"{int(round(val))}" if val > 0 else "-"
-                czy_biezacy = (i_okresu == biezacy_okres)
-                # Przy gęstej siatce podpis łamie się na dwie linijki ("1kw/24"
-                # → "1kw" nad "24") zamiast wychodzić poza swój słupek.
-                tekst_etykiety = etyk.replace("/", chr(10)) if ile_slupkow > 9 else etyk
-
-                kolor_slupka = (
-                    ft.Colors.PRIMARY if czy_biezacy else ft.Colors.with_opacity(0.5, ft.Colors.PRIMARY)
-                ) if val > 0 else ft.Colors.with_opacity(0.12, ft.Colors.ON_SURFACE)
-
-                kolumna_slupka = ft.Column([
-                    ft.Text(
-                        # Myślnik nad pustym słupkiem to nie kwota — pogrubienie
-                        # zostaje przy miesiącach, w których coś wydano.
-                        tekst_kwota, size=rozmiar_kwoty, weight="bold" if val > 0 else "normal",
-                        color=ft.Colors.PRIMARY if val > 0 else ft.Colors.ON_SURFACE_VARIANT
-                    ),
-                    ft.Container(
-                        width=szerokosc_slupka,
-                        height=max(6, wysokosc),
-                        bgcolor=kolor_slupka,
-                        border_radius=6,
-                        tooltip=f"{etyk}: {utils.formatuj_liczba(val)} {utils.symbol_waluty()}" if val > 0 else None,
-                        animate=ft.Animation(300, ft.AnimationCurve.EASE_OUT),
-                    ),
-                    ft.Text(
-                        tekst_etykiety, size=rozmiar_etykiety,
-                        weight="bold" if czy_biezacy else "normal",
-                        text_align=ft.TextAlign.CENTER,
-                        color=ft.Colors.PRIMARY if czy_biezacy else ft.Colors.ON_SURFACE_VARIANT
-                    )
-                ], alignment=ft.MainAxisAlignment.END, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4,
-                   expand=True)
-
-                kolumny_wykresu.append(kolumna_slupka)
-
-            karta_wykresu = ft.Card(
-                elevation=1,
-                content=ft.Container(
-                    padding=15,
-                    content=ft.Column([
-                        # Słupki dzielą wiersz po równo — dwanaście ze stałym odstępem
-                        # wychodziło za kartę.
-                        ft.Row(
-                            controls=kolumny_wykresu,
-                            spacing=2,
-                            vertical_alignment=ft.CrossAxisAlignment.END
-                        ),
-                        ft.Row(
-                            controls=[
-                                ft.Text(f"* wartości w {utils.symbol_waluty()}", size=10, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
-                            ],
-                            alignment=ft.MainAxisAlignment.END
-                        )
-                    ])
-                )
-            )
-
-            # Ta sama metoda odcinków „do pełna”, co kafelek, trend i obserwacje
-            # (kolejność po dacie, jedno źródło energii, granica tylko z licznikiem).
-            segmenty_spalania = db.pobierz_serie_spalania(self.state.auto_id, limit=None, rodzaj=rodzaj_wykresow)
-
-            spalanie_wg_mc = {}
-            for data_str, wartosc in segmenty_spalania:
-                d = parsuj_date(data_str)
-                if d == datetime.min.date():
-                    continue
-                klucz = f"{d.year}-{d.month:02d}"
-                spalanie_wg_mc.setdefault(klucz, []).append(wartosc)
-
-            granica_spalania = utils.granica_zakresu(utils.zakres_wykresu(self.state, "spalanie"))
-            klucz_od_spalania = f"{granica_spalania.year}-{granica_spalania.month:02d}" if granica_spalania else ""
-            punkty_spalania = [
-                p for p in sorted(
-                    ((k, sum(v) / len(v)) for k, v in spalanie_wg_mc.items()),
-                    key=lambda p: p[0]
-                ) if p[0] >= klucz_od_spalania
-            ]
-
-            if len(punkty_spalania) < 2:
-                karta_trendu = ft.Card(
-                    elevation=1,
-                    content=ft.Container(
-                        padding=15,
-                        content=ft.Text(
-                            "Za mało danych do wykresu trendu — potrzeba spalania policzonego z co najmniej "
-                            "2 różnych miesięcy w wybranym zakresie (min. 3 tankowania „do pełna”).",
-                            size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
-                        )
-                    )
-                )
-            else:
-                wartosci_spalania = [w for _, w in punkty_spalania]
-                min_val = min(wartosci_spalania)
-                max_val_sp = max(wartosci_spalania)
-                zapas = max((max_val_sp - min_val) * 0.15, 0.5)
-
-                pierwsza_wart, ostatnia_wart = wartosci_spalania[0], wartosci_spalania[-1]
-                zmiana_proc = ((ostatnia_wart - pierwsza_wart) / pierwsza_wart * 100) if pierwsza_wart > 0 else 0
-
-                def chip_trendu(ikona, tekst, kolor, tlo=True):
-                    return ft.Container(
-                        padding=ft.Padding(10, 5, 10, 5), border_radius=20,
-                        bgcolor=ft.Colors.with_opacity(0.15, kolor) if tlo else None,
-                        content=ft.Row([
-                            ft.Icon(ikona, size=14, color=kolor),
-                            ft.Text(tekst, size=12, weight="bold", color=kolor),
-                        ], spacing=5, tight=True),
-                    )
-
-                if zmiana_proc > 5:
-                    znacznik_trendu = chip_trendu(
-                        ft.Icons.TRENDING_UP,
-                        f"Rośnie o {utils.formatuj_liczba(zmiana_proc, 0)}%", utils.KOLOR_STATUS["critical"])
-                elif zmiana_proc < -5:
-                    znacznik_trendu = chip_trendu(
-                        ft.Icons.TRENDING_DOWN,
-                        f"Spada o {utils.formatuj_liczba(abs(zmiana_proc), 0)}%", utils.KOLOR_STATUS["ok"])
-                else:
-                    znacznik_trendu = chip_trendu(
-                        ft.Icons.TRENDING_FLAT, "Stabilne", ft.Colors.ON_SURFACE_VARIANT, tlo=False)
-
-                krok_etykiet = utils.krok_etykiet_osi(len(punkty_spalania))
-                etykiety_osi = []
-                for i, (klucz, _) in enumerate(punkty_spalania):
-                    if i % krok_etykiet != 0 and i != len(punkty_spalania) - 1:
-                        continue
-                    rok_i, mies_i = klucz.split("-")
-                    etykiety_osi.append(
-                        fc.ChartAxisLabel(
-                            value=i,
-                            label=ft.Text(f"{mies_i}/{rok_i[2:]}", size=9, color=ft.Colors.ON_SURFACE_VARIANT)
-                        )
-                    )
-
-                wykres_liniowy = fc.LineChart(
-                    data_series=[
-                        fc.LineChartData(
-                            points=[fc.LineChartDataPoint(i, w) for i, (_, w) in enumerate(punkty_spalania)],
-                            stroke_width=3,
-                            color=ft.Colors.TEAL_700,
-                            curved=True,
-                            rounded_stroke_cap=True,
-                        )
-                    ],
-                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text(f"{jednostka_wykresow}/100km", size=10), title_size=14),
-                    bottom_axis=fc.ChartAxis(labels=etykiety_osi, label_size=24),
-                    min_y=max(0, min_val - zapas),
-                    max_y=max_val_sp + zapas,
-                    min_x=0,
-                    max_x=len(punkty_spalania) - 1,
-                    expand=True,
-                )
-
-                karta_trendu = ft.Card(
-                    elevation=1,
-                    content=ft.Container(
-                        padding=15,
-                        content=ft.Column([
-                            ft.Row([
-                                ft.Text(f"{etykiety_wykresow['zuzycie']} w miesiącu", weight="bold", size=14, expand=True),
-                                znacznik_trendu
-                            ]),
-                            ft.Container(height=200, content=wykres_liniowy),
-                        ], spacing=10)
-                    )
-                )
-
-            granica_cen = utils.granica_zakresu(utils.zakres_wykresu(self.state, "ceny"))
-            # Zakres bierze też ranking stacji: karta stoi pod wykresem w tej
-            # samej sekcji, więc „najtańsza stacja” musi dotyczyć tego samego
-            # okresu, co krzywa nad nią.
-            trend_paliwa = db.pobierz_trend_cen_paliwa(self.state.auto_id, granica_cen, rodzaj_wykresow)
-
-            cena_wg_mc = {}
-            for data_str, cena in trend_paliwa["punkty"]:
-                d = parsuj_date(data_str)
-                if d == datetime.min.date():
-                    continue
-                klucz = f"{d.year}-{d.month:02d}"
-                cena_wg_mc.setdefault(klucz, []).append(cena)
-
-            punkty_cen_mc = sorted(
-                ((k, sum(v) / len(v)) for k, v in cena_wg_mc.items()),
-                key=lambda p: p[0]
-            )
-
-            if len(punkty_cen_mc) < 2:
-                karta_cen = ft.Card(
-                    elevation=1,
-                    content=ft.Container(
-                        padding=15,
-                        content=ft.Text(
-                            "Za mało danych do wykresu cen paliwa — potrzeba tankowań z co najmniej "
-                            "2 różnych miesięcy w wybranym zakresie.",
-                            size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
-                        )
-                    )
-                )
-            else:
-                wartosci_cen = [w for _, w in punkty_cen_mc]
-                min_c, max_c = min(wartosci_cen), max(wartosci_cen)
-                zapas_c = max((max_c - min_c) * 0.15, 0.05)
-
-                krok_etykiet_c = utils.krok_etykiet_osi(len(punkty_cen_mc))
-                etykiety_osi_c = []
-                for i, (klucz, _) in enumerate(punkty_cen_mc):
-                    if i % krok_etykiet_c != 0 and i != len(punkty_cen_mc) - 1:
-                        continue
-                    rok_i, mies_i = klucz.split("-")
-                    etykiety_osi_c.append(
-                        fc.ChartAxisLabel(
-                            value=i,
-                            label=ft.Text(f"{mies_i}/{rok_i[2:]}", size=9, color=ft.Colors.ON_SURFACE_VARIANT)
-                        )
-                    )
-
-                wykres_cen = fc.LineChart(
-                    data_series=[
-                        fc.LineChartData(
-                            points=[fc.LineChartDataPoint(i, w) for i, (_, w) in enumerate(punkty_cen_mc)],
-                            stroke_width=3,
-                            color=ft.Colors.BLUE_700,
-                            curved=True,
-                            rounded_stroke_cap=True,
-                        )
-                    ],
-                    left_axis=fc.ChartAxis(label_size=32, title=ft.Text(f"{utils.symbol_waluty()}/{jednostka_wykresow}", size=10), title_size=14),
-                    bottom_axis=fc.ChartAxis(labels=etykiety_osi_c, label_size=24),
-                    min_y=max(0, min_c - zapas_c),
-                    max_y=max_c + zapas_c,
-                    min_x=0,
-                    max_x=len(punkty_cen_mc) - 1,
-                    expand=True,
-                )
-
-                karta_cen = ft.Card(
-                    elevation=1,
-                    content=ft.Container(
-                        padding=15,
-                        content=ft.Column([
-                            ft.Text(f"Średnia cena za {'kWh' if rodzaj_wykresow == db.ENERGIA_PRAD else 'litr'} w miesiącu",
-                                    weight="bold", size=14),
-                            ft.Container(height=200, content=wykres_cen),
-                        ], spacing=10)
-                    )
-                )
-
-            stacje_ranking = trend_paliwa["stacje"]
-            if stacje_ranking:
-                wiersze_stacji = []
-                for i, s in enumerate(stacje_ranking[:5]):
-                    czy_najtansza = (i == 0)
-                    wiersze_stacji.append(
-                        ft.Row([
-                            ft.Row([
-                                ft.Icon(ft.Icons.EMOJI_EVENTS if czy_najtansza else ft.Icons.LOCAL_GAS_STATION,
-                                        size=16, color=utils.KOLOR_STATUS["accent"] if czy_najtansza else ft.Colors.ON_SURFACE_VARIANT),
-                                ft.Text(s["nazwa"], weight="bold" if czy_najtansza else "normal", size=13,
-                                        expand=True, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
-                            ], spacing=6, expand=True),
-                            ft.Text(
-                                f"{utils.formatuj_liczba(s['srednia_cena'], 2)} {utils.symbol_waluty()}/{jednostka_wykresow}  •  {s['liczba_tankowan']}x",
-                                size=13, weight="bold" if czy_najtansza else "normal", no_wrap=True,
-                                color=utils.KOLOR_STATUS["ok"] if czy_najtansza else ft.Colors.ON_SURFACE,
-                            )
-                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
-                    )
-
-                karta_stacji = ft.Card(
-                    elevation=1,
-                    content=ft.Container(
-                        padding=15,
-                        content=ft.Column([
-                            ft.Row([ft.Icon(ft.Icons.LOCAL_GAS_STATION, color=ft.Colors.PRIMARY),
-                                    ft.Text(f"Ranking stacji (śr. cena/{jednostka_wykresow})", weight="bold", size=14, expand=True)], spacing=8),
-                            ft.Divider(height=10),
-                            ft.Column(wiersze_stacji, spacing=10),
-                        ])
-                    )
-                )
-            else:
-                karta_stacji = ft.Card(
-                    elevation=1,
-                    content=ft.Container(
-                        padding=15,
-                        content=ft.Text(
-                            "Dodaj nazwę stacji przy tankowaniu, aby zobaczyć ranking najtańszych miejsc.",
-                            size=13, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
-                        )
-                    )
-                )
-
-            # ----- Koszt skumulowany -----
-            # Krzywa narastająca stoi PIERWSZA w Wykresach, bo odpowiada na
-            # pytanie najogólniejsze: ile to auto kosztowało do dzisiaj. Reszta
-            # wykresów rozbiera tę liczbę na części, więc ma sens dopiero po niej.
-            dane_skum = db.koszt_skumulowany(
-                self.state.auto_id, z_cena_zakupu=db.czy_skumulowany_z_cena_zakupu())
-
-            def przelacz_cene_zakupu(e):
-                db.zapisz_skumulowany_z_cena_zakupu(not db.czy_skumulowany_z_cena_zakupu())
-                utils.odswiez_ekran(self._page)
-
-            naglowek_skum = [
-                ft.Text("Koszt skumulowany", weight="bold", size=18,
-                        color=ft.Colors.PRIMARY, expand=True),
-            ]
-            # Chip pokazujemy tylko wtedy, gdy JEST co doliczyć: bez daty albo
-            # bez ceny zakupu przełącznik nie robiłby nic, a pytałby o zdanie.
-            if dane_skum.get("cena_zakupu") and dane_skum.get("czy_od_zakupu"):
-                z_zakupem = bool(dane_skum.get("z_cena_zakupu"))
-                naglowek_skum.append(ft.Container(
-                    height=26, padding=ft.Padding(10, 0, 10, 0),
-                    border_radius=utils.RADIUS["pill"], ink=True,
-                    bgcolor=ft.Colors.PRIMARY if z_zakupem else ft.Colors.TRANSPARENT,
-                    border=None if z_zakupem else ft.Border.all(1, ft.Colors.OUTLINE),
-                    animate=ft.Animation(180, ft.AnimationCurve.EASE_OUT),
-                    on_click=przelacz_cene_zakupu,
-                    tooltip=("Krzywa startuje od ceny zakupu — dotknij, aby zobaczyć samą eksploatację"
-                             if z_zakupem else
-                             "Krzywa pokazuje samą eksploatację — dotknij, aby doliczyć cenę zakupu"),
-                    content=ft.Row([
-                        ft.Icon(ft.Icons.SHOPPING_CART, size=13,
-                                color=ft.Colors.ON_PRIMARY if z_zakupem else ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text("Z ceną zakupu", size=utils.FS["caption"],
-                                weight="bold" if z_zakupem else "normal",
-                                color=ft.Colors.ON_PRIMARY if z_zakupem else ft.Colors.ON_SURFACE_VARIANT,
-                                no_wrap=True),
-                    ], spacing=5, tight=True),
-                ))
-
-            # ----- Koszt na 1000 km w oknie kroczącym -----
-            # Krzywa skumulowana mówi ILE auto kosztowało; ta mówi, czy zaczyna
-            # kosztować WIĘCEJ. Roczne sumy tego nie pokażą, bo rosną także
-            # wtedy, gdy po prostu jeździsz więcej.
-            dane_1000 = db.koszt_na_1000km(
-                self.state.auto_id, db.pobierz_okno_kroczace(self.state.auto_id))
-            karta_1000km = utils.karta_kosztu_1000km(self._page, dane_1000)
-
-            karta_skumulowanego = utils.karta_kosztu_skumulowanego(
-                self._page, dane_skum,
-                od_daty=utils.granica_zakresu(utils.zakres_wykresu(self.state, "skumulowany")),
-            )
-
-            # Pasek zakresu stoi NAD kartą, którą opisuje — między nagłówkiem
-            # a wykresem. Każdy ma własny klucz, więc zakresy nie chodzą parami.
-            self.elementy.extend([
-                ft.Row(naglowek_skum, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                utils.pasek_zakresu_czasu(self._page, self.state, "skumulowany"),
-                karta_skumulowanego,
-                ft.Divider(height=20),
-                ft.Text(f"Koszt na 1000 {utils.jednostka_dystansu()}", weight="bold", size=18, color=ft.Colors.PRIMARY),
-                utils.pasek_okna_kroczacego(self._page, self.state),
-                karta_1000km,
-                ft.Divider(height=20),
-                # Rok do roku odpowiada na inne pytanie niż dwa wykresy wyżej:
-                # nie „ile” i nie „czy drożeje”, tylko „od którego miesiąca”.
-                ft.Text("Rok do roku", weight="bold", size=18, color=ft.Colors.PRIMARY),
-                utils.pasek_lat_rdr(self._page, self.state),
-                utils.karta_rok_do_roku(self._page, self.state),
-                ft.Divider(height=20),
-                ft.Text("Struktura kosztów", weight="bold", size=18, color=ft.Colors.PRIMARY),
-                utils.pasek_zakresu_czasu(self._page, self.state, "struktura"),
-                karta_struktury,
-                ft.Divider(height=20),
-                ft.Row([
-                    ft.Text("Inne koszty wg kategorii", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Razem: {utils.formatuj_liczba(inn_kat)} {utils.symbol_waluty()}", size=13),
-                ]),
-                utils.pasek_zakresu_czasu(self._page, self.state, "kategorie"),
-                karta_kategorii_innych,
-                ft.Divider(height=20),
-                ft.Row([
-                    ft.Text("Robocizna czy części", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Razem: {utils.formatuj_liczba(rozbicie_napraw['razem'])} {utils.symbol_waluty()}", size=13),
-                ]),
-                utils.pasek_zakresu_czasu(self._page, self.state, "robocizna"),
-                karta_robocizny,
-                ft.Divider(height=20),
-                ft.Row([
-                    ft.Text("Awarie kontra eksploatacja", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Serwis: {utils.formatuj_liczba(dane_awarii['razem'])} {utils.symbol_waluty()}", size=13),
-                ]),
-                utils.pasek_zakresu_czasu(self._page, self.state, "awarie"),
-                karta_awarii,
-                ft.Divider(height=20),
-                ft.Row([
-                    ft.Text("Wydatki w czasie", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                    utils.etykieta(f"Razem: {utils.formatuj_liczba(suma_okresu)} {utils.symbol_waluty()}", size=13),
-                ]),
-                utils.pasek_zakresu_czasu(self._page, self.state, "wydatki"),
-                karta_wykresu,
-                ft.Divider(height=20),
-                ft.Text("Trend spalania w czasie", weight="bold", size=18, color=ft.Colors.PRIMARY),
-                utils.pasek_zakresu_czasu(self._page, self.state, "spalanie"),
-                karta_trendu,
-                ft.Divider(height=20),
-                ft.Text("Ceny paliwa i stacje", weight="bold", size=18, color=ft.Colors.PRIMARY),
-                utils.pasek_zakresu_czasu(self._page, self.state, "ceny"),
-                karta_cen,
-                karta_stacji,
-            ])
+            # Spis pytań zamiast dziesięciu wykresów jeden pod drugim: wiersz odpowiada liczbą
+            # i zdaniem, cały wykres z zakresem otwiera się osobno (/wykres/<klucz>).
+            self.elementy.extend(utils.spis_wykresow(self._page, self.state, self._scena_zakladki))
 
         elif self.state.stat_podzakladka == 3:
             # ================= ANALIZA I PROGNOZY =================

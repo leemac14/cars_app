@@ -3,6 +3,7 @@
 import db
 import flet as ft
 import flet_charts as fc
+import math
 from date import parsuj_date
 from datetime import date, datetime, timedelta
 from state import MIESIACE_NAZWY
@@ -123,6 +124,205 @@ def krok_etykiet_osi(liczba_punktow, ile_podpisow=6):
     """Co który punkt serii dostaje podpis na osi X, żeby przy długim zakresie
     podpisy nie nachodziły na siebie."""
     return max(1, -(-liczba_punktow // max(1, ile_podpisow)))
+
+
+# ---------------------- OSIE, DYMKI, MINI-WYKRESY ----------------------
+# Flet rysuje własny podpis osi tylko na kresce podziałki (wielokrotności `label_spacing`),
+# więc podpisy stoją na równych, całkowitych krokach — inaczej znikały albo nachodziły.
+
+_KROKI_OSI = (1, 2, 2.5, 5, 10)
+
+
+def skala_osi(najmniej, najwiecej, ile=4, od_zera=False):
+    """Okrągła oś pionowa: (dół, góra, krok, mnożnik) w jednostkach rysunku. Wartości mnoży się
+    przez `mnoznik`, żeby krok był liczbą całkowitą i kreski trafiały w podpisy."""
+    dol_v, gora_v = float(najmniej or 0.0), float(najwiecej or 0.0)
+    if od_zera:
+        dol_v = min(0.0, dol_v)
+    if gora_v <= dol_v:
+        gora_v = dol_v + (abs(dol_v) * 0.1 or 1.0)
+    surowy = (gora_v - dol_v) / max(1, ile)
+    potega = 10 ** math.floor(math.log10(surowy))
+    krok = next(k * potega for k in _KROKI_OSI if k * potega >= surowy * 0.999)
+    mnoznik = 1
+    while abs(krok * mnoznik - round(krok * mnoznik)) > 1e-6 and mnoznik < 10 ** 6:
+        mnoznik *= 10
+    krok_r = max(1, int(round(krok * mnoznik)))
+    k_dol = math.floor(dol_v / krok + 1e-9)
+    k_gora = max(k_dol + 1, math.ceil(gora_v / krok - 1e-9))
+    return k_dol * krok_r, k_gora * krok_r, krok_r, mnoznik
+
+
+def os_pionowa(skala, formatuj, rozmiar=46):
+    """Oś Y ze `skala_osi`: podpis na każdej kresce, `formatuj` dostaje wartość prawdziwą."""
+    dol, gora, krok, mnoznik = skala
+    return fc.ChartAxis(
+        labels=[fc.ChartAxisLabel(value=v, label=ft.Text(formatuj(v / mnoznik), size=9,
+                                                         color=ft.Colors.ON_SURFACE_VARIANT))
+                for v in range(dol, gora + 1, krok)],
+        label_spacing=krok, label_size=rozmiar, title_size=0,
+    )
+
+
+def siatka_osi(skala):
+    """Poziome linie siatki w krokach osi pionowej — cienkie, ciągłe, przygaszone."""
+    return fc.ChartGridLines(interval=skala[2], width=1,
+                             color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE))
+
+
+def indeksy_podpisow(liczba, ile=5):
+    """Które punkty osi X dostają podpis: równe odstępy, zawsze pierwszy i ostatni, bez
+    podpisu tuż przed ostatnim (dawne „09/2610/26”)."""
+    if liczba <= 0:
+        return []
+    krok = krok_etykiet_osi(liczba, ile)
+    indeksy = list(range(0, liczba, krok))
+    ostatni = liczba - 1
+    if indeksy[-1] != ostatni:
+        if len(indeksy) > 1 and ostatni - indeksy[-1] < krok / 2:
+            indeksy[-1] = ostatni
+        else:
+            indeksy.append(ostatni)
+    return indeksy
+
+
+def os_miesiecy(klucze, ile=5, rozmiar=22):
+    """Oś X wykresu miesięcznego (punkt = indeks, klucz „RRRR-MM”): podpisy „MM/RR”."""
+    return fc.ChartAxis(
+        labels=[fc.ChartAxisLabel(value=i, label=ft.Text(f"{klucze[i][5:7]}/{klucze[i][2:4]}", size=9,
+                                                         color=ft.Colors.ON_SURFACE_VARIANT))
+                for i in indeksy_podpisow(len(klucze), ile)],
+        label_spacing=1, label_size=rozmiar, title_size=0,
+    )
+
+
+def pusta_os():
+    """Oś bez podpisów — każde gniazdo potrzebuje WŁASNEJ instancji."""
+    return fc.ChartAxis(show_labels=False, label_size=0, title_size=0)
+
+
+def dymek_wykresu(szerokosc=220):
+    """Wspólny wygląd dymka po dotknięciu wykresu: tło odwrotne do motywu, w obrysie wykresu."""
+    return fc.LineChartTooltip(
+        bgcolor=ft.Colors.INVERSE_SURFACE, border_radius=RADIUS["xs"], max_width=szerokosc,
+        fit_inside_horizontally=True, fit_inside_vertically=True,
+    )
+
+
+def tekst_dymka(tekst):
+    """Treść dymka punktu: bez tego Flet pokazuje surową liczbę („70413.200000000001”)."""
+    return fc.LineChartDataPointTooltip(
+        text=tekst, text_align=ft.TextAlign.LEFT,
+        text_style=ft.TextStyle(size=FS["label"], color=ft.Colors.ON_INVERSE_SURFACE),
+    )
+
+
+def pasek_skladu(czesci, wysokosc=8, szerokosc=None, scena=None):
+    """Poziomy pasek udziałów [(udział 0–1, kolor)] z 2 px przerwy między segmentami; z `scena`
+    rośnie od lewej."""
+    czesci = [(float(u), k) for u, k in czesci if u and u > 0]
+    if not czesci:
+        return ft.Container(height=wysokosc, width=szerokosc, border_radius=RADIUS["pill"],
+                            bgcolor=tlo_toru())
+    segmenty = []
+    for i, (udzial, kolor) in enumerate(czesci):
+        lewy = RADIUS["xs"] / 2 if i == 0 else 0
+        prawy = RADIUS["xs"] / 2 if i == len(czesci) - 1 else 0
+        segmenty.append(ft.Container(
+            expand=max(1, int(udzial * 1000)), height=wysokosc, bgcolor=kolor,
+            border_radius=ft.BorderRadius(lewy, prawy, lewy, prawy),
+        ))
+    wiersz = ft.Row(segmenty, spacing=2)
+    if scena is not None and scena.czynna:
+        reszta = ft.Container(expand=1000, height=wysokosc)
+        wiersz.controls.append(reszta)
+
+        def ustaw(postep, _s=segmenty, _c=czesci, _r=reszta):
+            for seg, (udzial, _k) in zip(_s, _c):
+                seg.expand = max(1, int(udzial * 1000 * postep))
+            _r.expand = max(1, int(1000 * (1 - postep)))
+            _r.visible = postep < 1
+
+        scena.nastepny_wiersz()
+        scena.tor(ustaw, wiersz)
+    return ft.Container(width=szerokosc, content=wiersz)
+
+
+def mini_slupki(wartosci, wysokosc=30, szerokosc=96, kolor=None):
+    """Mini-słupki do spisu wykresów: ostatni (bieżący okres) pełnym kolorem, reszta przygaszona."""
+    liczby = [max(0.0, float(w or 0.0)) for w in (wartosci or [])][-14:]
+    if len(liczby) < 2 or max(liczby) <= 0:
+        return None
+    kolor = kolor or ft.Colors.PRIMARY
+    najwiecej = max(liczby)
+    slupki = [
+        ft.Container(
+            expand=1, height=max(2, int(w / najwiecej * wysokosc)), border_radius=2,
+            bgcolor=kolor if i == len(liczby) - 1 else ft.Colors.with_opacity(0.40, kolor),
+        )
+        for i, w in enumerate(liczby)
+    ]
+    return ft.Container(width=szerokosc, height=wysokosc, content=ft.Row(
+        slupki, spacing=2, vertical_alignment=ft.CrossAxisAlignment.END))
+
+
+def mini_dwie_krzywe(biezacy, poprzedni, wysokosc=30, szerokosc=96):
+    """Mini rok do roku: bieżący rok linią, poprzedni przerywaną; bez osi."""
+    a = [(i, float(w)) for i, w in enumerate(biezacy or []) if w is not None]
+    b = [(i, float(w)) for i, w in enumerate(poprzedni or []) if w is not None]
+    if len(a) < 2 or len(b) < 2:
+        return None
+    gora = max(w for _, w in a + b) * 1.08 or 1.0
+    return ft.Container(height=wysokosc, width=szerokosc, content=fc.LineChart(
+        data_series=[
+            fc.LineChartData(points=[fc.LineChartDataPoint(x, y) for x, y in b], stroke_width=1.5,
+                             color=ft.Colors.ON_SURFACE_VARIANT, dash_pattern=[4, 3]),
+            fc.LineChartData(points=[fc.LineChartDataPoint(x, y) for x, y in a], stroke_width=2,
+                             color=ft.Colors.PRIMARY, rounded_stroke_cap=True),
+        ],
+        left_axis=pusta_os(), right_axis=pusta_os(), top_axis=pusta_os(), bottom_axis=pusta_os(),
+        min_x=0, max_x=11, min_y=0, max_y=gora, interactive=False, expand=True,
+    ))
+
+
+def wykres_miesieczny(page: ft.Page, punkty, kolor, formatuj, wysokosc=200, srednia=None,
+                      dziesietne=1):
+    """Linia wartości miesięcznych [(„RRRR-MM”, wartość)]: kropki przy krótkim zakresie,
+    przerywana średnia okresu, dymek „MM/RRRR: wartość”. None przy mniej niż 2 punktach."""
+    if len(punkty) < 2:
+        return None
+    wartosci = [w for _, w in punkty] + ([srednia] if srednia else [])
+    skala = skala_osi(min(wartosci), max(wartosci), ile=3)
+    mnoznik = skala[3]
+    ostatni = len(punkty) - 1
+    serie = []
+    if srednia:
+        serie.append(fc.LineChartData(
+            points=[fc.LineChartDataPoint(0, srednia * mnoznik, show_tooltip=False),
+                    fc.LineChartDataPoint(ostatni, srednia * mnoznik, show_tooltip=False)],
+            stroke_width=1.5, color=ft.Colors.ON_SURFACE_VARIANT, dash_pattern=[6, 4],
+        ))
+    serie.append(fc.LineChartData(
+        points=[fc.LineChartDataPoint(
+            i, w * mnoznik, tooltip=tekst_dymka(f"{k[5:7]}/{k[:4]}\n{formatuj(w)}"))
+            for i, (k, w) in enumerate(punkty)],
+        stroke_width=2.5, color=kolor, rounded_stroke_cap=True,
+        point=len(punkty) <= 18,
+        below_line_bgcolor=ft.Colors.with_opacity(0.10, kolor),
+    ))
+    return ft.Container(
+        height=wysokosc,
+        padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
+        content=fc.LineChart(
+            data_series=serie,
+            horizontal_grid_lines=siatka_osi(skala),
+            left_axis=os_pionowa(skala, lambda v: formatuj_liczba(v, dziesietne), rozmiar=40),
+            bottom_axis=os_miesiecy([k for k, _ in punkty]),
+            right_axis=pusta_os(), top_axis=pusta_os(),
+            min_x=0, max_x=ostatni, min_y=skala[0], max_y=skala[1],
+            tooltip=dymek_wykresu(), interactive=True, expand=True,
+        ),
+    )
 
 
 def pasek_zakresu_czasu(page: ft.Page, state, klucz):
@@ -460,11 +660,6 @@ def sparkline(wartosci, kolor=None, wysokosc=30, szerokosc=None, wypelnienie=Tru
     # wymuszamy wtedy minimalny zapas, żeby linia wylądowała pośrodku.
     zapas = max((maksimum - minimum) * 0.20, abs(maksimum) * 0.02, 0.1)
 
-    def pusta_os():
-        # Każde gniazdo osi musi dostać WŁASNĄ instancję — jednej kontrolki Flet
-        # nie da się wpiąć w kilka miejsc drzewa naraz.
-        return fc.ChartAxis(show_labels=False, label_size=0, title_size=0)
-
     return ft.Container(
         height=wysokosc, width=szerokosc,
         content=fc.LineChart(
@@ -629,9 +824,9 @@ def _kropka_legendy(kolor, tekst, obwodka=False):
 
 
 def wykres_kosztu_skumulowanego(page: ft.Page, dane, wysokosc=210, od_daty=None):
-    """Suma narastająca: gruba „Razem”, trzy cienkie serie kategorii, znaczniki
-    większych wydatków. Oś X to DNI od startu, nie numer wpisu. `od_daty` przycina
-    WIDOK, nie rachunek — krzywa wchodzi w kadr wysoko."""
+    """Suma narastająca: jedna linia „Razem” i znaczniki większych wydatków (kategorie mówi
+    zdanie pod wykresem — ich linie leżały pod osią przy cenie zakupu). Oś X to DNI od
+    startu. `od_daty` przycina WIDOK, nie rachunek — krzywa wchodzi w kadr wysoko."""
     punkty = list(dane.get("punkty") or [])
     dni_wyroznione = {w["dzien"] for w in (dane.get("wyroznione") or [])}
 
@@ -657,48 +852,41 @@ def wykres_kosztu_skumulowanego(page: ft.Page, dane, wysokosc=210, od_daty=None)
     if maks_x <= min_x:
         maks_x = min_x + 1
     wartosci = [p["razem"] for p in punkty]
-    min_y, maks_y = min(wartosci), max(wartosci)
-    zapas = max((maks_y - min_y) * 0.10, 1.0)
+    skala = skala_osi(min(wartosci), max(wartosci), ile=3)
+    mnoznik = skala[3]
+    w = symbol_waluty()
 
-    wyroznione = {w["dzien"]: w for w in (dane.get("wyroznione") or [])
-                  if min_x <= w["dzien"] <= maks_x}
+    wyroznione = {x["dzien"]: x for x in (dane.get("wyroznione") or [])
+                  if min_x <= x["dzien"] <= maks_x}
 
     def punkt_razem(p):
         wyroznik = wyroznione.get(p["dzien"])
         if not wyroznik:
-            return fc.LineChartDataPoint(p["dzien"], p["razem"])
+            return fc.LineChartDataPoint(p["dzien"], p["razem"] * mnoznik, tooltip=tekst_dymka(
+                f"{p['data'].strftime('%d.%m.%Y')}\nrazem {formatuj_liczba(p['razem'], 0)} {w}"))
         return fc.LineChartDataPoint(
-            p["dzien"], p["razem"],
-            point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=4.5, stroke_width=0),
-            tooltip=(f"{wyroznik['data'].strftime('%d.%m.%Y')}\n{wyroznik['opis']}\n"
-                     f"+{formatuj_liczba(wyroznik['kwota'])} {symbol_waluty()}\n"
-                     f"razem {formatuj_liczba(p['razem'])} {symbol_waluty()}"),
+            p["dzien"], p["razem"] * mnoznik,
+            point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=4.5, stroke_width=2,
+                                      stroke_color=ft.Colors.SURFACE),
+            tooltip=tekst_dymka(f"{wyroznik['data'].strftime('%d.%m.%Y')}\n{wyroznik['opis']}\n"
+                                f"+{formatuj_liczba(wyroznik['kwota'])} {w}\n"
+                                f"razem {formatuj_liczba(p['razem'], 0)} {w}"),
         )
 
-    serie = [
-        fc.LineChartData(
-            points=[fc.LineChartDataPoint(p["dzien"], p[kategoria]) for p in punkty],
-            stroke_width=1.5, color=kolor, curved=False, rounded_stroke_cap=True,
-        )
-        for kategoria, kolor in KOLORY_SERII_KOSZTU.items()
-    ]
-    serie.append(fc.LineChartData(
+    serie = [fc.LineChartData(
         points=[punkt_razem(p) for p in punkty],
         stroke_width=3, color=ft.Colors.PRIMARY, curved=False, rounded_stroke_cap=True,
         below_line_bgcolor=ft.Colors.with_opacity(0.10, ft.Colors.PRIMARY),
-    ))
+    )]
 
-    # Trzy podpisy na osi czasu — więcej nachodzi na siebie na szerokości
-    # telefonu, a przy krzywej narastającej i tak liczy się kształt, nie odczyt
-    # konkretnego dnia.
-    indeksy = sorted({0, len(punkty) // 2, len(punkty) - 1})
+    # Podpisy dat na wielokrotnościach kroku w dniach (tam Flet stawia kreski), bez skrajów.
+    krok_dni = next((k for k in (7, 14, 30, 61, 91, 122, 183, 365, 730, 1461)
+                     if k * 3 >= maks_x - min_x), 1461)
+    start = punkty[0]["data"] - timedelta(days=punkty[0]["dzien"])
     etykiety_x = [
-        fc.ChartAxisLabel(
-            value=punkty[i]["dzien"],
-            label=ft.Text(punkty[i]["data"].strftime("%m.%y"), size=9,
-                          color=ft.Colors.ON_SURFACE_VARIANT),
-        )
-        for i in indeksy
+        fc.ChartAxisLabel(value=x, label=ft.Text((start + timedelta(days=x)).strftime("%m.%y"),
+                                                 size=9, color=ft.Colors.ON_SURFACE_VARIANT))
+        for x in range(-(-min_x // krok_dni) * krok_dni, maks_x + 1, krok_dni)
     ]
 
     wykres = ft.Container(
@@ -706,40 +894,24 @@ def wykres_kosztu_skumulowanego(page: ft.Page, dane, wysokosc=210, od_daty=None)
         padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
         content=fc.LineChart(
             data_series=serie,
-            horizontal_grid_lines=fc.ChartGridLines(
-                interval=max(1, int((maks_y - min_y) / 3) or 1),
-                color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE), width=1,
-            ),
-            left_axis=fc.ChartAxis(
-                labels=[
-                    fc.ChartAxisLabel(
-                        value=w,
-                        label=ft.Text(_kwota_osi(w), size=9, color=ft.Colors.ON_SURFACE_VARIANT),
-                    )
-                    for w in (min_y, (min_y + maks_y) / 2, maks_y)
-                ],
-                label_size=46, title_size=0,
-            ),
-            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_size=22, title_size=0),
-            right_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
-            top_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
+            horizontal_grid_lines=siatka_osi(skala),
+            left_axis=os_pionowa(skala, _kwota_osi),
+            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_spacing=krok_dni, label_size=22,
+                                     title_size=0, show_min=False, show_max=False),
+            right_axis=pusta_os(), top_axis=pusta_os(),
             min_x=min_x, max_x=maks_x,
-            min_y=max(0, min_y - zapas), max_y=maks_y + zapas,
+            min_y=skala[0], max_y=skala[1],
+            tooltip=dymek_wykresu(),
             interactive=True,
             expand=True,
         ),
     )
 
-    legenda = [_kropka_legendy(ft.Colors.PRIMARY, "Razem")]
-    legenda += [_kropka_legendy(kolor, db.KATEGORIE_BUDZETU.get(kat, kat))
-                for kat, kolor in KOLORY_SERII_KOSZTU.items()]
+    elementy = [wykres]
     if wyroznione:
-        legenda.append(_kropka_legendy(KOLOR_STATUS["accent"], "większy wydatek", obwodka=True))
-
-    return ft.Column([
-        wykres,
-        ft.Row(legenda, spacing=SPACING["md"], wrap=True, run_spacing=4),
-    ], spacing=SPACING["sm"])
+        elementy.append(_kropka_legendy(KOLOR_STATUS["accent"], "większy wydatek — dotknij, co to było",
+                                        obwodka=True))
+    return ft.Column(elementy, spacing=SPACING["sm"])
 
 
 def karta_kosztu_skumulowanego(page: ft.Page, dane, od_daty=None, wysokosc=210):
@@ -761,40 +933,46 @@ def karta_kosztu_skumulowanego(page: ft.Page, dane, od_daty=None, wysokosc=210):
         )
 
     od_kiedy = ("od zakupu" if dane.get("czy_od_zakupu") else "od pierwszego wpisu")
-    liczby = [ft.Column([etykieta(f"Razem {od_kiedy}"),
-                         wartosc(f"{formatuj_liczba(dane['suma'])} {symbol_waluty()}")],
-                        spacing=2, expand=True)]
+    w = symbol_waluty()
+    liczby = []
     if dane.get("koszt_dzien"):
-        liczby.append(ft.Column([etykieta("Na dzień"),
-                                 wartosc(f"{formatuj_liczba(dane['koszt_dzien'])} {symbol_waluty()}")],
+        liczby.append(ft.Column([etykieta("Na dzień"), wartosc(f"{formatuj_liczba(dane['koszt_dzien'])} {w}")],
                                 spacing=2, expand=True))
     if dane.get("koszt_km"):
         liczby.append(ft.Column([etykieta(f"Na {db.slowo_dystansu('biernik')}"),
-                                 wartosc(f"{formatuj_liczba(db.na_jednostke_dystansu(dane['koszt_km']), 2)} "
-                                         f"{symbol_waluty()}")],
+                                 wartosc(f"{formatuj_liczba(db.na_jednostke_dystansu(dane['koszt_km']), 2)} {w}")],
                                 spacing=2, expand=True))
+    naglowek = [ft.Column([etykieta(f"Razem {od_kiedy}"),
+                           wartosc(f"{formatuj_liczba(dane['suma'])} {w}", size=FS["display"])], spacing=2)]
+    if liczby:
+        naglowek.append(ft.Row(liczby, spacing=SPACING["md"]))
 
-    przypisy = []
+    # Kategorie słowami pod krzywą: suma każdej od startu rachunku (jak liczba w nagłówku).
+    ostatni = (dane.get("punkty") or [{}])[-1]
+    sklad = [_kropka_legendy(kolor, f"{db.KATEGORIE_BUDZETU.get(kat, kat)} {formatuj_liczba(ostatni.get(kat), 0)} {w}")
+             for kat, kolor in KOLORY_SERII_KOSZTU.items() if ostatni.get(kat)]
     if dane.get("z_cena_zakupu"):
-        przypisy.append(podpis(
-            f"W tym cena zakupu {formatuj_liczba(dane['cena_zakupu'])} {symbol_waluty()} "
-            f"— krzywa startuje od niej, a nie od zera."))
+        sklad.insert(0, _kropka_legendy(ft.Colors.ON_SURFACE_VARIANT,
+                                        f"zakup {formatuj_liczba(dane['cena_zakupu'], 0)} {w}", obwodka=True))
+
+    przypisy = [ft.Column([etykieta("W tym"), ft.Row(sklad, spacing=SPACING["md"], wrap=True, run_spacing=4)],
+                          spacing=4)] if sklad else []
+    if dane.get("z_cena_zakupu"):
+        przypisy.append(podpis("Krzywa startuje od ceny zakupu, a nie od zera — przełącznik nad wykresem "
+                               "pokaże samą eksploatację."))
     sprzedaz = dane.get("sprzedaz")
     if sprzedaz:
         tekst = f"Rachunek zamknięty {sprzedaz['data'].strftime('%d.%m.%Y')} — dniem sprzedaży"
         if sprzedaz.get("po_odliczeniu") is not None:
             tekst += (f". Po odliczeniu ceny sprzedaży "
-                      f"({formatuj_liczba(sprzedaz['cena'])} {symbol_waluty()}) zostaje "
-                      f"{formatuj_liczba(sprzedaz['po_odliczeniu'])} {symbol_waluty()}")
+                      f"({formatuj_liczba(sprzedaz['cena'])} {w}) zostaje "
+                      f"{formatuj_liczba(sprzedaz['po_odliczeniu'])} {w}")
         przypisy.append(podpis(tekst + "."))
 
     return ft.Container(
         padding=SPACING["lg"],
         **powierzchnia(page, "karta", cien="md"),
-        content=ft.Column(
-            [ft.Row(liczby, spacing=SPACING["md"]), wykres] + przypisy,
-            spacing=SPACING["md"],
-        ),
+        content=ft.Column(naglowek + [wykres] + przypisy, spacing=SPACING["md"]),
     )
 
 
@@ -871,32 +1049,39 @@ def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
 
     wartosci = [p["koszt"] for p in punkty]
     srednia = dane.get("srednia_zyciowa")
-    maks_y = max(wartosci + ([srednia] if srednia else [])) * 1.12 or 1.0
+    skala = skala_osi(0, max(wartosci + ([srednia] if srednia else [])) * 1.05, ile=4, od_zera=True)
+    m = skala[3]
     szczyt = dane.get("szczyt") or {}
     ostatni_x = len(punkty) - 1
+    w = symbol_waluty()
 
     def punkt_razem(i, p):
-        wspolne = {"tooltip": (f"{p['miesiac']:02d}/{p['rok']}\n"
-                               f"{formatuj_liczba(p['koszt'])} {symbol_waluty()} / 1000 {j}\n"
-                               f"{formatuj_liczba(p['km'], 0)} {j} w oknie")}
+        kategorie = " · ".join(f"{db.KATEGORIE_BUDZETU.get(k, k).split()[0].lower()} {formatuj_liczba(p[k], 0)}"
+                               for k in KOLORY_SERII_KOSZTU if p.get(k))
+        wspolne = {"tooltip": tekst_dymka(f"{p['miesiac']:02d}/{p['rok']}\n"
+                                          f"{formatuj_liczba(p['koszt'], 0)} {w} / 1000 {j}\n"
+                                          f"{kategorie}\n{formatuj_liczba(p['km'], 0)} {j} w oknie")}
         if p["klucz"] == szczyt.get("klucz"):
             return fc.LineChartDataPoint(
-                i, p["koszt"],
-                point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=4.5, stroke_width=0),
+                i, p["koszt"] * m,
+                point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=4.5, stroke_width=2,
+                                          stroke_color=ft.Colors.SURFACE),
                 **wspolne,
             )
-        return fc.LineChartDataPoint(i, p["koszt"], **wspolne)
+        return fc.LineChartDataPoint(i, p["koszt"] * m, **wspolne)
 
+    # Kategorie i średnia bez dymków — dymek „Razem” wymienia kategorie sam.
     serie = [
         fc.LineChartData(
-            points=[fc.LineChartDataPoint(i, p[kategoria]) for i, p in enumerate(punkty)],
+            points=[fc.LineChartDataPoint(i, p[kategoria] * m, show_tooltip=False) for i, p in enumerate(punkty)],
             stroke_width=1.5, color=kolor, curved=False, rounded_stroke_cap=True,
         )
         for kategoria, kolor in KOLORY_SERII_KOSZTU.items()
     ]
     if srednia:
         serie.append(fc.LineChartData(
-            points=[fc.LineChartDataPoint(0, srednia), fc.LineChartDataPoint(ostatni_x, srednia)],
+            points=[fc.LineChartDataPoint(0, srednia * m, show_tooltip=False),
+                    fc.LineChartDataPoint(ostatni_x, srednia * m, show_tooltip=False)],
             stroke_width=1.5, color=ft.Colors.ON_SURFACE_VARIANT,
             dash_pattern=[6, 4], curved=False,
         ))
@@ -906,40 +1091,17 @@ def wykres_kosztu_1000km(page: ft.Page, dane, wysokosc=210):
         below_line_bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.PRIMARY),
     ))
 
-    krok = krok_etykiet_osi(len(punkty))
-    etykiety_x = [
-        fc.ChartAxisLabel(
-            value=i,
-            label=ft.Text(f"{p['miesiac']:02d}/{str(p['rok'])[2:]}", size=9,
-                          color=ft.Colors.ON_SURFACE_VARIANT),
-        )
-        for i, p in enumerate(punkty)
-        if i % krok == 0 or i == ostatni_x
-    ]
-
     wykres = ft.Container(
         height=wysokosc,
         padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
         content=fc.LineChart(
             data_series=serie,
-            horizontal_grid_lines=fc.ChartGridLines(
-                interval=max(1, int(maks_y / 4) or 1),
-                color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE), width=1,
-            ),
-            left_axis=fc.ChartAxis(
-                labels=[
-                    fc.ChartAxisLabel(
-                        value=w,
-                        label=ft.Text(_kwota_osi(w), size=9, color=ft.Colors.ON_SURFACE_VARIANT),
-                    )
-                    for w in (0, maks_y / 2, maks_y)
-                ],
-                label_size=46, title_size=0,
-            ),
-            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_size=22, title_size=0),
-            right_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
-            top_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
-            min_x=0, max_x=ostatni_x, min_y=0, max_y=maks_y,
+            horizontal_grid_lines=siatka_osi(skala),
+            left_axis=os_pionowa(skala, _kwota_osi),
+            bottom_axis=os_miesiecy([p["klucz"] for p in punkty]),
+            right_axis=pusta_os(), top_axis=pusta_os(),
+            min_x=0, max_x=ostatni_x, min_y=skala[0], max_y=skala[1],
+            tooltip=dymek_wykresu(),
             interactive=True,
             expand=True,
         ),
@@ -1068,22 +1230,26 @@ def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
     if len(znane_b) < 2 or len(znane_p) < 2:
         return None
 
-    maks_y = (max(znane_b + znane_p) * 1.12) or 1.0
+    skala = skala_osi(0, max(znane_b + znane_p) * 1.05, ile=4, od_zera=True)
+    m = skala[3]
     rozjazd = dane.get("miesiac_rozjazdu")
+    jedn = _jednostka_rdr(dane)
 
-    def punkty(seria, z_rozjazdem=False):
+    def punkty(seria, rok, z_rozjazdem=False):
         wynik = []
         for i, w in enumerate(seria):
             if w is None:
                 continue
+            tekst = f"{MIESIACE_NAZWY[i][:3]} {rok}: {formatuj_liczba(w, 0)}{jedn}"
             if z_rozjazdem and rozjazd == i + 1:
                 wynik.append(fc.LineChartDataPoint(
-                    i, w,
-                    point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=5, stroke_width=0),
-                    tooltip=f"{MIESIACE_NAZWY[i]}\nod tego miesiąca lata się rozchodzą",
+                    i, w * m,
+                    point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=5, stroke_width=2,
+                                              stroke_color=ft.Colors.SURFACE),
+                    tooltip=tekst_dymka(f"{tekst}\nod tego miesiąca lata się rozchodzą"),
                 ))
             else:
-                wynik.append(fc.LineChartDataPoint(i, w, tooltip=f"{MIESIACE_NAZWY[i]}\n{_kwota_osi(w)}"))
+                wynik.append(fc.LineChartDataPoint(i, w * m, tooltip=tekst_dymka(tekst)))
         return wynik
 
     # Słupki różnicy rysujemy PIERWSZE, żeby leżały pod krzywymi. Każdy miesiąc
@@ -1098,16 +1264,17 @@ def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
             continue
         kolor = kolor_gorszy if a > b else kolor_lepszy
         serie.append(fc.LineChartData(
-            points=[fc.LineChartDataPoint(i, min(a, b)), fc.LineChartDataPoint(i, max(a, b))],
+            points=[fc.LineChartDataPoint(i, min(a, b) * m, show_tooltip=False),
+                    fc.LineChartDataPoint(i, max(a, b) * m, show_tooltip=False)],
             stroke_width=7, color=ft.Colors.with_opacity(0.18, kolor), curved=False,
         ))
 
     serie.append(fc.LineChartData(
-        points=punkty(poprzedni), stroke_width=2, color=ft.Colors.ON_SURFACE_VARIANT,
+        points=punkty(poprzedni, dane["rok_poprzedni"]), stroke_width=2, color=ft.Colors.ON_SURFACE_VARIANT,
         dash_pattern=[6, 4], curved=False, rounded_stroke_cap=True,
     ))
     serie.append(fc.LineChartData(
-        points=punkty(biezacy, z_rozjazdem=True), stroke_width=3, color=ft.Colors.PRIMARY,
+        points=punkty(biezacy, dane["rok"], z_rozjazdem=True), stroke_width=3, color=ft.Colors.PRIMARY,
         curved=False, rounded_stroke_cap=True,
     ))
 
@@ -1124,24 +1291,12 @@ def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
         padding=ft.Padding(0, SPACING["sm"], SPACING["sm"], 0),
         content=fc.LineChart(
             data_series=serie,
-            horizontal_grid_lines=fc.ChartGridLines(
-                interval=max(1, int(maks_y / 4) or 1),
-                color=ft.Colors.with_opacity(0.10, ft.Colors.ON_SURFACE), width=1,
-            ),
-            left_axis=fc.ChartAxis(
-                labels=[
-                    fc.ChartAxisLabel(
-                        value=w,
-                        label=ft.Text(_kwota_osi(w), size=9, color=ft.Colors.ON_SURFACE_VARIANT),
-                    )
-                    for w in (0, maks_y / 2, maks_y)
-                ],
-                label_size=46, title_size=0,
-            ),
-            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_size=22, title_size=0),
-            right_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
-            top_axis=fc.ChartAxis(show_labels=False, label_size=0, title_size=0),
-            min_x=0, max_x=11, min_y=0, max_y=maks_y,
+            horizontal_grid_lines=siatka_osi(skala),
+            left_axis=os_pionowa(skala, _kwota_osi),
+            bottom_axis=fc.ChartAxis(labels=etykiety_x, label_spacing=2, label_size=22, title_size=0),
+            right_axis=pusta_os(), top_axis=pusta_os(),
+            min_x=0, max_x=11, min_y=skala[0], max_y=skala[1],
+            tooltip=dymek_wykresu(),
             interactive=True,
             expand=True,
         ),
@@ -1442,6 +1597,7 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="o
 
 __all__ = [
     "KOLORY_SERII_KOSZTU",
+    "_KROKI_OSI",
     "OKNA_CZASU",
     "POSTACIE_RDR",
     "PROG_DROZENIA",
@@ -1460,6 +1616,18 @@ __all__ = [
     "granica_zakresu",
     "klucze_miesiecy_zakresu",
     "krok_etykiet_osi",
+    "dymek_wykresu",
+    "indeksy_podpisow",
+    "mini_dwie_krzywe",
+    "mini_slupki",
+    "os_miesiecy",
+    "os_pionowa",
+    "pasek_skladu",
+    "pusta_os",
+    "siatka_osi",
+    "skala_osi",
+    "tekst_dymka",
+    "wykres_miesieczny",
     "okresy_slupkow",
     "opis_zakresu",
     "tygodnie_zakresu",

@@ -325,17 +325,23 @@ def test_karta_mowi_o_braku_danych_zamiast_rysowac_kreske(baza):
     assert any("Za mało danych" in t for t in _teksty(karta))
 
 
-def test_karta_pokazuje_sume_i_legende(baza):
-    """Nagłówek karty odpowiada na pytanie bez czytania wykresu, a legenda
-    nazywa cztery serie — bez niej cienkie krzywe są trzema kreskami."""
+def test_karta_pokazuje_sume_i_sklad(baza):
+    """Nagłówek karty odpowiada na pytanie bez czytania wykresu; kategorie i cena zakupu
+    stoją pod krzywą słowami (ich linie przy cenie zakupu leżały pod osią)."""
     strona = pomoce.zbuduj_strone()
     dane = db.koszt_skumulowany(_typowe_auto(), z_cena_zakupu=True)
-    teksty = _teksty(utils.karta_kosztu_skumulowanego(strona.page, dane))
+    karta = utils.karta_kosztu_skumulowanego(strona.page, dane)
+    teksty = _teksty(karta)
 
     assert any("Razem od zakupu" in t for t in teksty)
     assert any("Na dzień" in t for t in teksty)
-    assert "Razem" in teksty and "Serwis" in teksty
-    assert any("cena zakupu" in t for t in teksty)
+    assert "W tym" in teksty
+    assert any(t.startswith("Serwis ") for t in teksty)
+    assert any(t.startswith("zakup ") for t in teksty)
+    assert any("ceny zakupu" in t for t in teksty)
+    czart = utils.wykres_kosztu_skumulowanego(strona.page, dane).controls[0].content
+    assert len(czart.data_series) == 1, "sama linia „Razem”"
+    assert all(p.tooltip for p in czart.data_series[0].points), "dymek bez surowej liczby"
 
 
 def test_kafelek_kokpitu_pokazuje_krzywa(baza):

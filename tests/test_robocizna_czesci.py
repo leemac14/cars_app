@@ -636,10 +636,13 @@ def test_karta_w_analizie(baza, bez_nawigacji):
     assert audyty.znajdz_pogrubienia_na_drugim_planie(karta) == []
     assert audyty.znajdz_expand_bez_ograniczenia(karta) == []
 
-    # Cała zakładka Wykresy składa się z nową kartą.
+    # Spis Wykresów ma pytanie z odpowiedzią, a ekran wykresu — całą kartę.
     stan.zakladka, stan.stat_podzakladka = 3, 1
     widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()["MainView"], pomoce.zbuduj_strone(), stan)
-    assert "Robocizna czy części" in teksty(widok)
+    assert "Warsztat czy części?" in teksty(widok)
+    assert any(t.endswith("% to części") or t.endswith("% to robocizna") for t in teksty(widok))
+    ekran = pomoce.klasy_widokow()["WykresView"](pomoce.zbuduj_strone().page, stan, "robocizna")
+    assert "Robocizna czy części" in teksty(ekran.appbar) and "Części z magazynu" in teksty(ekran)
 
 
 def test_karta_bez_podzialu_mowi_jak_to_naprawic(baza):

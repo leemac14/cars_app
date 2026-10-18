@@ -28,6 +28,20 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.18", "pozycje": [
+        {"tytul": "Wykresy jako pytania", "ikona": "QUIZ", "ekran": "statystyki",
+         "opis": "W Analizie › Wykresy zamiast dziesięciu wykresów jeden pod drugim jest krótki spis pytań — "
+                 "„Ile kosztowało do dziś?”, „Czy jazda drożeje?”, „Gdzie tankować taniej?” — z odpowiedzią "
+                 "liczbą, jednym zdaniem i mini-wykresem. Dotknięcie otwiera wykres na cały ekran z opisem, jak "
+                 "go czytać, i przejściem do następnego."},
+        {"tytul": "Czytelniejsze wykresy", "ikona": "SHOW_CHART", "ekran": "statystyki",
+         "opis": "Osie mają okrągłe podpisy, które nie nachodzą na siebie, a dotknięcie punktu pokazuje datę "
+                 "i kwotę zamiast długiej liczby z kropką. Spalanie na wykresie jest w jednostce wybranej "
+                 "w Ustawieniach."},
+        {"tytul": "Z kokpitu prosto do wykresu", "ikona": "SPACE_DASHBOARD", "ekran": "kokpit",
+         "opis": "Kafelki z kosztem narastającym, kosztem przejazdu, wydatkami i awariami otwierają od razu "
+                 "swój wykres, a podzakładka Liczby ma te same karty, co reszta Analizy."},
+    ]},
     {"wersja": "2026.10.17", "pozycje": [
         {"tytul": "Karoseria na cały ekran", "ikona": "PHOTO_LIBRARY", "ekran": "karoseria",
          "opis": "Galeria karoserii przewija się razem z ekranem — zdjęcia nie urywają się już w połowie pod pustym "

@@ -10,7 +10,7 @@ import log
 from .stale import FS, SPACING, formatuj_liczba
 from .format import _odmiana_liczby, parsuj_float, symbol_waluty
 from .typografia import KOLOR_DRUGIEGO_PLANU, podpis
-from .wyglad import powierzchnia, tlo_toru
+from .wyglad import powierzchnia, wiersz_udzialu
 from .zgodnosc import ustaw_blad
 from .formularze import styl_pola
 from .magazyn import koszt_bez_czesci_do_pola, liczba_do_pola
@@ -69,13 +69,13 @@ def _napraw(n):
     return f"{n} {_odmiana_liczby(n, 'naprawa', 'naprawy', 'napraw')}"
 
 
-def karta_robocizny_i_czesci(page: ft.Page, rozbicie, porownania=(), scena=None):
+def karta_robocizny_i_czesci(page: ft.Page, rozbicie, porownania=(), scena=None, naglowek=None):
     """Karta Analizy: robocizna, części na rachunku i z magazynu
     (db.pobierz_rozbicie_napraw), pod spodem warsztaty i porównanie części z warsztatu i
     magazynu (db.porownaj_czesci_wlasne); paski przez `scena`. Naprawy bez podziału —
-    osobnym zdaniem, nie paskiem."""
+    osobnym zdaniem, nie paskiem. `naglowek` — kontrolki nad paskami."""
     w = symbol_waluty()
-    wiersze = []
+    wiersze = list(naglowek or [])
     razem = rozbicie["razem"]
 
     if not rozbicie["napraw"]:
@@ -89,23 +89,7 @@ def karta_robocizny_i_czesci(page: ft.Page, rozbicie, porownania=(), scena=None)
             if klucz == "z_magazynu" and kwota <= 0:
                 continue
             procent = kwota / razem * 100 if razem > 0 else 0.0
-            tor = ft.ProgressBar(value=procent / 100 if procent > 0 else 0, color=kolor,
-                                 bgcolor=tlo_toru(page), height=6, border_radius=3)
-            if scena is not None:
-                scena.nastepny_wiersz()
-                tor = scena.wskaznik(tor)
-            wiersze.append(ft.Column([
-                ft.Row([
-                    ft.Row([
-                        ft.Icon(ikona, size=15, color=kolor),
-                        ft.Text(tytul, weight="bold", size=13, color=ft.Colors.ON_SURFACE,
-                                no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
-                    ], spacing=6, expand=True),
-                    ft.Text(f"{formatuj_liczba(kwota)} {w} ({formatuj_liczba(procent, 0)}%)",
-                            weight="bold", size=13, color=kolor, no_wrap=True),
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                tor,
-            ], spacing=3))
+            wiersze.append(wiersz_udzialu(page, ikona, tytul, kwota, procent, kolor, scena=scena))
         opis = f"Naprawy z podziałem: {rozbicie['napraw']}"
         if rozbicie["bez_podzialu"]:
             opis += (f" · bez podziału: {rozbicie['bez_podzialu']} na "

@@ -48,6 +48,7 @@ from views.raty_view import RatyView
 from views.ewidencja_view import EwidencjaPrzebieguView
 from views.dokumenty_view import DokumentyView
 from views.dolewki_view import DolewkiView
+from views.wykres_view import WykresView
 
 # ===================== BLOKADA EKRANÓW ZMIENIAJĄCYCH DANE =====================
 # Router to jedyna droga do formularzy, więc jedno sprawdzenie zastępuje dwadzieścia w
@@ -776,6 +777,9 @@ def main(page: ft.Page):
                 utils.parsuj_int(segmenty[1], None) if len(segmenty) >= 2 else None,
                 utils.parsuj_int(segmenty[2], None) if len(segmenty) >= 3 else None,
             ))
+        elif segmenty[0] == "wykres":
+            # /wykres/<klucz> — jeden wykres Analizy na ekranie głównym; „wstecz” wraca do spisu.
+            page.views.append(WykresView(page, app_state, segmenty[1] if len(segmenty) >= 2 else None))
         elif segmenty[0] == "kalkulator":
             page.views.append(KalkulatorTrasyView(page, app_state))
             # /kalkulator/ewidencja/<metry w jedną stronę>/<0|1>/<id trasy albo 0> —

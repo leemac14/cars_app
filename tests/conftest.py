@@ -146,6 +146,16 @@ def wysylka_jak_we_flecie():
 
 
 @pytest.fixture(autouse=True)
+def skala_tekstu_po_tescie():
+    """Skala tekstu jest globalna (`utils.SKALA_TEKSTU`): „Większy” kliknięty w Ustawieniach przez
+    audyt okien powiększał napisy kolejnym testom tego samego procesu (`-n auto`)."""
+    yield
+    import utils
+
+    utils.ustaw_skale_tekstu(1.0)
+
+
+@pytest.fixture(autouse=True)
 def bez_sieci(monkeypatch):
     """Żaden test nie ma prawa dobić do Supabase.
 

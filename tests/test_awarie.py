@@ -541,7 +541,9 @@ def test_karta_w_analizie_i_zakladka_wykresy(baza, bez_nawigacji):
     stan = pomoce.stan_aplikacji(a, "Sypiący")
     stan.zakladka, stan.stat_podzakladka = 3, 1
     widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()["MainView"], pomoce.zbuduj_strone(), stan)
-    assert "Awarie kontra eksploatacja" in pomoce.napisy(widok)
+    assert "Czy auto zaczyna się sypać?" in pomoce.napisy(widok) and "57% to awarie" in pomoce.napisy(widok)
+    ekran = pomoce.klasy_widokow()["WykresView"](pomoce.zbuduj_strone().page, stan, "awarie")
+    assert "kosztu serwisu to awarie" in pomoce.napisy(ekran)
 
 
 def test_arkusz_oznacza_jednym_dotknieciem_i_sugerowane_hurtem(baza, monkeypatch):

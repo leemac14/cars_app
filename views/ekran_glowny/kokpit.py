@@ -87,6 +87,12 @@ class MiksinKokpitu:
                 self.przelacz_zakladke(3)
             return handler
 
+        def idz_do_wykresu(klucz):
+            """Kafelek z wykresem otwiera od razu swój ekran (/wykres/<klucz>), nie spis Analizy."""
+            def handler(e):
+                utils.przejdz(self._page, f"/wykres/{klucz}")
+            return handler
+
         def idz_do_kosztow(podzakladka=0):
             """Numer zakładki zmienił się przy przebudowie nawigacji — kafelki
             kokpitu wołają teraz ekran po nazwie z rejestru, więc następna zmiana
@@ -408,7 +414,7 @@ class MiksinKokpitu:
             return ft.Container(
                 width=SZER_KAFLA + 100, padding=15,
                 **utils.powierzchnia(self._page, "kafel"),
-                ink=True, on_click=idz_do_statystyk(1),
+                ink=True, on_click=idz_do_wykresu("wydatki"),
                 content=ft.Column([
                     ft.Row([
                         ft.Icon(ft.Icons.BAR_CHART, size=15, color=ft.Colors.PRIMARY),
@@ -427,7 +433,7 @@ class MiksinKokpitu:
             if iskra is None:
                 return kafel_wartosci(
                     ft.Icons.STACKED_LINE_CHART, ft.Colors.PRIMARY, "Koszt skumulowany",
-                    "Za mało danych", idz_do_statystyk(1),
+                    "Za mało danych", idz_do_wykresu("skumulowany"),
                 )
 
             stopka = []
@@ -441,7 +447,7 @@ class MiksinKokpitu:
             return ft.Container(
                 width=SZER_KAFLA + 60, padding=15,
                 **utils.powierzchnia(self._page, "kafel"),
-                ink=True, on_click=idz_do_statystyk(1),
+                ink=True, on_click=idz_do_wykresu("skumulowany"),
                 tooltip="Suma wszystkiego, co to auto kosztowało — dotknij, aby zobaczyć krzywą",
                 content=ft.Column([
                     ft.Row([
@@ -469,7 +475,7 @@ class MiksinKokpitu:
             if iskra is None or not dane_1000km.get("biezacy"):
                 return kafel_wartosci(
                     ft.Icons.AUTO_GRAPH, ft.Colors.BLUE_GREY_700, f"Koszt / 1000 {j}",
-                    "Za mało danych", idz_do_statystyk(1),
+                    "Za mało danych", idz_do_wykresu("koszt1000"),
                 )
 
             stopka_tekst = f"okno {dane_1000km['okno']} mies."
@@ -484,7 +490,7 @@ class MiksinKokpitu:
             return ft.Container(
                 width=SZER_KAFLA + 60, padding=15,
                 **utils.powierzchnia(self._page, "kafel"),
-                ink=True, on_click=idz_do_statystyk(1),
+                ink=True, on_click=idz_do_wykresu("koszt1000"),
                 tooltip="Cena jazdy w oknie kroczącym — dotknij, aby zobaczyć krzywą",
                 content=ft.Column([
                     ft.Row([
@@ -511,7 +517,7 @@ class MiksinKokpitu:
             # dopiero razem widać, czy jazda ostatnio drożeje, czy tanieje.
             return kafel_z_iskra(
                 ft.Icons.ADD_ROAD, ft.Colors.PURPLE_700, f"Koszt / {j}", wartosc,
-                [v for _, _, v in seria_koszt_km], idz_do_statystyk(0),
+                [v for _, _, v in seria_koszt_km], idz_do_wykresu("koszt1000"),
                 wzrost_zly=True, podpis_stopki=f"{len(seria_koszt_km)} ost. mies.",
             )
 
@@ -921,7 +927,7 @@ class MiksinKokpitu:
             stan = metryka("awarie")
             rok = stan["rok"]
             ikona = utils.IKONY_KOKPITU["awarie"]
-            na_klik = idz_do_statystyk(1)
+            na_klik = idz_do_wykresu("awarie")
             if not rok["razem"] and not rok["naprawy"]:
                 if not stan["napraw_razem"]:
                     return kafel_pusty(ikona, ft.Colors.BLUE_GREY_700, "Awarie", "Bez napraw", na_klik)
