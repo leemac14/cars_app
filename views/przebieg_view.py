@@ -39,8 +39,8 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         self.tabela_cel = "odczyty_przebiegu"
         self.oryginalny_appbar = appbar
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
         # ----------------------------------------
+        self.przewijana_tresc = utils.PrzewijanaTresc()
 
         def tresc():
             # Pełna historia licznika to wszystkie tankowania, wizyty i wpisy
@@ -101,7 +101,6 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                         [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
                         grupuj=utils.czy_po_dacie(self.state, "odczyty_przebiegu"),
                     )
-                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
                     self.update()
 
                 elementy.append(utils.na_cala_szerokosc(
@@ -113,14 +112,13 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                     )
                 ))
 
-                self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:odczyty")
+                self.lista_kart = utils.lista_kart()
                 self.wszystkie_karty = []
-                self.uzyj_wirtualizacji = True
                 # Odczyty licznika to czysta chronologia — kwot tu nie ma, więc
                 # nagłówek mówi tylko, ile wpisów przypadło na miesiąc.
                 self.miesiace = utils.GrupyMiesiecy(
-                    self._page, self.lista_kart, wysokosc_pozycji=130, pokaz_kwoty=False
+                    self._page, self.lista_kart, wysokosc_pozycji=130, pokaz_kwoty=False, widok=self,
+                    klucz="odczyty",
                 )
 
                 po_filtrach = odczyty_po_filtrach
@@ -137,23 +135,21 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                         grupuj=utils.czy_po_dacie(self.state, "odczyty_przebiegu"),
                     )
 
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=130)
-                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
             elementy.append(utils.dol_bezpieczny(10))
             return ft.Column(elementy, spacing=15)
 
 
+        self.przewijana_tresc.controls = [utils.zbuduj_etapami(
+            page, utils.szkielet_ekranu(page, kafle=2, wykres=True, karty=4),
+            tresc, widok=self,
+        )]
         super().__init__(
             route="/przebieg",
-            padding=15,
+            padding=0,
             appbar=appbar, floating_action_button=fab,
-            controls=[utils.zbuduj_etapami(
-                page, utils.szkielet_ekranu(page, kafle=2, wykres=True, karty=4),
-                tresc, widok=self,
-            )],
-            scroll=ft.ScrollMode.AUTO,
+            controls=[self.przewijana_tresc.kontrolka],
         )
 
     # ================= PODSUMOWANIE =================

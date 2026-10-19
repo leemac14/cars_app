@@ -184,7 +184,7 @@ class PodzialKosztowView(ft.View):
         uwagi = []
         if not s["rozliczen"] and s["suma"]:
             uwagi.append("Saldo obejmuje wszystko od pierwszego podpisanego wpisu. Jeśli wcześniejsze "
-                         "koszty nie są wspólne, kliknij „Rozliczone” z datą, od której liczycie razem.")
+                         "koszty nie są wspólne, dotknij „Rozliczone” z datą, od której liczycie razem.")
         if s["uczestnikow"] == 1:
             uwagi.append("W rachunku jest na razie jedna osoba — druga dojdzie z pierwszym wpisem podpisanym "
                          "swoim imieniem (Ustawienia → Twoja atrybucja przy współdzieleniu).")

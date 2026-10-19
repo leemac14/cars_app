@@ -76,7 +76,6 @@ class MiksinZakladkiInne:
                     [k for k in self.wszystkie_karty_inne if zapytanie in k["szukaj"]],
                     grupuj=utils.czy_po_dacie(self.state, "inne"),
                 )
-                utils.dopasuj_wysokosc_listy(self.lista_kart_inne, self._page, wysokosc_pozycji=190)
                 self.update()
 
             self.elementy.append(utils.na_cala_szerokosc(
@@ -87,12 +86,10 @@ class MiksinZakladkiInne:
                     **utils.styl_pola()
                 )
             ))
-            self.lista_kart_inne = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-            utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_inne, "lista:koszty_inne")
-            self.uzyj_wirtualizacji = True
+            self.lista_kart_inne = utils.lista_kart()
             self.wszystkie_karty_inne = []
             self.miesiace_inne = utils.GrupyMiesiecy(
-                self._page, self.lista_kart_inne, wysokosc_pozycji=190
+                self._page, self.lista_kart_inne, wysokosc_pozycji=190, widok=self, klucz="koszty_inne"
             )
 
             po_filtrach = inne_po_filtrach
@@ -192,8 +189,6 @@ class MiksinZakladkiInne:
                     self.wszystkie_karty_inne,
                     grupuj=utils.czy_po_dacie(self.state, "inne"),
                 )
-                utils.dopasuj_wysokosc_listy(self.lista_kart_inne, self._page, wysokosc_pozycji=190)
-                self.elementy.append(self.miesiace_inne.kontrolka)
                 self.elementy.append(self.lista_kart_inne)
 
         self.fab = self._buduj_fab_szybkich_akcji()

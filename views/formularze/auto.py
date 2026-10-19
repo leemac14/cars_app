@@ -367,7 +367,7 @@ class FormularzAutoView(ft.View):
                 [chip_podzespolu(nazwa, miesiace) for nazwa, miesiace, _ in pozycje])
             self.podpis_podzespolow.value = (
                 f"Zaznaczone {len(self._wybrane_podzespoly())} z {len(pozycje)} — "
-                "kliknij, żeby odrzucić albo przywrócić pozycję. Interwały "
+                "dotknij, żeby odrzucić albo przywrócić pozycję. Interwały "
                 "kilometrowe ustawisz potem przy podzespole."
             )
 

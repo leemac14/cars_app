@@ -4,7 +4,6 @@ import flet as ft
 
 from .stale import KOLOR_STATUS
 from .sync_ui import wolno_zmieniac_rekord
-from .formularze import dopasuj_wysokosc_listy
 
 
 class ZaznaczanieGrupowe:
@@ -13,39 +12,9 @@ class ZaznaczanieGrupowe:
     oraz zaimplementować własne potwierdz_grupowe_usuwanie (bo logika usuwania
     i ewentualne przeliczenia różnią się w zależności od widoku)."""
 
-    def dostosuj_wysokosc_listy(self):
-        """Na on_resized ekranu przelicza wysokość wszystkich list wirtualizowanych —
-        DOKŁADNIE jak dopasuj_wysokosc_listy (z liczbą kart)."""
-        if not getattr(self, "uzyj_wirtualizacji", False):
-            return
-
-        try:
-            # Flet View ma domyślnie właściwość .page, ale wspieramy też Twoje self._page
-            strona = getattr(self, "page", None) or getattr(self, "_page", None)
-            if not strona: return
-
-            # Magia Pythona: dynamicznie szukamy atrybutów, które nazwałeś jako 'lista_kart...'
-            for nazwa_atrybutu in dir(self):
-                if nazwa_atrybutu.startswith("lista_kart"):
-                    lista = getattr(self, nazwa_atrybutu)
-                    if not hasattr(lista, "height"):
-                        continue
-                    poprzednia = lista.height
-                    dopasuj_wysokosc_listy(
-                        lista, strona,
-                        wysokosc_pozycji=getattr(lista, "_wys_pozycji", 175),
-                        na_wiersz=getattr(lista, "_na_wiersz", 1),
-                        udzial=getattr(lista, "_udzial_ekranu", 0.5),
-                    )
-                    if lista.height != poprzednia:
-                        lista.update()
-        except Exception:
-            pass
-
     def zapomnij_listy_kart(self):
         """Kasuje `lista_kart*` i `wszystkie_karty*` po liście, która zeszła z ekranu —
-        inaczej `dostosuj_wysokosc_listy` przy obrocie woła `update()` na kontrolkach
-        spoza strony, a jeden wyjątek przerywa dopasowanie wszystkich list."""
+        filtr albo zaznaczanie nie mają prawa sięgnąć do kart poprzedniej zakładki."""
         for nazwa in [n for n in list(vars(self)) if n.startswith(("lista_kart", "wszystkie_karty"))]:
             delattr(self, nazwa)
 

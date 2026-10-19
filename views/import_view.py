@@ -110,6 +110,9 @@ class ImportCSVView(ft.View):
 
         self.kolumna_mapowania = ft.Column([], spacing=10, visible=False)
         self.kolumna_podgladu = ft.Column([], spacing=6, visible=False)
+        # Rozwinięta, a pusta karta wygląda na zepsutą — do wyboru pliku mówi, co tu będzie.
+        self.zapowiedz_mapowania = utils.podpis("Po wybraniu pliku dopasujesz tu jego kolumny do pól aplikacji.")
+        self.zapowiedz_podgladu = utils.podpis("Tu zobaczysz pierwsze wiersze pliku, zanim cokolwiek trafi do bazy.")
 
         self.btn_importuj = ft.Button(
             "Importuj",
@@ -120,8 +123,8 @@ class ImportCSVView(ft.View):
         )
 
         self.t_info_arkusza = ft.Text(
-            "Obsługiwane są separatory ';', ',' i tabulator oraz kodowania UTF-8 / Windows-1250. "
-            "Pierwszy wiersz musi zawierać nagłówki kolumn.",
+            "Kolumny mogą być rozdzielone średnikiem, przecinkiem albo tabulatorem, a plik zapisany "
+            "w UTF-8 albo Windows-1250. Pierwszy wiersz musi zawierać nagłówki kolumn.",
             size=12, color=ft.Colors.ON_SURFACE_VARIANT
         )
         # Listy na całą szerokość: same dopasowują się do najdłuższej opcji
@@ -141,8 +144,10 @@ class ImportCSVView(ft.View):
             ],
             "Plik źródłowy", ft.Icons.UPLOAD_FILE, domyslnie_otwarte=True
         )
-        k2 = utils.karta_formularza([self.kolumna_mapowania], "Dopasowanie kolumn", ft.Icons.SWAP_HORIZ, domyslnie_otwarte=True)
-        k3 = utils.karta_formularza([self.kolumna_podgladu], "Podgląd", ft.Icons.PREVIEW, domyslnie_otwarte=True)
+        k2 = utils.karta_formularza([self.zapowiedz_mapowania, self.kolumna_mapowania], "Dopasowanie kolumn",
+                                    ft.Icons.SWAP_HORIZ, domyslnie_otwarte=True)
+        k3 = utils.karta_formularza([self.zapowiedz_podgladu, self.kolumna_podgladu], "Podgląd",
+                                    ft.Icons.PREVIEW, domyslnie_otwarte=True)
 
         super().__init__(
             route="/import", padding=15, spacing=15, appbar=appbar,
@@ -245,6 +250,7 @@ class ImportCSVView(ft.View):
         else:
             self.kolumna_mapowania.visible = False
             self.kolumna_podgladu.visible = False
+            self.zapowiedz_mapowania.visible = self.zapowiedz_podgladu.visible = True
             self.btn_importuj.visible = False
         self._page.update()
 
@@ -329,6 +335,7 @@ class ImportCSVView(ft.View):
             self._odswiez_jednostke_pliku()
         self.kolumna_mapowania.controls.extend(grupy)
         self.kolumna_mapowania.visible = bool(self.czesci)
+        self.zapowiedz_mapowania.visible = not self.kolumna_mapowania.visible
 
         pojazdy = (self.rozbior or {}).get("pojazdy") or []
         self.e_pojazd.options = [
@@ -419,6 +426,7 @@ class ImportCSVView(ft.View):
 
         self.kolumna_podgladu.controls = tresc
         self.kolumna_podgladu.visible = True
+        self.zapowiedz_podgladu.visible = False
         self.btn_importuj.visible = bool(self.czesci)
         self.btn_importuj.disabled = not self.gotowe
         utils.ustaw_tekst_przycisku(

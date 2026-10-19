@@ -34,6 +34,9 @@ class MainView(
         self.state = state
         self.elementy = []
         self.fab = None
+        # Cały ekran w jednym przewijaniu: nagłówek auta, zakładka i jej lista razem,
+        # a pasek miesiąca listy przykleja się u góry (utils.PrzewijanaTresc).
+        self.przewijana_tresc = utils.PrzewijanaTresc()
 
         # Akcje rejestru ekranów (kopia bazy, motyw, usunięcie pojazdu) muszą
         # powstać PRZED paskiem, bo to one decydują, które pozycje szuflady
@@ -50,7 +53,6 @@ class MainView(
         self.tabela_cel = ""  # zapamięta z jakiej zakładki usuwamy (tankowania, inne_koszty, zadania)
         self.oryginalny_appbar = appbar
         self.karty_ref = {}   # Przechowuje referencje do kontenerów kart, by je podświetlać
-        self.uzyj_wirtualizacji = False  # True gdy w tej zakładce renderujemy przewijaną listę kart
         self.kokpit_edycja = False       # True = kafelki kokpitu można przeciągać (patrz _buduj_kokpit)
         self.kokpit_kontener = None      # kontener przełączany między siatką a trybem układania
         self._kokpit_budowniczy = {}     # id widżetu -> funkcja budująca kafelek
@@ -77,7 +79,9 @@ class MainView(
             on_change=self.zmien_zakladke,
             selected_index=self.state.zakladka,
         )
-        navbar = ft.SafeArea(content=self.pasek_zakladek, avoid_intrusions_top=False)
+        # Pusty garaż nie ma czego przełączać — cztery zakładki prowadziłyby na to samo
+        # powitanie.
+        navbar = ft.SafeArea(content=self.pasek_zakladek, avoid_intrusions_top=False) if state.auto_id else None
 
         if not self.state.auto_id:
             self.elementy.append(
@@ -119,15 +123,14 @@ class MainView(
             widok=self,
         )
 
+        self.przewijana_tresc.controls = self.elementy
         super().__init__(
             route="/",
-            padding=15,
-            spacing=15,                 # Zastępuje odstępy, które wcześniej robił wrapper
+            padding=0,
             appbar=appbar,
             navigation_bar=navbar,
             drawer=szuflada,
-            controls=self.elementy,     # Przekazujemy elementy bezpośrednio
-            scroll=ft.ScrollMode.AUTO,  # Włączamy natywne przewijanie całej strony
+            controls=[self.przewijana_tresc.kontrolka],
             floating_action_button=self.fab
         )
         self._gotowy = True
@@ -231,8 +234,8 @@ class MainView(
         self.zaznaczone_id = set()
         self.tabela_cel = ""
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
         self.zapomnij_listy_kart()
+        self.przewijana_tresc.przyklej(None)
         self.appbar = self.oryginalny_appbar
         self.kokpit_edycja = False
         self.kokpit_kontener = None
@@ -299,8 +302,8 @@ class MainView(
         # zapamiętaną pozycję za nas. Zapisywanie działa samo — klucz liczy się
         # w chwili przewijania (patrz utils.pamietaj_pozycje).
         klucz_miejsca = utils.klucz_ekranu(self, self.state)
-        utils.przewin_na(self._page, self, utils.pobierz_pozycje(self.state, klucz_miejsca),
-                         opis=klucz_miejsca)
+        utils.przewin_na(self._page, self.przewijana_tresc.przewijana,
+                         utils.pobierz_pozycje(self.state, klucz_miejsca), opis=klucz_miejsca)
         self.floating_action_button = self.fab
         self._odswiez_szuflade()
         if self.pasek_zakladek is not None:

@@ -81,7 +81,7 @@ class SzukajView(ft.View):
                 ft.Row([
                     ft.Icon(ft.Icons.BOLT, size=16, color=ft.Colors.PRIMARY),
                     ft.Text(
-                        "Kliknij wzór i dopisz resztę — filtry sumują się ze sobą",
+                        "Dotknij wzoru i dopisz resztę — filtry sumują się ze sobą",
                         size=11, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
                     ),
                 ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
@@ -108,10 +108,7 @@ class SzukajView(ft.View):
         self.sekcja_ekranow = ft.Column(spacing=8, visible=False)
         self.sekcja_ekranow_pod = ft.Column(spacing=8, visible=False)
 
-        self.lista_wynikow = ft.ListView(
-            spacing=12, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False
-        )
-        utils.pamietaj_pozycje(self._page, self.state, self.lista_wynikow, "lista:wyszukiwarka")
+        self.lista_wynikow = utils.lista_kart(odstep=12)
 
         elementy = [
             utils.na_cala_szerokosc(self.pole_wyszukiwarki), self.sekcja_ostatnich, self.podpowiedz_skladni, self.pasek_trybu,
@@ -361,7 +358,4 @@ class SzukajView(ft.View):
             for w in wyniki:
                 self.lista_wynikow.controls.append(self._karta_wyniku(w))
 
-        # Lista wyników rośnie i kurczy się z każdą literą — wysokość musi iść za
-        # nią, inaczej trzy trafienia zostawiają pod sobą pół pustego ekranu.
-        utils.dopasuj_wysokosc_listy(self.lista_wynikow, self._page, wysokosc_pozycji=104)
         self.update()

@@ -1,7 +1,6 @@
 import flet as ft
 import os
 import shutil
-import dataclasses
 import zipfile
 import tempfile
 import asyncio
@@ -848,7 +847,7 @@ def main(page: ft.Page):
         # filtrze i akcji na wpisie, więc pozycję przewijania podpinamy tu, raz dla
         # wszystkich ekranów (utils.pozycja).
         for widok in page.views:
-            utils.pamietaj_pozycje(page, app_state, widok,
+            utils.pamietaj_pozycje(page, app_state, utils.przewijana_kontrolka(widok),
                                    lambda w=widok: utils.klucz_ekranu(w, app_state))
             utils.pilnuj_gestu_wstecz(widok)
 
@@ -858,20 +857,6 @@ def main(page: ft.Page):
         if len(page.views) > 1:
             page.views.pop()
             utils.przejdz(page, page.views[-1].route)
-
-    def na_zmiane_rozmiaru(e):
-        if page.views:
-            aktywny_widok = page.views[-1]
-            if hasattr(aktywny_widok, "dostosuj_wysokosc_listy"):
-                aktywny_widok.dostosuj_wysokosc_listy()
-
-    # Zdarzenie nazywa się `on_resize`; starsze wersje Fleta miały `on_resized`.
-    # ft.Page to dataclass bez __slots__, więc zła nazwa nie rzuca błędu — po
-    # prostu nikt nigdy nie przelicza wysokości list po obrocie ekranu.
-    if any(f.name == "on_resize" for f in dataclasses.fields(type(page))):
-        page.on_resize = na_zmiane_rozmiaru
-    else:
-        page.on_resized = na_zmiane_rozmiaru
 
     page.on_route_change = trasa_zmieniona
     page.on_view_pop = widok_zamkniety

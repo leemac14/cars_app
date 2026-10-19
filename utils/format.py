@@ -55,12 +55,24 @@ def formatuj_spalanie(wartosc_na_100km, decimale=1, elektryczny=False):
     # formatowanie liczby (spacje i przecinek dziesiętny).
     wynik, jednostka = db.przelicz_zuzycie(wartosc_na_100km, elektryczny)
     if wynik is None:
-        return f"- {jednostka}"
+        return "—"
     return f"{formatuj_liczba(wynik, decimale)} {jednostka}"
 
 
 def symbol_waluty():
     return db.pobierz_walute()
+
+
+def formatuj_telefon(numer):
+    """„123 456 789”, „+48 123 456 789” — polski numer w trójkach; każdy inny zostaje,
+    jak go wpisano (dzwoni się i kopiuje zawsze surowy)."""
+    tekst = str(numer or "").strip()
+    # Własny podział („22 333 44 55”, „600-100-200”) zostaje — dzielimy tylko ciąg cyfr.
+    cyfry = tekst[3:].lstrip() if tekst.startswith("+48") else tekst
+    if not (cyfry.isdigit() and len(cyfry) == 9):
+        return tekst
+    trojki = " ".join(cyfry[i:i + 3] for i in range(0, 9, 3))
+    return f"+48 {trojki}" if tekst.startswith("+48") else trojki
 
 
 def jednostka_dystansu():
@@ -477,6 +489,7 @@ __all__ = [
     "formatuj_okres",
     "formatuj_rozmiar",
     "formatuj_spalanie",
+    "formatuj_telefon",
     "jednostka_dystansu",
     "kolor_i_tekst_terminu",
     "krotki_opis_odliczania",

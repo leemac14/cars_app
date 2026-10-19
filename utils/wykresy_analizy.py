@@ -440,19 +440,24 @@ def naglowek_analizy(ikona, tytul):
                   spacing=SPACING["sm"])
 
 
-def kafel_liczby(page: ft.Page, ikona, tytul, wartosc_tekst, kolor=ft.Colors.PRIMARY, expand=None):
+def kafel_liczby(page: ft.Page, ikona, tytul, wartosc_tekst, kolor=ft.Colors.PRIMARY, expand=None,
+                 opis=None):
     """Kafel podzakładki Liczby: ikona na podbarwionym tle i etykieta nad wartością, na powierzchni
-    jak karty Wykresów (zamiast dawnego ft.Card z ramką)."""
+    jak karty Wykresów (zamiast dawnego ft.Card z ramką). `opis` — drobny dopisek pod wartością
+    (np. czego brakuje, zamiast zdania w miejscu liczby)."""
+    tresc = [
+        ft.Row([
+            ft.Container(padding=6, border_radius=RADIUS["xs"], bgcolor=ft.Colors.with_opacity(0.13, kolor),
+                         content=ft.Icon(ikona, color=kolor, size=18)),
+            etykieta(tytul, size=FS["label"], expand=True, max_lines=2),
+        ], spacing=SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        wartosc(wartosc_tekst, size=FS["heading"]),
+    ]
+    if opis:
+        tresc.append(podpis(opis, max_lines=2))
     return ft.Container(
         expand=expand, padding=SPACING["md"], **powierzchnia(page, "karta"),
-        content=ft.Column([
-            ft.Row([
-                ft.Container(padding=6, border_radius=RADIUS["xs"], bgcolor=ft.Colors.with_opacity(0.13, kolor),
-                             content=ft.Icon(ikona, color=kolor, size=18)),
-                etykieta(tytul, size=FS["label"], expand=True, max_lines=2),
-            ], spacing=SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            wartosc(wartosc_tekst, size=FS["heading"]),
-        ], spacing=SPACING["sm"]),
+        content=ft.Column(tresc, spacing=SPACING["sm"]),
     )
 
 

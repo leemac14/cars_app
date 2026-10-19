@@ -45,7 +45,6 @@ class KaroseriaView(ft.View, utils.ZaznaczanieGrupowe):
         self.tabela_cel = "zdjecia_karoserii"
         self.oryginalny_appbar = appbar
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
         self.zdjecia, self.po_filtrach, self.widoczne, self.pary = [], [], [], {}
         self.tresc = ft.Column(spacing=utils.SPACING["md"])
         self.galeria = ft.Column(spacing=utils.SPACING["lg"])

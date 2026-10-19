@@ -66,6 +66,10 @@ MIESIAC_OPON_ZIMOWYCH = next(
 MIESIAC_OPON_LETNICH = next(
     m for m in range(1, 13) if m not in MIESIACE_ZIMOWE and _poprzedni_miesiac(m) in MIESIACE_ZIMOWE)
 
+# Tyle dni przed początkiem sezonu i po nim komplet na ten sezon jest „na czas”:
+# zimowe założone w połowie października to nie spóźniona zmiana na letnie.
+ZAPAS_ZMIANY_OPON_DNI = 45
+
 # Kolejność pozycji z tego samego dnia: najpierw papiery i pieniądze, na końcu
 # to, co tylko informuje.
 KOLEJNOSC_RODZAJOW = {
@@ -265,6 +269,14 @@ def _trwa_sezon(sezon, dzien):
     return zimowy if sezon == "Zimowe" else not zimowy
 
 
+def _blisko_poczatku_sezonu(sezon, dzien):
+    """Czy `dzien` leży najwyżej ZAPAS_ZMIANY_OPON_DNI od początku `sezon` (przed nim
+    albo po nim) — komplet tego sezonu założony z wyprzedzeniem albo właśnie na czas."""
+    miesiac = MIESIAC_OPON_ZIMOWYCH if sezon == "Zimowe" else MIESIAC_OPON_LETNICH
+    return any(abs((date_cls(rok, miesiac, 1) - dzien).days) <= ZAPAS_ZMIANY_OPON_DNI
+               for rok in (dzien.year - 1, dzien.year, dzien.year + 1))
+
+
 def _wystapienia(pierwsza, okres, dzis, koniec):
     """Daty kolejnych wystąpień wpisu cyklicznego do `koniec`: pierwsza (także
     zaległa) i dalej co okres. Po zaległej następne liczą się od dziś — tak
@@ -295,6 +307,10 @@ def _cykliczne(wpisy, z_harmonogramem, zamontowany, prog_dni, dzis, koniec):
         wlasny_prog = min(prog_dni, max(1, okres // 3))
         kwota_wpisu = _liczba(kwota) if czy_koszt else 0.0
         opony, rata = typ == TYP_CYKLICZNY_OPONY, czy_rata(typ)
+        # Przypomnienie przy początku sezonu kompletu, który JUŻ jest na aucie (zimowe
+        # założone w październiku, termin 1 listopada), dotyczy właśnie jego.
+        przesuniecie = int(opony and zamontowany in SEZONY_PRZELACZALNE
+                           and _blisko_poczatku_sezonu(zamontowany, pierwsza))
         nazwa = str(nazwa or "").strip()
         for indeks, dzien in enumerate(_wystapienia(pierwsza, okres, dzis, koniec)):
             dni = (dzien - dzis).days
@@ -312,7 +328,7 @@ def _cykliczne(wpisy, z_harmonogramem, zamontowany, prog_dni, dzis, koniec):
                 # Kierunek z tego, co JEST na aucie (na przemian od pierwszej
                 # zmiany), a bez kompletu na aucie — z kalendarza.
                 if zamontowany in SEZONY_PRZELACZALNE:
-                    sezon = _przeciwny_sezon(zamontowany) if indeks % 2 == 0 else zamontowany
+                    sezon = _przeciwny_sezon(zamontowany) if (indeks + przesuniecie) % 2 == 0 else zamontowany
                 else:
                     sezon = _sezon_z_kalendarza(dzien)
                 pola.update(rodzaj="opony", ikona="opony", sezon=sezon,
@@ -329,8 +345,9 @@ def _cykliczne(wpisy, z_harmonogramem, zamontowany, prog_dni, dzis, koniec):
 def _podpowiedz_opon(stan_opon, ma_przypomnienie, dzis, koniec):
     """Zmiana opon z kalendarza — tylko przy komplecie letnim i zimowym i bez
     ustawionego przypomnienia (z nim zmiana stoi na osi jako wpis cykliczny).
-    Kierunek z kompletu na aucie; gdy jego sezon już trwa (letnie w grudniu),
-    zmiana jest spóźniona i stoi na dziś w kolorze uwagi."""
+    Kierunek z kompletu na aucie; gdy sezon przeciwnego już trwa (letnie w grudniu),
+    zmiana jest spóźniona i stoi na dziś w kolorze uwagi — chyba że komplet na aucie
+    założono z wyprzedzeniem (zimowe w październiku)."""
     if ma_przypomnienie or not stan_opon:
         return []
     sezony = {z["sezon"] for z in stan_opon["zestawy"]}
@@ -339,7 +356,7 @@ def _podpowiedz_opon(stan_opon, ma_przypomnienie, dzis, koniec):
     zamontowany = stan_opon["sezon"]
     if zamontowany in SEZONY_PRZELACZALNE:
         sezon = _przeciwny_sezon(zamontowany)
-        spozniona = _trwa_sezon(sezon, dzis)
+        spozniona = _trwa_sezon(sezon, dzis) and not _blisko_poczatku_sezonu(zamontowany, dzis)
         dzien = dzis if spozniona else _poczatek_sezonu(sezon, dzis)
     else:
         sezon = min(SEZONY_PRZELACZALNE, key=lambda s: _poczatek_sezonu(s, dzis))

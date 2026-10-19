@@ -10,8 +10,8 @@ Plik sprawdza trzy rzeczy:
 1. **Pamięć** — co się zapisuje, czego się nie zapisuje i kiedy się kasuje.
 2. **Podpięcie** — czy dokładamy się do `on_scroll`, zamiast po cichu wyłączać
    tego, kto był tam pierwszy (na listach siedzi jeszcze nagłówek miesiąca).
-3. **Prawdziwe widoki** — czy listy naprawdę to dostały i czy po przebudowie
-   wracają tam, gdzie były.
+3. **Prawdziwe widoki** — czy ekran z listą przewija się jednym ruchem i czy po
+   przebudowie wraca tam, gdzie był.
 """
 
 import pathlib
@@ -306,36 +306,56 @@ LISTY_WIDOKOW = [
 ]
 
 
+def jak_router(strona, stan, widok):
+    """To, co robi `main.trasa_zmieniona` po zbudowaniu ekranu."""
+    utils.pamietaj_pozycje(strona.page, stan, utils.przewijana_kontrolka(widok),
+                           lambda: utils.klucz_ekranu(widok, stan))
+    return utils.przewijana_kontrolka(widok)
+
+
 @pytest.mark.parametrize("nazwa_widoku, pole", LISTY_WIDOKOW, ids=[w for w, _ in LISTY_WIDOKOW])
-def test_lista_widoku_zapamietuje_pozycje(baza, nazwa_widoku, pole):
+def test_lista_przewija_sie_razem_z_ekranem(baza, nazwa_widoku, pole):
+    """Lista nie siedzi w okienku na pół ekranu: nie ma własnej wysokości ani
+    przewijania, a pozycję pamięta ekran, który przewija się jednym ruchem."""
     stan, identyfikatory = pomoce.przygotuj_scenariusz("pojazd_z_historia")
-    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()[nazwa_widoku], pomoce.zbuduj_strone(),
-                                stan, identyfikatory)
+    strona = pomoce.zbuduj_strone()
+    widok = pomoce.zbuduj_widok(pomoce.klasy_widokow()[nazwa_widoku], strona, stan, identyfikatory)
 
     lista = getattr(widok, pole, None)
-    assert isinstance(lista, ft.ListView), f"{nazwa_widoku} nie ma listy w polu {pole}"
-    assert lista.on_scroll is not None, "lista nie zapamiętuje, gdzie stanął pasek"
+    assert isinstance(lista, ft.Column), f"{nazwa_widoku} nie ma listy w polu {pole}"
+    assert lista.height is None and not lista.scroll, "lista dalej ma własne okienko"
 
-    lista.on_scroll(Zdarzenie(777))
-    assert 777 in stan.pozycje_przewijania.values()
+    jak_router(strona, stan, widok).on_scroll(Zdarzenie(777))
+    assert stan.pozycje_przewijania.get(utils.klucz_ekranu(widok, stan)) == 777
 
 
 def test_pozycja_przezywa_przebudowe_widoku(baza):
-    """Sedno całej zmiany: zmiana sortowania buduje widok od nowa, a lista ma
-    wrócić tam, gdzie była."""
+    """Sedno całej zmiany: zmiana sortowania buduje widok od nowa, a ekran ma
+    wrócić tam, gdzie był."""
     stan, identyfikatory = pomoce.przygotuj_scenariusz("pojazd_z_historia")
     klasa = pomoce.klasy_widokow()["OdczytyPrzebieguView"]
+    strona = pomoce.zbuduj_strone()
 
-    pierwszy = pomoce.zbuduj_widok(klasa, pomoce.zbuduj_strone(), stan, identyfikatory)
-    pierwszy.lista_kart.on_scroll(Zdarzenie(1100))
+    pierwszy = pomoce.zbuduj_widok(klasa, strona, stan, identyfikatory)
+    jak_router(strona, stan, pierwszy).on_scroll(Zdarzenie(1100))
 
     stan.sort["odczyty"] = ("przebieg", True)
     drugi = pomoce.zbuduj_widok(klasa, pomoce.zbuduj_strone(), stan, identyfikatory)
 
     assert drugi is not pierwszy
-    assert utils.pobierz_pozycje(stan, "lista:odczyty") == 1100, (
+    assert utils.pobierz_pozycje(stan, utils.klucz_ekranu(drugi, stan)) == 1100, (
         "pamięć pozycji nie przeżyła przebudowy — a to jedyny moment, w którym jest potrzebna"
     )
+
+
+def test_przewijana_kontrolka_to_lista_ekranu_albo_sam_widok():
+    """Ekrany z `PrzewijanaTresc` przewija jej lista, pozostałe — sam widok."""
+    tresc = utils.PrzewijanaTresc()
+    z_lista = type("W", (), {"przewijana_tresc": tresc})()
+    zwykly = type("W", (), {})()
+
+    assert utils.przewijana_kontrolka(z_lista) is tresc.przewijana
+    assert utils.przewijana_kontrolka(zwykly) is zwykly
 
 
 def test_scroll_to_fleta_jest_korutyna():

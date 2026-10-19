@@ -24,8 +24,8 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self.zaznaczone_id = set()
         self.oryginalny_appbar = appbar
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
         # ------------------------------------------------------
+        self.przewijana_tresc = utils.PrzewijanaTresc()
 
         # Dwie listy o różnym cyklu życia: „Do zrobienia” (pozycja znika po wykonaniu) i
         # checklisty (odhaczane i zerowane); pasek nad nimi zostaje na miejscu.
@@ -34,7 +34,7 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             self._zawartosc_podzakladki(), wlaczony=db.czy_animacje_interfejsu()
         )
 
-        elementy = [
+        self.przewijana_tresc.controls = [
             self.pasek_podzakladek,
             self.przelacznik.kontrolka,
             utils.dol_bezpieczny(10),
@@ -42,12 +42,10 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
 
         super().__init__(
             route="/do-zrobienia",
-            padding=15,
+            padding=0,
             appbar=appbar,
             floating_action_button=fab,
-            spacing=15,
-            controls=elementy,
-            scroll=ft.ScrollMode.AUTO,
+            controls=[self.przewijana_tresc.kontrolka],
         )
 
     # ----- Podzakładki: Do zrobienia / Checklisty -----
@@ -86,8 +84,8 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self.tryb_zaznaczania = False
         self.zaznaczone_id = set()
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
         self.zapomnij_listy_kart()
+        self.przewijana_tresc.przyklej(None)
 
         self.pasek_podzakladek.content = self._pasek_podzakladek()
         self.przelacznik.pokaz(
@@ -155,7 +153,6 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                         [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
                         grupuj=utils.czy_po_dacie(self.state, "do_zrobienia", ("termin",)),
                     )
-                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=185)
                     self.update()
 
                 self.pole_wyszukiwarki = ft.TextField(
@@ -166,15 +163,13 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                 )
                 elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
 
-                self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:do_zrobienia")
+                self.lista_kart = utils.lista_kart()
                 self.wszystkie_karty = []
-                self.uzyj_wirtualizacji = True
                 # Tu miesiąc bierze się z TERMINU, nie z daty dopisania — i tylko
                 # przy sortowaniu po terminie, bo lista domyślnie idzie po
                 # priorytecie i miesiące nie byłyby wtedy ciągłe.
                 self.miesiace = utils.GrupyMiesiecy(
-                    self._page, self.lista_kart, wysokosc_pozycji=185
+                    self._page, self.lista_kart, wysokosc_pozycji=185, widok=self, klucz="do_zrobienia"
                 )
 
                 po_filtrach = dane_po_filtrach
@@ -197,8 +192,6 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
                         grupuj=utils.czy_po_dacie(self.state, "do_zrobienia", ("termin",)),
                     )
 
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=185)
-                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
         return ft.Column(elementy, spacing=15)

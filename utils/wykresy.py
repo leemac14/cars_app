@@ -656,9 +656,15 @@ def sparkline(wartosci, kolor=None, wysokosc=30, szerokosc=None, wypelnienie=Tru
 
     kolor = kolor or ft.Colors.PRIMARY
     minimum, maksimum = min(liczby), max(liczby)
+    # Same zera (nowe auto, miesiące bez wydatków) to nie trend — kreska udawałaby dane.
+    if minimum == maksimum == 0:
+        return None
     # Płaska seria (same identyczne wartości) dałaby zerową wysokość wykresu —
     # wymuszamy wtedy minimalny zapas, żeby linia wylądowała pośrodku.
     zapas = max((maksimum - minimum) * 0.20, abs(maksimum) * 0.02, 0.1)
+    # Wypełnienie pod płaską linią to szary prostokąt bez treści — zostaje sama kreska.
+    if maksimum == minimum:
+        wypelnienie = False
 
     return ft.Container(
         height=wysokosc, width=szerokosc,

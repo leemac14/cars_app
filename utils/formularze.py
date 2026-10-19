@@ -97,7 +97,7 @@ def sprawdz_podejrzany_przebieg(page: ft.Page, pole_przebiegu: ft.TextField, aut
         pole_przebiegu._potwierdzona_wartosc = nowy_przebieg
         # Ostrzeżenie bywa o przebiegu za niskim ALBO za wysokim (dodatkowa
         # cyfra) — samo pole nie może twierdzić, że chodzi o „niski”.
-        ustaw_blad(pole_przebiegu, "Nietypowy przebieg — kliknij Zapisz ponownie, aby potwierdzić")
+        ustaw_blad(pole_przebiegu, "Nietypowy przebieg — dotknij „Zapisz” ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, ostrzezenie, KOLOR_STATUS["warning"])
         return True
@@ -115,7 +115,7 @@ def sprawdz_duplikat_tankowania(page: ft.Page, pole_kwoty: ft.TextField, auto_id
 
     if ostrzezenie and getattr(pole_kwoty, "_duplikat_potwierdzony", None) != klucz:
         pole_kwoty._duplikat_potwierdzony = klucz
-        ustaw_blad(pole_kwoty, "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić")
+        ustaw_blad(pole_kwoty, "Możliwy duplikat — dotknij „Zapisz” ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, ostrzezenie, KOLOR_STATUS["warning"])
         return True
@@ -133,7 +133,7 @@ def sprawdz_nietypowa_cene(page: ft.Page, pole_ceny: ft.TextField, auto_id, data
 
     if wynik and getattr(pole_ceny, "_cena_potwierdzona", None) != klucz:
         pole_ceny._cena_potwierdzona = klucz
-        ustaw_blad(pole_ceny, "Nietypowa cena — kliknij Zapisz ponownie, aby potwierdzić")
+        ustaw_blad(pole_ceny, "Nietypowa cena — dotknij „Zapisz” ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, opis_nietypowej_ceny(wynik, rodzaj), KOLOR_STATUS["warning"])
         return True
@@ -151,7 +151,7 @@ def sprawdz_duplikat_kosztu(page: ft.Page, pole_kwoty: ft.TextField, auto_id, da
 
     if ostrzezenie and getattr(pole_kwoty, "_duplikat_potwierdzony", None) != klucz:
         pole_kwoty._duplikat_potwierdzony = klucz
-        ustaw_blad(pole_kwoty, "Możliwy duplikat — kliknij Zapisz ponownie, aby potwierdzić")
+        ustaw_blad(pole_kwoty, "Możliwy duplikat — dotknij „Zapisz” ponownie, aby potwierdzić")
         page.update()
         pokaz_komunikat(page, ostrzezenie, KOLOR_STATUS["warning"])
         return True
@@ -220,44 +220,6 @@ def styl_dropdown(page: ft.Page = None):
     }
 
 
-def wysokosc_listy(page: ft.Page, udzial=0.5, minimalna=260):
-    """Wysokość (px) zwirtualizowanej listy/siatki w przewijanym widoku — zamiast
-    `expand=True`, który na małych telefonach potrafi skurczyć listę do zera."""
-    try:
-        wys_ekranu = page.height or getattr(page.window, "height", None) or 800
-    except Exception:
-        wys_ekranu = 800
-    return max(minimalna, int(wys_ekranu * udzial))
-
-
-def dopasuj_wysokosc_listy(lista, page: ft.Page, wysokosc_pozycji=175, na_wiersz=1, udzial=0.5):
-    """Dociąga wysokość zwirtualizowanej listy do zawartości: MNIEJSZA z połowy ekranu i
-    szacunku. `wysokosc_pozycji` lepiej PRZESZACOWAĆ (niedoszacowanie chowa ostatnią
-    kartę); `na_wiersz` > 1 dla siatek. Wołać PO wypełnieniu; wysokość zapamiętana na
-    kontrolce (dostosuj_wysokosc_listy przy obrocie)."""
-    try:
-        liczba = len(lista.controls or [])
-    except Exception:
-        return lista
-
-    lista._wys_pozycji = wysokosc_pozycji
-    lista._na_wiersz = max(1, int(na_wiersz or 1))
-    lista._udzial_ekranu = udzial
-
-    if liczba <= 0:
-        # Pusty ListView ma stałą wysokość i sam w sobie zostawiał pustkę pod
-        # komunikatem „brak danych”. Skoro nie ma czego pokazać — niech go nie ma.
-        lista.height = 0
-        lista.visible = False
-        return lista
-
-    lista.visible = True
-    wiersze = -(-liczba // lista._na_wiersz)   # ceil bez importu math
-    potrzebna = wiersze * wysokosc_pozycji
-    lista.height = min(wysokosc_listy(page, udzial=udzial), max(wysokosc_pozycji, potrzebna))
-    return lista
-
-
 def karta_formularza(zawartosc, tytul=None, ikona=None, domyslnie_otwarte=False, page: ft.Page = None):
     plaszczyzna = powierzchnia(page, "karta", cien="md")
 
@@ -320,7 +282,6 @@ def przyciski_akcji(page: ft.Page, tekst_zapisu, on_zapisz, trasa_anuluj, ikona_
 
 
 __all__ = [
-    "dopasuj_wysokosc_listy",
     "karta_formularza",
     "na_cala_szerokosc",
     "pokaz_bledy_formularza",
@@ -334,5 +295,4 @@ __all__ = [
     "styl_dropdown",
     "styl_pola",
     "ustaw_etykiete_wyboru",
-    "wysokosc_listy",
 ]

@@ -82,7 +82,7 @@ def etykiety_paliwa(elektryczny=False):
             "ikona_listy": "ladowanie",
             "zdarzenie": "ładowanie",
             "suma_ilosci": "Naładowano",
-            "brak_pelnych": "Wymaga 2x do pełna",
+            "brak_pelnych": "po dwóch ładowaniach do pełna",
         }
     return {
         "jednostka": "L",
@@ -99,7 +99,7 @@ def etykiety_paliwa(elektryczny=False):
         "ikona_listy": "tankowanie",
         "zdarzenie": "tankowanie",
         "suma_ilosci": "Zatankowano",
-        "brak_pelnych": "Wymaga 2x do pełna",
+        "brak_pelnych": "po dwóch tankowaniach do pełna",
     }
 
 

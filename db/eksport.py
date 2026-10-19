@@ -36,7 +36,7 @@ KATEGORIE_EKSPORTU = {
     "wydatki_cykliczne": "Wydatki cykliczne i przypomnienia",
     "magazyn_czesci": "Magazyn części i płynów",
     "zestawy_opon": "Zestawy opon",
-    "do_zrobienia": "Lista Do zrobienia",
+    "do_zrobienia": "Lista do zrobienia",
     "warsztaty": "Baza warsztatów",
     "odczyty_przebiegu": "Odczyty licznika",
     "przejazdy": "Ewidencja przebiegu (przejazdy)",

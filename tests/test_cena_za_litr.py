@@ -310,7 +310,7 @@ def test_nietypowa_cena_wymaga_potwierdzenia_przy_zapisie(baza, formularz):
     _wpisz(widok, "kwota", "293,99")
 
     widok.zapisz(None)
-    assert utils.blad_kontrolki(widok.e_cena) == "Nietypowa cena — kliknij Zapisz ponownie, aby potwierdzić"
+    assert utils.blad_kontrolki(widok.e_cena) == "Nietypowa cena — dotknij „Zapisz” ponownie, aby potwierdzić"
     assert len(_wiersze(auto)) == 2, "pierwsze kliknięcie nic nie zapisuje"
 
     widok.zapisz(None)

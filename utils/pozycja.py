@@ -163,6 +163,23 @@ def pamietaj_pozycje(page, state, kontrolka, klucz):
     return kontrolka
 
 
+def zapisz_limit_listy(state, klucz, ile):
+    """Ile wpisów długiej listy rozwinęło „Pokaż kolejne” — przebudowa ekranu po akcji na
+    wpisie ma ich nie zwijać (pamięć kasuje się razem z pozycjami przy zmianie pojazdu)."""
+    _pamiec(state)[f"limit:{klucz}"] = int(ile)
+
+
+def pobierz_limit_listy(state, klucz):
+    return _pamiec(state).get(f"limit:{klucz}")
+
+
+def przewijana_kontrolka(widok):
+    """Kontrolka, która NAPRAWDĘ przewija ekran: ta z `PrzewijanaTresc` albo sam widok."""
+    tresc = getattr(widok, "przewijana_tresc", None)
+    przewijana = getattr(tresc, "przewijana", None)
+    return widok if przewijana is None else przewijana
+
+
 def klucz_ekranu(widok, state=None):
     """Klucz miejsca dla całego ekranu.
 
@@ -189,8 +206,11 @@ __all__ = [
     "dodaj_obsluge_przewijania",
     "klucz_ekranu",
     "pamietaj_pozycje",
+    "pobierz_limit_listy",
     "pobierz_pozycje",
+    "przewijana_kontrolka",
     "przewin_na",
+    "zapisz_limit_listy",
     "zapisz_pozycje",
     "zapomnij_pozycje",
 ]

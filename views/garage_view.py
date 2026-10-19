@@ -52,7 +52,6 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         self.tabela_cel = ""
         self.oryginalny_appbar = appbar
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
         # --------------------------------------
 
         # Pasek podzakładek zostaje na miejscu, zmienia się tylko to, co pod nim —
@@ -131,7 +130,6 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         self.zaznaczone_id = set()
         self.tabela_cel = ""
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
         self.zapomnij_listy_kart()
         self.appbar = self.oryginalny_appbar
 
@@ -196,7 +194,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             zestawy = [z[:-1] + (pliki_opon.get(z[0], []),) for z in c.fetchall()]
 
         if not zestawy:
-            elementy.append(ft.Text("Brak zapisanych zestawów opon. Kliknij + poniżej, aby dodać pierwszy zestaw.", color=ft.Colors.ON_SURFACE_VARIANT))
+            elementy.append(ft.Text("Brak zapisanych zestawów opon. Dotknij + poniżej, aby dodać pierwszy zestaw.", color=ft.Colors.ON_SURFACE_VARIANT))
             return elementy
 
         # Karta sezonu stoi NAD listą, bo odpowiada na pytanie zadawane tu
@@ -221,7 +219,6 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             for k in self.wszystkie_karty_opony:
                 if zapytanie in k["szukaj"]:
                     self.lista_kart_opony.controls.append(k["karta"])
-            utils.dopasuj_wysokosc_listy(self.lista_kart_opony, self._page, wysokosc_pozycji=210)
             self.update()
 
         elementy.append(utils.na_cala_szerokosc(
@@ -232,10 +229,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 **utils.styl_pola()
             )
         ))
-        self.lista_kart_opony = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-        utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_opony, "lista:opony")
+        self.lista_kart_opony = utils.lista_kart()
         self.wszystkie_karty_opony = []
-        self.uzyj_wirtualizacji = True
 
         zestawy = zestawy_po_filtrach
         utils.posortuj_liste(zestawy, self.state, "zestawy_opon", sort_opcje)
@@ -247,7 +242,6 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             self.wszystkie_karty_opony.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_opony.controls.append(karta)
 
-        utils.dopasuj_wysokosc_listy(self.lista_kart_opony, self._page, wysokosc_pozycji=210)
         elementy.append(self.lista_kart_opony)
         return elementy
 
@@ -343,9 +337,9 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         podtytul_bits = [str(x) for x in (rozmiar, marka) if x]
         podtytul = "  |  ".join(podtytul_bits) if podtytul_bits else "Brak danych o rozmiarze / marce"
 
-        dot_tekst = str(dot) if dot else "-"
+        dot_tekst = str(dot) if dot else ""
         interpretacja = interpretuj_dot(dot)
-        if interpretacja:
+        if dot_tekst and interpretacja:
             dot_tekst += f" ({interpretacja})"
 
         if zamontowane:
@@ -361,7 +355,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             )
 
         stopka = f"Ilość: {ilosc or 4} szt."
-        if cena is not None and str(cena).strip():
+        # Zero to „nie wpisano”, nie darmowe opony.
+        if utils.parsuj_float(cena, 0) > 0:
             stopka += f"  |  Cena: {utils.formatuj_liczba(cena)} {utils.symbol_waluty()}"
         if data_pomiaru:
             stopka += f"\nPomiar bieżnika: {data_pomiaru}"
@@ -385,7 +380,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                             weight="bold" if kol_gl != ft.Colors.ON_SURFACE_VARIANT else "normal"),
                     # Numer DOT bywa długi — to on ma ustąpić, a nie wypchnąć
                     # wiersz poza kartę.
-                    ft.Text(f"|  DOT: {dot_tekst}", size=13, color=ft.Colors.ON_SURFACE_VARIANT,
+                    ft.Text(f"|  DOT: {dot_tekst}" if dot_tekst else "", size=13, color=ft.Colors.ON_SURFACE_VARIANT,
                             expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
                 ], spacing=6),
                 ft.Text(stopka, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -450,7 +445,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             czesci = [cz[:8] + (pliki_czesci.get(cz[0], []),) + cz[9:] for cz in c.fetchall()]
 
         if not czesci:
-            elementy.append(ft.Text("Brak części i płynów w magazynie. Kliknij + poniżej, aby dodać pierwszą pozycję.", color=ft.Colors.ON_SURFACE_VARIANT))
+            elementy.append(ft.Text("Brak części i płynów w magazynie. Dotknij + poniżej, aby dodać pierwszą pozycję.", color=ft.Colors.ON_SURFACE_VARIANT))
             return elementy
 
         # Zużycie całego magazynu jednym zapytaniem — karta pozycji nie pyta
@@ -482,7 +477,6 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             for k in self.wszystkie_karty_czesci:
                 if zapytanie in k["szukaj"]:
                     self.lista_kart_czesci.controls.append(k["karta"])
-            utils.dopasuj_wysokosc_listy(self.lista_kart_czesci, self._page, wysokosc_pozycji=180)
             self.update()
 
         elementy.append(utils.na_cala_szerokosc(
@@ -493,10 +487,8 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
                 **utils.styl_pola()
             )
         ))
-        self.lista_kart_czesci = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-        utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_czesci, "lista:magazyn_czesci")
+        self.lista_kart_czesci = utils.lista_kart()
         self.wszystkie_karty_czesci = []
-        self.uzyj_wirtualizacji = True
 
         czesci = czesci_po_filtrach
         utils.posortuj_liste(czesci, self.state, "magazyn_czesci", sort_opcje)
@@ -508,7 +500,6 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             self.wszystkie_karty_czesci.append({"karta": karta, "szukaj": tekst_szukaj})
             self.lista_kart_czesci.controls.append(karta)
 
-        utils.dopasuj_wysokosc_listy(self.lista_kart_czesci, self._page, wysokosc_pozycji=180)
         elementy.append(self.lista_kart_czesci)
         return elementy
 
@@ -553,7 +544,7 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
             kolor_stan = utils.KOLOR_STATUS["warning"]
         else:
             kolor_stan = utils.KOLOR_STATUS["ok"]
-        tekst_stan = f"{utils.formatuj_liczba(ilosc_f, 2)} {jednostka}" if ilosc_f > 0 else "Brak na stanie"
+        tekst_stan = f"{utils.tekst_ilosci(ilosc_f)} {jednostka}" if ilosc_f > 0 else "Brak na stanie"
 
         znacznik = ft.Container(
             padding=8, border_radius=20,

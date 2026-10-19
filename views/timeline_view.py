@@ -97,7 +97,6 @@ class TimelineView(ft.View):
                     zapytanie = e.control.value.lower().strip()
                     widoczne = [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]]
                     self._rozloz_os(widoczne)
-                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
                     self.update()
 
                 elementy.append(utils.na_cala_szerokosc(
@@ -112,16 +111,15 @@ class TimelineView(ft.View):
                 # spacing=0 celowo: odstęp między kartami robi teraz dolny padding
                 # WEWNĄTRZ wiersza osi, dzięki czemu pionowa linia biegnie przez
                 # przerwę i łączy kolejne zdarzenia zamiast się urywać.
-                self.lista_kart = ft.ListView(spacing=0, padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:os_czasu")
+                self.lista_kart = utils.lista_kart(odstep=0)
                 self.wszystkie_karty = []
                 # Oś czasu bywa najdłuższą listą w aplikacji — bez nagłówków
                 # miesięcy jest jedną taśmą dat. Kwot nie sumujemy: w jednej osi
                 # stoją obok siebie tankowania, wizyty i odczyty licznika.
                 self.miesiace = utils.GrupyMiesiecy(
-                    self._page, self.lista_kart, wysokosc_pozycji=96, pokaz_kwoty=False
+                    self._page, self.lista_kart, wysokosc_pozycji=96, pokaz_kwoty=False, widok=self,
+                    klucz="os_czasu", po_rozlozeniu=self._popraw_grupy,
                 )
-                self.uzyj_wirtualizacji = True
 
                 po_filtrach = zdarzenia_po_filtrach
                 utils.posortuj_liste(po_filtrach, self.state, "timeline", opcje_sort)
@@ -138,25 +136,24 @@ class TimelineView(ft.View):
                         self.wszystkie_karty.append(wiersz)
                     self._rozloz_os(self.wszystkie_karty)
 
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=96)
-                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
             elementy.append(utils.dol_bezpieczny(10))
             return ft.Column(elementy, spacing=15)
 
 
+        # Przewija lista ekranu (kolumna z `expand=True` w kontenerze szkieletu nie
+        # miała wysokości — nic się nie przewijało).
+        self.przewijana_tresc = utils.PrzewijanaTresc()
+        self.przewijana_tresc.controls = [utils.zbuduj_etapami(
+            page, utils.szkielet_ekranu(page, wykres=True, karty=5, linie=2),
+            tresc, widok=self,
+        )]
         super().__init__(
             route="/timeline",
-            padding=15,
+            padding=0,
             appbar=appbar,
-            controls=[utils.zbuduj_etapami(
-                page, utils.szkielet_ekranu(page, wykres=True, karty=5, linie=2),
-                tresc, widok=self,
-            )],
-            # Przewija SAM WIDOK (kolumna z `expand=True` w kontenerze szkieletu nie
-            # miała wysokości — nic się nie przewijało).
-            scroll=ft.ScrollMode.AUTO,
+            controls=[self.przewijana_tresc.kontrolka],
         )
 
     # ================= OŚ CZASU =================
@@ -177,10 +174,10 @@ class TimelineView(ft.View):
 
     def _rozloz_os(self, widoczne):
         """Wiersze z nagłówkami miesięcy; oś urywa się PRZED nagłówkiem i zaczyna PO nim
-        — końcówki poprawiane w każdej grupie."""
-        grupy = self.miesiace.ustaw(
-            widoczne, grupuj=utils.czy_po_dacie(self.state, "timeline")
-        )
+        — końcówki poprawia `_popraw_grupy` (także po „Pokaż kolejne”)."""
+        self.miesiace.ustaw(widoczne, grupuj=utils.czy_po_dacie(self.state, "timeline"))
+
+    def _popraw_grupy(self, grupy):
         for _, wiersze in grupy:
             self._popraw_koncowki_osi(wiersze)
 
@@ -271,4 +268,5 @@ class TimelineView(ft.View):
         # Stackowi wysokość), a kropka na samej górze, żeby przykryła oś.
         stos = ft.Stack([odcinek_gorny, odcinek_dolny, wiersz, kropka], clip_behavior=ft.ClipBehavior.NONE)
 
-        return {"karta": stos, "gora": odcinek_gorny, "dol": odcinek_dolny}
+        # `data` dla nagłówków miesięcy — bez niej oś była jedną taśmą dat.
+        return {"karta": stos, "gora": odcinek_gorny, "dol": odcinek_dolny, "data": data}

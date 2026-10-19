@@ -14,6 +14,7 @@ from .haptyka import wibracja
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
 from .formularze import styl_dropdown, styl_pola
+from .format import formatuj_telefon
 from .system import kopiuj_do_schowka, pokaz_na_mapie, zadzwon
 
 
@@ -271,7 +272,7 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
 
             kontener_tagow.controls.append(chip_w_edytorze(
                 nazwa, kolor, zaznaczony, stworz_akcje_opcji(t_id, nazwa, kolor),
-                "Kliknij: Zaznacz | Przytrzymaj: Edytuj / Usuń",
+                "Dotknij: zaznacz · przytrzymaj: edytuj albo usuń",
             ))
 
         w_slowniku = {db.klucz_nazwy(n) for _, n, _ in wszystkie}
@@ -280,7 +281,7 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
                 continue
             kontener_tagow.controls.append(chip_w_edytorze(
                 nazwa, None, nazwa in wybrane, lambda e, n=nazwa: okno_nowego_tagu(n),
-                "Tag bez koloru. Kliknij: Zaznacz | Przytrzymaj: Nadaj kolor",
+                "Tag bez koloru. Dotknij: zaznacz · przytrzymaj: nadaj kolor",
             ))
 
         btn_dodaj = ft.Container(
@@ -743,7 +744,7 @@ def wiersz_danych(page: ft.Page, ikona, etykieta, wartosc, kopiowalne=False, tel
     tekst = str(wartosc).strip() if wartosc not in (None, "") else ""
     kolumna = [
         ft.Text(etykieta, size=FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
-        ft.Text(tekst or "—", size=FS["body_strong"],
+        ft.Text((formatuj_telefon(tekst) if telefon else tekst) or "—", size=FS["body_strong"],
                 weight="bold" if tekst else "normal",
                 color=ft.Colors.ON_SURFACE if tekst else ft.Colors.ON_SURFACE_VARIANT,
                 selectable=bool(tekst)),

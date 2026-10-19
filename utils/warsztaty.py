@@ -8,6 +8,7 @@ import db
 import log
 
 from .stale import FS, RADIUS, SPACING
+from .format import formatuj_telefon
 from .typografia import podpis, wartosc
 from .zgodnosc import ustaw_blad
 from .dialogi import (
@@ -62,7 +63,7 @@ def tresc_karty_warsztatu(page: ft.Page, karta, na_uzupelnienie=None):
         ], spacing=0, tight=True, expand=True),
     ], spacing=SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER)]
     if telefon:
-        wiersze.append(_wiersz_kontaktu(ft.Icons.PHONE, telefon))
+        wiersze.append(_wiersz_kontaktu(ft.Icons.PHONE, formatuj_telefon(telefon)))
     if adres:
         wiersze.append(_wiersz_kontaktu(ft.Icons.PLACE, adres))
     if notatki:

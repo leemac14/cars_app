@@ -12,7 +12,7 @@ from typing import Any
 
 from date import na_iso, parsuj_date
 
-from .stale import STATUS_POJAZDU_AKTYWNY, TRYBY_EWIDENCJI
+from .stale import STATUS_POJAZDU_AKTYWNY
 from .polaczenie import polacz_baze
 from .pomocnicze import (
     SEPARATOR_TYSIECY, _liczba_lub_none, klucz_nazwy, liczba_na_tekst, liczba_z_odmiana, normalizuj_nazwe,

@@ -298,7 +298,8 @@ class UstawieniaView(ft.View):
         )
 
         k1 = utils.karta_formularza(
-            [self.e_waluta, wiersz_jednostek, self.e_jednostka_ev, podpis_jednostek,
+            # Podpis o km i milach tuż pod przełącznikiem, którego dotyczy.
+            [self.e_waluta, wiersz_jednostek, podpis_jednostek, self.e_jednostka_ev,
              paleta_sekcja, ft.Divider(height=1), czern_sekcja,
              ft.Divider(height=1), uklad_sekcja,
              ft.Divider(height=1), animacje_sekcja, ft.Divider(height=1), wibracje_sekcja,

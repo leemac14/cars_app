@@ -129,7 +129,6 @@ class MiksinZakladkiTankowania:
                     [k for k in self.wszystkie_karty_tankowania if zapytanie in k["szukaj"]],
                     grupuj=utils.czy_po_dacie(self.state, "tankowania"),
                 )
-                utils.dopasuj_wysokosc_listy(self.lista_kart_tankowania, self._page, wysokosc_pozycji=200)
                 self.update()
 
             self.elementy.append(utils.na_cala_szerokosc(
@@ -140,14 +139,12 @@ class MiksinZakladkiTankowania:
                     **utils.styl_pola()
                 )
             ))
-            self.lista_kart_tankowania = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-            utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_tankowania, "lista:tankowania")
-            self.uzyj_wirtualizacji = True
+            self.lista_kart_tankowania = utils.lista_kart()
             self.wszystkie_karty_tankowania = []
             # Trzy lata tankowań to jedna długa taśma dat — nagłówki miesięcy
             # dzielą ją na kawałki, a pasek nad listą mówi, w którym się jest.
             self.miesiace_tankowania = utils.GrupyMiesiecy(
-                self._page, self.lista_kart_tankowania, wysokosc_pozycji=200
+                self._page, self.lista_kart_tankowania, wysokosc_pozycji=200, widok=self, klucz="tankowania"
             )
 
             po_filtrach = tankowania_po_filtrach
@@ -266,8 +263,6 @@ class MiksinZakladkiTankowania:
                     self.wszystkie_karty_tankowania,
                     grupuj=utils.czy_po_dacie(self.state, "tankowania"),
                 )
-                utils.dopasuj_wysokosc_listy(self.lista_kart_tankowania, self._page, wysokosc_pozycji=200)
-                self.elementy.append(self.miesiace_tankowania.kontrolka)
                 self.elementy.append(self.lista_kart_tankowania)
 
         self.fab = self._buduj_fab_szybkich_akcji()

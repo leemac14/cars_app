@@ -293,14 +293,28 @@ def test_raty_platnosc_po_platnosci_bez_podwojnego_wpisu(baza):
 
 
 def test_zmiana_opon_z_przypomnienia_na_przemian(baza):
+    dzis = date(2026, 10, 7)
     auto_id = auto()
     zestaw_opon(auto_id, "Letnie", zamontowany=True)
     zestaw_opon(auto_id, "Zimowe")
-    db.dodaj_przypomnienie_o_oponach(auto_id, za_dni(20))
+    db.dodaj_przypomnienie_o_oponach(auto_id, za_dni(20, dzis))
 
-    opony = rodzaju(db.os_przyszlosci(auto_id, dni=365), "opony")
+    opony = rodzaju(db.os_przyszlosci(auto_id, dni=365, dzis=dzis), "opony")
     assert [(p["dni"], p["tytul"]) for p in opony] == [(20, "Zmiana opon na zimowe"), (202, "Zmiana opon na letnie")]
     assert not any(p["sugestia"] for p in opony) and {p["akcja"] for p in opony} == {"cykliczne"}
+
+
+def test_przypomnienie_przy_sezonie_kompletu_na_aucie_dotyczy_jego(baza):
+    """Zimowe założone w połowie października, przypomnienie na 1 listopada: to termin
+    zmiany NA ZIMOWE (już zrobionej), a nie na letnie tuż przed zimą."""
+    dzis = date(2026, 10, 18)
+    auto_id = auto()
+    zestaw_opon(auto_id, "Letnie")
+    zestaw_opon(auto_id, "Zimowe", zamontowany=True)
+    db.dodaj_przypomnienie_o_oponach(auto_id, "01.11.2026")
+
+    opony = rodzaju(db.os_przyszlosci(auto_id, dni=365, dzis=dzis), "opony")
+    assert [p["tytul"] for p in opony][:2] == ["Zmiana opon na zimowe", "Zmiana opon na letnie"]
 
 
 def test_podpowiedz_opon_z_kalendarza(baza):
@@ -318,6 +332,13 @@ def test_podpowiedz_opon_z_kalendarza(baza):
     (spozniona,) = rodzaju(db.os_przyszlosci(auto_id, dni=30, dzis=date(2026, 12, 10)), "opony")
     assert (spozniona["dni"], spozniona["status"]) == (0, "blisko")
     assert "sezon zimowy już trwa" in utils.opis_pozycji_osi(spozniona)
+
+    # Zimowe założone z wyprzedzeniem (18 października) to nie spóźniona zmiana na letnie
+    # — następna jest dopiero wiosną.
+    with db.polacz_baze() as conn:
+        conn.execute("UPDATE zestawy_opon SET zamontowane = (sezon = 'Zimowe') WHERE auto_id=?", (auto_id,))
+    opony = rodzaju(db.os_przyszlosci(auto_id, dni=365, dzis=date(2026, 10, 18)), "opony")
+    assert [(p["data"], p["sezon"], p["status"]) for p in opony][0] == (date(2027, 4, 1), "Letnie", "info")
 
     db.dodaj_przypomnienie_o_oponach(auto_id, "01.11.2026")
     opony = rodzaju(db.os_przyszlosci(auto_id, dni=365, dzis=date(2026, 10, 7)), "opony")

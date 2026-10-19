@@ -119,7 +119,6 @@ class MiksinZakladkiSerwis:
                         self.lista_kart_serwis.controls.append(k["karta"])
 
                 self.tekst_licznik_zadan.value = f"Śledzone podzespoły ({len(self.lista_kart_serwis.controls)})"
-                utils.dopasuj_wysokosc_listy(self.lista_kart_serwis, self._page, wysokosc_pozycji=190)
                 self.update()
 
             self.elementy.append(utils.na_cala_szerokosc(
@@ -130,9 +129,7 @@ class MiksinZakladkiSerwis:
                     **utils.styl_pola()
                 )
             ))
-            self.lista_kart_serwis = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-            utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_serwis, "lista:serwis")
-            self.uzyj_wirtualizacji = True
+            self.lista_kart_serwis = utils.lista_kart()
             self.wszystkie_karty_serwis = []
 
             po_filtrach = serwis_po_filtrach
@@ -194,14 +191,20 @@ class MiksinZakladkiSerwis:
                         # z nazwą podzespołu nad nimi, nie mając czego powiedzieć.
                         wiersz_statusu = utils.etykieta(final_status, size=utils.FS["body_strong"])
 
-                    data_w = str(z.get('data')) if z.get('data') else '-'
-                    prz_w = utils.formatuj_dystans(z.get('przebieg'), 0, j) if z.get('przebieg') else '-'
+                    data_w = str(z.get('data')) if z.get('data') else ''
+                    prz_w = utils.formatuj_dystans(z.get('przebieg'), 0, j) if z.get('przebieg') else ''
+                    # Bez wpisu nie ma czego podać — zamiast „Wymieniono: - | Przy: -”.
+                    if data_w or prz_w:
+                        wymiana_w = " ".join(["Wymieniono"] + ([data_w] if data_w else [])
+                                             + ([f"przy {prz_w}"] if prz_w else []))
+                    else:
+                        wymiana_w = "Jeszcze nie wymieniany"
 
                     zid = z.get('id')
                     zn = z.get('nazwa')
                     tresc_karty = [
                         ft.Row([ft.Text(str(zn), weight="bold", size=utils.FS["title"], expand=True), ft.Icon(ico, color=kol)]),
-                        ft.Text(f"Wymieniono: {data_w} | Przy: {prz_w}", size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(wymiana_w, size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT),
                         wiersz_statusu
                     ]
                     tekst_dolewek = ""
@@ -226,7 +229,6 @@ class MiksinZakladkiSerwis:
                     self.wszystkie_karty_serwis.append({"karta": karta_z, "szukaj": tekst_szukaj})
                     self.lista_kart_serwis.controls.append(karta_z)
 
-                utils.dopasuj_wysokosc_listy(self.lista_kart_serwis, self._page, wysokosc_pozycji=190)
                 self.elementy.append(self.lista_kart_serwis)
 
         self.fab = self._buduj_fab_szybkich_akcji()

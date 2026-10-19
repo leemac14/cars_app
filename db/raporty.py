@@ -7,8 +7,13 @@ from date import parsuj_date
 from datetime import datetime
 try:
     from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+    # Zamiast `ln=1`, które fpdf2 wycofuje (ostrzeżenie od 2.5.2): kursor na lewy
+    # margines następnej linii.
+    NOWA_LINIA = {"new_x": XPos.LMARGIN, "new_y": YPos.NEXT}
 except ImportError:
     FPDF = None
+    NOWA_LINIA = {}
 try:
     from PIL import Image, ImageOps
 except ImportError:
@@ -522,17 +527,17 @@ def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikac
             log.polkniety("zdjęcie pojazdu na stronie tytułowej paszportu")
 
     pdf.set_font(pdf.czcionka, "B", 22)
-    pdf.cell(0, 14, pdf.t(str(auto_nazwa or "Pojazd")), ln=1, align="C")
+    pdf.cell(0, 14, pdf.t(str(auto_nazwa or "Pojazd")), **NOWA_LINIA, align="C")
 
     pdf.set_font(pdf.czcionka, "", 10)
     pdf.set_text_color(110, 110, 110)
-    pdf.cell(0, 7, pdf.t(f"Cyfrowy paszport pojazdu • wygenerowano {datetime.now().strftime('%d.%m.%Y %H:%M')}"), ln=1, align="C")
+    pdf.cell(0, 7, pdf.t(f"Cyfrowy paszport pojazdu • wygenerowano {datetime.now().strftime('%d.%m.%Y %H:%M')}"), **NOWA_LINIA, align="C")
     pdf.set_text_color(0, 0, 0)
     pdf.ln(6)
 
     if specyfikacja:
         pdf.set_font(pdf.czcionka, "B", 13)
-        pdf.cell(0, 9, pdf.t("Specyfikacja pojazdu"), ln=1)
+        pdf.cell(0, 9, pdf.t("Specyfikacja pojazdu"), **NOWA_LINIA)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
         pdf.ln(3)
@@ -552,7 +557,7 @@ def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikac
 
     if terminy:
         pdf.set_font(pdf.czcionka, "B", 13)
-        pdf.cell(0, 9, pdf.t("Ważne terminy"), ln=1)
+        pdf.cell(0, 9, pdf.t("Ważne terminy"), **NOWA_LINIA)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
         pdf.ln(3)
@@ -576,7 +581,7 @@ def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikac
             pdf.cell(45, 7, pdf.t(f"{etykieta}:"))
             pdf.set_font(pdf.czcionka, "", 10)
             pdf.set_text_color(*kolor)
-            pdf.cell(0, 7, pdf.t(tekst), ln=1)
+            pdf.cell(0, 7, pdf.t(tekst), **NOWA_LINIA)
             pdf.set_text_color(0, 0, 0)
         pdf.ln(6)
 
@@ -591,7 +596,7 @@ def _rysuj_galerie_karoserii(pdf, zdjecia_karoserii):
     na końcu paszportu. zdjecia_karoserii: lista krotek (data, strefa, zalacznik, opis)."""
     pdf.add_page()
     pdf.set_font(pdf.czcionka, "B", 16)
-    pdf.cell(0, 12, pdf.t("Zdjęcia karoserii"), ln=1)
+    pdf.cell(0, 12, pdf.t("Zdjęcia karoserii"), **NOWA_LINIA)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
     pdf.ln(4)
@@ -650,12 +655,12 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
                                          gwarancje or [])
     else:
         pdf.set_font(pdf.czcionka, "B", 18)
-        pdf.cell(0, 12, pdf.t(f"Raport pojazdu: {auto_nazwa}"), ln=1)
+        pdf.cell(0, 12, pdf.t(f"Raport pojazdu: {auto_nazwa}"), **NOWA_LINIA)
 
         pdf.set_font(pdf.czcionka, "", 11)
         pdf.set_text_color(110, 110, 110)
-        pdf.cell(0, 7, pdf.t(f"Okres: {okres_opis}"), ln=1)
-        pdf.cell(0, 7, pdf.t(f"Wygenerowano: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), ln=1)
+        pdf.cell(0, 7, pdf.t(f"Okres: {okres_opis}"), **NOWA_LINIA)
+        pdf.cell(0, 7, pdf.t(f"Wygenerowano: {datetime.now().strftime('%d.%m.%Y %H:%M')}"), **NOWA_LINIA)
         pdf.set_text_color(0, 0, 0)
         pdf.ln(4)
 
@@ -663,7 +668,7 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         waluta = podsumowanie.get("waluta", "PLN")
         j = jednostka_dystansu()
         pdf.set_font(pdf.czcionka, "B", 13)
-        pdf.cell(0, 9, pdf.t("Podsumowanie kosztów"), ln=1)
+        pdf.cell(0, 9, pdf.t("Podsumowanie kosztów"), **NOWA_LINIA)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
         pdf.ln(3)
@@ -672,29 +677,29 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
                            ("Inne koszty", podsumowanie["koszt_inne"]), ("RAZEM", podsumowanie["razem"])):
             pdf.set_font(pdf.czcionka, "B" if etyk == "RAZEM" else "", 11)
             pdf.cell(60, 7, pdf.t(etyk))
-            pdf.cell(0, 7, pdf.t(f"{formatuj_liczba_eksport(wart)} {waluta}"), ln=1)
+            pdf.cell(0, 7, pdf.t(f"{formatuj_liczba_eksport(wart)} {waluta}"), **NOWA_LINIA)
 
         if podsumowanie.get("dystans"):
             pdf.set_font(pdf.czcionka, "", 11)
             pdf.cell(0, 7, pdf.t(f"Przejechany dystans: "
-                                 f"{formatuj_liczba_eksport(dystans_z_km(podsumowanie['dystans'], j), 0)} {j}"), ln=1)
+                                 f"{formatuj_liczba_eksport(dystans_z_km(podsumowanie['dystans'], j), 0)} {j}"), **NOWA_LINIA)
         if podsumowanie.get("koszt_km"):
             pdf.cell(0, 7, pdf.t(f"Koszt eksploatacji: "
                                  f"{formatuj_liczba_eksport(na_jednostke_dystansu(podsumowanie['koszt_km'], j), 2)} "
-                                 f"{waluta}/{j}"), ln=1)
+                                 f"{waluta}/{j}"), **NOWA_LINIA)
         if podsumowanie.get("spalanie"):
             # Jednostka z Ustawień (l/100km, km/l, mpg — albo kWh/100km
             # u elektryka), tak samo jak na ekranie, a nie zawsze „l/100km”.
             elektryczny = bool(podsumowanie.get("zuzycie_elektryczne"))
             etykieta = "Średnie zużycie energii" if elektryczny else "Średnie spalanie"
-            pdf.cell(0, 7, pdf.t(f"{etykieta}: {formatuj_zuzycie_tekst(podsumowanie['spalanie'], elektryczny)}"), ln=1)
+            pdf.cell(0, 7, pdf.t(f"{etykieta}: {formatuj_zuzycie_tekst(podsumowanie['spalanie'], elektryczny)}"), **NOWA_LINIA)
         pdf.ln(6)
 
     if tryb_paszportu and punkty_przebiegu:
         if pdf.get_y() > pdf.h - 80:
             pdf.add_page()
         pdf.set_font(pdf.czcionka, "B", 13)
-        pdf.cell(0, 9, pdf.t("Przebieg w czasie"), ln=1)
+        pdf.cell(0, 9, pdf.t("Przebieg w czasie"), **NOWA_LINIA)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
         pdf.ln(6)
@@ -716,7 +721,7 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
 
         tytul = KATEGORIE_EKSPORTU.get(klucz, klucz)
         pdf.set_font(pdf.czcionka, "B", 13)
-        pdf.cell(0, 9, pdf.t(f"{tytul} ({len(wiersze)})"), ln=1)
+        pdf.cell(0, 9, pdf.t(f"{tytul} ({len(wiersze)})"), **NOWA_LINIA)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
         pdf.ln(2)
@@ -724,7 +729,7 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
         if not wiersze:
             pdf.set_font(pdf.czcionka, "", 10)
             pdf.set_text_color(140, 140, 140)
-            pdf.cell(0, 7, pdf.t("Brak danych w wybranym zakresie."), ln=1)
+            pdf.cell(0, 7, pdf.t("Brak danych w wybranym zakresie."), **NOWA_LINIA)
             pdf.set_text_color(0, 0, 0)
             pdf.ln(4)
             continue

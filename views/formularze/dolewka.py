@@ -160,14 +160,14 @@ class FormularzDolewkiView(ft.View):
                                         "zejdzie tyle, ile jest.")
                 self.t_magazyn.color = utils.KOLOR_STATUS["warning"]
             elif ilosc_j > 0:
-                self.t_magazyn.value = (f"Zejdzie {utils.formatuj_liczba(ilosc_j, 2)} {p['jednostka']}, zostanie "
-                                        f"{utils.formatuj_liczba(dostepne - ilosc_j, 2)} {p['jednostka']}.")
+                self.t_magazyn.value = (f"Zejdzie {utils.tekst_ilosci(ilosc_j)} {p['jednostka']}, zostanie "
+                                        f"{utils.tekst_ilosci(dostepne - ilosc_j)} {p['jednostka']}.")
             cena = self._cena(p)
             if cena is not None and ilosc_j > 0:
                 koszt = round(ilosc_j * cena, 2)
                 if not self._koszt_reczny:
                     self.e_koszt.value = utils.liczba_do_pola(koszt)
-                self.t_koszt.value = (f"Z półki: {utils.formatuj_liczba(ilosc_j, 2)} {p['jednostka']} × "
+                self.t_koszt.value = (f"Z półki: {utils.tekst_ilosci(ilosc_j)} {p['jednostka']} × "
                                       f"{utils.formatuj_liczba(cena, 2)} {self.waluta} = {utils.formatuj_liczba(koszt)} "
                                       f"{self.waluta}" + (" — w polu kwota wpisana ręcznie." if self._koszt_reczny else "."))
             elif cena is None:

@@ -30,7 +30,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         self.zaznaczone_id = set()
         self.oryginalny_appbar = appbar
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
+        self.przewijana_tresc = utils.PrzewijanaTresc()
         # --------------------------------------
 
         def tresc():
@@ -63,7 +63,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                      for w in wpisy]
 
             if not wpisy:
-                elementy.append(ft.Text("Brak wpisów w historii. Kliknij + aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
+                elementy.append(ft.Text("Brak wpisów w historii. Dotknij +, aby dodać.", color=ft.Colors.ON_SURFACE_VARIANT))
             else:
                 opcje_sort = [
                     ("Data", "data", lambda x: (parsuj_date(x[1]), x[0])),
@@ -85,12 +85,10 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
 
                 # --- POPRAWNA INICJALIZACJA WYSZUKIWARKI ---
-                self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:historia")
-                self.uzyj_wirtualizacji = True
+                self.lista_kart = utils.lista_kart()
                 self.wszystkie_karty = []
                 self.miesiace = utils.GrupyMiesiecy(
-                    self._page, self.lista_kart, wysokosc_pozycji=190
+                    self._page, self.lista_kart, wysokosc_pozycji=190, widok=self, klucz="historia"
                 )
 
                 def filtruj_historie(e):
@@ -99,7 +97,6 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
                         grupuj=utils.czy_po_dacie(self.state, "historia"),
                     )
-                    utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
                     self.update()
 
                 self.pole_wyszukiwarki = ft.TextField(
@@ -184,7 +181,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                         k_str = f"{utils.formatuj_liczba(float(w_koszt or 0))} {utils.symbol_waluty()} (cała wizyta)"
                     else:
                         k_str = f"{utils.formatuj_liczba(float(cena or 0))} {utils.symbol_waluty()}"
-                    sub_tekst = f"Przebieg: {utils.formatuj_dystans(int(prz or 0), 0, j)}  |  {'Wizyta Zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
+                    sub_tekst = f"Przebieg: {utils.formatuj_dystans(int(prz or 0), 0, j)}  |  {'Wizyta zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
                     if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
                     opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wpisow.get(h_id))
 
@@ -271,8 +268,6 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     self.wszystkie_karty,
                     grupuj=utils.czy_po_dacie(self.state, "historia"),
                 )
-                utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=190)
-                elementy.append(self.miesiace.kontrolka)
                 elementy.append(self.lista_kart)
 
             # To jest linijka poza blokiem else (już ją masz)
@@ -280,16 +275,15 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             return ft.Column(elementy, spacing=15)
 
 
+        self.przewijana_tresc.controls = [utils.zbuduj_etapami(
+            page, utils.szkielet_ekranu(page, kafle=2, karty=4), tresc, widok=self,
+        )]
         super().__init__(
             route=f"/historia/{z_id}",
-            padding=15,
+            padding=0,
             appbar=appbar,
             floating_action_button=fab,
-            spacing=15,
-            controls=[utils.zbuduj_etapami(
-                page, utils.szkielet_ekranu(page, kafle=2, karty=4), tresc, widok=self,
-            )],
-            scroll=ft.ScrollMode.AUTO,  # natywne przewijanie
+            controls=[self.przewijana_tresc.kontrolka],
         )
 
     def potwierdz_grupowe_usuwanie(self, e):
@@ -401,7 +395,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         self.zaznaczone_id = set()
         self.oryginalny_appbar = appbar
         self.karty_ref = {}
-        self.uzyj_wirtualizacji = False
+        self.przewijana_tresc = utils.PrzewijanaTresc()
         # --------------------------------------
 
         elementy = []
@@ -473,7 +467,6 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
                 grupuj=utils.czy_po_dacie(self.state, "wizyty"),
             )
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=215)
             self.update()
 
         self.pole_wyszukiwarki = ft.TextField(
@@ -484,12 +477,11 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
         )
         elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
 
-        self.lista_kart = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-        utils.pamietaj_pozycje(self._page, self.state, self.lista_kart, "lista:wizyty")
-        self.uzyj_wirtualizacji = True
+        self.lista_kart = utils.lista_kart()
         self.wszystkie_karty = []
         self.miesiace = utils.GrupyMiesiecy(
-            self._page, self.lista_kart, wysokosc_pozycji=215
+            self._page, self.lista_kart, wysokosc_pozycji=215, widok=self, klucz="wizyty",
+            ogon=15,  # pod listą wizyt jest już tylko dolny margines ekranu
         )
         # ---------------------------------------------
 
@@ -627,20 +619,15 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
                 self.wszystkie_karty,
                 grupuj=utils.czy_po_dacie(self.state, "wizyty"),
             )
-            # Lista dokładana TYLKO gdy są wizyty — pusty ListView ma stałą wysokość
-            # i zostawiał pod komunikatem „Brak wizyt…” pół ekranu pustki.
-            utils.dopasuj_wysokosc_listy(self.lista_kart, self._page, wysokosc_pozycji=215)
-            elementy.append(self.miesiace.kontrolka)
             elementy.append(self.lista_kart)
 
+        self.przewijana_tresc.controls = elementy
         super().__init__(
             route="/wizyty",
-            padding=15,
+            padding=0,
             appbar=appbar,
             floating_action_button=fab,
-            spacing=15,
-            controls=elementy,          # lub self.elementy, w zależności jak masz w tym pliku
-            scroll=ft.ScrollMode.AUTO,  # włączasz natywne przewijanie
+            controls=[self.przewijana_tresc.kontrolka],
         )
 
     def potwierdz_grupowe_usuwanie(self, e):

@@ -197,8 +197,11 @@ class FormularzTankowanieView(ft.View):
         )
         hint_prz = f"ost. {self.ostatni_prz_pola}" if self.ostatni_prz > 0 else "np. 150000"
         
-        self.e_p = ft.TextField(label=f"Licznik ({self.j})", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **utils.styl_pola(page=page))
-        self.e_dys = ft.TextField(label=f"Dystans ({self.j})", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **utils.styl_pola(page=page))
+        # Dwa pola w jednym wierszu: węższy margines, żeby „Dystans (km)” nie łamał się
+        # na dwie linijki na wąskim telefonie.
+        styl_pary = {**utils.styl_pola(page=page), "content_padding": ft.Padding(12, 14, 12, 14)}
+        self.e_p = ft.TextField(label=f"Licznik ({self.j})", value=p_val, hint_text=hint_prz, keyboard_type=ft.KeyboardType.NUMBER, on_change=on_przebieg_changed, **styl_pary)
+        self.e_dys = ft.TextField(label=f"Dystans ({self.j})", value=dys_val, hint_text="np. 450", keyboard_type=ft.KeyboardType.NUMBER, on_change=on_dystans_changed, **styl_pary)
         
         self.etykiety = db.etykiety_energii(self.rodzaj_energii)
 

@@ -28,6 +28,22 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.19", "pozycje": [
+        {"tytul": "Listy przewijają się razem z ekranem", "ikona": "SWIPE_VERTICAL", "ekran": "paliwo",
+         "opis": "Tankowania, inne koszty, serwis, wizyty, historia licznika, dziennik, magazyn, statystyki "
+                 "i wyniki wyszukiwania nie siedzą już w okienku na pół ekranu — całość przewija się jednym "
+                 "ruchem, a gdy lista dojedzie do góry, przykleja się tam pasek z bieżącym miesiącem."},
+        {"tytul": "Miesiące w dzienniku życia auta", "ikona": "CALENDAR_MONTH", "ekran": "timeline",
+         "opis": "Dziennik dzieli się na miesiące jak pozostałe listy — z nagłówkiem i liczbą zdarzeń "
+                 "nad każdym miesiącem."},
+        {"tytul": "Zmiana opon bez fałszywego alarmu", "ikona": "TIRE_REPAIR", "ekran": "co-przede-mna",
+         "opis": "Zimowe założone w październiku albo letnie w marcu to zmiana z wyprzedzeniem — „Co przede "
+                 "mną” nie każe już wracać do opon poprzedniego sezonu na dwa tygodnie przed nowym."},
+        {"tytul": "Drobne szlify", "ikona": "AUTO_FIX_HIGH", "ekran": "warsztaty",
+         "opis": "Ilości bez zbędnych zer („1 szt”), telefony w czytelnych trójkach, pełne nazwy aut "
+                 "w porównaniu, kreska zamiast surowych myślników i podpowiedzi w pustych kartach importu. "
+                 "Bez pojazdu nie ma już dolnych zakładek, które prowadziły donikąd."},
+    ]},
     {"wersja": "2026.10.18", "pozycje": [
         {"tytul": "Wykresy jako pytania", "ikona": "QUIZ", "ekran": "statystyki",
          "opis": "W Analizie › Wykresy zamiast dziesięciu wykresów jeden pod drugim jest krótki spis pytań — "

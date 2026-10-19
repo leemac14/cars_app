@@ -13,7 +13,7 @@ from .stale import KATEGORIA_INNE_DOLEWKI, OCENA_OLEJU, OCENA_UKLADU, PLYN_OLEJ,
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, klucz_nazwy, liczba_na_tekst, liczba_z_odmiana, normalizuj_nazwe
 from .ustawienia import pobierz_moje_imie
-from .jednostki import jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
+from .jednostki import na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
 from .synchronizacja import czy_moge_dodawac, czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
 from .zalaczniki import (
     odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki, usun_plik_zalacznika,

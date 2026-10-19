@@ -331,7 +331,7 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
             if ilosc_m <= prog_magazynu:
                 s = "przeterminowane" if ilosc_m <= 0 else "pilne"
                 jednostka_m = m["jednostka"] or "szt"
-                opis = "Brak na stanie" if ilosc_m <= 0 else f"Zostało {utils.formatuj_liczba(ilosc_m, 2)} {jednostka_m}"
+                opis = "Brak na stanie" if ilosc_m <= 0 else f"Zostało {utils.tekst_ilosci(ilosc_m)} {jednostka_m}"
                 wyniki.append({
                     "typ": "magazyn", "tytul": m["nazwa"], "opis": opis,
                     "status": s, "trasa": "/magazyn",

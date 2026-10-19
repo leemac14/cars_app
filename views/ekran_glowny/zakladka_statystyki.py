@@ -49,10 +49,10 @@ class MiksinZakladkiStatystyki:
         sredni_dz_str = (f"{utils.formatuj_dystans(sredni_dzienny, 1, j)}/dzień"
                          if sredni_dzienny else "Brak danych")
 
-        def kafel(ikona, tytul, wartosc, kolor=ft.Colors.PRIMARY, expand=None):
+        def kafel(ikona, tytul, wartosc, kolor=ft.Colors.PRIMARY, expand=None, opis=None):
             # Ikona nad wartością, nie obok: w połówce ekranu obok ikony zostawało
             # ~74 dp i „Zatankowano” łamało się w środku słowa.
-            return utils.kafel_liczby(self._page, ikona, tytul, wartosc, kolor, expand)
+            return utils.kafel_liczby(self._page, ikona, tytul, wartosc, kolor, expand, opis=opis)
 
         # Rok w pigułce, budżet, historia przebiegu i porównanie pojazdów to
         # wszystko „patrzenie na dane” — ale każde mieszkało gdzie indziej
@@ -116,9 +116,10 @@ class MiksinZakladkiStatystyki:
                 self.elementy.append(utils.naglowek_analizy(ikona_sekcji, tytul_sekcji))
                 self.elementy.append(ft.Row([
                     kafel(ft.Icons.SPEED, etyk["zuzycie"],
-                          utils.formatuj_spalanie(stat["zuzycie"], elektryczny=czy_prad)
-                          if stat["zuzycie"] > 0 else etyk["brak_pelnych"],
-                          ft.Colors.TEAL_700, expand=1),
+                          utils.formatuj_spalanie(stat["zuzycie"] if stat["zuzycie"] > 0 else None,
+                                                  elektryczny=czy_prad),
+                          ft.Colors.TEAL_700, expand=1,
+                          opis=None if stat["zuzycie"] > 0 else etyk["brak_pelnych"]),
                     kafel(ft.Icons.WATER_DROP if not czy_prad else ft.Icons.BOLT, etyk["suma_ilosci"],
                           f"{utils.formatuj_liczba(stat['ilosc'])} {stat['jednostka']}",
                           ft.Colors.CYAN_700, expand=1),
@@ -504,7 +505,6 @@ class MiksinZakladkiStatystyki:
                     for k in self.wszystkie_karty_stat:
                         if zapytanie in k["szukaj"]:
                             self.lista_kart_stat.controls.append(k["karta"])
-                    utils.dopasuj_wysokosc_listy(self.lista_kart_stat, self._page, wysokosc_pozycji=150)
                     self.update()
 
                 self.elementy.append(utils.na_cala_szerokosc(
@@ -516,8 +516,7 @@ class MiksinZakladkiStatystyki:
                     )
                 ))
 
-                self.lista_kart_stat = ft.ListView(spacing=utils.odstep_listy(), padding=0, height=utils.wysokosc_listy(self._page), auto_scroll=False)
-                utils.pamietaj_pozycje(self._page, self.state, self.lista_kart_stat, "lista:statystyki")
+                self.lista_kart_stat = utils.lista_kart()
                 self.wszystkie_karty_stat = []
 
                 wiersze_mc_f = statystyki_po_filtrach
@@ -530,7 +529,6 @@ class MiksinZakladkiStatystyki:
                         karta = karta_okresu(w)
                         self.wszystkie_karty_stat.append({"karta": karta, "szukaj": w[1].lower()})
                         self.lista_kart_stat.controls.append(karta)
-                    utils.dopasuj_wysokosc_listy(self.lista_kart_stat, self._page, wysokosc_pozycji=150)
                     self.elementy.append(self.lista_kart_stat)
 
             self.elementy.append(ft.Divider(height=20))

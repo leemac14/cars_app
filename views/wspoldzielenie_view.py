@@ -248,7 +248,7 @@ class WspoldzielenieView(ft.View):
 
         elementy.append(ft.Text(
             "Pobierz najnowszą historię pojazdu." if tylko_czytam
-            else "Kliknij, aby wysłać swoje nowe i zmienione dane oraz pobrać te od pozostałych.",
+            else "Dotknij, aby wysłać swoje nowe i zmienione dane oraz pobrać te od pozostałych.",
             size=13, color=ft.Colors.ON_SURFACE_VARIANT
         ))
         elementy.append(ft.Button(

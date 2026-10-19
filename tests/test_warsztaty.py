@@ -341,7 +341,8 @@ def test_panel_karty_z_wiersza_wizyty(pojazd, cicho):
     janek = utils.pokaz_karte_warsztatu(strona.page, stan, "Warsztat u Janka")
     aso = utils.pokaz_karte_warsztatu(strona.page, stan, "Serwis ASO")
 
-    assert {"Warsztat u Janka", "Zadzwoń", "Edytuj dane", "123456789"} <= set(_napisy(janek.content))
+    # Numer w trójkach, jak się go czyta na głos; dzwoni się pod surowy.
+    assert {"Warsztat u Janka", "Zadzwoń", "Edytuj dane", "123 456 789"} <= set(_napisy(janek.content))
     assert {"Serwis ASO", "Bez telefonu i adresu", "Dodaj telefon i adres"} <= set(_napisy(aso.content))
     for panel in (janek, aso):
         assert audyty.znajdz_expand_bez_ograniczenia(panel.content) == []

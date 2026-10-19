@@ -175,3 +175,23 @@ def test_zuzycie_liczy_sie_raz_a_formatuje_dwa_razy(baza):
         ekran = utils.formatuj_spalanie(na_100km)
         dane = db.formatuj_zuzycie_tekst(na_100km)
         assert _cyfry(ekran) == dane, f"{na_100km}: ekran {ekran!r} kontra dane {dane!r}"
+
+
+@pytest.mark.parametrize("numer,oczekiwany", [
+    ("222333444", "222 333 444"),
+    ("+48600100200", "+48 600 100 200"),
+    ("+48 600100200", "+48 600 100 200"),
+    ("22 333 44 55", "22 333 44 55"),
+    ("600-100-200", "600-100-200"),
+    ("112", "112"),
+    (None, ""),
+])
+def test_telefon_w_trojkach_ale_wlasny_podzial_zostaje(numer, oczekiwany):
+    """Ciąg dziewięciu cyfr czyta się w trójkach; numer, który ktoś już podzielił
+    po swojemu (stacjonarny, z myślnikami), zostaje taki, jak go wpisano."""
+    assert utils.formatuj_telefon(numer) == oczekiwany
+
+
+def test_brak_zuzycia_to_kreska_bez_jednostki(baza):
+    """„- l/100km” wyglądało jak ujemna liczba — brak wartości to sama kreska."""
+    assert utils.formatuj_spalanie(None) == "—"

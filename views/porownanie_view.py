@@ -8,6 +8,10 @@ PALETA_KOLOROW = [ft.Colors.INDIGO, ft.Colors.TEAL_700, ft.Colors.ORANGE_700, ft
 MAKS_AUT = 4
 SZEROKOSC_ETYKIETY = 90
 SZEROKOSC_KOLUMNY = 100
+# Karta profilu nie stoi w tabeli, więc ma własną szerokość: przy 100 dp z nazwy
+# zostawało „Skod”, a zdjęcie wystawało poza kartę.
+SZEROKOSC_KARTY_PROFILU = 150
+SZEROKOSC_ZDJECIA_PROFILU = SZEROKOSC_KARTY_PROFILU - 24
 
 BRAK_PIATEJ_OSI = "Brak (4 osie)"
 
@@ -196,10 +200,11 @@ class PorownanieView(ft.View):
         for d in dane_aut:
             zdjecie = d.get("zdjecie_glowne")
             if zdjecie:
-                wizerunek = ft.Image(src=utils.abs_zalacznik(zdjecie), height=70, width=150, fit="cover", border_radius=10)
+                wizerunek = ft.Image(src=utils.abs_zalacznik(zdjecie), height=70, width=SZEROKOSC_ZDJECIA_PROFILU,
+                                     fit="cover", border_radius=10)
             else:
                 wizerunek = ft.Container(
-                    height=70, width=150, border_radius=10,
+                    height=70, width=SZEROKOSC_ZDJECIA_PROFILU, border_radius=10,
                     bgcolor=ft.Colors.with_opacity(0.12, d["kolor"]),
                     alignment=ft.Alignment.CENTER,
                     content=ft.Icon(ft.Icons.DIRECTIONS_CAR, size=30, color=d["kolor"])
@@ -213,7 +218,7 @@ class PorownanieView(ft.View):
 
             karty.append(
                 ft.Container(
-                    width=SZEROKOSC_KOLUMNY, padding=10,
+                    width=SZEROKOSC_KARTY_PROFILU, padding=10,
                     border_radius=utils.powierzchnia(self._page, "kafel")["border_radius"],
                     bgcolor=utils.powierzchnia(self._page, "kafel")["bgcolor"],
                     # Ramka w kolorze pojazdu zostaje — to ona wiąże kolumnę
@@ -223,7 +228,8 @@ class PorownanieView(ft.View):
                         wizerunek,
                         ft.Row([
                             ft.Column([
-                                ft.Text(d["nazwa_wyswietlana"], weight="bold", size=13, no_wrap=True),
+                                ft.Text(d["nazwa_wyswietlana"], weight="bold", size=13, max_lines=2,
+                                        overflow=ft.TextOverflow.ELLIPSIS),
                                 ft.Text(str(d.get("nr_rej") or "Brak rej."), size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ], spacing=2, expand=True),
                             ft.IconButton(
