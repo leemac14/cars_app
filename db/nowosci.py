@@ -28,6 +28,12 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.20", "pozycje": [
+        {"tytul": "Kosz na usunięte wpisy", "ikona": "RESTORE_FROM_TRASH", "ekran": "kosz",
+         "opis": "Usunięte tankowanie, koszt, wpis serwisowy, odczyt czy zdjęcie nie przepada już po kilku "
+                 "sekundach — czeka w koszu razem ze zdjęciem paragonu i plikami tyle dni, ile ustawisz w "
+                 "Ustawieniach, i wraca jednym dotknięciem. Kosz ma osobne zakładki na wpisy i pojazdy."},
+    ]},
     {"wersja": "2026.10.19", "pozycje": [
         {"tytul": "Listy przewijają się razem z ekranem", "ikona": "SWIPE_VERTICAL", "ekran": "paliwo",
          "opis": "Tankowania, inne koszty, serwis, wizyty, historia licznika, dziennik, magazyn, statystyki "

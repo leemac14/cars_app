@@ -172,16 +172,20 @@ def test_usuniecie_z_cofnieciem_odklada_i_oddaje_plik(baza, rodzaj):
             "plik wraca przy wpisie, który wrócił (cofnięcie wstawia go czasem pod nowym id)"
 
 
-def test_wygasniecie_cofania_kasuje_odlozony_plik(baza):
+def test_wygasniecie_cofania_zostawia_plik_w_koszu_a_trwale_usuniecie_go_kasuje(baza):
     zid = pomoce.utworz_pojazd("Kasowany")
     wpis = _plik_wpisu("tankowania", zid["tankowanie"])
 
     wynik = db.usun_z_cofnieciem("tankowania", zid["tankowanie"])
-    assert os.listdir(db.FOLDER_ODROCZONE)
+    w_koszu = os.listdir(db.FOLDER_KOSZ)
+    assert len(w_koszu) == 1
+    assert not os.path.isdir(db.FOLDER_ODROCZONE) or os.listdir(db.FOLDER_ODROCZONE) == []
     wynik["finalizuj"]()
+    assert os.listdir(db.FOLDER_KOSZ) == w_koszu, "po oknie „Cofnij” plik czeka w koszu"
 
+    assert db.usun_wpis_z_kosza_trwale(wynik["kosz_id"])
     assert not os.path.exists(db.pelna_sciezka_zalacznika(wpis))
-    assert os.listdir(db.FOLDER_ODROCZONE) == []
+    assert os.listdir(db.FOLDER_KOSZ) == []
 
 
 # ------------------------------------------------------------ kosz i inne urządzenie

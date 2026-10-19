@@ -9,8 +9,9 @@ from .polaczenie import polacz_baze
 from .ustawienia import pobierz_moje_imie
 from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
 from .zalaczniki import odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki
-from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow, przywroc_czesci_wizyty
+from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow
 from .przebieg import pobierz_aktualny_przebieg, przelicz_wszystkie_zadania
+from .kosz_wpisow import usun_do_kosza
 from .awarie import domyslny_rodzaj_serwisu
 from .nazwy import klucz_nazwy
 
@@ -248,102 +249,9 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
 
 
 def usun_wizyty_z_cofnieciem(ids_list):
-    """Grupowe (lub pojedyncze) usuwanie wizyt zbiorczych z pełnym cofaniem, w tym magazynu."""
-    if not ids_list:
-        return None
-
-    with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        placeholders = ",".join("?" for _ in ids_list)
-
-        # 1. Pobieramy wizyty
-        c.execute("PRAGMA table_info(wizyty)")
-        kolumny_wizyty = [r["name"] for r in c.fetchall()]
-        c.execute(f"SELECT * FROM wizyty WHERE id IN ({placeholders})", tuple(ids_list))
-        wizyty_dane = [{k: w[k] for k in kolumny_wizyty} for w in c.fetchall()]
-
-        # 2. Pobieramy powiązaną historię
-        c.execute("PRAGMA table_info(historia)")
-        kolumny_historia = [r["name"] for r in c.fetchall()]
-        c.execute(f"SELECT * FROM historia WHERE wizyta_id IN ({placeholders})", tuple(ids_list))
-        historia_dane = [{k: w[k] for k in kolumny_historia} for w in c.fetchall()]
-
-        # 3. Pobieramy użyte części
-        c.execute("PRAGMA table_info(wizyta_czesci_magazynu)")
-        kolumny_czesci = [r["name"] for r in c.fetchall()]
-        c.execute(f"SELECT * FROM wizyta_czesci_magazynu WHERE wizyta_id IN ({placeholders})", tuple(ids_list))
-        czesci_dane = [{k: w[k] for k in kolumny_czesci} for w in c.fetchall()]
-
-    if not wizyty_dane:
-        return None
-
-    # Pliki wizyt i ich pozycji czekają w folderze odroczonych na ewentualne cofnięcie.
-    pliki_wizyt = odloz_zalaczniki_rekordow("wizyty", [d["id"] for d in wizyty_dane])
-    pliki_historii = odloz_zalaczniki_rekordow("historia", [d["id"] for d in historia_dane])
-
-    # Faktyczne operacje kasowania (oddajemy też części do magazynu!)
-    with polacz_baze() as conn:
-        for wid in ids_list:
-            przywroc_czesci_wizyty(wid, conn=conn)
-        conn.execute(f"DELETE FROM historia WHERE wizyta_id IN ({placeholders})", tuple(ids_list))
-        conn.execute(f"DELETE FROM wizyty WHERE id IN ({placeholders})", tuple(ids_list))
-
-    zdalne_id_wizyt = [d.get("zdalne_id") for d in wizyty_dane if d.get("zdalne_id")]
-    zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
-    zdalne_id_czesci = [d.get("zdalne_id") for d in czesci_dane if d.get("zdalne_id")]
-    for zid in zdalne_id_wizyt:
-        zarejestruj_nagrobek("wizyty", zid)
-    for zid in zdalne_id_historii:
-        zarejestruj_nagrobek("historia", zid)
-    for zid in zdalne_id_czesci:
-        zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
-
-    stan = {"cofniete": False, "trwale_usuniete": False}
-
-    def cofnij():
-        if stan["cofniete"] or stan["trwale_usuniete"]: return
-        stan["cofniete"] = True
-
-        for zid in zdalne_id_wizyt:
-            usun_nagrobek(zid)
-        for zid in zdalne_id_historii:
-            usun_nagrobek(zid)
-        for zid in zdalne_id_czesci:
-            usun_nagrobek(zid)
-
-
-        with polacz_baze() as conn:
-            if wizyty_dane:
-                p_w = ",".join("?" for _ in kolumny_wizyty)
-                n_w = ",".join(kolumny_wizyty)
-                for d in wizyty_dane:
-                    conn.execute(f"INSERT INTO wizyty ({n_w}) VALUES ({p_w})", tuple(d[k] for k in kolumny_wizyty))
-            
-            if historia_dane:
-                p_h = ",".join("?" for _ in kolumny_historia)
-                n_h = ",".join(kolumny_historia)
-                for d in historia_dane:
-                    conn.execute(f"INSERT INTO historia ({n_h}) VALUES ({p_h})", tuple(d[k] for k in kolumny_historia))
-
-            if czesci_dane:
-                p_c = ",".join("?" for _ in kolumny_czesci)
-                n_c = ",".join(kolumny_czesci)
-                for d in czesci_dane:
-                    conn.execute(f"INSERT INTO wizyta_czesci_magazynu ({n_c}) VALUES ({p_c})", tuple(d[k] for k in kolumny_czesci))
-                    # Ponownie potrącamy części ze stanu magazynu
-                    conn.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?", (d["ilosc_uzyta"], d["magazyn_id"]))
-        # Wizyty i pozycje wracają z oryginalnymi id — pliki bez przemapowania.
-        przywroc_odlozone_zalaczniki(pliki_wizyt)
-        przywroc_odlozone_zalaczniki(pliki_historii)
-
-    def finalizuj_usuniecie():
-        if stan["cofniete"]: return
-        stan["trwale_usuniete"] = True
-        skasuj_odlozone_zalaczniki(pliki_wizyt)
-        skasuj_odlozone_zalaczniki(pliki_historii)
-
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
+    """Usuwa wizyty z pozycjami, plikami i zużytymi częściami (wracają na półkę) do kosza
+    wpisów — grupa to jedna pozycja kosza. Wynik jak db.usun_z_cofnieciem."""
+    return usun_do_kosza("wizyty", ids_list)
 
 
 __all__ = [

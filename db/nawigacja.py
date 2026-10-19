@@ -10,6 +10,7 @@ from .polaczenie import polacz_baze
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .nowosci import liczba_niewidzianych_wydan
 from .pojazd import terminy_pojazdu
+from .kosz_wpisow import liczba_wpisow_w_koszu
 from .kosz import liczba_w_koszu
 from .dolewki import sygnaly_plynow
 
@@ -238,7 +239,7 @@ def _policz_liczniki_nawigacji(auto_id):
         pass
 
     try:
-        n = liczba_w_koszu()
+        n = liczba_w_koszu() + liczba_wpisow_w_koszu()
         if n:
             wynik["kosz"] = n
     except Exception:

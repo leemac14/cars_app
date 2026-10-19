@@ -1,4 +1,4 @@
-"""Kosz pojazdów: zrzut, przywracanie i trwałe kasowanie."""
+"""Kosz pojazdów: zrzut, przywracanie i trwałe kasowanie; sprzątanie obu koszy (wpisów też)."""
 
 import json
 import os
@@ -8,21 +8,20 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from .stale import DNI_KOSZA_DOMYSLNIE, DNI_KOSZA_OPCJE, FOLDER_KOSZ, TABELE_DAWNEGO_ZALACZNIKA, TABELE_Z_ZALACZNIKIEM
+from .stale import TABELE_DAWNEGO_ZALACZNIKA, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
 from .pomocnicze import parsuj_int_bezpiecznie
 from .daty import uzupelnij_date_iso
-from .ustawienia import _pobierz_ustawienia_pojazdu, _przywroc_ustawienia_pojazdu, _usun_ustawienia_pojazdu, pobierz_ustawienie, zapisz_ustawienie
+from .ustawienia import _pobierz_ustawienia_pojazdu, _przywroc_ustawienia_pojazdu, _usun_ustawienia_pojazdu, pobierz_ustawienie
 from .synchronizacja import usun_z_kolejki_sync, zakolejkuj_synchronizacje, zarejestruj_nagrobek
 from .zalaczniki import (
     dopisz_dawny_zalacznik, pelna_sciezka_zalacznika, sciezka_pliku_zalacznika, usun_plik_zalacznika,
     wzgledna_sciezka_zalacznika,
 )
-
-
-def _upewnij_folder_kosza():
-    os.makedirs(FOLDER_KOSZ, exist_ok=True)
-    return FOLDER_KOSZ
+from .kosz_wpisow import (
+    KOSZ_KLUCZE_OBCE, KOSZ_TABELE_BEZ_AUTO_ID, KOSZ_TABELE_POTOMNE, _data_usuniecia, _dni_do_usuniecia,
+    _upewnij_folder_kosza, _usun_pozycje_wpisow, pliki_kosza_wpisow, pobierz_dni_kosza,
+)
 
 
 # ============================================================================
@@ -30,28 +29,9 @@ def _upewnij_folder_kosza():
 # ============================================================================
 # Usunięte auto (samochody + tabele potomne) trafia jako migawka JSON do kosz_pojazdy,
 # zdjęcia do FOLDER_KOSZ. „Cofnij” przywraca od razu; potem czeka do przywrócenia albo
-# końca retencji (pobierz_dni_kosza / posprzataj_kosz).
-
-# Kolejność MA ZNACZENIE przy odtwarzaniu — klucz obcy wymaga, żeby rodzic
-# istniał wcześniej: historia zależy od zadań i wizyt, wizyta_czesci_magazynu od
-# wizyt i magazynu, do_zrobienia od zadań. `zalaczniki` na końcu: ich rekord_id
-# przemapowuje się po wpisach każdej tabeli.
-KOSZ_TABELE_POTOMNE = [
-    "zadania", "wizyty", "magazyn_czesci", "tagi", "tankowania",
-    "inne_koszty", "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
-    "warsztaty", "wydatki_cykliczne", "pakiety_serwisowe_wlasne",
-    "trasy_szablony", "checklisty",
-    "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
-    "checklisty_pozycje",
-    "budzety", "rozliczenia", "szkice_wpisow", "ceny_czesci", "przejazdy",
-    "dolewki", "dokumenty_pojazdu", "zalaczniki",
-]
-
-
-# Tabele bez kolumny auto_id — z pojazdem związane wyłącznie pośrednio.
-KOSZ_TABELE_BEZ_AUTO_ID = {
-    "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu", "checklisty_pozycje",
-}
+# końca retencji (pobierz_dni_kosza / posprzataj_kosz). Kolejność tabel i klucze obce
+# (KOSZ_TABELE_POTOMNE, KOSZ_KLUCZE_OBCE) mieszkają w db/kosz_wpisow.py — dzieli je kosz wpisów.
+# Wpisy usunięte wcześniej czekają z autem (`kosz_wpisy.kosz_pojazdu_id`) i wracają razem z nim.
 
 
 KOSZ_ZAPYTANIA_POSREDNIE = {
@@ -65,19 +45,6 @@ KOSZ_ZAPYTANIA_POSREDNIE = {
     "checklisty_pozycje": (
         "SELECT p.* FROM checklisty_pozycje p JOIN checklisty l ON p.checklista_id = l.id WHERE l.auto_id=?"
     ),
-}
-
-
-# Odwołania do przemapowania, gdy przywracany rekord NIE odzyska oryginalnego ID
-# (bo w międzyczasie zajął je inny wpis — np. po imporcie bazy). Bez tego
-# historia wróciłaby podpięta pod cudzy podzespół.
-KOSZ_KLUCZE_OBCE = {
-    "do_zrobienia": {"zadanie_id": "zadania"},
-    "historia": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
-    "wizyta_czesci_magazynu": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"},
-    "historia_czesci_magazynu": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"},
-    "checklisty_pozycje": {"checklista_id": "checklisty"},
-    "dolewki": {"magazyn_id": "magazyn_czesci", "koszt_id": "inne_koszty"},
 }
 
 
@@ -102,19 +69,6 @@ KOSZ_TABELE_LICZONE = [
     "magazyn_czesci", "zdjecia_karoserii", "odczyty_przebiegu", "do_zrobienia",
     "szkice_wpisow", "przejazdy", "dokumenty_pojazdu", "dolewki",
 ]
-
-
-def pobierz_dni_kosza():
-    """Ile dni pojazd leży w koszu, zanim zniknie na dobre. 0 = bez limitu."""
-    try:
-        w = int(pobierz_ustawienie("dni_kosza", str(DNI_KOSZA_DOMYSLNIE)))
-    except (TypeError, ValueError):
-        return DNI_KOSZA_DOMYSLNIE
-    return w if w in DNI_KOSZA_OPCJE else DNI_KOSZA_DOMYSLNIE
-
-
-def zapisz_dni_kosza(dni):
-    zapisz_ustawienie("dni_kosza", str(parsuj_int_bezpiecznie(dni, DNI_KOSZA_DOMYSLNIE)))
 
 
 def _zrzut_tabeli_pojazdu(c, tabela, auto_id):
@@ -216,6 +170,8 @@ def usun_auto_do_kosza(auto_id):
             )
         )
         kosz_id = c.lastrowid
+        # Wpisy usunięte wcześniej czekają z autem; bez auto_id nowe auto o tym id ich nie przejmie.
+        c.execute("UPDATE kosz_wpisy SET kosz_pojazdu_id=?, auto_id=NULL WHERE auto_id=?", (kosz_id, auto_id))
 
     wynik = {"kosz_id": kosz_id, "przywrocone_id": None, "cofniete": False}
 
@@ -254,16 +210,8 @@ def pobierz_kosz() -> list[dict[str, Any]]:
     teraz = datetime.now()
     pozycje = []
     for w in wiersze:
-        usunieto = None
-        try:
-            usunieto = datetime.strptime(str(w["data_usuniecia"]), "%Y-%m-%d %H:%M:%S")
-        except (TypeError, ValueError):
-            pass
-        if dni_retencji and usunieto:
-            zostalo = dni_retencji - (teraz - usunieto).days
-            dni_do_usuniecia = max(0, zostalo)
-        else:
-            dni_do_usuniecia = None
+        usunieto = _data_usuniecia(w["data_usuniecia"])
+        dni_do_usuniecia = _dni_do_usuniecia(usunieto, dni_retencji, teraz)
         pozycje.append({
             "id": w["id"],
             "nazwa": str(w["nazwa"] or "Pojazd"),
@@ -339,6 +287,8 @@ def przywroc_auto_z_kosza(kosz_id):
     with polacz_baze() as conn:
         nowe_auto_id = odtworz_pojazd(conn, migawka, podmiana)
         conn.execute("DELETE FROM kosz_pojazdy WHERE id=?", (kosz_id,))
+        conn.execute("UPDATE kosz_wpisy SET auto_id=?, kosz_pojazdu_id=NULL WHERE kosz_pojazdu_id=?",
+                     (nowe_auto_id, kosz_id))
 
     _przywroc_ustawienia_pojazdu(nowe_auto_id, migawka.get("ustawienia"))
 
@@ -449,7 +399,8 @@ def odtworz_pojazd(conn, migawka, podmiana=None, nowe_id=False) -> int:
 def usun_z_kosza_trwale(kosz_id):
     """Kasuje pozycję kosza bezpowrotnie: zdjęcia z dysku plus nagrobki, żeby
     usunięcie dotarło przy najbliższej synchronizacji także na serwer i do
-    współdzielących. Zwraca nazwę usuniętego pojazdu albo None."""
+    współdzielących. Wpisy, które czekały z autem w koszu wpisów, znikają z nim.
+    Zwraca nazwę usuniętego pojazdu albo None."""
     if not kosz_id:
         return None
 
@@ -488,6 +439,7 @@ def usun_z_kosza_trwale(kosz_id):
 
     with polacz_baze() as conn:
         conn.execute("DELETE FROM kosz_pojazdy WHERE id=?", (kosz_id,))
+    _usun_pozycje_wpisow("kosz_pojazdu_id=?", (kosz_id,))
 
     return nazwa
 
@@ -510,8 +462,8 @@ def oproznij_kosz():
 
 
 def posprzataj_kosz():
-    """Kasuje pozycje kosza starsze niż ustawiona retencja. Wywoływane raz, przy
-    starcie aplikacji (init_db). Retencja 0 = trzymaj bez limitu."""
+    """Kasuje pozycje obu koszy (pojazdy i wpisy) starsze niż ustawiona retencja. Wywoływane
+    raz, przy starcie aplikacji (porzadki_startowe). Retencja 0 = trzymaj bez limitu."""
     # Sieroty po nagłym zamknięciu aplikacji sprzątamy ZAWSZE — także przy
     # retencji "nigdy", która wyłącza tylko kasowanie samych pozycji kosza.
     _posprzataj_osierocone_pliki_kosza()
@@ -537,7 +489,7 @@ def posprzataj_kosz():
         except Exception:
             pass
 
-    return usuniete
+    return usuniete + _usun_pozycje_wpisow("data_usuniecia <= ?", (granica,))
 
 
 def _posprzataj_osierocone_pliki_kosza():
@@ -560,6 +512,10 @@ def _posprzataj_osierocone_pliki_kosza():
                         uzywane.add(os.path.normcase(os.path.abspath(sciezka)))
             except (TypeError, ValueError, IndexError):
                 continue
+    for miejsce in pliki_kosza_wpisow():
+        sciezka = sciezka_pliku_zalacznika(miejsce)
+        if sciezka:
+            uzywane.add(os.path.normcase(os.path.abspath(sciezka)))
     try:
         for nazwa_pliku in os.listdir(folder):
             sciezka = os.path.join(folder, nazwa_pliku)
@@ -573,24 +529,18 @@ def _posprzataj_osierocone_pliki_kosza():
 
 
 __all__ = [
-    "KOSZ_KLUCZE_OBCE",
-    "KOSZ_TABELE_BEZ_AUTO_ID",
     "KOSZ_TABELE_LICZONE",
-    "KOSZ_TABELE_POTOMNE",
     "KOSZ_TABELE_SYNCHRONIZOWANE",
     "KOSZ_ZAPYTANIA_POSREDNIE",
     "_posprzataj_osierocone_pliki_kosza",
-    "_upewnij_folder_kosza",
     "_zrzut_tabeli_pojazdu",
     "liczba_w_koszu",
     "odtworz_pojazd",
     "oproznij_kosz",
-    "pobierz_dni_kosza",
     "pobierz_kosz",
     "posprzataj_kosz",
     "przywroc_auto_z_kosza",
     "usun_auto_do_kosza",
     "usun_z_kosza_trwale",
-    "zapisz_dni_kosza",
     "zrzut_pojazdu",
 ]

@@ -222,7 +222,7 @@ def test_usuniecie_kosztu_z_listy_i_cofniecie_dowiazuje_dolewke(baza, grupowo):
     assert db.pobierz_dolewke(d_id)["koszt_id"] is None
     wynik["cofnij"]()
     d = db.pobierz_dolewke(d_id)
-    assert d["koszt_id"] and d["koszt_id"] != k_id and d["koszt"] == 30.0
+    assert d["koszt_id"] == k_id and d["koszt"] == 30.0, "koszt wraca z kosza pod wolnym id i dolewka go dostaje"
 
 
 def test_pozycja_magazynu_usunieta_scalona_i_w_historii_zuzycia(baza):

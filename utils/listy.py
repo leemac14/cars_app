@@ -24,7 +24,7 @@ def _kierunek(e):
 
 
 def gesty_karty(page: ft.Page, karta, usun=None, notatka=None, widok=None):
-    """Karta listy z gestami (W-07): w lewo — usuń (bez pytania, ratunkiem jest „Cofnij”), w prawo —
+    """Karta listy z gestami (W-07): w lewo — usuń (bez pytania, ratunkiem „Cofnij” i kosz), w prawo —
     notatka. `usun`/`notatka` to akcje bez argumentów, None wyłącza gest (rola bez prawa zmian).
     W trybie zaznaczania (`widok.tryb_zaznaczania`) karta odbija bez akcji."""
     if not usun and not notatka:

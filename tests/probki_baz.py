@@ -256,6 +256,11 @@ def zasiej_dane(sciezka, wierszy=2):
                 dane["migawka"] = json.dumps({"wersja": 1, "auto": {"kolumny": [], "wiersz": {}}, "tabele": {}})
                 dane["pliki"] = "[]"
                 dane["data_usuniecia"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if tabela == "kosz_wpisy":
+                dane["migawka"] = json.dumps({"wersja": 1, "tabela": "tankowania", "korzenie": {"tankowania": []},
+                                              "tabele": {}, "dowiazania": []})
+                dane["pliki"] = "[]"
+                dane["data_usuniecia"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             nazwy = list(dane)
             try:
                 c.execute(

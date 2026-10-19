@@ -7,12 +7,10 @@
 # Odświeżenie po świadomej zmianie: python tests/audyty.py --zapisz
 
 date.py                             1
-db/kosz.py                          9
-db/magazyn.py                       1
+db/kosz.py                          8
 db/nawigacja.py                     4
 db/przebieg.py                      1
 db/raporty.py                       1
-db/usuwanie.py                      3
 db/zalaczniki.py                    4
 log.py                              5
 sync/konflikty.py                   1

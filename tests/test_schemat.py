@@ -117,6 +117,8 @@ POZA_POJAZDEM_SWIADOMIE = {
 POZA_SCIEZKAMI_SWIADOMIE = {
     ("kosz_pojazdy", "pliki"),           # lista nazw plików migawki, w JSON
     ("kosz_pojazdy", "rozmiar_plikow"),  # liczba bajtów
+    ("kosz_wpisy", "pliki"),             # jak w koszu pojazdów: pary w JSON, folder kosza
+    ("kosz_wpisy", "rozmiar_plikow"),
     ("dokumenty_pojazdu", "liczba_plikow"),  # ile plików ma telefon, który je dodał
     # Dawny pojedynczy załącznik wpisu: migracja 51 przenosi go do `zalaczniki`
     # i zeruje (stare migawki kosza przenosi przywrócenie) — w kolumnie nic nie zostaje.

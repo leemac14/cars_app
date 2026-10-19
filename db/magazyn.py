@@ -8,9 +8,7 @@ from typing import Any
 from .stale import MIESIACE_ZIMOWE, PROG_ILOSC_MAGAZYNU_DOMYSLNY, RODZAJE_PLYNOW, SEZONY_PRZELACZALNE
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
-from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
-from .ceny_czesci import zachowaj_zakup_pozycji
-from .zalaczniki import odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki
+from .synchronizacja import zarejestruj_nagrobek
 
 
 # Zużycie części z magazynu ma dwa nośniki: wizytę zbiorczą i pojedynczy wpis. Tabele są
@@ -324,132 +322,6 @@ def _przywroc_powiazania_czesci_wpisow(wiersze, mapa_historia=None):
                       (dane["ilosc_uzyta"], dane["magazyn_id"]))
 
 
-def usun_czesc_magazynu_z_cofnieciem(czesc_id):
-    """Usuwa pozycję magazynową wraz z powiązanymi wpisami zużycia — zarówno
-    w wizytach (wizyta_czesci_magazynu), jak i w pojedynczych wpisach serwisowych
-    (historia_czesci_magazynu) — które SQLite skasowałoby cicho przez CASCADE.
-    Zachowuje oryginalne ID pozycji."""
-    if not czesc_id:
-        return None
-
-    with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-
-        c.execute("PRAGMA table_info(magazyn_czesci)")
-        kol_m = [r["name"] for r in c.fetchall()]
-        c.execute("SELECT * FROM magazyn_czesci WHERE id=?", (czesc_id,))
-        w = c.fetchone()
-        if not w:
-            return None
-        dane_czesc = {k: w[k] for k in kol_m}
-
-        # Magazyn to wspólny inwentarz pojazdu, więc współautora nie ogranicza —
-        # ale gość z rolą „tylko podgląd” nie ma prawa go czyścić (patrz
-        # db/synchronizacja.czy_moge_zmieniac_rekord).
-        try:
-            if dane_czesc.get("auto_id") and not czy_moge_zmieniac_rekord(
-                dane_czesc["auto_id"], "magazyn_czesci", None
-            ):
-                return None
-        except Exception:
-            pass
-
-        c.execute("PRAGMA table_info(wizyta_czesci_magazynu)")
-        kol_w = [r["name"] for r in c.fetchall()]
-        c.execute("SELECT * FROM wizyta_czesci_magazynu WHERE magazyn_id=?", (czesc_id,))
-        uzycia_dane = [{k: r[k] for k in kol_w} for r in c.fetchall()]
-
-        c.execute("PRAGMA table_info(historia_czesci_magazynu)")
-        kol_hw = [r["name"] for r in c.fetchall()]
-        c.execute("SELECT * FROM historia_czesci_magazynu WHERE magazyn_id=?", (czesc_id,))
-        uzycia_wpisow = [{k: r[k] for k in kol_hw} for r in c.fetchall()]
-        # Dolewka przeżywa pozycję (ON DELETE SET NULL); cofnięcie oddaje jej odwołanie.
-        dolewki_pozycji = [r[0] for r in c.execute("SELECT id FROM dolewki WHERE magazyn_id=?", (czesc_id,))]
-
-    pliki_czesci = odloz_zalaczniki_rekordow("magazyn_czesci", [czesc_id])
-
-    with polacz_baze() as conn:
-        # Historia cen przeżywa pozycję: jej ostatni zakup zostaje w dzienniku
-        # (db/ceny_czesci.py). Cofnięcie przywraca pozycję, a ta znowu przykrywa
-        # ten sam zakup jako cenę bieżącą — bez drugiego punktu na krzywej.
-        zachowaj_zakup_pozycji(conn, dane_czesc.get("auto_id"), dane_czesc)
-        conn.execute("DELETE FROM magazyn_czesci WHERE id=?", (czesc_id,))
-
-    zdalny_id_czesci = dane_czesc.get("zdalne_id")
-    if zdalny_id_czesci:
-        zarejestruj_nagrobek("magazyn_czesci", zdalny_id_czesci)
-
-    zdalne_id_uzycia = [d.get("zdalne_id") for d in uzycia_dane if d.get("zdalne_id")]
-    for zid in zdalne_id_uzycia:
-        zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
-
-    zdalne_id_uzycia_wpisow = [d.get("zdalne_id") for d in uzycia_wpisow if d.get("zdalne_id")]
-    for zid in zdalne_id_uzycia_wpisow:
-        zarejestruj_nagrobek("historia_czesci_magazynu", zid)
-
-    stan = {"cofniete": False, "trwale_usuniete": False}
-
-    def cofnij():
-        if stan["cofniete"] or stan["trwale_usuniete"]:
-            return
-        stan["cofniete"] = True
-
-        if zdalny_id_czesci:
-            usun_nagrobek(zdalny_id_czesci)
-        for zid in zdalne_id_uzycia + zdalne_id_uzycia_wpisow:
-            usun_nagrobek(zid)
-
-        with polacz_baze() as conn:
-            n_m, p_m = ",".join(kol_m), ",".join("?" for _ in kol_m)
-            conn.execute(f"INSERT INTO magazyn_czesci ({n_m}) VALUES ({p_m})", tuple(dane_czesc[k] for k in kol_m))
-            if uzycia_dane:
-                n_w, p_w = ",".join(kol_w), ",".join("?" for _ in kol_w)
-                for d in uzycia_dane:
-                    conn.execute(f"INSERT INTO wizyta_czesci_magazynu ({n_w}) VALUES ({p_w})", tuple(d[k] for k in kol_w))
-            if uzycia_wpisow:
-                n_hw, p_hw = ",".join(kol_hw), ",".join("?" for _ in kol_hw)
-                for d in uzycia_wpisow:
-                    conn.execute(f"INSERT INTO historia_czesci_magazynu ({n_hw}) VALUES ({p_hw})", tuple(d[k] for k in kol_hw))
-            if dolewki_pozycji:
-                conn.execute(f"UPDATE dolewki SET magazyn_id=? WHERE magazyn_id IS NULL AND id IN "
-                             f"({','.join('?' * len(dolewki_pozycji))})", (czesc_id, *dolewki_pozycji))
-        # Pozycja wraca z oryginalnym id (kol_m zawiera id) — pliki bez przemapowania.
-        przywroc_odlozone_zalaczniki(pliki_czesci)
-
-    def finalizuj_usuniecie():
-        if stan["cofniete"]:
-            return
-        stan["trwale_usuniete"] = True
-        skasuj_odlozone_zalaczniki(pliki_czesci)
-
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
-
-
-def usun_wiele_czesci_magazynu_z_cofnieciem(ids_list):
-    wyniki = [w for w in (usun_czesc_magazynu_z_cofnieciem(cid) for cid in ids_list) if w]
-    if not wyniki:
-        return None
-
-    stan = {"cofniete": False, "trwale_usuniete": False}
-
-    def cofnij():
-        if stan["cofniete"] or stan["trwale_usuniete"]:
-            return
-        stan["cofniete"] = True
-        for w in wyniki:
-            w["cofnij"]()
-
-    def finalizuj_usuniecie():
-        if stan["cofniete"]:
-            return
-        stan["trwale_usuniete"] = True
-        for w in wyniki:
-            w["finalizuj"]()
-
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie}
-
-
 def pobierz_stan_magazynu(auto_id):
     """Ile pozycji leży na półce i ile z nich zeszło poniżej własnego progu —
     jedna liczba, po którą sięga kafelek kokpitu i podsumowania."""
@@ -722,7 +594,5 @@ __all__ = [
     "rozlicz_czesci_z_magazynu_wpisu",
     "srednia_cena_jednostkowa",
     "suma_kosztu_zuzycia",
-    "usun_czesc_magazynu_z_cofnieciem",
-    "usun_wiele_czesci_magazynu_z_cofnieciem",
     "wycen_zuzycie",
 ]

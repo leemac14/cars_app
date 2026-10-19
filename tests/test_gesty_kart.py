@@ -1,5 +1,5 @@
 """Gesty na kartach list (W-07) i wibracje (unowocześnienie 16.10.2026): w lewo — usuń
-z „Cofnij”, w prawo — notatka; haptyka tylko na telefonie i przy włączonym przełączniku."""
+z „Cofnij” do kosza, w prawo — notatka; haptyka tylko na telefonie i przy włączonym przełączniku."""
 
 import asyncio
 from types import SimpleNamespace
@@ -81,6 +81,7 @@ def test_tankowania_przesuniete_w_lewo_znikaja_z_cofnij(baza, monkeypatch):
         po = conn.execute("SELECT COUNT(*) FROM tankowania WHERE auto_id=?", (stan.auto_id,)).fetchone()[0]
     assert po == przed - 1
     assert komunikaty and komunikaty[0][0] == "Usunięto tankowanie." and komunikaty[0][1]
+    assert komunikaty[0][1]["w_koszu"] and db.liczba_wpisow_w_koszu() == 1, "gest odkłada wpis do kosza"
 
     komunikaty[0][1]["cofnij"]()
     with db.polacz_baze() as conn:

@@ -83,6 +83,8 @@ WYWOLANIA = {
     "pobierz_karty_warsztatow": lambda k: (k["id"]["auto_id"],),
     "pobierz_kolejke_sync": lambda k: (),
     "pobierz_kosz": lambda k: (),
+    # Wpis w koszu — inaczej lista byłaby pusta.
+    "pobierz_kosz_wpisow": lambda k: (db.usun_z_cofnieciem("tankowania", k["id"]["tankowanie"]) and ()),
     "pobierz_koszty_innych_wg_kategorii": lambda k: (k["id"]["auto_id"],),
     "pobierz_koszty_miesieczne": lambda k: (k["id"]["auto_id"],),
     "pobierz_koszty_miesieczne_wg_kategorii": lambda k: (k["id"]["auto_id"],),

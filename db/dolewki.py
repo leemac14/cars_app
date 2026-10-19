@@ -14,12 +14,10 @@ from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, klucz_nazwy, liczba_na_tekst, liczba_z_odmiana, normalizuj_nazwe
 from .ustawienia import pobierz_moje_imie
 from .jednostki import na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
-from .synchronizacja import czy_moge_dodawac, czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import (
-    odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki, usun_plik_zalacznika,
-    usun_zalaczniki_rekordow,
-)
+from .synchronizacja import czy_moge_dodawac, czy_moge_zmieniac_rekord, zarejestruj_nagrobek
+from .zalaczniki import usun_plik_zalacznika, usun_zalaczniki_rekordow
 from .przebieg import pobierz_aktualny_przebieg
+from .kosz_wpisow import usun_do_kosza
 
 
 MIN_KM_POMIARU = 1000             # krótszy pomiar to szum (dolewka „do kreski” tuż po wymianie)
@@ -252,93 +250,14 @@ def zapisz_dolewke(auto_id, dane, dolewka_id=None) -> int | None:
     return wynik
 
 
-def _wstaw(conn, tabela, wiersz):
-    nazwy = [k for k in wiersz if k != "id"]
-    return conn.execute(f"INSERT INTO {tabela} ({','.join(nazwy)}) VALUES ({','.join('?' * len(nazwy))})",
-                        tuple(wiersz[k] for k in nazwy)).lastrowid
-
-
 def usun_dolewke_z_cofnieciem(dolewka_id) -> dict[str, Any] | None:
-    """Usuwa dolewkę z jej kosztem, oddaje litry na półkę. {"cofnij", "finalizuj", "dane"} jak
-    usun_z_cofnieciem — cofnięcie wstawia oba wiersze od nowa (nowe id, ten sam `zdalne_id`)."""
+    """Usuwa dolewkę z jej kosztem do kosza wpisów (litry wracają na półkę) — wynik jak
+    usun_z_cofnieciem; przywrócenie oddaje oba wiersze i znów zdejmuje litry ze stanu."""
     with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        w = conn.execute("SELECT * FROM dolewki WHERE id=?", (dolewka_id,)).fetchone() if dolewka_id else None
-        if not w:
-            return None
-        dane = dict(w)
-        wk = conn.execute("SELECT * FROM inne_koszty WHERE id=?", (dane["koszt_id"],)).fetchone() if dane["koszt_id"] else None
-        koszt = dict(wk) if wk else None
-    if not czy_moge_zmieniac_rekord(dane["auto_id"], "dolewki", dane.get("dodane_przez")):
+        w = conn.execute("SELECT koszt_id FROM dolewki WHERE id=?", (dolewka_id,)).fetchone() if dolewka_id else None
+    if not w:
         return None
-
-    pliki = odloz_zalaczniki_rekordow("inne_koszty", [koszt["id"]]) if koszt else {}
-    with polacz_baze() as conn:
-        if dane["magazyn_id"] and dane["ilosc_magazynu"]:
-            conn.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (dane["ilosc_magazynu"], dane["magazyn_id"]))
-        conn.execute("DELETE FROM dolewki WHERE id=?", (dolewka_id,))
-        if koszt:
-            conn.execute("DELETE FROM inne_koszty WHERE id=?", (koszt["id"],))
-    zdalne = [(t, r["zdalne_id"]) for t, r in (("dolewki", dane), ("inne_koszty", koszt)) if r and r.get("zdalne_id")]
-    for tabela, zdalne_id in zdalne:
-        zarejestruj_nagrobek(tabela, zdalne_id, dane["auto_id"])
-
-    stan = {"cofniete": False, "trwale": False}
-
-    def cofnij():
-        if stan["cofniete"] or stan["trwale"]:
-            return
-        stan["cofniete"] = True
-        for _tabela, zdalne_id in zdalne:
-            usun_nagrobek(zdalne_id)
-        wiersz = dict(dane)
-        with polacz_baze() as conn:
-            wiersz["koszt_id"] = _wstaw(conn, "inne_koszty", koszt) if koszt else None
-            if wiersz["magazyn_id"] and not conn.execute("SELECT 1 FROM magazyn_czesci WHERE id=?",
-                                                         (wiersz["magazyn_id"],)).fetchone():
-                wiersz["magazyn_id"] = None
-            _wstaw(conn, "dolewki", wiersz)
-            if wiersz["magazyn_id"] and wiersz["ilosc_magazynu"]:
-                conn.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?",
-                             (wiersz["ilosc_magazynu"], wiersz["magazyn_id"]))
-        if koszt:
-            przywroc_odlozone_zalaczniki(pliki, {koszt["id"]: wiersz["koszt_id"]})
-
-    def finalizuj():
-        if stan["cofniete"]:
-            return
-        stan["trwale"] = True
-        if pliki:
-            skasuj_odlozone_zalaczniki(pliki)
-
-    return {"cofnij": cofnij, "finalizuj": finalizuj, "dane": dane}
-
-
-def powiazania_kosztow_dolewek(koszt_ids) -> dict[int, list[int]]:
-    """{koszt_id: [id dolewek]} — zbierane przed usunięciem Innych kosztów (ON DELETE SET NULL), żeby
-    cofnięcie, które wstawia koszt pod nowym id, dowiązało dolewki z powrotem."""
-    ids = [i for i in koszt_ids or [] if i is not None]
-    if not ids:
-        return {}
-    with polacz_baze() as conn:
-        wiersze = conn.execute(f"SELECT koszt_id, id FROM dolewki WHERE koszt_id IN ({','.join('?' * len(ids))})",
-                               tuple(ids)).fetchall()
-    wynik = {}
-    for koszt_id, dolewka_id in wiersze:
-        wynik.setdefault(koszt_id, []).append(dolewka_id)
-    return wynik
-
-
-def przywroc_powiazania_kosztow(powiazania, mapa_id) -> None:
-    """Odwrotność powiazania_kosztow_dolewek: `mapa_id` {stare id kosztu: nowe}."""
-    if not powiazania:
-        return
-    with polacz_baze() as conn:
-        for stary, dolewki in powiazania.items():
-            nowy = (mapa_id or {}).get(stary)
-            if nowy:
-                conn.execute(f"UPDATE dolewki SET koszt_id=? WHERE koszt_id IS NULL AND id IN ({','.join('?' * len(dolewki))})",
-                             (nowy, *dolewki))
+    return usun_do_kosza("dolewki", [dolewka_id], wlasne={"inne_koszty": [w[0]]} if w[0] else None)
 
 
 # ============================================================================
@@ -548,9 +467,7 @@ __all__ = [
     "plyny_pojazdu",
     "pobierz_dolewke",
     "pobierz_dolewki",
-    "powiazania_kosztow_dolewek",
     "pozycje_magazynu_dla_plynu",
-    "przywroc_powiazania_kosztow",
     "status_zuzycia",
     "sygnaly_plynow",
     "tekst_litrow",

@@ -1,19 +1,10 @@
-"""Usuwanie z możliwością cofnięcia (wpisy, zadania, zdjęcia)."""
+"""Usuwanie z możliwością cofnięcia (wpisy, podzespoły, części) — przez kosz wpisów
+(db/kosz_wpisow.py); wynik dla utils.pokaz_komunikat_cofnij."""
 
-import os
-import shutil
-import sqlite3
-import uuid
-
-from .stale import OSIE_MONTAZU, TABELE_Z_ZALACZNIKIEM
+from .stale import OSIE_MONTAZU
 from .polaczenie import polacz_baze
-from .synchronizacja import czy_moge_zmieniac_rekord, usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import (
-    _upewnij_folder_odroczonych, odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, sciezka_pliku_zalacznika,
-    skasuj_odlozone_zalaczniki, usun_plik_zalacznika,
-)
-from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow
-from .dolewki import powiazania_kosztow_dolewek, przywroc_powiazania_kosztow
+from .ceny_czesci import zachowaj_zakup_pozycji
+from .kosz_wpisow import POZA_KOSZEM_WPISOW, usun_do_kosza
 
 
 def aktualizuj_wiele_zdjec_karoserii(ids_list, strefa=None, typ_porownania=None, opis=None):
@@ -62,264 +53,17 @@ def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
         conn.execute("UPDATE zestawy_opon SET zamontowane=1, os_montazu=? WHERE id=?", (os_montazu, zestaw_id))
 
 
-def _auto_wiersza(tabela, dane):
-    """Do którego pojazdu należy usuwany wiersz. Większość tabel ma auto_id
-    wprost; historia serwisowa wisi pod podzespołem i trzeba ją dojechać
-    JOIN-em."""
-    if dane.get("auto_id"):
-        return dane["auto_id"]
-    if tabela == "historia" and dane.get("zadanie_id"):
-        with polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute("SELECT auto_id FROM zadania WHERE id=?", (dane["zadanie_id"],))
-            w = c.fetchone()
-        return w[0] if w else None
-    return None
-
-
-def _wolno_usunac(tabela, dane):
-    """Ostatnia bramka przed skasowaniem czegokolwiek. Usuwanie z list omija
-    router (nie zmienia trasy), więc bez tego sprawdzenia gość z rolą „tylko
-    podgląd” mógłby wyczyścić cudzą historię u siebie — a nagrobki poszłyby
-    do chmury i wyczyściłyby ją wszystkim."""
-    auto_id = _auto_wiersza(tabela, dane)
-    if not auto_id:
-        return True  # wiersz bez pojazdu (np. dane globalne) — rola go nie dotyczy
-    try:
-        return czy_moge_zmieniac_rekord(auto_id, tabela, dane.get("dodane_przez"))
-    except Exception:
-        return True
-
-
 def usun_z_cofnieciem(tabela, rekord_id):
-    """Usuwa rekord i zwraca {"cofnij", "finalizuj", "dane"}. cofnij() wstawia go pod
-    NOWYM id (kolumny_bez_id), z tym samym `zdalne_id` (sync rozpozna ten sam rekord);
-    części z magazynu przemapowane. Załącznik idzie do folderu odroczonych — wraca przy
-    cofnięciu albo znika w finalizuj()."""
-    with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute(f"PRAGMA table_info({tabela})")
-        kolumny = [r["name"] for r in c.fetchall()]
-
-        c.execute(f"SELECT * FROM {tabela} WHERE id=?", (rekord_id,))
-        wiersz = c.fetchone()
-        if not wiersz:
-            return None
-        dane = {k: wiersz[k] for k in kolumny}
-
-    if not _wolno_usunac(tabela, dane):
-        return None
-
-    zdalny_id_usuniety = dane.get("zdalne_id")
-
-    sciezka_tymczasowa = None
-    oryginalna = None
-    if tabela in TABELE_Z_ZALACZNIKIEM:
-        # W bazie może stać postać względna: plik na dysku wskazuje dopiero
-        # sklejenie ze STORAGE_PATH. Cofnięcie odkłada plik tam, skąd go wziął.
-        oryginalna = sciezka_pliku_zalacznika(dane.get("zalacznik"))
-        if oryginalna and os.path.exists(oryginalna):
-            folder_tmp = _upewnij_folder_odroczonych()
-            # Unikalny prefiks jak przy usuwaniu grupowym — dwa usunięcia pod
-            # rząd z tym samym plikiem w folderze odroczonych nie mogą się nadpisać.
-            sciezka_tymczasowa = os.path.join(folder_tmp, f"u_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
-            try:
-                shutil.move(oryginalna, sciezka_tymczasowa)
-            except Exception:
-                sciezka_tymczasowa = None
-
-    # Wpis serwisowy może mieć podpięte części z magazynu — oddajemy je na stan,
-    # zanim CASCADE skasuje powiązania (patrz _zdejmij_powiazania_czesci_wpisow).
-    czesci_wpisu = _zdejmij_powiazania_czesci_wpisow([rekord_id]) if tabela == "historia" else []
-    # Koszt dolewki wraca pod nowym id — dolewka (ON DELETE SET NULL) dowiązuje się przy cofnięciu.
-    dolewki_kosztu = powiazania_kosztow_dolewek([rekord_id]) if tabela == "inne_koszty" else {}
-    pliki_wpisu = odloz_zalaczniki_rekordow(tabela, [rekord_id])
-
-    with polacz_baze() as conn:
-        conn.execute(f"DELETE FROM {tabela} WHERE id=?", (rekord_id,))
-
-    # Nagrobek z pojazdem (db/synchronizacja) — usunięcie z auta A nie leci przy
-    # synchronizacji auta B, a przy „tylko podglądzie” wcale. Historia bez auto_id —
-    # przez JOIN jak przy uprawnieniach.
-    auto_nagrobka = _auto_wiersza(tabela, dane)
-    if zdalny_id_usuniety:
-        zarejestruj_nagrobek(tabela, zdalny_id_usuniety, auto_nagrobka)
-    for w in czesci_wpisu:
-        if w.get("zdalne_id"):
-            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"], auto_nagrobka)
-
-    stan = {"cofniete": False, "trwale_usuniete": False}
-
-    def cofnij():
-        if stan["cofniete"] or stan["trwale_usuniete"]:
-            return
-        stan["cofniete"] = True
-
-        if zdalny_id_usuniety:
-            usun_nagrobek(zdalny_id_usuniety)
-        for w in czesci_wpisu:
-            if w.get("zdalne_id"):
-                usun_nagrobek(w["zdalne_id"])
-
-        if sciezka_tymczasowa and os.path.exists(sciezka_tymczasowa):
-            try:
-                shutil.move(sciezka_tymczasowa, oryginalna)
-            except Exception:
-                pass
-
-        kolumny_bez_id = [k for k in kolumny if k != "id"]
-        wartosci = tuple(dane[k] for k in kolumny_bez_id)
-        placeholders = ",".join("?" for _ in kolumny_bez_id)
-        nazwy = ",".join(kolumny_bez_id)
-
-        with polacz_baze() as conn:
-            kursor = conn.cursor()
-            kursor.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders})", wartosci)
-            nowe_id = kursor.lastrowid
-        _przywroc_powiazania_czesci_wpisow(czesci_wpisu, {rekord_id: nowe_id})
-        przywroc_powiazania_kosztow(dolewki_kosztu, {rekord_id: nowe_id})
-        przywroc_odlozone_zalaczniki(pliki_wpisu, {rekord_id: nowe_id})
-
-    def finalizuj_usuniecie():
-        """Wywołać po upłynięciu okna na cofnięcie — kasuje fizycznie odłożony plik."""
-        if stan["cofniete"]:
-            return
-        stan["trwale_usuniete"] = True
-        if sciezka_tymczasowa:
-            usun_plik_zalacznika(sciezka_tymczasowa)
-        skasuj_odlozone_zalaczniki(pliki_wpisu)
-
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "dane": dane}
+    """Usuwa rekord z kaskadą do kosza wpisów i zwraca {"cofnij", "finalizuj", "dane"}: cofnij()
+    przywraca z kosza (id 1:1, gdy wolne), finalizuj() nic nie kasuje. Tabele z
+    POZA_KOSZEM_WPISOW — tylko „Cofnij” (pliki w folderze odroczonych do finalizuj())."""
+    return usun_do_kosza(tabela, [rekord_id], do_kosza=tabela not in POZA_KOSZEM_WPISOW)
 
 
 def usun_wiele_z_cofnieciem(tabela, ids_list):
-    """Grupowe usuwanie z możliwością cofnięcia. Zwraca callback cofnij() i finalizuj()."""
-    if not ids_list:
-        return None
-
-    with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute(f"PRAGMA table_info({tabela})")
-        kolumny = [r["name"] for r in c.fetchall()]
-
-        placeholders = ",".join("?" for _ in ids_list)
-        c.execute(f"SELECT * FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_list))
-        wiersze = c.fetchall()
-
-        if not wiersze:
-            return None
-        dane_lista = [{k: w[k] for k in kolumny} for w in wiersze]
-
-    # Przy roli współautora zaznaczenie grupowe może obejmować i moje, i cudze
-    # wpisy. Nie odrzucamy wtedy całej operacji — kasujemy to, do czego mam
-    # prawo, i zostawiamy resztę. Odrzucone wracają w wyniku, żeby interfejs
-    # mógł powiedzieć, ile i dlaczego pominięto.
-    dozwolone = [d for d in dane_lista if _wolno_usunac(tabela, d)]
-    ile_pominietych = len(dane_lista) - len(dozwolone)
-    if ile_pominietych:
-        if not dozwolone:
-            return None
-        dane_lista = dozwolone
-        # Listę identyfikatorów odbudowujemy z wierszy, a nie filtrujemy
-        # wejściową: te przychodzą z interfejsu i bywają tekstem, a tu muszą
-        # trafić w kolumnę id jako liczby.
-        ids_list = [d["id"] for d in dane_lista]
-        placeholders = ",".join("?" for _ in ids_list)
-
-    # Pojazd każdego usuwanego wiersza jak w ścieżce pojedynczej (nagrobek z NULL
-    # wracałby co cykl do MAKS_PROB_NAGROBKA); JOIN historii zapamiętany.
-    auta_zadan = {}
-
-    def _auto_nagrobka(dane):
-        if dane.get("auto_id"):
-            return dane["auto_id"]
-        zadanie = dane.get("zadanie_id")
-        if tabela == "historia" and zadanie:
-            if zadanie not in auta_zadan:
-                auta_zadan[zadanie] = _auto_wiersza(tabela, dane)
-            return auta_zadan[zadanie]
-        return _auto_wiersza(tabela, dane)
-
-    auta_wierszy = {d["id"]: _auto_nagrobka(d) for d in dane_lista}
-    zdalne_id_usuniete = [(d["zdalne_id"], auta_wierszy[d["id"]]) for d in dane_lista if d.get("zdalne_id")]
-
-    sciezki_tymczasowe = []
-    if tabela in TABELE_Z_ZALACZNIKIEM:
-        folder_tmp = _upewnij_folder_odroczonych()
-        for dane in dane_lista:
-            oryginalna = sciezka_pliku_zalacznika(dane.get("zalacznik"))
-            if oryginalna and os.path.exists(oryginalna):
-                # Unikalny prefiks, by pliki o tej samej nazwie się nie nadpisały przy usuwaniu wielu
-                sciezka_tmp = os.path.join(folder_tmp, f"bulk_{uuid.uuid4().hex}_{os.path.basename(oryginalna)}")
-                try:
-                    shutil.move(oryginalna, sciezka_tmp)
-                    sciezki_tymczasowe.append((sciezka_tmp, oryginalna))
-                except Exception:
-                    pass
-
-    # Jak przy usuwaniu pojedynczego wpisu — części wracają na stan magazynu,
-    # zamiast zniknąć cicho razem z powiązaniem skasowanym przez CASCADE.
-    czesci_wpisow = _zdejmij_powiazania_czesci_wpisow(ids_list) if tabela == "historia" else []
-    dolewki_kosztow = powiazania_kosztow_dolewek(ids_list) if tabela == "inne_koszty" else {}
-    pliki_wpisow = odloz_zalaczniki_rekordow(tabela, ids_list)
-
-    with polacz_baze() as conn:
-        conn.execute(f"DELETE FROM {tabela} WHERE id IN ({placeholders})", tuple(ids_list))
-
-    for zid, auto_nagrobka in zdalne_id_usuniete:
-        zarejestruj_nagrobek(tabela, zid, auto_nagrobka)
-    for w in czesci_wpisow:
-        if w.get("zdalne_id"):
-            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"],
-                                 auta_wierszy.get(w.get("historia_id")))
-
-    stan = {"cofniete": False, "trwale_usuniete": False}
-
-    def cofnij():
-        if stan["cofniete"] or stan["trwale_usuniete"]:
-            return
-        stan["cofniete"] = True
-
-        for zid, _ in zdalne_id_usuniete:
-            usun_nagrobek(zid)
-        for w in czesci_wpisow:
-            if w.get("zdalne_id"):
-                usun_nagrobek(w["zdalne_id"])
-
-        for tmp, oryg in sciezki_tymczasowe:
-            if os.path.exists(tmp):
-                try:
-                    shutil.move(tmp, oryg)
-                except Exception:
-                    pass
-
-        kolumny_bez_id = [k for k in kolumny if k != "id"]
-        placeholders_ins = ",".join("?" for _ in kolumny_bez_id)
-        nazwy = ",".join(kolumny_bez_id)
-
-        mapa_id = {}
-        with polacz_baze() as conn:
-            kursor = conn.cursor()
-            for dane in dane_lista:
-                wartosci = tuple(dane[k] for k in kolumny_bez_id)
-                kursor.execute(f"INSERT INTO {tabela} ({nazwy}) VALUES ({placeholders_ins})", wartosci)
-                if dane.get("id") is not None:
-                    mapa_id[dane["id"]] = kursor.lastrowid
-        _przywroc_powiazania_czesci_wpisow(czesci_wpisow, mapa_id)
-        przywroc_powiazania_kosztow(dolewki_kosztow, mapa_id)
-        przywroc_odlozone_zalaczniki(pliki_wpisow, mapa_id)
-
-    def finalizuj_usuniecie():
-        if stan["cofniete"]:
-            return
-        stan["trwale_usuniete"] = True
-        for tmp, _ in sciezki_tymczasowe:
-            usun_plik_zalacznika(tmp)
-        skasuj_odlozone_zalaczniki(pliki_wpisow)
-
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "pominiete": ile_pominietych}
+    """Grupowe usuwanie jako JEDNA pozycja kosza; cudze wpisy (rola współautora) zostają,
+    ich liczba w "pominiete"."""
+    return usun_do_kosza(tabela, ids_list, do_kosza=tabela not in POZA_KOSZEM_WPISOW)
 
 
 def przelacz_wykonane_do_zrobienia(pozycja_id, status):
@@ -328,145 +72,37 @@ def przelacz_wykonane_do_zrobienia(pozycja_id, status):
 
 
 def usun_zadanie_z_cofnieciem(zadanie_id):
-    """Usuwa podzespół (zadanie) wraz z całą jego kaskadową historią,
-    załącznikami i powiązaniami z opcją pełnego cofnięcia."""
-    if not zadanie_id:
-        return None
-
-    with polacz_baze() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-
-        # 1. Pobieramy dane usuwanego zadania
-        c.execute("PRAGMA table_info(zadania)")
-        kol_z = [r["name"] for r in c.fetchall()]
-        c.execute("SELECT * FROM zadania WHERE id=?", (zadanie_id,))
-        w_zad = c.fetchone()
-        if not w_zad:
-            return None
-        dane_zad = {k: w_zad[k] for k in kol_z}
-        if not _wolno_usunac("zadania", dane_zad):
-            return None
-
-        # 2. Pobieramy powiązaną historię (która zniknie przez CASCADE)
-        c.execute("PRAGMA table_info(historia)")
-        kol_h = [r["name"] for r in c.fetchall()]
-        c.execute("SELECT * FROM historia WHERE zadanie_id=?", (zadanie_id,))
-        historia_dane = [{k: w[k] for k in kol_h} for w in c.fetchall()]
-
-        # 3. Zapamiętujemy wpisy 'do_zrobienia' (klucz obcy ustawi im zadanie_id na NULL)
-        c.execute("SELECT id FROM do_zrobienia WHERE zadanie_id=?", (zadanie_id,))
-        do_zrobienia_ids = [r["id"] for r in c.fetchall()]
-
-    # 4. Pliki wpisów historii czekają w folderze odroczonych na ewentualne cofnięcie.
-    pliki_historii = odloz_zalaczniki_rekordow("historia", [d["id"] for d in historia_dane])
-
-    # 5. Części z magazynu użyte w tych wpisach wracają na stan — CASCADE
-    # skasowałby powiązania po cichu, zostawiając sztuki „zużyte” w nieistniejącym
-    # już podzespole.
-    czesci_wpisow = _zdejmij_powiazania_czesci_wpisow([d["id"] for d in historia_dane])
-
-    # 6. Usunięcie zadania (SQLite CASCADE automatycznie wyczyści powiązaną historię)
-    with polacz_baze() as conn:
-        conn.execute("DELETE FROM zadania WHERE id=?", (zadanie_id,))
-
-    zdalny_id_zadania = dane_zad.get("zdalne_id")
-    zdalne_id_historii = [d.get("zdalne_id") for d in historia_dane if d.get("zdalne_id")]
-    auto_nagrobka = dane_zad.get("auto_id")
-    if zdalny_id_zadania:
-        zarejestruj_nagrobek("zadania", zdalny_id_zadania, auto_nagrobka)
-    for zid in zdalne_id_historii:
-        zarejestruj_nagrobek("historia", zid, auto_nagrobka)
-    for w in czesci_wpisow:
-        if w.get("zdalne_id"):
-            zarejestruj_nagrobek("historia_czesci_magazynu", w["zdalne_id"], auto_nagrobka)
-
-    stan = {"cofniete": False, "trwale_usuniete": False}
-
-    def cofnij():
-        if stan["cofniete"] or stan["trwale_usuniete"]:
-            return
-        stan["cofniete"] = True
-
-        if zdalny_id_zadania:
-            usun_nagrobek(zdalny_id_zadania)
-        for zid in zdalne_id_historii:
-            usun_nagrobek(zid)
-        for w in czesci_wpisow:
-            if w.get("zdalne_id"):
-                usun_nagrobek(w["zdalne_id"])
-
-        # Przywrócenie rekordów w bazie danych z zachowaniem ich oryginalnych ID
-        with polacz_baze() as conn:
-            # 1. Przywrócenie zadania
-            p_z = ",".join("?" for _ in kol_z)
-            n_z = ",".join(kol_z)
-            conn.execute(f"INSERT INTO zadania ({n_z}) VALUES ({p_z})", tuple(dane_zad[k] for k in kol_z))
-
-            # 2. Przywrócenie wpisów historii
-            if historia_dane:
-                p_h = ",".join("?" for _ in kol_h)
-                n_h = ",".join(kol_h)
-                for d in historia_dane:
-                    conn.execute(f"INSERT INTO historia ({n_h}) VALUES ({p_h})", tuple(d[k] for k in kol_h))
-
-            # 3. Ponowne podpięcie ID zadania do pozycji 'do_zrobienia'
-            if do_zrobienia_ids:
-                placeholders = ",".join("?" for _ in do_zrobienia_ids)
-                conn.execute(
-                    f"UPDATE do_zrobienia SET zadanie_id=? WHERE id IN ({placeholders})",
-                    (zadanie_id, *do_zrobienia_ids)
-                )
-
-        # 4. Wpisy historii wróciły z ORYGINALNYMI ID, więc powiązania z magazynem
-        # i pliki wstawiamy bez przemapowania; sztuki znów schodzą ze stanu.
-        _przywroc_powiazania_czesci_wpisow(czesci_wpisow)
-        przywroc_odlozone_zalaczniki(pliki_historii)
-
-    def finalizuj_usuniecie():
-        if stan["cofniete"]:
-            return
-        stan["trwale_usuniete"] = True
-        skasuj_odlozone_zalaczniki(pliki_historii)
-
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "dane": dane_zad}
+    """Usuwa podzespół z całą historią, plikami i częściami (wracają na półkę) do kosza."""
+    return usun_do_kosza("zadania", [zadanie_id])
 
 
 def usun_wiele_zadan_z_cofnieciem(ids_list):
-    """Bulk-owy wrapper na usun_zadanie_z_cofnieciem — każdy podzespół usuwa
-    pełną, kaskadowo bezpieczną ścieżką (z historią i załącznikami), łącząc
-    wyniki w jeden wspólny callback cofnij()/finalizuj()."""
-    wyniki = [w for w in (usun_zadanie_z_cofnieciem(zid) for zid in ids_list) if w]
-    if not wyniki:
-        return None
-    # None z usun_zadanie_z_cofnieciem znaczy „nie ma” albo „nie wolno” (patrz
-    # _wolno_usunac) — liczbę pominiętych oddajemy dalej, żeby komunikat mówił
-    # prawdę zamiast chwalić się usunięciem wszystkiego.
-    ile_pominietych = len(list(ids_list)) - len(wyniki)
+    return usun_do_kosza("zadania", ids_list)
 
-    stan = {"cofniete": False, "trwale_usuniete": False}
 
-    def cofnij():
-        if stan["cofniete"] or stan["trwale_usuniete"]:
-            return
-        stan["cofniete"] = True
-        for w in wyniki:
-            w["cofnij"]()
+def _zachowaj_zakupy(conn, wiersze):
+    # Historia cen przeżywa pozycję: jej ostatni zakup zostaje w dzienniku (db/ceny_czesci.py),
+    # a przywrócona pozycja znowu przykrywa ten sam zakup — bez drugiego punktu na krzywej.
+    for dane in wiersze:
+        zachowaj_zakup_pozycji(conn, dane.get("auto_id"), dane)
 
-    def finalizuj_usuniecie():
-        if stan["cofniete"]:
-            return
-        stan["trwale_usuniete"] = True
-        for w in wyniki:
-            w["finalizuj"]()
 
-    return {"cofnij": cofnij, "finalizuj": finalizuj_usuniecie, "pominiete": ile_pominietych}
+def usun_czesc_magazynu_z_cofnieciem(czesc_id):
+    """Usuwa pozycję magazynu z jej zużyciem w wizytach i wpisach (dolewka zostaje bez
+    odwołania) do kosza; magazyn to wspólny inwentarz — współautora nie ogranicza."""
+    return usun_do_kosza("magazyn_czesci", [czesc_id], przed_usunieciem=_zachowaj_zakupy)
+
+
+def usun_wiele_czesci_magazynu_z_cofnieciem(ids_list):
+    return usun_do_kosza("magazyn_czesci", ids_list, przed_usunieciem=_zachowaj_zakupy)
 
 
 __all__ = [
     "aktualizuj_wiele_zdjec_karoserii",
     "oznacz_zamontowany_zestaw",
     "przelacz_wykonane_do_zrobienia",
+    "usun_czesc_magazynu_z_cofnieciem",
+    "usun_wiele_czesci_magazynu_z_cofnieciem",
     "usun_wiele_z_cofnieciem",
     "usun_wiele_zadan_z_cofnieciem",
     "usun_z_cofnieciem",

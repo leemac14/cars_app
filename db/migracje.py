@@ -621,6 +621,14 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_dolewki_auto_zdalne ON dolewki(auto_id, zdalne_id);
             CREATE INDEX IF NOT EXISTS idx_dolewki_koszt ON dolewki(koszt_id);
             CREATE INDEX IF NOT EXISTS idx_dolewki_magazyn ON dolewki(magazyn_id);
+            """,
+            # Wersja 54: kosz wpisów (Z-01). Usunięcie = migawka JSON (wiersze z kaskadą i
+            # dowiązania), pliki w kosz_zalaczniki/. `kosz_pojazdu_id` — pozycja kosza pojazdów,
+            # z którą wpis czeka, gdy jego auto też usunięto. Lokalna, poza sync.
+            """
+            CREATE TABLE IF NOT EXISTS kosz_wpisy (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER, kosz_pojazdu_id INTEGER, tabela TEXT NOT NULL, opis TEXT, liczba INTEGER NOT NULL DEFAULT 1, data_usuniecia TEXT NOT NULL, migawka TEXT NOT NULL, pliki TEXT, rozmiar_plikow INTEGER NOT NULL DEFAULT 0, schemat_wersja INTEGER);
+            CREATE INDEX IF NOT EXISTS idx_kosz_wpisy_data ON kosz_wpisy(data_usuniecia);
+            CREATE INDEX IF NOT EXISTS idx_kosz_wpisy_auto ON kosz_wpisy(auto_id);
             """
         ]
 

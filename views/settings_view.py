@@ -81,7 +81,7 @@ class UstawieniaView(ft.View):
         opcje_kosza_tekst = {7: "7 dni", 30: "30 dni", 90: "90 dni", 0: "Nigdy — czyszczę ręcznie"}
         dni_kosza_val = db.pobierz_dni_kosza()
         self.e_dni_kosza = ft.Dropdown(
-            label="Trzymaj usunięte pojazdy w koszu przez",
+            label="Trzymaj usunięte w koszu przez",
             options=[ft.DropdownOption(key=str(d), text=opcje_kosza_tekst.get(d, f"{d} dni")) for d in db.DNI_KOSZA_OPCJE],
             value=str(dni_kosza_val),
             **utils.styl_dropdown()
@@ -374,14 +374,14 @@ class UstawieniaView(ft.View):
             [
                 self.e_dni_kosza,
                 ft.Text(
-                    "Usunięty pojazd nie znika od razu — trafia do kosza razem z historią, "
-                    "tankowaniami i zdjęciami, skąd wraca jednym kliknięciem. Kosz otworzysz "
+                    "Usunięty wpis albo pojazd nie znika od razu — trafia do kosza razem ze "
+                    "zdjęciami i plikami (pojazd z całą historią), skąd wraca jednym dotknięciem. Kosz otworzysz "
                     "z menu ⋮ na ekranie głównym. Po upływie tego czasu pozycje kasują się "
                     "same przy starcie aplikacji; przy ustawieniu „Nigdy” czyścisz kosz sam.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),
             ],
-            "Kosz na usunięte pojazdy", ft.Icons.DELETE_SWEEP, domyslnie_otwarte=True, page=page
+            "Kosz na usunięte wpisy i pojazdy", ft.Icons.DELETE_SWEEP, domyslnie_otwarte=True, page=page
         )
 
         self._stan_poczatkowy = self._migawka_formularza()

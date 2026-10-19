@@ -51,6 +51,7 @@ class AppState:
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
         self.do_zrobienia_podzakladka = 0  # 0 = Do zrobienia, 1 = Checklisty
         self.dolewki_plyn = None  # płyn wybrany na ekranie dolewek (klucz db.RODZAJE_PLYNOW)
+        self.kosz_zakladka = None  # 0 = Wpisy, 1 = Pojazdy; None — ta z zawartością
         self.karoseria_nowa_strefa = None  # strefa z mapy karoserii dla formularza nowych zdjęć
         self.porownanie_wybrane = []
         self.porownanie_piata_os = None  # klucz opcjonalnej 5. osi radaru porównania (None = wyłączona, patrz porownanie_view.OSIE_OPCJONALNE_RADARU)

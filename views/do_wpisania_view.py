@@ -68,7 +68,7 @@ class DoWpisaniaView(ft.View):
 
     def _usun(self, szkic):
         def wykonaj():
-            # Zdjęcie idzie do folderu odroczonych i wraca przy „Cofnij” —
+            # Szkic ze zdjęciem idzie do kosza wpisów (wraca „Cofnij” albo z Kosza) —
             # ogólny mechanizm usuwania, jak przy każdym wpisie z załącznikiem.
             wynik = db.usun_z_cofnieciem(db.TABELA_SZKICOW, szkic["id"])
             self._odswiez()

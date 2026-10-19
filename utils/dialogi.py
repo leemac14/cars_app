@@ -5,6 +5,7 @@ import flet as ft
 import log
 
 from .stale import FS, KOLOR_STATUS, RADIUS
+from .format import formatuj_dni
 from .wyglad import dol_bezpieczny
 from .zgodnosc import ustaw_ikone
 from .haptyka import wibracja
@@ -22,8 +23,8 @@ def pokaz_komunikat(page: ft.Page, wiadomosc, kolor=KOLOR_STATUS["ok"]):
 
 def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5, wiadomosc_bledu=None):
     """wynik_usuwania — słownik z db.usun_z_cofnieciem(). None = nic nie usunięto
-    (rekordu nie ma albo rola nie pozwala — db/usuwanie._wolno_usunac); wtedy bez
-    komunikatu o sukcesie."""
+    (rekordu nie ma albo rola nie pozwala — db/kosz_wpisow._wolno_usunac); wtedy bez
+    komunikatu o sukcesie. Wpis w koszu (`w_koszu`) — dopisek, ile dni tam poczeka."""
     if not wynik_usuwania:
         return pokaz_komunikat(
             page,
@@ -35,10 +36,15 @@ def pokaz_komunikat_cofnij(page: ft.Page, wiadomosc, wynik_usuwania, sekundy=5, 
     pominiete = wynik_usuwania.get("pominiete") if isinstance(wynik_usuwania, dict) else 0
     if pominiete:
         wiadomosc = f"{wiadomosc} Pominięto {pominiete} cudzych wpisów."
+    if isinstance(wynik_usuwania, dict) and wynik_usuwania.get("w_koszu"):
+        dni = wynik_usuwania.get("dni_kosza")
+        wiadomosc = f"{wiadomosc} W koszu przez {formatuj_dni(dni)}." if dni else f"{wiadomosc} Przeniesiono do kosza."
 
     def po_cofnieciu(e):
-        wynik_usuwania["cofnij"]()
+        wynik = wynik_usuwania["cofnij"]()
         przejdz(page, page.route)
+        if isinstance(wynik, dict) and wynik.get("ok") is False:
+            pokaz_komunikat(page, wynik.get("powod") or "Nie udało się cofnąć usunięcia.", KOLOR_STATUS["error"])
 
     snack = ft.SnackBar(
         content=ft.Text(str(wiadomosc)),

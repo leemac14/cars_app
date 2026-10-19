@@ -26,6 +26,7 @@ from .ceny_czesci import *
 from .magazyn import *
 from .checklisty import *
 from .przebieg import *
+from .kosz_wpisow import *
 from .koszty import *
 from .dolewki import *
 from .awarie import *
@@ -78,6 +79,7 @@ from . import (
     magazyn,
     checklisty,
     przebieg,
+    kosz_wpisow,
     koszty,
     dolewki,
     awarie,
