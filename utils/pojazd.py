@@ -17,6 +17,7 @@ from .typografia import podpis
 from .zgodnosc import ustaw_blad
 from .wyglad import powierzchnia, tlo_stanu, tlo_toru
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_komunikat_cofnij, potwierdz, przejdz, zamknij_dialog, zamknij_dno
+from .zdrowie_danych import kolor_zdrowia, liczba_do_sprawdzenia, sklad_zdrowia_danych
 from .sync_ui import wypchnij_w_tle
 from .formularze import pole_daty, sprawdz_podejrzany_przebieg, styl_pola
 from .notatki import pole_notatki, zapisz_notatke_z_formularza
@@ -292,6 +293,23 @@ def pokaz_panel_kondycji(page: ft.Page, state):
             "Magazyn i wydatki cykliczne jej nie ruszają.",
             size=FS["caption"], italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
         ))
+
+    # Zdrowie danych (N-08): nieścisłości licznika i braki w danych razem z poprawkami.
+    zdrowie = db.podsumowanie_zdrowia_danych(state.auto_id)
+    zawartosc.append(ft.Container(
+        padding=ft.Padding(12, 10, 12, 10), **powierzchnia(page, "blok"),
+        ink=True, on_click=idz_do("/zdrowie-danych"),
+        content=ft.Row([
+            ft.Icon(ft.Icons.HEALTH_AND_SAFETY, size=18, color=kolor_zdrowia(zdrowie)),
+            ft.Column([
+                ft.Text("Zdrowie danych — " + (liczba_do_sprawdzenia(zdrowie["razem"]) if zdrowie["razem"]
+                                               else "bez zastrzeżeń"), size=FS["label"], weight="bold"),
+                podpis(sklad_zdrowia_danych(zdrowie["liczby"]) or "cofki licznika, ceny, pliki i braki w danych",
+                       size=FS["caption"]),
+            ], spacing=1, tight=True, expand=True),
+            ft.Icon(ft.Icons.CHEVRON_RIGHT, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
+        ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    ))
 
     bs.content.content = ft.Column(zawartosc, tight=True, spacing=8)
     otworz_dno(page, bs)

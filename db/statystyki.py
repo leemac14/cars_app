@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from .stale import (ENERGIA_PALIWO, ENERGIA_PRAD, PRIORYTETY_DO_ZROBIENIA, STATUS_POJAZDU_AKTYWNY,
-                    TERMINY_DOKUMENTOW, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE)
+                    TERMINY_DOKUMENTOW, TERMINY_WYMAGANE_W_KONDYCJI, TYPY_LADOWANIA, TYPY_PALIWA_ELEKTRYCZNE)
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .ustawienia import OKNO_1000KM_DOMYSLNE
@@ -86,10 +86,6 @@ WAGA_DOKUMENTU = {
 # oceny auta. Inaczej dwa identyczne auta z różnymi progami miałyby różną
 # kondycję i porównanie pojazdów przestałoby cokolwiek znaczyć.
 HORYZONT_TERMINU_KONDYCJI = 45
-
-# Terminy, których BRAK sam w sobie jest problemem — bez nich nie ma czego
-# pilnować ani z czego policzyć kondycji.
-TERMINY_WYMAGANE_W_KONDYCJI = ("oc", "przeglad")
 
 # Po ilu dniach bez żadnego nowego wpisu (tankowanie, wizyta, wpis serwisowy,
 # odczyt licznika) kondycja opisuje już tylko przeszłość.
@@ -255,7 +251,7 @@ def _policz_rozbicie_kondycji(auto_id):
                   f"Historia licznika — {anomalie} "
                   + ("nieścisłość" if anomalie == 1 else "nieścisłości"),
                   szczegol="Cofki i skoki przebiegu podważają wszystko, co z niego liczymy",
-                  trasa="/przebieg")
+                  trasa="/zdrowie-danych")
 
         cisza = podsumowanie["dni_od_ostatniego"]
         if aktywny and cisza >= DNI_CISZY_W_DANYCH:
@@ -791,7 +787,6 @@ __all__ = [
     "KARY_KONDYCJI",
     "PRIORYTET_USTERKI",
     "SUFITY_KONDYCJI",
-    "TERMINY_WYMAGANE_W_KONDYCJI",
     "WAGA_DOKUMENTU",
     "koszt_na_1000km",
     "oblicz_kondycje_pojazdu",

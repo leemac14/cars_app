@@ -1,5 +1,7 @@
 """Ustawienia globalne i per-pojazd: motyw, waluta, jednostki, progi."""
 
+import json
+from datetime import date
 from typing import Any
 
 from .stale import DNI_PRZYPOMNIENIA_O_ODCZYCIE, DNI_PRZYPOMNIENIA_O_ODCZYCIE_OPCJE, JEDNOSTKI_DYSTANSU, JEDNOSTKI_SPALANIA, JEDNOSTKI_ZUZYCIA_EV, KLUCZE_TERMINOW, KOLEJNOSC_TRYBOW_MOTYWU, KOLORY_MOTYWU, PROG_DNI_POWIADOMIEN, PROG_KM_POWIADOMIEN, TRYBY_EWIDENCJI, TRYB_EWIDENCJI_DOMYSLNY, WALUTY
@@ -386,6 +388,7 @@ KOKPIT_WIDGETY = {
     "magazyn": "Magazyn — niski stan",
     "ewidencja": "Ewidencja przebiegu: służbowe km",
     "zuzycie_oleju": "Zużycie oleju",
+    "zdrowie_danych": "Zdrowie danych",
     # Kafelki AKCJI: zamiast liczby mają czynność. Te same wpisy, co pod FAB-em
     # w rogu ekranu, plus stan licznika, którego FAB nie ma. Kokpit odpowiadał
     # dotąd wyłącznie na pytanie „co się dzieje”, nigdy „zrób”.
@@ -632,10 +635,51 @@ def zapisz_dane_osoby_ewidencji(osoba="", adres="", pracodawca=""):
         zapisz_ustawienie(KLUCZE_DANYCH_OSOBY[pole], " ".join(str(wartosc or "").split()))
 
 
+# ============================================================================
+# ZDROWIE DANYCH (N-08) — „To nie błąd” i ostatni przegląd
+# ============================================================================
+# Pojazd na TYM telefonie, jeden wiersz JSON. Klucze pozycji niosą treść wpisu (data,
+# licznik), więc po przemapowaniu id (kosz, plik pojazdu) nie ukryją cudzego wpisu.
+
+def _klucz_zdrowia_danych(auto_id):
+    return f"zdrowie_danych_{int(auto_id)}"
+
+
+def pobierz_ustawienia_zdrowia(auto_id) -> dict[str, Any]:
+    """{"pominiete": [klucz pozycji], "przejrzane": "RRRR-MM-DD" albo None}; śmieci po
+    ręcznej edycji bazy dają puste."""
+    wynik = {"pominiete": [], "przejrzane": None}
+    if not auto_id:
+        return wynik
+    try:
+        dane = json.loads(pobierz_ustawienie(_klucz_zdrowia_danych(auto_id), "") or "{}")
+    except (TypeError, ValueError):
+        return wynik
+    if not isinstance(dane, dict):
+        return wynik
+    pominiete = dane.get("pominiete")
+    if isinstance(pominiete, list):
+        wynik["pominiete"] = [k for k in pominiete if isinstance(k, str) and k]
+    przejrzane = dane.get("przejrzane")
+    try:
+        wynik["przejrzane"] = date.fromisoformat(przejrzane).isoformat() if isinstance(przejrzane, str) else None
+    except ValueError:
+        wynik["przejrzane"] = None
+    return wynik
+
+
+def zapisz_ustawienia_zdrowia(auto_id, pominiete, przejrzane):
+    if not auto_id:
+        return
+    zapisz_ustawienie(_klucz_zdrowia_danych(auto_id), json.dumps(
+        {"pominiete": sorted(set(pominiete or ())), "przejrzane": przejrzane}, ensure_ascii=False))
+
+
 # Ustawienia przywiązane do KONKRETNEGO pojazdu — jadą z nim do kosza i z powrotem (ID
 # może się zmienić). Migawka kosza zapisuje je pod NAZWĄ funkcji klucza — nie zmieniać
 # nazw.
-USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien, _klucz_zakresow_wykresow, _klucz_ewidencji]
+USTAWIENIA_PER_POJAZD = [_klucz_kokpitu, _klucz_widzianych_powiadomien, _klucz_zakresow_wykresow, _klucz_ewidencji,
+                         _klucz_zdrowia_danych]
 
 
 def _pobierz_ustawienia_pojazdu(auto_id):
@@ -719,6 +763,9 @@ __all__ = [
     "zapisz_ustawienia_ewidencji",
     "pobierz_dane_osoby_ewidencji",
     "zapisz_dane_osoby_ewidencji",
+    "_klucz_zdrowia_danych",
+    "pobierz_ustawienia_zdrowia",
+    "zapisz_ustawienia_zdrowia",
     "_klucz_widzianych_powiadomien",
     "_klucz_zakresow_wykresow",
     "_odczytaj_zakresy_wykresow",

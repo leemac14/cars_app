@@ -26,6 +26,7 @@ from .ceny_czesci import *
 from .magazyn import *
 from .checklisty import *
 from .przebieg import *
+from .nazwy import *
 from .kosz_wpisow import *
 from .koszty import *
 from .dolewki import *
@@ -33,11 +34,11 @@ from .awarie import *
 from .gwarancje import *
 from .raty import *
 from .ewidencja import *
+from .zdrowie_danych import *
 from .powiadomienia import *
 from .statystyki import *
 from .pojazd import *
 from .analiza import *
-from .nazwy import *
 from .tagi import *
 from .rejestry import *
 from .wizyty import *
@@ -79,6 +80,7 @@ from . import (
     magazyn,
     checklisty,
     przebieg,
+    nazwy,
     kosz_wpisow,
     koszty,
     dolewki,
@@ -86,11 +88,11 @@ from . import (
     gwarancje,
     raty,
     ewidencja,
+    zdrowie_danych,
     powiadomienia,
     statystyki,
     pojazd,
     analiza,
-    nazwy,
     tagi,
     rejestry,
     wizyty,

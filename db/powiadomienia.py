@@ -26,6 +26,7 @@ from .kopie import stan_kopii_zapasowej
 from .ewidencja import nazwa_miesiaca, przypomnienie_ewidencji, tekst_km_przejazdu
 from .dokumenty import terminy_skarbca
 from .dolewki import sygnaly_plynow
+from .zdrowie_danych import przeglad_danych_nalezny
 
 
 # ============================================================================
@@ -358,6 +359,10 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
     ewidencja = _powiadomienie_o_ewidencji(auto_id, dzis)
     if ewidencja:
         wyniki.append(ewidencja)
+    # Przegląd zdrowia danych raz na kwartał — o danych, więc też na końcu.
+    zdrowie = None if w and w["status"] == STATUS_POJAZDU_SPRZEDANY else _powiadomienie_o_zdrowiu_danych(auto_id, dzis)
+    if zdrowie:
+        wyniki.append(zdrowie)
     # Kopia zapasowa — o urządzeniu, nie o aucie ani o danych pojazdu.
     kopia = _powiadomienie_o_kopii(auto_id)
     if kopia:
@@ -421,7 +426,7 @@ def _powiadomienie_o_odczycie(auto_id, dzis, aktualny_przebieg=None, sredni_dzie
 # odznaki drugi raz); drzemka trzyma się tego szkicu.
 
 # Powiadomienia o DANYCH, nie o aucie — porównanie pojazdów ich nie liczy.
-TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice", "kopia", "ewidencja")
+TYPY_POWIADOMIEN_O_DANYCH = ("licznik", "szkice", "kopia", "ewidencja", "zdrowie")
 
 
 def _powiadomienie_o_szkicach(auto_id):
@@ -458,6 +463,30 @@ def _powiadomienie_o_ewidencji(auto_id, dzis):
                  f"{stan['koniec'].strftime('%d.%m.%Y')} i zapisz raport miesiąca"),
         "status": "pilne", "trasa": f"/ewidencja/{stan['rok']}/{stan['miesiac']}",
         "klucz": stan["klucz"],
+    }
+
+
+# ============================================================================
+# ZDROWIE DANYCH (db/zdrowie_danych.py)
+# ============================================================================
+# Raz na DNI_PRZEGLADU_DANYCH dni od ostatniego otwarcia ekranu na tym telefonie, o ile jest
+# co sprawdzić. Klucz = dzień przeglądu: otwarcie ekranu zaczyna nowy cykl, a drzemka trzyma
+# się starego.
+
+
+def _powiadomienie_o_zdrowiu_danych(auto_id, dzis):
+    if not czy_moge_dodawac(auto_id):
+        return None
+    stan = przeglad_danych_nalezny(auto_id, dzis)
+    if not stan:
+        return None
+    import utils
+    return {
+        "typ": "zdrowie", "tytul": "Zdrowie danych",
+        "opis": (f"{liczba_z_odmiana(stan['razem'], 'rzecz', 'rzeczy', 'rzeczy')} do sprawdzenia — "
+                 f"ostatni przegląd {utils.formatuj_dni(stan['dni'])} temu"),
+        "status": "pilne", "trasa": "/zdrowie-danych",
+        "klucz": f"zdrowie:{stan['przejrzane'].isoformat()}",
     }
 
 

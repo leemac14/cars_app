@@ -193,6 +193,7 @@ IKONY_KOKPITU = {
     "akcja_do_zrobienia": ft.Icons.CHECKLIST_RTL,
     "zuzycie_oleju": ft.Icons.OIL_BARREL,
     "akcja_dolewka": ft.Icons.WATER_DROP,
+    "zdrowie_danych": ft.Icons.HEALTH_AND_SAFETY,
 }
 
 

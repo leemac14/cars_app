@@ -514,6 +514,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         ikona = ft.Icons.PENDING_ACTIONS
                     elif p["typ"] == "ewidencja":
                         ikona = ft.Icons.ALT_ROUTE
+                    elif p["typ"] == "zdrowie":
+                        ikona = ft.Icons.HEALTH_AND_SAFETY
                     elif p["typ"] == "plyn":
                         ikona = IKONY_PLYNOW.get(p.get("plyn"), ft.Icons.WATER_DROP)
                     pozycje.append(ft.ListTile(

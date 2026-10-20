@@ -443,34 +443,33 @@ class UstawieniaView(ft.View):
             ], spacing=8)
         )
 
-        liczba_duplikatow = len(db.znajdz_duplikaty_nazw(state.auto_id))
-        k_duplikaty = utils.karta_formularza(
-            [
-                ft.Text(
-                    "„Filtr oleju”, „filtr Oleju” i „filtr oleju ” to dla aplikacji jedna nazwa — "
-                    "nowe wpisy same trafiają w istniejącą pisownię. To narzędzie sprząta po tym, "
-                    "co zdążyło się już zdublować: w magazynie, tagach, warsztatach i podzespołach.",
-                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
-                ),
-                ft.Row([
-                    ft.Icon(
-                        ft.Icons.WARNING_AMBER if liczba_duplikatow else ft.Icons.CHECK_CIRCLE_OUTLINE,
-                        size=18,
-                        color=utils.KOLOR_STATUS["warning"] if liczba_duplikatow else utils.KOLOR_STATUS["ok"],
-                    ),
+        # Zdrowie danych (N-08) przejęło scalanie duplikatów nazw razem z resztą poprawek danych.
+        k_zdrowie = None
+        if state.auto_id:
+            zdrowie = db.podsumowanie_zdrowia_danych(state.auto_id)
+            kolor_zdrowia = utils.kolor_zdrowia(zdrowie)
+            k_zdrowie = utils.karta_formularza(
+                [
                     ft.Text(
-                        (f"Wykryto {liczba_duplikatow} grupę wariantów" if liczba_duplikatow == 1
-                         else f"Wykryto {liczba_duplikatow} grupy wariantów" if liczba_duplikatow
-                         else "Brak duplikatów w tym pojeździe"),
-                        size=12,
-                        color=utils.KOLOR_STATUS["warning"] if liczba_duplikatow else ft.Colors.ON_SURFACE_VARIANT,
-                        expand=True,
+                        "Cofki licznika, dziwne ceny, przerwany ciąg „do pełna”, martwe pliki, duplikaty nazw "
+                        "i puste pola pojazdu w jednym miejscu — przy każdej poprawka albo wpis do otwarcia.",
+                        size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                     ),
-                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                ft.OutlinedButton("Przejrzyj i scal", icon=ft.Icons.MERGE_TYPE, on_click=self._okno_duplikatow),
-            ],
-            "Duplikaty nazw", ft.Icons.MERGE_TYPE, domyslnie_otwarte=bool(liczba_duplikatow), page=page
-        )
+                    ft.Row([
+                        ft.Icon(ft.Icons.WARNING_AMBER if zdrowie["razem"] else ft.Icons.CHECK_CIRCLE_OUTLINE,
+                                size=18, color=kolor_zdrowia),
+                        ft.Text(
+                            utils.liczba_do_sprawdzenia(zdrowie["razem"]) if zdrowie["razem"]
+                            else "Dane tego pojazdu bez zastrzeżeń",
+                            size=12, color=kolor_zdrowia if zdrowie["razem"] else ft.Colors.ON_SURFACE_VARIANT,
+                            expand=True,
+                        ),
+                    ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.OutlinedButton("Otwórz Zdrowie danych", icon=ft.Icons.HEALTH_AND_SAFETY,
+                                      on_click=lambda e: utils.przejdz(page, "/zdrowie-danych")),
+                ],
+                "Zdrowie danych", ft.Icons.HEALTH_AND_SAFETY, domyslnie_otwarte=bool(zdrowie["razem"]), page=page
+            )
 
         # --- DZIENNIK BŁĘDÓW ---
         # Karta zwinięta, dopóki w logu nie ma błędu. Ikona pozycyjnie (pole `icon` albo
@@ -514,7 +513,8 @@ class UstawieniaView(ft.View):
         )
 
         k_kopia, kopia_wymaga_uwagi = self._karta_kopii()
-        karty = [k1, k2, k3, k_kokpit, k_kopia, k_kosz, k_duplikaty, k_log, self._karta_o_aplikacji()]
+        karty = [k for k in (k1, k2, k3, k_kokpit, k_kopia, k_kosz, k_zdrowie, k_log, self._karta_o_aplikacji())
+                 if k is not None]
         if kopia_wymaga_uwagi:
             # Baner zaległej kopii na kokpicie prowadzi tutaj — karta z problemem
             # staje na górze, zamiast czekać pod czterema rozwiniętymi kartami.
@@ -873,110 +873,6 @@ class UstawieniaView(ft.View):
             "Nowe wpisy zapisują się dalej.",
             wykonaj, tekst_potwierdzenia="Wyczyść",
         )
-
-    def _okno_duplikatow(self, e=None):
-        """Panel z wykrytymi wariantami tej samej nazwy. Nic nie dzieje się samo —
-        scalenie każdej grupy trzeba potwierdzić, a wpis zwycięski jest widoczny
-        przed kliknięciem, żeby żadna nazwa nie zniknęła bez wiedzy użytkownika."""
-        grupy = db.znajdz_duplikaty_nazw(self.state.auto_id)
-
-        bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
-
-        def zamknij():
-            utils.zamknij_dno(self._page, bs)
-
-        def scal(grupa):
-            docelowy_id, docelowa_nazwa, _ = grupa["kanoniczna"]
-            zrodla = [w[0] for w in grupa["warianty"] if w[0] != docelowy_id]
-
-            def wykonaj():
-                ile = db.scal_duplikaty_nazw(self.state.auto_id, grupa["tabela"], docelowy_id, zrodla)
-                utils.pokaz_komunikat(
-                    self._page,
-                    f"Scalono {ile} {'wariant' if ile == 1 else 'warianty'} w „{docelowa_nazwa}”.",
-                    utils.KOLOR_STATUS["ok"],
-                )
-                self._okno_duplikatow()
-
-            znikajace = ", ".join(f"„{w[1]}”" for w in grupa["warianty"] if w[0] != docelowy_id)
-            dopisek = (" Sztuki z duplikatów zostaną doliczone do stanu pozycji docelowej."
-                       if grupa["tabela"] == "magazyn_czesci" else "")
-            zamknij()
-            utils.potwierdz(
-                self._page, "Scalić warianty?",
-                f"{znikajace} zniknie, a wszystkie powiązania przejdą na „{docelowa_nazwa}”.{dopisek} "
-                "Tej operacji nie da się cofnąć.",
-                wykonaj, tekst_potwierdzenia="Scal",
-            )
-
-        zawartosc = [
-            ft.Row([
-                ft.Icon(ft.Icons.MERGE_TYPE, size=22, color=ft.Colors.PRIMARY),
-                ft.Column([
-                    ft.Text("Scal duplikaty nazw", weight="bold", size=18, color=ft.Colors.PRIMARY),
-                    ft.Text(f"Pojazd: {self.state.auto_nazwa}", size=utils.FS["caption"],
-                            color=ft.Colors.ON_SURFACE_VARIANT),
-                ], spacing=0, tight=True, expand=True),
-            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            ft.Divider(height=14),
-        ]
-
-        if not grupy:
-            zawartosc.append(ft.Container(
-                padding=ft.Padding(12, 18, 12, 18),
-                alignment=ft.Alignment.CENTER,
-                content=ft.Column([
-                    ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=40, color=utils.KOLOR_STATUS["ok"]),
-                    ft.Text("Nie znaleziono duplikatów", weight="bold"),
-                    ft.Text("Żadna nazwa nie występuje w tym pojeździe w dwóch wariantach zapisu.",
-                            size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                            text_align=ft.TextAlign.CENTER),
-                ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            ))
-        else:
-            zawartosc.append(ft.Text(
-                f"Znaleziono {len(grupy)} {'grupę' if len(grupy) == 1 else 'grupy'} wariantów tej samej "
-                "nazwy. Zwycięska pisownia to ta użyta najczęściej.",
-                size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-            ))
-            poprzednia_etykieta = None
-            for grupa in grupy:
-                if grupa["etykieta"] != poprzednia_etykieta:
-                    poprzednia_etykieta = grupa["etykieta"]
-                    zawartosc.append(ft.Container(height=4))
-                    # Wersaliki same w sobie są już wyróżnieniem — pogrubienie
-                    # na dokładkę robiło z podpisu grupy rzecz ważniejszą niż
-                    # nazwy, które pod nim stoją.
-                    zawartosc.append(utils.etykieta(grupa["etykieta"].upper()))
-
-                docelowy_id = grupa["kanoniczna"][0]
-                wiersze = []
-                for w_id, w_nazwa, w_uzycia in grupa["warianty"]:
-                    zwyciezca = (w_id == docelowy_id)
-                    opis_uzyc = f"{w_uzycia} uż." if w_uzycia else "nieużywany"
-                    wiersze.append(ft.Row([
-                        ft.Icon(ft.Icons.STAR if zwyciezca else ft.Icons.ARROW_RIGHT_ALT,
-                                size=14, color=ft.Colors.PRIMARY if zwyciezca else ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(f"„{w_nazwa}”", size=utils.FS["label"],
-                                weight="bold" if zwyciezca else "normal",
-                                color=ft.Colors.ON_SURFACE if zwyciezca else ft.Colors.ON_SURFACE_VARIANT,
-                                expand=True),
-                        ft.Text(opis_uzyc, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
-                    ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER))
-
-                zawartosc.append(ft.Container(
-                    padding=14,
-                    **utils.powierzchnia(self._page, "blok"),
-                    content=ft.Column(wiersze + [
-                        ft.Row([
-                            ft.FilledTonalButton("Scal w jedną", icon=ft.Icons.MERGE_TYPE,
-                                                 on_click=lambda e, g=grupa: scal(g)),
-                        ], alignment=ft.MainAxisAlignment.END),
-                    ], spacing=8),
-                ))
-
-        bs.content.content = ft.Column(zawartosc, tight=True, spacing=8)
-        utils.otworz_dno(self._page, bs)
 
     def _przywroc_kokpit_wspolny(self, e):
         """Kasuje własny układ pojazdu i przeładowuje ekran, żeby checkboxy

@@ -27,6 +27,7 @@ from .dolewki import kafel_zuzycia_oleju
 from .awarie import sygnal_awarii
 from .raty import podsumowanie_rat
 from .ewidencja import kafel_ewidencji
+from .zdrowie_danych import podsumowanie_zdrowia_danych
 from .powiadomienia import pobierz_powiadomienia
 from .statystyki import (
     koszt_na_1000km, oblicz_kondycje_pojazdu, podsumowanie_do_zrobienia,
@@ -124,6 +125,8 @@ METRYKI_KOKPITU = {
     "ewidencja": lambda auto_id: kafel_ewidencji(auto_id),
     # Dolewki oleju: zużycie l/1000 km z ostatniego zmierzonego okresu (db/dolewki.py).
     "zuzycie_oleju": lambda auto_id: kafel_zuzycia_oleju(auto_id),
+    # Zdrowie danych: ile rzeczy czeka na sprawdzenie (db/zdrowie_danych.py).
+    "zdrowie_danych": lambda auto_id: podsumowanie_zdrowia_danych(auto_id),
     "do_zrobienia": lambda auto_id: podsumowanie_do_zrobienia(auto_id),
     "magazyn": lambda auto_id: pobierz_stan_magazynu(auto_id),
     # Rola przy pojeździe: kafelki akcji znikają przy „podglądzie”.
@@ -160,6 +163,7 @@ METRYKI_KAFELKOW = {
     "magazyn": ("magazyn",),
     "ewidencja": ("ewidencja",),
     "zuzycie_oleju": ("zuzycie_oleju",),
+    "zdrowie_danych": ("zdrowie_danych",),
     "akcja_tankowanie": ("tylko_podglad",),
     "akcja_paragon": ("tylko_podglad",),
     "akcja_licznik": ("tylko_podglad",),

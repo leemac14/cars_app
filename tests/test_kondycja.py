@@ -232,7 +232,7 @@ def test_cofka_licznika_obniza_kondycje(baza):
 
     (powod,) = powody(auto_id, "licznik")
     assert powod["opis"] == "Historia licznika — 1 nieścisłość"
-    assert powod["trasa"] == "/przebieg"
+    assert powod["trasa"] == "/zdrowie-danych"  # N-08: nieścisłości razem z poprawkami
     assert wynik(auto_id) == 100 - db.KARY_KONDYCJI["anomalia_licznika"]
 
 

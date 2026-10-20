@@ -204,16 +204,19 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             wiersze.append(baner)
 
         if p["anomalie"]:
+            # Zdrowie danych (N-08) pokazuje te same nieścisłości razem z poprawkami.
             wiersze.append(ft.Container(
                 padding=ft.Padding(10, 8, 10, 8), border_radius=utils.RADIUS["sm"],
                 bgcolor=ft.Colors.with_opacity(0.12, utils.KOLOR_STATUS["critical"]),
+                ink=True, on_click=lambda e: utils.przejdz(self._page, "/zdrowie-danych"),
                 content=ft.Row([
                     ft.Icon(ft.Icons.WARNING_AMBER, size=16, color=utils.KOLOR_STATUS["critical"]),
                     ft.Text(
                         f"{p['anomalie']} "
                         + ("nieścisłość" if p["anomalie"] == 1 else "nieścisłości")
-                        + " w historii licznika — oznaczone kolorem niżej.",
+                        + " w historii licznika — oznaczone kolorem niżej. Dotknij, by zobaczyć je w Zdrowiu danych.",
                         size=utils.FS["caption"], color=utils.KOLOR_STATUS["critical"], expand=True),
+                    ft.Icon(ft.Icons.CHEVRON_RIGHT, size=16, color=utils.KOLOR_STATUS["critical"]),
                 ], spacing=6),
             ))
 

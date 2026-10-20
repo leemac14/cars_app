@@ -28,6 +28,13 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.20.2", "pozycje": [
+        {"tytul": "Zdrowie danych", "ikona": "HEALTH_AND_SAFETY", "ekran": "zdrowie-danych",
+         "opis": "Cofki licznika, dziwne ceny, przerwany ciąg „do pełna”, martwe pliki, duplikaty nazw, wpisy "
+                 "z przyszłości i puste pola pojazdu w jednym miejscu — przy każdej pozycji poprawka albo wpis do "
+                 "otwarcia, a to, co się zgadza, oznaczysz jako „To nie błąd”. Ile czeka, pokaże kafelek na "
+                 "kokpicie, a raz na kwartał przypomni dzwonek."},
+    ]},
     {"wersja": "2026.10.20", "pozycje": [
         {"tytul": "Kosz na usunięte wpisy", "ikona": "RESTORE_FROM_TRASH", "ekran": "kosz",
          "opis": "Usunięte tankowanie, koszt, wpis serwisowy, odczyt czy zdjęcie nie przepada już po kilku "

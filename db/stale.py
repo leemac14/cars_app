@@ -181,6 +181,10 @@ TERMINY_DOKUMENTOW = [
     ("gwarancja",  "gwarancja_data",  "Gwarancja producenta"),
 ]
 
+# Terminy, których BRAK sam w sobie jest problemem (kondycja, Zdrowie danych) — bez nich
+# nie ma czego pilnować ani z czego policzyć kondycji.
+TERMINY_WYMAGANE_W_KONDYCJI = ("oc", "przeglad")
+
 # Własny próg ma też skarbiec (db/dokumenty.py): dokumenty z datą ważności spoza Karty pojazdu.
 KLUCZ_PROGU_SKARBCA = "skarbiec"
 PROGI_TERMINOW = [(k, e) for k, _, e in TERMINY_DOKUMENTOW] + [(KLUCZ_PROGU_SKARBCA, "Inne dokumenty pojazdu")]
@@ -507,6 +511,7 @@ __all__ = [
     "TABELE_Z_WIELOMA_ZALACZNIKAMI",
     "TABELE_Z_ZALACZNIKIEM",
     "TERMINY_DOKUMENTOW",
+    "TERMINY_WYMAGANE_W_KONDYCJI",
     "TYPY_LADOWANIA",
     "TYPY_NADWOZIA",
     "TYPY_PALIWA",

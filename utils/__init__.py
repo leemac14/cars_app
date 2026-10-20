@@ -17,6 +17,7 @@ from .miesiace import *
 from .zgodnosc import *
 from .haptyka import *
 from .dialogi import *
+from .zdrowie_danych import *
 from .listy import *
 from .filtry import *
 from .sync_ui import *
@@ -59,6 +60,7 @@ from . import (
     zgodnosc,
     haptyka,
     dialogi,
+    zdrowie_danych,
     listy,
     filtry,
     sync_ui,

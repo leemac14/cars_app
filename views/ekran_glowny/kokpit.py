@@ -1170,6 +1170,30 @@ class MiksinKokpitu:
                 ], spacing=6),
             )
 
+        def widget_zdrowie_danych():
+            """Zdrowie danych (N-08): ile rzeczy czeka na sprawdzenie i z których sprawdzeń;
+            zielony, gdy czysto. Kolor tylko na ikonie — to stan danych, nie auta, więc kafel się
+            nie podnosi (świeże auto z pustym VIN-em ma zostać spokojne)."""
+            stan = metryka("zdrowie_danych")
+            kolor = utils.kolor_zdrowia(stan)
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
+                ink=True, on_click=lambda e: utils.przejdz(self._page, "/zdrowie-danych"),
+                tooltip="Cofki licznika, dziwne ceny, martwe pliki i inne nieścisłości",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(utils.IKONY_KOKPITU["zdrowie_danych"], size=15, color=kolor),
+                        utils.etykieta("Zdrowie danych", expand=True),
+                    ], spacing=6),
+                    liczba_kafelka(stan["razem"] or None, utils.liczba_do_sprawdzenia,
+                                   zastepnik="Bez zastrzeżeń"),
+                    ft.Text(utils.sklad_zdrowia_danych(stan["liczby"]) or "dane się zgadzają",
+                            size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=4),
+            )
+
         # ================= KAFELKI AKCJI =================
         # Kokpit odpowiadał dotąd wyłącznie na pytanie „co się dzieje”. Dwie
         # najczęstsze czynności w aplikacji — tankowanie i stan licznika —
@@ -1273,6 +1297,7 @@ class MiksinKokpitu:
             "do_splaty": widget_do_splaty,
             "ewidencja": widget_ewidencja,
             "zuzycie_oleju": widget_zuzycie_oleju,
+            "zdrowie_danych": widget_zdrowie_danych,
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
             "akcja_tankowanie": widget_akcja_tankowanie,

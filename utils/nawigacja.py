@@ -224,6 +224,13 @@ EKRANY = [
      "ikona": ft.Icons.INPUT, "grupa": "dane", "trasa": "/import",
      "slowa": ["wczytaj csv", "arkusz", "excel", "migracja", "przenieś dane", "fuelio", "drivvo", "acar",
                "simply auto"]},
+    # Zdrowie danych (N-08): nieścisłości z całej aplikacji w jednym miejscu. Opis i słowa bez
+    # „oc”, „olej”, „koszt”, „opon”, „budż” i „rozrz” (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "zdrowie-danych", "tytul": "Zdrowie danych",
+     "opis": "Cofki licznika, dziwne ceny, martwe pliki i duplikaty nazw w jednym miejscu",
+     "ikona": ft.Icons.HEALTH_AND_SAFETY, "grupa": "dane", "trasa": "/zdrowie-danych",
+     "slowa": ["błędy", "nieścisłości", "cofka", "skok licznika", "literówka", "duplikaty", "martwe pliki",
+               "brakujące zdjęcia", "porządki", "sprzątanie", "jakość danych", "weryfikacja", "to nie błąd"]},
 
     {"id": "cykliczne", "tytul": "Wydatki cykliczne", "opis": "Raty, abonamenty, powtarzalne czynności",
      "ikona": ft.Icons.AUTORENEW, "grupa": "aplikacja", "akcja": "cykliczne",
