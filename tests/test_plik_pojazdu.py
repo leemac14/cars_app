@@ -623,6 +623,29 @@ def test_podglad_pyta_zastap_czy_dodaj_i_przelacza_na_wczytane_auto(baza, tmp_pa
     assert okna.komunikaty[-1] == "Wczytano pojazd „Octavia”. Poprzedni jest w koszu."
 
 
+def test_wspolautor_nie_zastapi_wspolnego_auta_plikiem(baza, tmp_path, okna, zadania):
+    """„Zastąp” odkłada obecne auto do kosza, a usuwać pojazd wolno tylko pełnej roli —
+    zostaje „Dodaj obok”, a baza odmawia także z pominięciem okna."""
+    auto_id = pomoce.utworz_pojazd("Octavia", wspolny=True)["auto_id"]
+    _ustaw_pojazd(auto_id, vin="TMBJJ7NE8L0123456")
+    plik, _ = _zapisz(tmp_path, auto_id)
+    db.ustaw_role_pojazdu(auto_id, db.ROLA_WSPOLAUTOR)
+
+    assert db.podglad_pliku_pojazdu(plik)["ten_sam"]["wolno_zastapic"] is False
+    with pytest.raises(db.BladPlikuPojazdu, match="Obecnego pojazdu nie zastąpisz"):
+        db.wczytaj_plik_pojazdu(plik, auto_id)
+    assert _ile("SELECT COUNT(*) FROM samochody") == 1 and db.liczba_w_koszu() == 0
+
+    strona = pomoce.zbuduj_strone()
+    utils.zapytaj_o_wczytanie_pojazdu(strona.page, pomoce.stan_aplikacji(auto_id, "Octavia"), plik)
+    _uruchom(zadania, "_sprawdz")
+    dlg = okna.otwarte[-1]
+
+    assert [a.content for a in dlg.actions] == ["Anuluj", "Dodaj obok"]
+    assert "Zastąpić go może tylko właściciel albo osoba z pełnym dostępem — wczytany stanie obok." \
+        in pomoce.napisy(dlg)
+
+
 def test_sprzedane_auto_z_pliku_trafia_do_archiwum(baza, tmp_path, okna, zadania):
     auto_id = pomoce.utworz_pojazd("Sprzedany")["auto_id"]
     _ustaw_pojazd(auto_id, status=db.STATUS_POJAZDU_SPRZEDANY)

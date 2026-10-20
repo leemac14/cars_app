@@ -19,6 +19,7 @@ from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_rozmiar, liczba_z_odmiana
 from .ustawienia import _pobierz_ustawienia_pojazdu, _przywroc_ustawienia_pojazdu
 from .nowosci import WERSJA_APLIKACJI
+from .synchronizacja import ROLA_PODGLAD, ROLA_WSPOLAUTOR, czy_moge_usunac_pojazd
 from .zalaczniki import sciezka_pliku_zalacznika, wzgledna_sciezka_zalacznika
 from .kosz import (
     KOSZ_KLUCZE_OBCE, KOSZ_TABELE_LICZONE, KOSZ_TABELE_POTOMNE, odtworz_pojazd, przywroc_auto_z_kosza,
@@ -440,11 +441,15 @@ def _ten_sam_pojazd(auto):
     with polacz_baze(zmienia_dane=False) as conn:
         conn.row_factory = sqlite3.Row
         wiersze = conn.execute(
-            "SELECT id, nazwa, status, vin, nr_rej, wspolny_pojazd_id FROM samochody ORDER BY id").fetchall()
+            "SELECT id, nazwa, status, vin, nr_rej, wspolny_pojazd_id, rola_wspoldzielenia FROM samochody "
+            "ORDER BY id").fetchall()
 
     def opis(w, po_czym):
+        # Zastąpić (czyli wysłać obecne do kosza) może tylko pełna rola — jak przy usuwaniu.
+        rola = str(w["rola_wspoldzielenia"] or "").strip()
         return {"id": w["id"], "nazwa": str(w["nazwa"]), "po_czym": po_czym,
-                "sprzedany": w["status"] == STATUS_POJAZDU_SPRZEDANY, "wspolny": bool(w["wspolny_pojazd_id"])}
+                "sprzedany": w["status"] == STATUS_POJAZDU_SPRZEDANY, "wspolny": bool(w["wspolny_pojazd_id"]),
+                "wolno_zastapic": rola not in (ROLA_WSPOLAUTOR, ROLA_PODGLAD)}
 
     for w in wiersze:
         if vin and _klucz_tozsamosci(w["vin"], 8) == vin:
@@ -536,6 +541,9 @@ def wczytaj_plik_pojazdu(sciezka, zastap_auto_id=None) -> dict[str, Any]:
     if rodzaj_archiwum(sciezka) != "pojazd":
         raise BladPlikuPojazdu(_NIE_TEN_PLIK if sciezka and os.path.isfile(sciezka)
                                else "Nie można odczytać wybranego pliku.")
+    if zastap_auto_id and not czy_moge_usunac_pojazd(zastap_auto_id):
+        raise BladPlikuPojazdu("Obecnego pojazdu nie zastąpisz — usunąć go może tylko właściciel albo osoba "
+                               "z pełnym dostępem. Wczytaj plik obok.")
     nowe_pliki = []
     try:
         with zipfile.ZipFile(sciezka) as zf:

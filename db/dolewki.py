@@ -17,6 +17,7 @@ from .jednostki import na_jednostke_dystansu, slowo_dystansu, tekst_dystansu
 from .synchronizacja import czy_moge_dodawac, czy_moge_zmieniac_rekord, zarejestruj_nagrobek
 from .zalaczniki import usun_plik_zalacznika, usun_zalaczniki_rekordow
 from .przebieg import pobierz_aktualny_przebieg
+from .stan_magazynu import przelicz_stan_magazynu, zapewnij_stan_wyjsciowy
 from .kosz_wpisow import usun_do_kosza
 
 
@@ -201,15 +202,19 @@ def zapisz_dolewke(auto_id, dane, dolewka_id=None) -> int | None:
 
     with polacz_baze() as conn:
         c = conn.cursor()
-        if stary and stary["magazyn_id"] and stary["ilosc_magazynu"]:
-            c.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (stary["ilosc_magazynu"], stary["magazyn_id"]))
+        # Stan pozycji to stan wyjściowy minus zużycie (db/stan_magazynu.py): dolewka zmienia
+        # tylko swoje zużycie, stan przelicza się po zapisie.
+        dotkniete = {i for i in (stary["magazyn_id"] if stary else None, magazyn_id) if i}
+        zapewnij_stan_wyjsciowy(conn, dotkniete)
         ilosc_magazynu = None
         if magazyn_id:
             pozycja = c.execute("SELECT ilosc, jednostka FROM magazyn_czesci WHERE id=? AND auto_id=?",
                                 (magazyn_id, auto_id)).fetchone()
             if pozycja:
-                ilosc_magazynu = round(min(ilosc_w_jednostce(ilosc, pozycja[1]), max(0.0, float(pozycja[0] or 0))), 3)
-                c.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?", (ilosc_magazynu, magazyn_id))
+                dostepne = max(0.0, _na_liczbe(pozycja[0]) or 0.0)
+                if stary and stary["magazyn_id"] == magazyn_id:
+                    dostepne += _na_liczbe(stary["ilosc_magazynu"]) or 0.0
+                ilosc_magazynu = round(min(ilosc_w_jednostce(ilosc, pozycja[1]), dostepne), 3)
             else:
                 magazyn_id = None
 
@@ -241,6 +246,7 @@ def zapisz_dolewke(auto_id, dane, dolewka_id=None) -> int | None:
             wynik = c.execute(
                 "INSERT INTO dolewki (auto_id, data, data_iso, przebieg, plyn, ilosc, produkt, magazyn_id, ilosc_magazynu, "
                 "koszt_id, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (auto_id,) + wartosci + (ja,)).lastrowid
+        przelicz_stan_magazynu(conn, dotkniete)
 
     # Nagrobek otwiera własne połączenie — dopiero po zatwierdzeniu transakcji.
     if nagrobek_kosztu:

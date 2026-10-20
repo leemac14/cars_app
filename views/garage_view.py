@@ -1102,17 +1102,20 @@ class FormularzCzesciView(ft.View):
                 ).fetchone()
                 przed = dict(zip(kolumny, wiersz)) if wiersz else None
                 conn.execute(
-                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, ilosc=?, jednostka=?, cena=?, cena_jednostkowa=?, data_zakupu=?, notatki=?, prog_ostrzezenia=?, "
+                    "UPDATE magazyn_czesci SET nazwa=?, kategoria=?, jednostka=?, cena=?, cena_jednostkowa=?, data_zakupu=?, notatki=?, prog_ostrzezenia=?, "
                     "sklep=?, link=? WHERE id=?",
-                    (nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, prog,
+                    (nazwa, self.e_kat.value, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, prog,
                      sklep, link, self.czesc_id)
                 )
+                # Ilość z formularza to korekta stanu na półce: zmienia stan wyjściowy, a zużycie
+                # z innych telefonów dalej się od niego odejmuje (db/stan_magazynu.py).
+                db.ustaw_stan_magazynu(conn, self.czesc_id, ilosc)
                 czesc_id = self.czesc_id
             else:
                 kursor = conn.execute(
-                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, jednostka, cena, cena_jednostkowa, data_zakupu, notatki, prog_ostrzezenia, sklep, link) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, prog,
+                    "INSERT INTO magazyn_czesci (auto_id, nazwa, kategoria, ilosc, ilosc_bazowa, jednostka, cena, cena_jednostkowa, data_zakupu, notatki, prog_ostrzezenia, sklep, link) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (self.state.auto_id, nazwa, self.e_kat.value, ilosc, ilosc, self.e_jedn.value, cena, cena_jedn, self.e_data.value, self.e_not.value, prog,
                      sklep, link)
                 )
                 czesc_id = kursor.lastrowid

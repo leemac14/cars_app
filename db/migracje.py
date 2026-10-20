@@ -12,6 +12,7 @@ from .stale import BAZA_DANYCH
 from .pamiec import zanotuj_zmiane_danych
 from .polaczenie import polacz_baze
 from .daty import przelicz_daty_iso
+from .stan_magazynu import zainicjuj_stan_wyjsciowy
 from .ustawienia import pobierz_ustawienie, zapisz_ustawienie
 from .zalaczniki import (
     _upewnij_folder_zalacznikow, napraw_sciezki_zalacznikow, posprzataj_odroczone_zalaczniki,
@@ -629,6 +630,12 @@ def init_db():
             CREATE TABLE IF NOT EXISTS kosz_wpisy (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER, kosz_pojazdu_id INTEGER, tabela TEXT NOT NULL, opis TEXT, liczba INTEGER NOT NULL DEFAULT 1, data_usuniecia TEXT NOT NULL, migawka TEXT NOT NULL, pliki TEXT, rozmiar_plikow INTEGER NOT NULL DEFAULT 0, schemat_wersja INTEGER);
             CREATE INDEX IF NOT EXISTS idx_kosz_wpisy_data ON kosz_wpisy(data_usuniecia);
             CREATE INDEX IF NOT EXISTS idx_kosz_wpisy_auto ON kosz_wpisy(auto_id);
+            """,
+            # Wersja 55: stan wyjściowy pozycji magazynu (db/stan_magazynu.py) — jedzie do
+            # chmury; `ilosc` = stan wyjściowy minus zużycie ze wszystkich telefonów. Wartości
+            # i odciski chmury uzupełnia blok `if i == 54` niżej.
+            """
+            ALTER TABLE magazyn_czesci ADD COLUMN ilosc_bazowa REAL;
             """
         ]
 
@@ -725,6 +732,11 @@ def init_db():
             # Pojedynczy `zalacznik` wpisów staje się pierwszym plikiem w `zalaczniki`.
             if i == 50:
                 przenies_dawne_zalaczniki(cursor)
+
+            # Stan wyjściowy = stan na półce + całe zużycie (nic się na półce nie zmienia);
+            # rekordy niezmienione od synchronizacji dostają odcisk w nowej postaci.
+            if i == 54:
+                zainicjuj_stan_wyjsciowy(conn)
 
             if i == 7:
                 cursor.execute("SELECT id, nazwa FROM zadania")

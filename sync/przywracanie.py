@@ -6,7 +6,7 @@ import db
 from .stale import KONFIGURACJA_SYNC, TABELE_POSREDNIE
 from .polaczenie import _upewnij_sesje
 from .role import czy_udostepniony
-from .pomocnicze import _hash_zawartosci, _zapytanie_tabeli
+from .pomocnicze import _hash_rekordu, _zapytanie_tabeli
 
 
 def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
@@ -30,7 +30,7 @@ def _przywroc_tabele(klient, wspolny_id, auto_id, konfig):
             continue
 
         dane = rekord["dane"] or {}
-        nowy_hash = _hash_zawartosci(dane)
+        nowy_hash = _hash_rekordu(dane, konfig)
 
         wartosci = {nazwa: dane.get(nazwa) for nazwa in kolumny}
         for pole_fk, tabela_fk in fk.items():
@@ -78,6 +78,9 @@ def przywroc_z_chmury(auto_id):
     # Następna synchronizacja ma przejść wszystko.
     db.wyczysc_znacznik_delty(auto_id)
     db.przelicz_wszystkie_zadania(auto_id)
+    # Stan magazynu = stan wyjściowy minus zużycie; rekord bez stanu wyjściowego (starsza
+    # wersja) liczy go z niesionego stanu.
+    db.przelicz_stan_magazynu(auto_id=auto_id)
     return przywrocono
 
 

@@ -337,6 +337,8 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
         # Aplikacja dopisuje `data_iso` przy każdym zapisie daty — wpisy
         # wstawione tu SQL-em dostają ją tak, jak dostałyby w aplikacji.
         db.przelicz_daty_iso(conn)
+        # Stan magazynu jak w aplikacji: stan wyjściowy = stan na półce + zużycie (db/stan_magazynu.py).
+        db.zapewnij_stan_wyjsciowy(conn, [zid["magazyn"]])
 
     # Ustawienie przywiązane do pojazdu — musi pojechać do kosza i wrócić.
     db.zapisz_ustawienie(db.ustawienia._klucz_kokpitu(auto), "przebieg,paliwo,terminy")

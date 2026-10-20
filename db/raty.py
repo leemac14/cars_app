@@ -26,6 +26,7 @@ from .stale import (
     TYPY_RAT,
 )
 from .polaczenie import polacz_baze
+from .pomocnicze import _na_liczbe, klucz_nazwy
 from .ustawienia import pobierz_moje_imie
 from .synchronizacja import zarejestruj_nagrobek
 from .gwarancje import dodaj_miesiace
@@ -450,6 +451,73 @@ def podsumowanie_rat(auto_id, dzis=None) -> dict[str, Any] | None:
     }
 
 
+def kapital_rat_w_kosztach(auto_id, dzis=None) -> dict[int, dict[str, Any]]:
+    """Zapłacone raty w Innych kosztach: {id kosztu: {data, kapital, umowa_id, umowa,
+    bez_podzialu}}. Koszt posiadania liczy z raty tylko odsetki — kapitał spłaca auto, którego
+    kosztem jest utrata wartości (cena zakupu niosłaby go drugi raz). `kapital` = ile pominąć:
+    część kapitałowa z harmonogramu (najwyżej kwota wpisu), a bez kwoty finansowania albo przy
+    umowie do uzupełnienia cały wpis (`bez_podzialu`). Wpis raty: nazwa z `nazwa_kosztu_platnosci`
+    (bez względu na kategorię); rata sprzed harmonogramu (wydatek cykliczny o nazwie umowy, bez
+    numeru) idzie po kolei z zapłaconymi pozycjami bez wpisu z numerem."""
+    wynik = {}
+    umowy = pobierz_raty(auto_id, dzis)
+    if not umowy:
+        return wynik
+    with polacz_baze() as conn:
+        koszty = conn.execute("SELECT id, data, kwota, nazwa, kategoria FROM inne_koszty WHERE auto_id=?",
+                              (auto_id,)).fetchall()
+    wolne = []
+    for koszt_id, data, kwota, nazwa, kategoria in koszty:
+        dzien, kwota = parsuj_date(data), _na_liczbe(kwota) or 0.0
+        if dzien != datetime.min.date() and kwota > 0:
+            wolne.append({"id": koszt_id, "data": dzien, "kwota": kwota, "klucz": klucz_nazwy(nazwa or ""),
+                          "cykliczny": str(kategoria or "").strip() == KATEGORIA_RATY})
+
+    # Dwie umowy o tej samej nazwie (domyślne „Leasing”): wpis bierze starsza.
+    for umowa in sorted(umowy, key=lambda u: (u["harmonogram"]["data_pierwszej_raty"] or datetime.max.date(),
+                                              u["id"])):
+        h = umowa["harmonogram"]
+        nazwa = str(umowa.get("nazwa") or "").strip() or etykieta_umowy(umowa.get("typ"))
+
+        def pomin(wpis, kapital):
+            wynik[wpis["id"]] = {
+                "data": wpis["data"], "kapital": wpis["kwota"] if kapital is None else min(wpis["kwota"], kapital),
+                "umowa_id": umowa["id"], "umowa": nazwa, "bez_podzialu": kapital is None,
+            }
+
+        stare = [w for w in wolne if w["cykliczny"] and w["klucz"] == klucz_nazwy(nazwa)]
+        if not h["kompletna"]:
+            for wpis in stare:
+                pomin(wpis, None)
+        else:
+            po_nazwie = {klucz_nazwy(nazwa_kosztu_platnosci(umowa, p, h["liczba_rat"])): p for p in h["platnosci"]}
+            z_wpisem = set()
+            for wpis in wolne:
+                platnosc = po_nazwie.get(wpis["klucz"])
+                if platnosc is not None:
+                    pomin(wpis, platnosc["kapital"])
+                    z_wpisem.add(platnosc["numer"])
+            bez_wpisu = [p for p in h["platnosci"] if p["zaplacona"] and p["numer"] not in z_wpisem]
+            for platnosc, wpis in zip(bez_wpisu, sorted(stare, key=lambda w: (w["data"], w["id"]))):
+                pomin(wpis, platnosc["kapital"])
+        wolne = [w for w in wolne if w["id"] not in wynik]
+    return wynik
+
+
+def kapital_rat_w_okresie(kapital, od_data=None, do_data=None) -> dict[str, Any]:
+    """Suma z `kapital_rat_w_kosztach` w przedziale dat (oba końce włącznie i opcjonalne — jak
+    `koszty_w_okresie`): {"kwota", "bez_podzialu": [{"id", "nazwa"}] — umowy, których raty
+    wypadły z kosztu w całości}."""
+    kwota, bez_podzialu = 0.0, {}
+    for wpis in kapital.values():
+        if (od_data and wpis["data"] < od_data) or (do_data and wpis["data"] > do_data):
+            continue
+        kwota += wpis["kapital"]
+        if wpis["bez_podzialu"]:
+            bez_podzialu.setdefault(wpis["umowa_id"], wpis["umowa"])
+    return {"kwota": kwota, "bez_podzialu": [{"id": i, "nazwa": n} for i, n in bez_podzialu.items()]}
+
+
 def zapisz_umowe_raty(auto_id, pola, wydatek_id=None, dzis=None) -> int | None:
     """Zapis z formularza umowy: nowy wpis albo przestawienie istniejącego —
     także zwykłego wydatku, którym rata była do tej pory — na raty. Termin
@@ -577,6 +645,8 @@ __all__ = [
     "czy_rata",
     "etykieta_umowy",
     "harmonogram_umowy",
+    "kapital_rat_w_kosztach",
+    "kapital_rat_w_okresie",
     "kwota_finansowana",
     "nazwa_kosztu_platnosci",
     "opis_platnosci",

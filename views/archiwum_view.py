@@ -153,6 +153,11 @@ class ArchiwumView(ft.View):
             utils.pokaz_komunikat(self._page, f"„{a['nazwa']}” wrócił do garażu.")
 
         def do_kosza():
+            if not db.czy_moge_usunac_pojazd(a["id"]):
+                utils.odmowa_usuniecia_pojazdu(self._page, a["id"], str(a["nazwa"]),
+                                               po_odlaczeniu=lambda: utils.przejdz(self._page, "/archiwum"))
+                return
+
             def wykonaj():
                 wynik = db.usun_auto_do_kosza(a["id"])
                 utils.przejdz(self._page, "/archiwum")
@@ -164,7 +169,8 @@ class ArchiwumView(ft.View):
             utils.potwierdz(
                 self._page, "Przenieść do kosza?",
                 f"„{a['nazwa']}” zniknie także z archiwum i trafi do kosza, gdzie poczeka {okres}. "
-                "Dopóki tam leży, historii nie da się przeglądać ani eksportować.",
+                "Dopóki tam leży, historii nie da się przeglądać ani eksportować."
+                f"{utils.ostrzezenie_usuniecia_wspolnego(a['id'])}",
                 wykonaj, tekst_potwierdzenia="Przenieś do kosza",
             )
 

@@ -303,9 +303,11 @@ def pokaz_podglad_pojazdu(page: ft.Page, state, sciezka, podglad):
         wiersze.append(_blok(ft.Icons.WARNING_AMBER, KOLOR_STATUS["warning"], podglad["uwagi"]))
 
     ten_sam = podglad["ten_sam"]
+    zastap = bool(ten_sam and ten_sam.get("wolno_zastapic", True))
     if ten_sam:
         linie = [f"W aplikacji jest już „{ten_sam['nazwa']}” — ten sam {ten_sam['po_czym']}.",
-                 "Zastąp: obecny trafi do kosza, skąd go przywrócisz. Dodaj obok: zostaną oba."]
+                 "Zastąp: obecny trafi do kosza, skąd go przywrócisz. Dodaj obok: zostaną oba." if zastap else
+                 "Zastąpić go może tylko właściciel albo osoba z pełnym dostępem — wczytany stanie obok."]
         if ten_sam["wspolny"]:
             linie.append("Obecny jest współdzielony — wczytany będzie tylko na tym telefonie.")
         wiersze.append(_blok(ft.Icons.CONTENT_COPY, KOLOR_STATUS["info"], linie))
@@ -329,11 +331,10 @@ def pokaz_podglad_pojazdu(page: ft.Page, state, sciezka, podglad):
 
     dlg.actions = [ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg))]
     if ten_sam:
-        dlg.actions += [
-            ft.TextButton("Dodaj obok", on_click=wczytaj(None)),
-            ft.TextButton("Zastąp", on_click=wczytaj(ten_sam["id"]),
-                          style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"])),
-        ]
+        dlg.actions.append(ft.TextButton("Dodaj obok", on_click=wczytaj(None)))
+        if zastap:
+            dlg.actions.append(ft.TextButton("Zastąp", on_click=wczytaj(ten_sam["id"]),
+                                             style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"])))
     else:
         dlg.actions.append(ft.TextButton("Wczytaj", on_click=wczytaj(None)))
     dlg.actions_alignment = ft.MainAxisAlignment.END

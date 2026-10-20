@@ -470,6 +470,99 @@ def test_porownanie_bez_umow_nie_ma_wierszy_rat(baza):
     assert "Do spłaty" not in teksty(widok("PorownanieView", a))
 
 
+# ---- koszt posiadania: z raty tylko odsetki (kapitał spłaca auto — jego koszt to utrata wartości)
+
+def zakupione(nazwa="Toyota Corolla"):
+    return auto(nazwa, cena_zakupu="100000", wartosc_szacowana="80000", data_zakupu="01.01.2025")
+
+
+def odsetki_zaplaconych(auto_id, ile):
+    (zapisana,) = db.pobierz_raty(auto_id)
+    return sum(p["odsetki"] for p in zapisana["harmonogram"]["platnosci"][:ile])
+
+
+def test_koszt_posiadania_liczy_z_raty_tylko_odsetki(baza):
+    """Cena zakupu niesie już kapitał — rata liczona w całości dublowała go w koszcie."""
+    a = zakupione()
+    w_id = umowa(a, kwota_finansowania=5500)
+    zaplac(w_id, a)
+    zaplac(w_id, a)
+    odsetki = odsetki_zaplaconych(a, 2)
+
+    m = db.pobierz_metryki_pojazdu(a)
+
+    assert 0 < odsetki < 200
+    assert m["wydatki_od_zakupu"] == pytest.approx(odsetki)
+    assert m["kapital_rat"] == pytest.approx(3800 - odsetki)
+    assert m["koszt_calkowity"] == pytest.approx(20000 + odsetki)
+    assert m["raty_bez_podzialu"] == []
+    # Krzywa narastająca liczy tak samo — z ceną zakupu i bez niej.
+    assert db.koszt_skumulowany(a, z_cena_zakupu=True)["suma"] == pytest.approx(100000 + odsetki)
+    assert db.koszt_skumulowany(a, z_cena_zakupu=False)["wydatki"] == pytest.approx(odsetki)
+
+    tresc = teksty(widok("PojazdView", a))
+    assert kwota(20000 + odsetki) in tresc
+    assert (f"Bez {kwota(3800 - odsetki)} kapitału rat — to spłata auta, którego kosztem jest utrata "
+            "wartości. Z rat liczą się tylko odsetki.") in tresc
+
+
+def test_rata_bez_kwoty_finansowania_wypada_z_kosztu_z_droga_do_umowy(baza, monkeypatch):
+    a = zakupione()
+    w_id = umowa(a)
+    zaplac(w_id, a)
+
+    m = db.pobierz_metryki_pojazdu(a)
+
+    assert (m["wydatki_od_zakupu"], m["kapital_rat"]) == (0, 1900)
+    assert m["raty_bez_podzialu"] == [{"id": w_id, "nazwa": "Leasing Corolli"}]
+    karta = widok("PojazdView", a)
+    tekst = ("„Leasing Corolli”: bez kwoty finansowania odsetek nie da się oddzielić od kapitału, więc raty "
+             "wypadły z kosztu w całości. Uzupełnij umowę.")
+    (dopisek,) = [k for k in _wszystkie(karta, ft.Container)
+                  if k.on_click and tekst in teksty(k)]
+    trasy = []
+    monkeypatch.setattr(utils, "przejdz", lambda strona, trasa: trasy.append(trasa))
+    dopisek.on_click(None)
+    assert trasy == [f"/raty/edytuj/{w_id}"]
+
+
+def test_rata_sprzed_harmonogramu_traci_kapital_po_kolei_z_zaplaconymi(baza):
+    """Rata płacona jeszcze jako zwykły wydatek cykliczny (nazwa umowy, bez numeru) to też
+    rata: idzie z zapłaconymi pozycjami bez wpisu z numerem, po kolei od najstarszej."""
+    a = zakupione()
+    pierwsza = za_miesiecy(-2)
+    w_id = umowa(a, kwota_finansowania=5500, data_pierwszej_raty=napis(pierwsza), zaplacone_platnosci=2)
+    with db.polacz_baze() as conn:
+        for dzien, kategoria in ((pierwsza, db.KATEGORIA_RATY), (db.dodaj_miesiace(pierwsza, 1), db.KATEGORIA_RATY),
+                                 (db.dodaj_miesiace(pierwsza, 1), "Ogólne"), (DZIS, db.KATEGORIA_RATY)):
+            conn.execute("INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota) VALUES (?,?,?,?,?)",
+                         (a, napis(dzien), kategoria, "Leasing Corolli", 1900.0))
+    (zapisana,) = db.pobierz_raty(a)
+    kapital = [p["kapital"] for p in zapisana["harmonogram"]["platnosci"][:2]]
+
+    pominiete = db.kapital_rat_w_kosztach(a)
+
+    assert sorted(w["kapital"] for w in pominiete.values()) == pytest.approx(sorted(kapital))
+    assert sorted(w["data"] for w in pominiete.values()) == [pierwsza, db.dodaj_miesiace(pierwsza, 1)]
+    # Wpis spoza „Cyklicznych” i rata ponad zapłacone pozycje liczą się dalej w całości.
+    assert db.pobierz_metryki_pojazdu(a)["wydatki_od_zakupu"] == pytest.approx(4 * 1900 - sum(kapital))
+    assert w_id
+
+
+def test_porownanie_liczy_eksploatacje_bez_kapitalu_rat(baza):
+    a, _b = auto("A"), auto("B")
+    w_id = umowa(a, kwota_finansowania=5500)
+    zaplac(w_id, a)
+    odsetki = odsetki_zaplaconych(a, 1)
+
+    dane = db.pobierz_dane_do_porownania(a)
+
+    assert dane["koszt_inne"] == pytest.approx(odsetki) and dane["koszt_razem"] == pytest.approx(odsetki)
+    assert dane["kapital_rat"] == pytest.approx(1900 - odsetki)
+    assert ("Inne bez kapitału rat leasingu i kredytu — to spłata auta, nie eksploatacja; z rat liczą się "
+            "tylko odsetki.") in teksty(widok("PorownanieView", a))
+
+
 def kokpit(auto_id):
     db.zapisz_widgety_kokpitu(["do_splaty"], auto_id)
     stan = pomoce.stan_aplikacji(auto_id, "Toyota Corolla")

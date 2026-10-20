@@ -12,8 +12,12 @@ from .stale import TABELE_DAWNEGO_ZALACZNIKA, TABELE_Z_ZALACZNIKIEM
 from .polaczenie import polacz_baze
 from .pomocnicze import parsuj_int_bezpiecznie
 from .daty import uzupelnij_date_iso
+from .stan_magazynu import przelicz_stan_magazynu
 from .ustawienia import _pobierz_ustawienia_pojazdu, _przywroc_ustawienia_pojazdu, _usun_ustawienia_pojazdu, pobierz_ustawienie
-from .synchronizacja import usun_z_kolejki_sync, zakolejkuj_synchronizacje, zarejestruj_nagrobek
+from .synchronizacja import (
+    ROLA_PODGLAD, ROLA_WSPOLAUTOR, czy_moge_usunac_pojazd, usun_z_kolejki_sync, zakolejkuj_synchronizacje,
+    zarejestruj_nagrobek,
+)
 from .zalaczniki import (
     dopisz_dawny_zalacznik, pelna_sciezka_zalacznika, sciezka_pliku_zalacznika, usun_plik_zalacznika,
     wzgledna_sciezka_zalacznika,
@@ -98,8 +102,8 @@ def usun_auto_do_kosza(auto_id):
     """Przenosi pojazd z historią i zdjęciami do kosza. Zwraca słownik dla
     utils.pokaz_komunikat_cofnij: „cofnij” przywraca auto i zdejmuje je z kosza,
     „finalizuj” NIE kasuje niczego (auto zostaje w koszu); „przywrocone_id” — ID po
-    cofnięciu (może być inne)."""
-    if not auto_id:
+    cofnięciu (może być inne). None — nie ma auta albo rola nie pozwala (czy_moge_usunac_pojazd)."""
+    if not auto_id or not czy_moge_usunac_pojazd(auto_id):
         return None
 
     folder = _upewnij_folder_kosza()
@@ -393,6 +397,9 @@ def odtworz_pojazd(conn, migawka, podmiana=None, nowe_id=False) -> int:
     for tab, rekord_id, sciezka in dawne:
         dopisz_dawny_zalacznik(conn, nowe_auto_id, tab, rekord_id, sciezka)
 
+    # Migawka i plik sprzed wersji 55 nie mają stanu wyjściowego magazynu — liczy się z zapisanego
+    # stanu; nowsze dają ten sam stan, co przed usunięciem (db/stan_magazynu.py).
+    przelicz_stan_magazynu(conn, auto_id=nowe_auto_id)
     return nowe_auto_id
 
 
@@ -421,15 +428,18 @@ def usun_z_kosza_trwale(kosz_id):
     dane_auta = (migawka.get("auto") or {}).get("wiersz") or {}
     tabele = migawka.get("tabele") or {}
 
-    for tab in KOSZ_TABELE_SYNCHRONIZOWANE:
-        for wiersz in (tabele.get(tab) or {}).get("wiersze") or []:
-            zdalne = wiersz.get("zdalne_id")
-            if zdalne:
-                zarejestruj_nagrobek(tab, zdalne)
+    # Auto współautora albo podglądu (do kosza trafiało przed strażnikiem roli) znika tylko
+    # u mnie — nagrobki skasowałyby cudzą historię w chmurze.
+    if str(dane_auta.get("rola_wspoldzielenia") or "").strip() not in (ROLA_WSPOLAUTOR, ROLA_PODGLAD):
+        for tab in KOSZ_TABELE_SYNCHRONIZOWANE:
+            for wiersz in (tabele.get(tab) or {}).get("wiersze") or []:
+                zdalne = wiersz.get("zdalne_id")
+                if zdalne:
+                    zarejestruj_nagrobek(tab, zdalne)
 
-    # Dane opisowe pojazdu mają własny zdalny odpowiednik (sync/pobieranie.py)
-    if dane_auta.get("info_zdalne_id"):
-        zarejestruj_nagrobek("info_pojazdu", dane_auta["info_zdalne_id"])
+        # Dane opisowe pojazdu mają własny zdalny odpowiednik (sync/pobieranie.py)
+        if dane_auta.get("info_zdalne_id"):
+            zarejestruj_nagrobek("info_pojazdu", dane_auta["info_zdalne_id"])
 
     for para in pliki:
         try:

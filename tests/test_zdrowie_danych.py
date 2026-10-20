@@ -536,5 +536,5 @@ def test_router_szuflada_i_co_nowego(baza, monkeypatch):
 
     assert [e["id"] for e in utils.znajdz_ekrany("zdrowie danych")][:1] == ["zdrowie-danych"]
     assert "zdrowie-danych" in [e["id"] for e in utils.znajdz_ekrany("martwe pliki")]
-    (wydanie,) = [w for w in db.NOWOSCI if w["wersja"] == db.WERSJA_APLIKACJI]
+    (wydanie,) = [w for w in db.NOWOSCI if w["wersja"] == "2026.10.20.2"]
     assert wydanie["pozycje"][0]["ekran"] == "zdrowie-danych"

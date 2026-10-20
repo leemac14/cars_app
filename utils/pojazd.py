@@ -2,6 +2,7 @@
 
 import db
 import flet as ft
+import sync
 
 from datetime import datetime
 
@@ -24,10 +25,62 @@ from .notatki import pole_notatki, zapisz_notatke_z_formularza
 from .wykresy import kolor_kondycji_plynny
 
 
+def odmowa_usuniecia_pojazdu(page: ft.Page, auto_id, nazwa, po_odlaczeniu=None):
+    """Współautor i podgląd nie usuwają współdzielonego auta (skasowałoby cudzą historię u innych).
+    Mogą przestać je obserwować — zostaje zwykłe auto offline, które usuną już tylko u siebie."""
+    rola = db.ETYKIETY_ROL.get(db.rola_pojazdu(auto_id), "").lower()
+    dlg = ft.AlertDialog(
+        modal=True, title=ft.Text("Tego pojazdu nie usuniesz", weight="bold"),
+        shape=ft.RoundedRectangleBorder(radius=RADIUS["lg"]),
+        content=ft.Text(
+            f"„{nazwa}” jest współdzielony, a Twoja rola to {rola}. Usunąć go może tylko właściciel albo "
+            "osoba z pełnym dostępem — inaczej zniknąłby też u innych. Jeśli nie chcesz go u siebie, przestań "
+            "go obserwować: zostanie jako zwykłe auto offline, które usuniesz bez wpływu na innych."),
+    )
+
+    def przestan(e):
+        zamknij_dialog(page, dlg)
+
+        def wykonaj():
+            sync.odlacz_wspoldzielenie(auto_id)
+            if po_odlaczeniu:
+                po_odlaczeniu()
+            pokaz_komunikat(page, f"„{nazwa}” przestał się aktualizować — teraz usuniesz go tylko u siebie.")
+
+        potwierdz(
+            page, "Przestać obserwować pojazd?",
+            "Pojazd zostanie u Ciebie jako zwykłe, offline'owe auto z tym, co zdążyłeś pobrać. "
+            "Żeby wrócić, będziesz potrzebował kodu od właściciela.",
+            wykonaj, tekst_potwierdzenia="Przestań obserwować",
+        )
+
+    dlg.actions = [
+        ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
+        ft.TextButton("Przestań obserwować", on_click=przestan,
+                      style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"])),
+    ]
+    dlg.actions_alignment = ft.MainAxisAlignment.END
+    otworz_dialog(page, dlg)
+    return dlg
+
+
+def ostrzezenie_usuniecia_wspolnego(auto_id):
+    """Dopisek do pytania o usunięcie współdzielonego auta. Kosz jest tylko na tym telefonie —
+    nagrobki (usunięcie u wszystkich) wychodzą dopiero z trwałym usunięciem z kosza."""
+    if not sync.czy_udostepniony(auto_id)[0]:
+        return ""
+    return (" Pojazd jest współdzielony: w koszu zniknie tylko u Ciebie, ale trwałe usunięcie z kosza skasuje "
+            "jego historię też u osób, z którymi go dzielisz. Żeby usunąć go tylko u siebie, najpierw rozłącz go "
+            "na ekranie Współdzielenie.")
+
+
 def usun_auto(page: ft.Page, state):
     if not state.auto_id: return
     nazwa = state.auto_nazwa
     auto_id = state.auto_id
+    if not db.czy_moge_usunac_pojazd(auto_id):
+        odmowa_usuniecia_pojazdu(page, auto_id, nazwa, po_odlaczeniu=lambda: przejdz(page, page.route))
+        return
 
     def wykonaj():
         # Pojazd trafia do kosza — nic nie jest kasowane z dysku.
@@ -56,7 +109,8 @@ def usun_auto(page: ft.Page, state):
     potwierdz(
         page, "Usunąć pojazd?",
         f"„{nazwa}” trafi do kosza wraz z całą historią serwisową i zdjęciami. "
-        f"Będzie tam czekał {okres} — do tego czasu przywrócisz go jednym kliknięciem.",
+        f"Będzie tam czekał {okres} — do tego czasu przywrócisz go jednym kliknięciem."
+        f"{ostrzezenie_usuniecia_wspolnego(auto_id)}",
         wykonaj,
         tekst_potwierdzenia="Przenieś do kosza",
     )
@@ -658,6 +712,8 @@ __all__ = [
     "pokaz_panel_kondycji",
     "sprzedaj_auto",
     "tablica_rejestracyjna",
+    "odmowa_usuniecia_pojazdu",
+    "ostrzezenie_usuniecia_wspolnego",
     "usun_auto",
     "wiersz_odliczania",
     "wiersz_odliczania_kafla",

@@ -281,6 +281,11 @@ def test_probka_przechodzi_migracje_uzupelniajace_dane(magazyn, probka):
             c.execute("SELECT COUNT(*) FROM tankowania WHERE data_iso IS NOT NULL")
             assert c.fetchone()[0] > 0, f"{probka.stem}: data_iso nie wypełniła się wstecz"
 
+            # Migracja 55: każda pozycja magazynu ma stan wyjściowy (że stan na półce się nie
+            # zmienia, sprawdza tests/test_stan_magazynu.py).
+            c.execute("SELECT COUNT(*) FROM magazyn_czesci WHERE ilosc_bazowa IS NULL")
+            assert c.fetchone()[0] == 0, f"{probka.stem}: pozycja magazynu bez stanu wyjściowego"
+
     if wersja <= 37:
         # Migracja 38: układ zakładek zmienił ZNACZENIE numerów. Kto skończył na
         # dawnym „Paliwie" (2), ma trafić na Koszty z podzakładką Tankowania.

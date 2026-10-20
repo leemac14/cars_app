@@ -9,6 +9,7 @@ from .stale import MIESIACE_ZIMOWE, PROG_ILOSC_MAGAZYNU_DOMYSLNY, RODZAJE_PLYNOW
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, bez_emoji
 from .synchronizacja import zarejestruj_nagrobek
+from .stan_magazynu import przelicz_stan_magazynu, zapewnij_stan_wyjsciowy
 
 
 # Zużycie części z magazynu ma dwa nośniki: wizytę zbiorczą i pojedynczy wpis. Tabele są
@@ -41,11 +42,13 @@ def _przywroc_czesci(zrodlo, rekord_id, conn=None):
     def _wykonaj(c):
         cur = c.cursor()
         cur.execute(f"SELECT magazyn_id, ilosc_uzyta, zdalne_id FROM {tabela} WHERE {kolumna}=?", (rekord_id,))
-        for magazyn_id, ilosc, zdalne_id in cur.fetchall():
-            cur.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (ilosc, magazyn_id))
-            if zdalne_id:
-                usuniete_zdalne_id.append(zdalne_id)
+        wiersze = cur.fetchall()
+        # Stan = stan wyjściowy minus zużycie (db/stan_magazynu.py) — znika zużycie, stan się przelicza.
+        dotkniete = {magazyn_id for magazyn_id, _, _ in wiersze if magazyn_id}
+        zapewnij_stan_wyjsciowy(c, dotkniete)
+        usuniete_zdalne_id.extend(zdalne_id for _, _, zdalne_id in wiersze if zdalne_id)
         cur.execute(f"DELETE FROM {tabela} WHERE {kolumna}=?", (rekord_id,))
+        przelicz_stan_magazynu(c, dotkniete)
 
     if conn is not None:
         _wykonaj(conn)
@@ -66,6 +69,8 @@ def _rozlicz_czesci(zrodlo, rekord_id, uzyte, conn=None):
 
     def _wykonaj(c):
         cur = c.cursor()
+        dotkniete = {p[0] for p in uzyte if p[0] and p[1] and p[1] > 0}
+        zapewnij_stan_wyjsciowy(c, dotkniete)
         for pozycja in uzyte:
             magazyn_id, ilosc = pozycja[0], pozycja[1]
             koszt = pozycja[2] if len(pozycja) > 2 else None
@@ -75,7 +80,7 @@ def _rozlicz_czesci(zrodlo, rekord_id, uzyte, conn=None):
                 f"INSERT INTO {tabela} ({kolumna}, magazyn_id, ilosc_uzyta, koszt) VALUES (?,?,?,?)",
                 (rekord_id, magazyn_id, ilosc, koszt)
             )
-            cur.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?", (ilosc, magazyn_id))
+        przelicz_stan_magazynu(c, dotkniete)
 
     if conn is not None:
         _wykonaj(conn)
@@ -280,13 +285,13 @@ def _zdejmij_powiazania_czesci_wpisow(historia_ids):
         )
         wiersze = [{k: w[k] for k in kolumny} for w in c.fetchall()]
         if wiersze:
-            for w in wiersze:
-                c.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?",
-                          (w["ilosc_uzyta"], w["magazyn_id"]))
+            dotkniete = {w["magazyn_id"] for w in wiersze if w["magazyn_id"]}
+            zapewnij_stan_wyjsciowy(conn, dotkniete)
             c.execute(
                 f"DELETE FROM historia_czesci_magazynu WHERE historia_id IN ({placeholders})",
                 tuple(historia_ids)
             )
+            przelicz_stan_magazynu(conn, dotkniete)
     return wiersze
 
 
@@ -299,6 +304,8 @@ def _przywroc_powiazania_czesci_wpisow(wiersze, mapa_historia=None):
     mapa_historia = mapa_historia or {}
     with polacz_baze() as conn:
         c = conn.cursor()
+        dotkniete = {w.get("magazyn_id") for w in wiersze if w.get("magazyn_id")}
+        zapewnij_stan_wyjsciowy(conn, dotkniete)
         for w in wiersze:
             dane = dict(w)
             dane["historia_id"] = mapa_historia.get(dane.get("historia_id"), dane.get("historia_id"))
@@ -318,8 +325,7 @@ def _przywroc_powiazania_czesci_wpisow(wiersze, mapa_historia=None):
                 f"VALUES ({','.join('?' * len(nazwy))})",
                 tuple(dane[k] for k in nazwy)
             )
-            c.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?",
-                      (dane["ilosc_uzyta"], dane["magazyn_id"]))
+        przelicz_stan_magazynu(conn, dotkniete)
 
 
 def pobierz_stan_magazynu(auto_id):

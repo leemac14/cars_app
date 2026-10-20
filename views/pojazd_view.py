@@ -425,6 +425,7 @@ class PojazdView(ft.View):
         wiersze.append(wiersz_kwoty(
             "Wydatki na eksploatację", f"{utils.formatuj_liczba(m['wydatki_od_zakupu'])} {waluta}",
             sufiks="od zakupu" if m.get("data_zakupu") else "łącznie"))
+        wiersze.extend(self._dopiski_kapitalu_rat(m, waluta))
 
         wiersze.append(ft.Divider(height=10))
         wiersze.append(wiersz_kwoty(
@@ -460,6 +461,30 @@ class PojazdView(ft.View):
 
         return utils.karta_analizy(self._page, "Zakup i wartość", ft.Icons.SELL,
                                    wiersze, ft.Colors.AMBER_800)  # paleta: tożsamość — akcent sekcji
+
+    def _dopiski_kapitalu_rat(self, m, waluta):
+        """Raty w koszcie posiadania: kapitał poza wydatkami (spłaca auto, którego kosztem jest
+        utrata wartości), a umowa bez kwoty finansowania — cała poza kosztem, z drogą do umowy."""
+        dopiski = []
+        if m.get("kapital_rat"):
+            dopiski.append(ft.Row([
+                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(f"Bez {utils.formatuj_liczba(m['kapital_rat'])} {waluta} kapitału rat — to spłata auta, "
+                        "którego kosztem jest utrata wartości. Z rat liczą się tylko odsetki.",
+                        size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+            ], spacing=6))
+        for umowa in m.get("raty_bez_podzialu") or []:
+            dopiski.append(ft.Container(
+                ink=True, border_radius=utils.RADIUS["sm"],
+                on_click=lambda e, wid=umowa["id"]: utils.przejdz(self._page, f"/raty/edytuj/{wid}"),
+                content=ft.Row([
+                    ft.Icon(ft.Icons.EDIT_NOTE, size=14, color=utils.KOLOR_STATUS["warning"]),
+                    ft.Text(f"„{umowa['nazwa']}”: bez kwoty finansowania odsetek nie da się oddzielić od "
+                            "kapitału, więc raty wypadły z kosztu w całości. Uzupełnij umowę.",
+                            size=utils.FS["caption"], color=utils.KOLOR_STATUS["warning"], expand=True),
+                ], spacing=6),
+            ))
+        return dopiski
 
     # ================= LEASING I KREDYT =================
 

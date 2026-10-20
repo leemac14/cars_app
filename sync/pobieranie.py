@@ -6,7 +6,7 @@ import sqlite3
 
 from .stale import KOLUMNA_ZNACZNIKA, KOLUMNY_POJAZDU, KOLUMNY_POJAZDU_DOPISANE, TABELE_POSREDNIE
 from .delta import _delta_wlaczona, _wylacz_delte
-from .pomocnicze import _hash_zawartosci, _paczki, _zapytanie_tabeli
+from .pomocnicze import _hash_rekordu, _hash_zawartosci, _paczki, _zapytanie_tabeli
 from .wysylanie import _zgodny_z_zapamietanym
 
 
@@ -55,7 +55,8 @@ def _zastosuj_rekord(konfig, rekord, auto_id, znane):
         return 0
 
     dane = rekord["dane"] or {}
-    nowy_hash = _hash_zawartosci(dane)
+    nowy_hash = _hash_rekordu(dane, konfig)
+    pochodne = konfig.get("pochodne") or {}
 
     # WYŁĄCZNIE pola obecne w zdalnym rekordzie: brak klucza = rekord ze STARSZEJ wersji
     # aplikacji, a `dane.get()` wyczyściłoby wartość lokalną. Celowe wyczyszczenie
@@ -73,6 +74,11 @@ def _zastosuj_rekord(konfig, rekord, auto_id, znane):
         wartosci[pole_fk] = lokalny_fk
     # `data_iso` nie jedzie przez chmurę — każdy telefon liczy ją z `data`.
     db.uzupelnij_date_iso(tabela, wartosci)
+    # Rekord ze starszej wersji nie ma źródła pochodnej (stanu wyjściowego): jego stan to prawda
+    # tamtego telefonu — źródło policzy się z niego po pobraniu (db.przelicz_stan_magazynu).
+    for pochodna, zrodlo in pochodne.items():
+        if pochodna in wartosci and dane.get(zrodlo) is None:
+            wartosci[zrodlo] = None
 
     if lokalny is None:
         # --- Zabezpieczenie przed dublowaniem przy migracji starszych tankowań ---
@@ -127,6 +133,7 @@ def _zastosuj_rekord(konfig, rekord, auto_id, znane):
             znane[zdalne_id] = {"id": c.lastrowid, "hash": nowy_hash}
         return 1
 
+    # Odcisk bez pochodnych: cudza pochodna (stan magazynu) sama nie nadpisuje tutejszej.
     if nowy_hash != lokalny["hash"]:
         # Pusty słownik wartości (rekord bez żadnego znanego pola) dałby
         # składniowo błędne "SET , zdalny_hash=?" — wtedy odświeżamy sam hash.

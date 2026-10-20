@@ -19,6 +19,7 @@ from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg,
 from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_rozbicie_napraw, pobierz_trend_cen_paliwa, porownaj_czesci_wlasne
 from .statystyki import koszt_na_1000km, pobierz_serie_spalania
 from .awarie import awarie_i_eksploatacja, sygnal_awarii
+from .raty import kapital_rat_w_kosztach
 from .pojazd import pobierz_dane_pojazdu
 
 
@@ -1011,25 +1012,26 @@ PUNKTOW_ISKRY_SKUMULOWANEJ = 24
 
 
 def _wiersze_kosztow_z_opisem(conn, auto_id):
-    """Jak `_wiersze_kosztow`, ale z nazwą wpisu (krzywa mówi, CO było skokiem). Wizyta
-    zbiorcza w CAŁOŚCI, bez jej pozycji historii."""
+    """Jak `_wiersze_kosztow`, ale z nazwą wpisu (krzywa mówi, CO było skokiem) i — przy Innych
+    kosztach — id wpisu (raty: `kapital_rat_w_kosztach`). Wizyta zbiorcza w CAŁOŚCI, bez jej
+    pozycji historii."""
     c = conn.cursor()
     wiersze = []
     c.execute("SELECT data, kwota, stacja FROM tankowania WHERE auto_id=?", (auto_id,))
-    wiersze += [(d, k, "paliwo", str(s or "").strip() or "Tankowanie")
+    wiersze += [(d, k, "paliwo", str(s or "").strip() or "Tankowanie", None)
                 for d, k, s in c.fetchall()]
     c.execute(
         "SELECT h.data, h.cena, z.nazwa FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
         "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
     )
-    wiersze += [(d, k, "serwis", str(n or "").strip() or "Wpis serwisowy")
+    wiersze += [(d, k, "serwis", str(n or "").strip() or "Wpis serwisowy", None)
                 for d, k, n in c.fetchall()]
     c.execute("SELECT data, koszt_calkowity, wykonawca FROM wizyty WHERE auto_id=?", (auto_id,))
-    wiersze += [(d, k, "serwis", f"Wizyta — {str(w).strip()}" if str(w or "").strip() else "Wizyta w serwisie")
-                for d, k, w in c.fetchall()]
-    c.execute("SELECT data, kwota, nazwa, kategoria FROM inne_koszty WHERE auto_id=?", (auto_id,))
-    wiersze += [(d, k, "inne", str(n or "").strip() or etykieta_kategorii_innych(kat))
-                for d, k, n, kat in c.fetchall()]
+    wiersze += [(d, k, "serwis", f"Wizyta — {str(w).strip()}" if str(w or "").strip() else "Wizyta w serwisie",
+                 None) for d, k, w in c.fetchall()]
+    c.execute("SELECT data, kwota, nazwa, kategoria, id FROM inne_koszty WHERE auto_id=?", (auto_id,))
+    wiersze += [(d, k, "inne", str(n or "").strip() or etykieta_kategorii_innych(kat), koszt_id)
+                for d, k, n, kat, koszt_id in c.fetchall()]
     return wiersze
 
 
@@ -1066,19 +1068,24 @@ def koszt_skumulowany(auto_id, z_cena_zakupu=True, dzis=None) -> dict[str, Any]:
 
     with polacz_baze() as conn:
         surowe = _wiersze_kosztow_z_opisem(conn, auto_id)
+    # Z raty tylko odsetki (jak `pobierz_metryki_pojazdu`): kapitał spłaca auto, którego
+    # cena stoi na starcie krzywej albo — bez niej — nie jest kosztem eksploatacji.
+    kapital_rat = kapital_rat_w_kosztach(auto_id)
 
     # Wpisy sprzed zakupu to koszty poprzedniego właściciela albo literówka
     # w dacie — do rachunku „ile mnie kosztowało to auto” nie należą. Tak samo
     # liczy okno wydatków w `pobierz_metryki_pojazdu`, więc obie liczby zgadzają
     # się ze sobą.
     wpisy = []
-    for data_str, kwota, kategoria, opis in surowe:
+    for data_str, kwota, kategoria, opis, koszt_id in surowe:
         d = parsuj_date(data_str)
         if d == datetime.min.date() or d > dzien_odniesienia:
             continue
         if data_zakupu and d < data_zakupu:
             continue
         wartosc = float(kwota or 0.0)
+        if koszt_id in kapital_rat:
+            wartosc -= kapital_rat[koszt_id]["kapital"]
         if wartosc <= 0:
             continue
         wpisy.append((d, wartosc, kategoria, opis))

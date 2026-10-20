@@ -22,6 +22,7 @@ from .dokumenty import *
 from .szkice import *
 from .karoseria import *
 from .kopie import *
+from .stan_magazynu import *
 from .ceny_czesci import *
 from .magazyn import *
 from .checklisty import *
@@ -76,6 +77,7 @@ from . import (
     szkice,
     karoseria,
     kopie,
+    stan_magazynu,
     ceny_czesci,
     magazyn,
     checklisty,

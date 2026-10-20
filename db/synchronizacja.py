@@ -71,6 +71,12 @@ def czy_moge_dodawac(auto_id):
     return rola_pojazdu(auto_id) != ROLA_PODGLAD
 
 
+def czy_moge_usunac_pojazd(auto_id):
+    """Usunąć pojazd (do kosza i trwale) wolno tylko pełnej roli — współautor i podgląd
+    skasowaliby cudzą historię także u innych. Pojazd niewspółdzielony to zawsze właściciel."""
+    return rola_pojazdu(auto_id) in ROLE_Z_PELNYM_DOSTEPEM
+
+
 def czy_moge_zmieniac_wpis(auto_id, autor=None):
     """Czy wolno edytować/skasować KONKRETNY wpis (`autor` = `dodane_przez`). Współautor
     rusza tylko podpisane przez siebie; wpis bez podpisu jest dla niego cudzy —
@@ -337,6 +343,7 @@ __all__ = [
     "czy_auto_oczekuje_synchronizacji",
     "czy_moge_dodawac",
     "czy_moge_edytowac_w_tabeli",
+    "czy_moge_usunac_pojazd",
     "czy_moge_zmieniac_rekord",
     "czy_moge_zmieniac_wpis",
     "czy_tylko_podglad",

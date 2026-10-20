@@ -7,12 +7,16 @@ a usunięcie ma zostawić ślad dający się odfiltrować przy synchronizacji
 przyrostowej (`db.usun_wiele_z_cofnieciem`).
 """
 
+import json
+from types import SimpleNamespace
+
 import db
 import flet as ft
 import pytest
+import sync
 import utils
 
-from pomoce import stan_aplikacji, utworz_pojazd
+from pomoce import stan_aplikacji, utworz_pojazd, zbuduj_strone, zbuduj_widok
 
 
 # ============================ ODSIEWANIE AKCJI ============================
@@ -271,3 +275,111 @@ def test_podglad_nie_kasuje_grupowo_mimo_ominiecia_interfejsu(baza):
 
     assert db.usun_wiele_z_cofnieciem("tankowania", [ident["tankowanie"]]) is None
     assert db.pobierz_nagrobki() == []
+
+
+# ========================== USUWANIE POJAZDU ==========================
+
+@pytest.mark.parametrize("rola, wolno", [
+    (db.ROLA_WLASCICIEL, True), (db.ROLA_PELNA, True), (db.ROLA_WSPOLAUTOR, False), (db.ROLA_PODGLAD, False),
+])
+def test_pojazd_do_kosza_przenosi_tylko_pelna_rola(baza, rola, wolno):
+    """Strażnik siedzi w bazie, nie tylko w menu: współautor i podgląd skasowaliby
+    (po trwałym usunięciu z kosza) historię także u innych."""
+    ident = utworz_pojazd("Wspólne", wspolny=True)
+    db.ustaw_role_pojazdu(ident["auto_id"], rola)
+
+    assert db.czy_moge_usunac_pojazd(ident["auto_id"]) is wolno
+    assert bool(db.usun_auto_do_kosza(ident["auto_id"])) is wolno
+
+    assert db.liczba_w_koszu() == (1 if wolno else 0)
+    with db.polacz_baze() as conn:
+        zostal = conn.execute("SELECT COUNT(*) FROM samochody WHERE id=?", (ident["auto_id"],)).fetchone()[0]
+    assert zostal == (0 if wolno else 1)
+
+
+def test_auto_wspolautora_z_kosza_znika_bez_nagrobkow(baza):
+    """Auto, które trafiło do kosza przed strażnikiem (migawka z rolą współautora),
+    po trwałym usunięciu znika tylko na tym telefonie."""
+    ident = utworz_pojazd("Wspólne", wspolny=True)
+    kosz_id = db.usun_auto_do_kosza(ident["auto_id"])["kosz_id"]
+    with db.polacz_baze() as conn:
+        migawka = json.loads(conn.execute("SELECT migawka FROM kosz_pojazdy WHERE id=?", (kosz_id,)).fetchone()[0])
+        migawka["auto"]["wiersz"]["rola_wspoldzielenia"] = db.ROLA_WSPOLAUTOR
+        conn.execute("UPDATE kosz_pojazdy SET migawka=? WHERE id=?", (json.dumps(migawka), kosz_id))
+
+    assert db.usun_z_kosza_trwale(kosz_id) == "Wspólne"
+
+    assert db.pobierz_nagrobki() == [] and db.liczba_w_koszu() == 0
+
+
+@pytest.fixture
+def okna_pojazdu(monkeypatch):
+    """Okna i pytania z utils/pojazd.py — zbierane zamiast pokazywane."""
+    zebrane = SimpleNamespace(okna=[], pytania=[], komunikaty=[], trasy=[])
+    monkeypatch.setattr(utils.pojazd, "otworz_dialog", lambda strona, dlg: zebrane.okna.append(dlg))
+    monkeypatch.setattr(utils.pojazd, "zamknij_dialog", lambda strona, dlg: None)
+    monkeypatch.setattr(utils.pojazd, "potwierdz",
+                        lambda strona, tytul, tresc, wykonaj, **k: zebrane.pytania.append((tytul, tresc, wykonaj)))
+    monkeypatch.setattr(utils.pojazd, "pokaz_komunikat", lambda strona, tekst, *a, **k: zebrane.komunikaty.append(tekst))
+    monkeypatch.setattr(utils.pojazd, "przejdz", lambda strona, trasa: zebrane.trasy.append(trasa))
+    return zebrane
+
+
+def test_wspolautor_zamiast_pytania_dostaje_wyjasnienie_i_przestan_obserwowac(baza, okna_pojazdu):
+    ident = utworz_pojazd("Wspólne", wspolny=True)
+    db.ustaw_role_pojazdu(ident["auto_id"], db.ROLA_WSPOLAUTOR)
+    strona = zbuduj_strone()
+    stan = stan_aplikacji(ident["auto_id"], "Wspólne")
+
+    utils.usun_auto(strona.page, stan)
+
+    assert okna_pojazdu.pytania == [], "współautor nie może dostać pytania „Usunąć pojazd?”"
+    dlg = okna_pojazdu.okna[-1]
+    assert dlg.title.value == "Tego pojazdu nie usuniesz" and "Twoja rola to współautor" in dlg.content.value
+    assert [a.content for a in dlg.actions] == ["Anuluj", "Przestań obserwować"]
+
+    dlg.actions[1].on_click(None)
+    tytul, _, wykonaj = okna_pojazdu.pytania[-1]
+    assert tytul == "Przestać obserwować pojazd?"
+    wykonaj()
+
+    assert sync.czy_udostepniony(ident["auto_id"]) == (None, None)
+    assert db.rola_pojazdu(ident["auto_id"]) == db.ROLA_WLASCICIEL
+    assert db.liczba_w_koszu() == 0, "odłączenie niczego nie usuwa"
+    assert "teraz usuniesz go tylko u siebie" in okna_pojazdu.komunikaty[-1]
+
+    # Teraz to zwykłe auto offline: zwykłe pytanie, bez dopisku o współdzielących.
+    utils.usun_auto(strona.page, stan)
+    tytul, tresc, _ = okna_pojazdu.pytania[-1]
+    assert tytul == "Usunąć pojazd?" and "współdzielony" not in tresc
+
+
+@pytest.mark.parametrize("wspolny", [True, False], ids=["wspolny", "offline"])
+def test_wlasciciel_wspolnego_wie_ze_trwale_usuniecie_dotknie_innych(baza, okna_pojazdu, wspolny):
+    ident = utworz_pojazd("Moje", wspolny=wspolny)
+    strona = zbuduj_strone()
+
+    utils.usun_auto(strona.page, stan_aplikacji(ident["auto_id"], "Moje"))
+
+    tytul, tresc, _ = okna_pojazdu.pytania[-1]
+    assert tytul == "Usunąć pojazd?"
+    assert ("trwałe usunięcie z kosza skasuje jego historię też u osób" in tresc) is wspolny
+
+
+def test_archiwum_odmawia_przeniesienia_do_kosza_bez_pelnej_roli(baza, monkeypatch):
+    from views.archiwum_view import ArchiwumView
+
+    ident = utworz_pojazd("Sprzedane", wspolny=True)
+    db.ustaw_role_pojazdu(ident["auto_id"], db.ROLA_PODGLAD)
+    strona = zbuduj_strone()
+    widok = zbuduj_widok(ArchiwumView, strona, stan_aplikacji())
+    menu, odmowy, pytania = [], [], []
+    monkeypatch.setattr(utils, "pokaz_menu_kontekstowe", lambda strona, tytul, pozycje: menu.extend(pozycje))
+    monkeypatch.setattr(utils, "odmowa_usuniecia_pojazdu", lambda strona, auto_id, nazwa, **k: odmowy.append(auto_id))
+    monkeypatch.setattr(utils, "potwierdz", lambda *a, **k: pytania.append(a))
+
+    widok._menu({"id": ident["auto_id"], "nazwa": "Sprzedane"})
+    [p for p in menu if p["tekst"] == "Przenieś do kosza"][0]["akcja"]()
+
+    assert odmowy == [ident["auto_id"]] and pytania == []
+    assert db.liczba_w_koszu() == 0

@@ -131,8 +131,11 @@ def test_zuzyte_czesci_wracaja_na_polke_i_schodza_przy_przywroceniu(baza):
     assert na_polce() == 4.0, "wizyta oddaje swoje części i części swoich pozycji"
     assert db.przywroc_wpis_z_kosza(wizyta["kosz_id"])["ok"] and na_polce() == 2.0
 
+    # Dolewka, która zdjęła z półki 0,5: stan 2,0 jest już PO niej, więc stan wyjściowy
+    # (db/stan_magazynu.py) obejmuje i jej zużycie.
     with db.polacz_baze() as conn:
         conn.execute("UPDATE dolewki SET ilosc_magazynu=0.5 WHERE id=?", (zid["dolewka"],))
+        conn.execute("UPDATE magazyn_czesci SET ilosc_bazowa=ilosc_bazowa+0.5 WHERE id=?", (zid["magazyn"],))
     dolewka = db.usun_dolewke_z_cofnieciem(zid["dolewka"])
     assert na_polce() == 2.5
     assert db.przywroc_wpis_z_kosza(dolewka["kosz_id"])["ok"] and na_polce() == 2.0

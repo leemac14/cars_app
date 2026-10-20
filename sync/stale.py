@@ -84,8 +84,12 @@ KONFIGURACJA_SYNC = [
     # doliczyłaby części drugi raz.
     # Sklep i link do produktu (wersja 48) dołożone, kiedy pozycje magazynu
     # leżały już w chmurze — stąd `dopisane`.
-    {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "cena_jednostkowa", "data_zakupu", "notatki", "prog_ostrzezenia", "sklep", "link"], "fk": {},
-     "dopisane": ["sklep", "link"]},
+    # Stan (wersja 55) = stan wyjściowy `ilosc_bazowa` minus zużycie ze wszystkich telefonów
+    # (db/stan_magazynu.py). `pochodne` {kolumna: z czego się liczy}: `ilosc` jedzie dla
+    # starszych wersji, ale nie zmienia odcisku — samo zużycie nie wysyła pozycji i nie robi
+    # konfliktu; rekord bez stanu wyjściowego (starsza wersja) niesie stan, z którego się go liczy.
+    {"tabela": "magazyn_czesci", "kolumny": ["nazwa", "kategoria", "ilosc", "jednostka", "cena", "cena_jednostkowa", "data_zakupu", "notatki", "prog_ostrzezenia", "sklep", "link", "ilosc_bazowa"], "fk": {},
+     "dopisane": ["sklep", "link", "ilosc_bazowa"], "pochodne": {"ilosc": "ilosc_bazowa"}},
     # Historia cen części jest cechą AUTA: filtr kupiony przez drugą osobę
     # podnosi albo obniża tę samą krzywą. Bez klucza obcego do pozycji —
     # zakup ma przeżyć zużytą i usuniętą pozycję; łączy je nazwa (klucz_nazwy).

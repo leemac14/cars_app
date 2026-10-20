@@ -22,6 +22,7 @@ from .zalaczniki import (
     usun_plik_zalacznika, wzgledna_sciezka_zalacznika,
 )
 from .przebieg import przelicz_wszystkie_zadania
+from .stan_magazynu import ZUZYCIE_MAGAZYNU, przelicz_stan_magazynu, zapewnij_stan_wyjsciowy
 
 
 # Kolejność MA ZNACZENIE przy odtwarzaniu (pojazdu i wpisów) — klucz obcy wymaga, żeby
@@ -60,13 +61,9 @@ KOSZ_KLUCZE_OBCE = {
 }
 
 
-# Zużycie z magazynu: ile wraca na półkę, gdy wiersz znika bez swojej pozycji (i schodzi
-# z niej znowu przy przywróceniu). Usunięta sama pozycja niczego nie oddaje.
-ZUZYCIE_MAGAZYNU = {
-    "historia_czesci_magazynu": "ilosc_uzyta",
-    "wizyta_czesci_magazynu": "ilosc_uzyta",
-    "dolewki": "ilosc_magazynu",
-}
+# Zużycie z magazynu (`ZUZYCIE_MAGAZYNU`, db/stan_magazynu.py) wraca na półkę, gdy wiersz znika
+# bez swojej pozycji (i schodzi z niej znowu przy przywróceniu) — stan to stan wyjściowy minus
+# zużycie, więc wystarczy go przeliczyć. Usunięta sama pozycja niczego nie oddaje.
 
 
 # Usuwane bez kosza, z samym „Cofnij”: rozliczenie cofa się tylko ostatnie liczące się
@@ -401,13 +398,14 @@ def _usun_grupe(tabela, auto_id, wiersze, wlasne, do_kosza, przed_usunieciem) ->
         with polacz_baze() as conn:
             if przed_usunieciem:
                 przed_usunieciem(conn, wiersze)
-            for magazyn_id, ilosc in _zwroty_magazynu(migawka["tabele"]):
-                conn.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (ilosc, magazyn_id))
+            zwroty = {magazyn_id for magazyn_id, _ in _zwroty_magazynu(migawka["tabele"])}
+            zapewnij_stan_wyjsciowy(conn, zwroty)
             for t in [t for t in reversed(KOSZ_TABELE_POTOMNE) if korzenie.get(t)]:
                 for paczka in _paczki(korzenie[t]):
                     conn.execute(f"DELETE FROM {t} WHERE id IN ({','.join('?' * len(paczka))})", tuple(paczka))
             for paczka in _paczki([w["id"] for w in migawka["tabele"].get("zalaczniki") or []]):
                 conn.execute(f"DELETE FROM zalaczniki WHERE id IN ({','.join('?' * len(paczka))})", tuple(paczka))
+            przelicz_stan_magazynu(conn, zwroty)
             if do_kosza:
                 kosz_id = conn.execute(
                     "INSERT INTO kosz_wpisy (auto_id, tabela, opis, liczba, data_usuniecia, migawka, pliki, "
@@ -496,6 +494,9 @@ def _odtworz_wpisy(conn, auto_id, migawka, podmiana) -> dict[str, Any]:
     czesci_w_migawce = {w.get("id") for w in tabele.get("magazyn_czesci") or []}
     kaskada = _kaskadowe(c)
     mapy, odpadle, zuzycie = {}, {}, []
+    # Pozycje spoza migawki, z których zużycie znów zejdzie: stan wyjściowy PRZED wstawieniem.
+    zapewnij_stan_wyjsciowy(conn, {w["magazyn_id"] for t in ZUZYCIE_MAGAZYNU for w in tabele.get(t) or []
+                                   if w.get("magazyn_id") and w["magazyn_id"] not in czesci_w_migawce})
 
     for tabela in KOSZ_TABELE_POTOMNE:
         wiersze = tabele.get(tabela) or []
@@ -543,8 +544,10 @@ def _odtworz_wpisy(conn, auto_id, migawka, podmiana) -> dict[str, Any]:
         nowy = mapy.get(rodzic, {}).get(rodzic_id)
         if nowy is not None and KOSZ_KLUCZE_OBCE.get(dziecko, {}).get(kolumna) == rodzic:
             c.execute(f"UPDATE {dziecko} SET {kolumna}=? WHERE id=? AND {kolumna} IS NULL", (nowy, dziecko_id))
-    for magazyn_id, ilosc in zuzycie:
-        c.execute("UPDATE magazyn_czesci SET ilosc = MAX(0, ilosc - ?) WHERE id=?", (ilosc, magazyn_id))
+    # Stan = stan wyjściowy minus zużycie: przywrócone zużycie i przywrócone pozycje (migawka
+    # sprzed migracji 55 nie ma stanu wyjściowego — liczy się wtedy z zapisanego stanu).
+    przelicz_stan_magazynu(conn, {magazyn_id for magazyn_id, _ in zuzycie}
+                           | set((mapy.get("magazyn_czesci") or {}).values()))
     return {"mapy": mapy, "odpadle": sum(len(v) for v in odpadle.values())}
 
 
@@ -696,7 +699,6 @@ __all__ = [
     "KOSZ_TABELE_BEZ_AUTO_ID",
     "KOSZ_TABELE_POTOMNE",
     "POZA_KOSZEM_WPISOW",
-    "ZUZYCIE_MAGAZYNU",
     "_upewnij_folder_kosza",
     "liczba_wpisow_w_koszu",
     "oproznij_kosz_wpisow",

@@ -13,7 +13,7 @@ from .pomocnicze import _liczba_lub_none, oferta_w_jednej_linii, parsuj_int_bezp
 from .ustawienia import pobierz_okno_kroczace, pobierz_prog_dni_dokumentu
 from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
 from .koszty import DNI_W_MIESIACU, koszty_w_okresie
-from .raty import podsumowanie_rat
+from .raty import kapital_rat_w_kosztach, kapital_rat_w_okresie, podsumowanie_rat
 from .powiadomienia import TYPY_POWIADOMIEN_O_DANYCH, pobierz_powiadomienia
 from .statystyki import koszt_na_1000km, oblicz_kondycje_pojazdu, pobierz_statystyki_energii
 
@@ -339,11 +339,12 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
     utrata_na_km = (utrata / km_u_ciebie) if (utrata is not None and km_u_ciebie) else None
     procent_wartosci = (wartosc / cena_zakupu * 100) if (cena_zakupu and wartosc is not None) else None
 
-    # --- koszt posiadania: wydatki + utrata wartości ---
-    wydatki = (
-        koszty_w_okresie(auto_id, data_zakupu, dzien_odniesienia)["razem"] if data_zakupu
-        else koszty_w_okresie(auto_id, None, data_sprzedazy)["razem"]
-    )
+    # --- koszt posiadania: utrata wartości + wydatki + odsetki ---
+    # Z raty leasingu i kredytu liczą się tylko odsetki: kapitał spłaca samo auto, a jego
+    # kosztem jest utrata wartości (przy cenie zakupu liczyłby się drugi raz).
+    okno = (data_zakupu, dzien_odniesienia) if data_zakupu else (None, data_sprzedazy)
+    kapital_rat = kapital_rat_w_okresie(kapital_rat_w_kosztach(auto_id), *okno)
+    wydatki = koszty_w_okresie(auto_id, *okno)["razem"] - kapital_rat["kwota"]
     koszt_calkowity = wydatki + (utrata or 0)
     koszt_km_pelny = (koszt_calkowity / km_u_ciebie) if km_u_ciebie else None
     koszt_miesieczny = (
@@ -375,6 +376,8 @@ def pobierz_metryki_pojazdu(auto_id, dane=None):
         "utrata_rocznie": utrata_rocznie,
         "utrata_na_km": utrata_na_km,
         "wydatki_od_zakupu": wydatki,
+        "kapital_rat": kapital_rat["kwota"] or None,
+        "raty_bez_podzialu": kapital_rat["bez_podzialu"],
         "koszt_calkowity": koszt_calkowity,
         "koszt_km_pelny": koszt_km_pelny,
         "koszt_miesieczny": koszt_miesieczny,
@@ -416,6 +419,10 @@ def pobierz_dane_do_porownania(auto_id):
 
         c.execute("SELECT COALESCE(SUM(kwota),0) FROM inne_koszty WHERE auto_id=?", (auto_id,))
         dane["koszt_inne"] = float(c.fetchone()[0] or 0.0)
+        # Eksploatacja bez kapitału rat (jak na Karcie): leasing nie może przegrywać z autem
+        # kupionym za gotówkę samą spłatą auta.
+        dane["kapital_rat"] = kapital_rat_w_okresie(kapital_rat_w_kosztach(auto_id))["kwota"]
+        dane["koszt_inne"] -= dane["kapital_rat"]
 
         dane["koszt_razem"] = dane["koszt_paliwo"] + dane["koszt_serwis"] + dane["koszt_inne"]
 

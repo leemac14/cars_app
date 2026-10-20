@@ -635,8 +635,13 @@ class PorownanieView(ft.View):
             self._wiersz_tekstowy("Inne", dane_aut, lambda d: f"{utils.formatuj_liczba(d['koszt_inne'], 0)} {utils.symbol_waluty()}",
                                   ikona=utils.IKONY_KATEGORII_KOSZTOW["inne"]),
         ] + self._wiersze_rat(dane_aut), spacing=10)
-        
-        return utils.karta_formularza([pasek_calkowity, ft.Divider(height=15), pasek_km, ft.Divider(height=15), ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))], scroll=ft.ScrollMode.ALWAYS)], "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
+        elementy = [pasek_calkowity, ft.Divider(height=15), pasek_km, ft.Divider(height=15),
+                    ft.Row([ft.Container(content=tabela, padding=ft.Padding.only(bottom=50))],
+                           scroll=ft.ScrollMode.ALWAYS)]
+        if any(d.get("kapital_rat") for d in dane_aut):
+            elementy.append(utils.podpis("Inne bez kapitału rat leasingu i kredytu — to spłata auta, nie "
+                                         "eksploatacja; z rat liczą się tylko odsetki."))
+        return utils.karta_formularza(elementy, "Koszty eksploatacji", ft.Icons.ATTACH_MONEY, domyslnie_otwarte=True)
     
     def _wiersze_rat(self, dane_aut):
         """Leasing i kredyt obok kosztów: przeszłość mówi, ile auto kosztowało,

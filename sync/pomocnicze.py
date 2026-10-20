@@ -41,6 +41,37 @@ def _hash_zawartosci(dane: dict) -> str:
     return hashlib.sha256(kanoniczny.encode("utf-8")).hexdigest()
 
 
+def _hash_rekordu(dane: dict, konfig=None) -> str:
+    """Odcisk do porównań synchronizacji: bez kolumn `pochodne` konfiguracji — liczy je każdy
+    telefon z innych danych (stan magazynu ze stanu wyjściowego i zużycia), więc ich zmiana nie
+    jest zmianą rekordu."""
+    pochodne = (konfig or {}).get("pochodne") or {}
+    return _hash_zawartosci({k: v for k, v in (dane or {}).items() if k not in pochodne})
+
+
+def _uzupelnij_zrodla_pochodnych(dane_zdalne: dict, dane_lokalne: dict, pochodne) -> dict:
+    """Rekord ze starszej wersji nie ma kolumny, z której liczy się pochodna (stanu
+    wyjściowego) — do porównania z odciskiem bierzemy tę lokalną: tylko jej brak nie znaczy,
+    że ktoś zmienił rekord."""
+    uzupelnione = dict(dane_zdalne or {})
+    for zrodlo in (pochodne or {}).values():
+        if uzupelnione.get(zrodlo) is None:
+            uzupelnione[zrodlo] = (dane_lokalne or {}).get(zrodlo)
+    return uzupelnione
+
+
+def _rozne_pochodne(dane_lokalne: dict, dane_zdalne: dict, pochodne) -> bool:
+    """Czy pochodne (liczby) różnią się między telefonem a chmurą — z tolerancją na zapis 2 i 2.0."""
+    for kolumna in pochodne or {}:
+        lokalna, zdalna = (dane_lokalne or {}).get(kolumna), (dane_zdalne or {}).get(kolumna)
+        if isinstance(lokalna, (int, float)) and isinstance(zdalna, (int, float)):
+            if abs(float(lokalna) - float(zdalna)) > 1e-9:
+                return True
+        elif lokalna != zdalna:
+            return True
+    return False
+
+
 def _paczki(elementy, rozmiar=100):
     """PostgREST przekazuje filtr `in` w adresie URL, więc lista kilkuset
     identyfikatorów potrafi przekroczyć limit długości. Dzielimy na porcje."""
@@ -50,7 +81,10 @@ def _paczki(elementy, rozmiar=100):
 
 
 __all__ = [
+    "_hash_rekordu",
     "_hash_zawartosci",
     "_paczki",
+    "_rozne_pochodne",
+    "_uzupelnij_zrodla_pochodnych",
     "_zapytanie_tabeli",
 ]

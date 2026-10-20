@@ -28,6 +28,20 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.20.3", "pozycje": [
+        {"tytul": "Magazyn bez rozjazdów między telefonami", "ikona": "INVENTORY_2", "ekran": "magazyn",
+         "opis": "Stan części liczy się ze stanu wyjściowego minus zużycie ze wszystkich telefonów — dwie osoby, "
+                 "które bez sieci wzięły ten sam filtr, po synchronizacji zobaczą oba zużycia, bez konfliktu. "
+                 "Ręczna korekta stanu i zakup działają jak dotąd: wygrywa ostatnia zmiana."},
+        {"tytul": "Koszt posiadania bez podwójnego kapitału", "ikona": "ACCOUNT_BALANCE", "ekran": "pojazd",
+         "opis": "Z rat leasingu i kredytu liczą się tylko odsetki — kapitał spłaca samo auto, a jego kosztem jest "
+                 "utrata wartości. Karta pojazdu, porównanie i koszt narastający nie doliczają go już drugi raz; "
+                 "rata bez kwoty finansowania wypada z kosztu z podpowiedzią, żeby uzupełnić umowę."},
+        {"tytul": "Współdzielone auto usuwa właściciel", "ikona": "DELETE_FOREVER", "ekran": "wspoldzielenie",
+         "opis": "Współautor i osoba z podglądem nie usuną już auta, które dzielą z innymi — mogą za to przestać "
+                 "je obserwować. Właściciel przed usunięciem usłyszy, że trwałe usunięcie z kosza skasuje auto "
+                 "także u pozostałych."},
+    ]},
     {"wersja": "2026.10.20.2", "pozycje": [
         {"tytul": "Zdrowie danych", "ikona": "HEALTH_AND_SAFETY", "ekran": "zdrowie-danych",
          "opis": "Cofki licznika, dziwne ceny, przerwany ciąg „do pełna”, martwe pliki, duplikaty nazw, wpisy "

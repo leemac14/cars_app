@@ -15,6 +15,7 @@ from date import na_iso
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, formatuj_liczba_eksport, klucz_nazwy, liczba_z_odmiana, normalizuj_nazwe
 from .synchronizacja import czy_moge_zmieniac_rekord
+from .stan_magazynu import dodaj_do_stanu_magazynu
 
 
 # Od ilu procent w górę od pierwszego zapisanego zakupu część trafia do
@@ -347,13 +348,13 @@ def kup_ponownie(czesc_id, ilosc, cena_jednostkowa, sklep=None, data=None) -> di
     przed = dict(w)
     auto_id = przed["auto_id"]
     sklep = dopasuj_sklep(auto_id, sklep) if normalizuj_nazwe(sklep) else przed["sklep"]
-    stan = round((_na_liczbe(przed["ilosc"]) or 0.0) + ilosc, 4)
-
     with polacz_baze() as conn:
         conn.execute(
-            "UPDATE magazyn_czesci SET ilosc=?, cena=?, cena_jednostkowa=?, data_zakupu=?, sklep=? WHERE id=?",
-            (stan, round(ilosc * cena, 2), round(cena, 4), data, sklep, czesc_id)
+            "UPDATE magazyn_czesci SET cena=?, cena_jednostkowa=?, data_zakupu=?, sklep=? WHERE id=?",
+            (round(ilosc * cena, 2), round(cena, 4), data, sklep, czesc_id)
         )
+        # Zakup podnosi stan wyjściowy (db/stan_magazynu.py) — zużycie zostaje, jak było.
+        stan = dodaj_do_stanu_magazynu(conn, czesc_id, ilosc)
         nowy = _zakup(przed["nazwa"], data, cena, przed["jednostka"], ilosc, sklep)
         if nowy is None:
             return {"auto_id": auto_id, "stan": stan, "dodano": ilosc}

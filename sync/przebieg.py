@@ -105,6 +105,9 @@ def _synchronizuj_pod_zamkiem(auto_id, wspolny_id, pelne=False):
         db.zapisz_znacznik_delty(auto_id, najwyzszy_znacznik)
 
     db.przelicz_wszystkie_zadania(auto_id)
+    # Stan magazynu = stan wyjściowy minus zużycie ze wszystkich telefonów — po pobraniu
+    # cudzych zużyć i korekt (db/stan_magazynu.py).
+    db.przelicz_stan_magazynu(auto_id=auto_id)
     db.zapisz_ustawienie("ostatnia_synchronizacja", datetime.now().strftime("%d.%m.%Y %H:%M"))
     # Udana synchronizacja zdejmuje też wpis z kolejki (inaczej kropka „czeka na
     # wysłanie” wisiała do końca backoffu).
@@ -150,6 +153,7 @@ def przyjmij_wersje_z_chmury(auto_id, konflikty):
             klient.rpc("aktualizuj_zdalny_rekord", {"p_id": k["zdalne_id"], "p_dane": k["dane_zdalne"]}).execute()
 
     db.przelicz_wszystkie_zadania(auto_id)
+    db.przelicz_stan_magazynu(auto_id=auto_id)
     return przyjeto
 
 

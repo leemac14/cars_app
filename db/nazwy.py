@@ -3,8 +3,9 @@
 from typing import Any
 
 from .polaczenie import polacz_baze
-from .pomocnicze import klucz_nazwy, normalizuj_nazwe
+from .pomocnicze import _na_liczbe, klucz_nazwy, normalizuj_nazwe
 from .synchronizacja import zarejestruj_nagrobek
+from .stan_magazynu import przelicz_stan_magazynu, zapewnij_stan_wyjsciowy, zuzycie_pozycji
 from .ceny_czesci import zachowaj_zakup_pozycji
 from .magazyn import srednia_cena_jednostkowa
 from .przebieg import przelicz_wszystkie_zadania
@@ -174,19 +175,24 @@ def scal_duplikaty_nazw(auto_id, tabela, id_docelowy, ids_zrodlowe):
             if cena_po_scaleniu is not None:
                 c.execute("UPDATE magazyn_czesci SET cena_jednostkowa=? WHERE id=?", (cena_po_scaleniu, id_docelowy))
 
-            c.execute(
-                f"SELECT COALESCE(SUM(ilosc), 0) FROM magazyn_czesci WHERE id IN ({placeholders})",
-                tuple(ids_zrodlowe)
-            )
-            suma = float((c.fetchone() or [0])[0] or 0)
+            # Stan = stan wyjściowy minus zużycie (db/stan_magazynu.py), a zużycie duplikatów
+            # przepina się niżej na docelową — dosypujemy więc ich stan na półce RAZEM z tym
+            # zużyciem, żeby stan po scaleniu był sumą stanów.
+            zapewnij_stan_wyjsciowy(conn, [id_docelowy, *ids_zrodlowe])
+            zuzycie = zuzycie_pozycji(conn, ids_zrodlowe)
+            c.execute(f"SELECT id, ilosc FROM magazyn_czesci WHERE id IN ({placeholders})", tuple(ids_zrodlowe))
+            suma = sum(max(0.0, _na_liczbe(ilosc) or 0.0) + zuzycie.get(i, 0.0) for i, ilosc in c.fetchall())
             if suma:
-                c.execute("UPDATE magazyn_czesci SET ilosc = ilosc + ? WHERE id=?", (suma, id_docelowy))
+                c.execute("UPDATE magazyn_czesci SET ilosc_bazowa = ROUND(ilosc_bazowa + ?, 4) WHERE id=?",
+                          (suma, id_docelowy))
 
         for tab_powiazana, kol_powiazana in PRZEPIECIA_PRZY_SCALANIU.get(tabela, []):
             c.execute(
                 f"UPDATE {tab_powiazana} SET {kol_powiazana}=? WHERE {kol_powiazana} IN ({placeholders})",
                 (id_docelowy, *ids_zrodlowe)
             )
+        if tabela == "magazyn_czesci":
+            przelicz_stan_magazynu(conn, [id_docelowy])
 
         # Tagi i warsztaty są w innych tabelach zapisane NAZWĄ, nie kluczem obcym.
         if tabela == "tagi":
