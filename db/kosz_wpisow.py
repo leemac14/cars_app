@@ -33,7 +33,7 @@ KOSZ_TABELE_POTOMNE = [
     "zadania", "wizyty", "magazyn_czesci", "tagi", "tankowania",
     "inne_koszty", "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
     "warsztaty", "wydatki_cykliczne", "pakiety_serwisowe_wlasne",
-    "trasy_szablony", "checklisty",
+    "trasy_szablony", "szablony_wpisow", "checklisty",
     "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
     "checklisty_pozycje",
     "budzety", "rozliczenia", "szkice_wpisow", "ceny_czesci", "przejazdy",

@@ -28,6 +28,20 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.22", "pozycje": [
+        {"tytul": "Szablony wpisów w menu „+”", "ikona": "BOOKMARKS", "ekran": "kokpit",
+         "opis": "Myjnia, autostrada albo stała stacja jednym dotknięciem: zapisz koszt lub tankowanie jako szablon "
+                 "z menu wpisu, a trzy najczęstsze staną w menu „+”. Koszt z kwotą zapisuje się od razu z dzisiejszą "
+                 "datą (z „Cofnij”), tankowanie otwiera wypełniony formularz."},
+        {"tytul": "Ile kosztują twoje tagi", "ikona": "SELL", "ekran": "statystyki",
+         "opis": "Nowe pytanie w Analizie › Wykresy sumuje wydatki według tagów, a dotknięcie tagu pokazuje jego "
+                 "wpisy. Tagi miesiąca postawisz też na kokpicie, a przy wyborze tagów we wpisie widać, ile poszło "
+                 "na każdy w tym roku."},
+        {"tytul": "Raport miesiąca na jedną kartkę", "ikona": "PICTURE_AS_PDF", "ekran": "miesiac",
+         "opis": "„Miesiąc w pigułce” i Eksport zapiszą PDF na jedną stronę A4: liczby miesiąca, porównanie "
+                 "z poprzednim i z rokiem wcześniej, kategorie, wpisy i terminy następnego miesiąca — do wydruku, "
+                 "teczki albo rozliczenia."},
+    ]},
     {"wersja": "2026.10.21", "pozycje": [
         {"tytul": "Terminy w kalendarzu telefonu", "ikona": "EVENT_AVAILABLE", "ekran": "co-przede-mna",
          "opis": "„Co przede mną” wyśle do kalendarza w telefonie polisy, przegląd, wymiany z datą, raty "

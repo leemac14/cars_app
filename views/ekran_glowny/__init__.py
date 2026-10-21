@@ -390,7 +390,8 @@ class MainView(
             (ft.Icons.HOME_REPAIR_SERVICE, "Wizyta w warsztacie", lambda e: utils.przejdz(self._page, "/wizyty/nowa")),
             (ft.Icons.CHECKLIST_RTL, "Do zrobienia", lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")),
         ]
-        return utils.fab_speed_dial(self._page, akcje, tooltip="Szybkie dodawanie")
+        return utils.fab_speed_dial(self._page, akcje, tooltip="Szybkie dodawanie",
+                                    szybkie=utils.szybkie_szablony(self._page, self.state))
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)

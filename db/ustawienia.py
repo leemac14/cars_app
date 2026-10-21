@@ -390,6 +390,7 @@ KOKPIT_WIDGETY = {
     "ewidencja": "Ewidencja przebiegu: służbowe km",
     "zuzycie_oleju": "Zużycie oleju",
     "zdrowie_danych": "Zdrowie danych",
+    "tagi": "Tagi w tym miesiącu",
     # Kafelki AKCJI: zamiast liczby mają czynność. Te same wpisy, co pod FAB-em
     # w rogu ekranu, plus stan licznika, którego FAB nie ma. Kokpit odpowiadał
     # dotąd wyłącznie na pytanie „co się dzieje”, nigdy „zrób”.

@@ -68,11 +68,13 @@ def bogate_auto(nazwa="Octavia", paliwo="Benzyna"):
             c.execute("INSERT INTO historia (zadanie_id, wizyta_id, data, przebieg, kategoria, cena, wykonawca, "
                       "rodzaj) VALUES (?,?,?,?,?,?,?,?)", (zadania[zadanie], c.lastrowid, kiedy, przebieg - dni * 40,
                                                            "Serwis", koszt, warsztat, rodzaj))
-        for dni, kategoria, kwota in ((690, "Ubezpieczenie", 1650.0), (330, "Ubezpieczenie", 1770.0),
-                                      (40, "Myjnia i kosmetyka", 60.0), (200, db.KATEGORIA_INNE_DROGOWE, 72.0),
-                                      (90, "Parking i garaż", 18.0), (400, "Opłaty urzędowe", 149.0)):
-            c.execute("INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota) VALUES (?,?,?,?,?)",
-                      (auto_id, _d(dzis - timedelta(days=dni)), kategoria, kategoria, kwota))
+        # Tagi (U-16): wpis z dwoma tagami liczy się przy każdym z nich.
+        for dni, kategoria, kwota, tagi in ((690, "Ubezpieczenie", 1650.0, None), (330, "Ubezpieczenie", 1770.0, "Rachunki"),
+                                            (40, "Myjnia i kosmetyka", 60.0, "Wyjazd"),
+                                            (200, db.KATEGORIA_INNE_DROGOWE, 72.0, "Wyjazd,Praca"),
+                                            (90, "Parking i garaż", 18.0, "Praca"), (400, "Opłaty urzędowe", 149.0, None)):
+            c.execute("INSERT INTO inne_koszty (auto_id, data, kategoria, nazwa, kwota, tagi) VALUES (?,?,?,?,?,?)",
+                      (auto_id, _d(dzis - timedelta(days=dni)), kategoria, kategoria, kwota, tagi))
         db.przelicz_daty_iso(conn)
     db.zanotuj_zmiane_danych()
     return auto_id
@@ -201,7 +203,7 @@ def test_kolejnosc_i_nieznany_klucz():
     assert utils.nastepny_wykres("skumulowany") == "koszt1000"
     assert utils.nastepny_wykres(utils.KLUCZE_WYKRESOW[-1]) is None
     assert utils.wykres_analizy("nie-ma-takiego")["klucz"] == utils.KLUCZE_WYKRESOW[0]
-    assert len(set(utils.KLUCZE_WYKRESOW)) == len(utils.KLUCZE_WYKRESOW) == 10
+    assert len(set(utils.KLUCZE_WYKRESOW)) == len(utils.KLUCZE_WYKRESOW) == 11
 
 
 def test_nastepny_wykres_prowadzi_dalej(baza):

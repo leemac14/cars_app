@@ -107,6 +107,12 @@ def kolory_chipa_tagu(kolor):
     return tlo, napis
 
 
+def kolor_tagu_lub_neutralny(kolor):
+    """Kolor tagu na pasku albo kropce; tag bez koloru w słowniku — neutralny obrys."""
+    kolory = kolory_chipa_tagu(kolor)
+    return kolory[0] if kolory else ft.Colors.OUTLINE
+
+
 def bezpieczna_nazwa_pliku(tekst, domyslna="pojazd"):
     """Nazwa pliku bez znaków, których nie zniesie żaden system plików. Ta sama
     zasada, co przy eksporcie danych — trzymamy ją tutaj, żeby korzystały z niej
@@ -194,6 +200,7 @@ IKONY_KOKPITU = {
     "zuzycie_oleju": ft.Icons.OIL_BARREL,
     "akcja_dolewka": ft.Icons.WATER_DROP,
     "zdrowie_danych": ft.Icons.HEALTH_AND_SAFETY,
+    "tagi": ft.Icons.SELL,
 }
 
 
@@ -451,6 +458,7 @@ __all__ = [
     "ikona_kategorii_innych",
     "ikona_z_mapy",
     "kolor_kategorii_innych",
+    "kolor_tagu_lub_neutralny",
     "kolory_chipa_tagu",
     "kontrast",
     "rgb_koloru_motywu",

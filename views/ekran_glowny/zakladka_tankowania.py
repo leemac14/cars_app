@@ -173,6 +173,7 @@ class MiksinZakladkiTankowania:
                 ))
                 pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/tankowanie/edytuj/{tid}")})
                 pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_tankowanie", tid), utils.przejdz(self._page, "/tankowanie/nowe"))})
+                pozycje.append(utils.pozycja_menu_szablonu(self._page, self.state, db.SZABLON_TANKOWANIE, tid))
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń", "akcja": usun_tankowanie, "kolor": utils.KOLOR_STATUS["destructive"]})
 
                 pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "tankowania", tid)

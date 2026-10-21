@@ -1,8 +1,12 @@
-"""Słownik tagów kosztów."""
+"""Słownik tagów kosztów i wydatki według tagów (U-16)."""
+
+from datetime import date, datetime
+from typing import Any
 
 from .polaczenie import polacz_baze
+from .daty import warunek_zakresu_dat
 from .synchronizacja import zarejestruj_nagrobek
-from .nazwy import klucz_nazwy, normalizuj_nazwe, przepisz_tag_we_wpisach
+from .nazwy import TABELE_Z_TAGAMI, klucz_nazwy, normalizuj_nazwe, przepisz_tag_we_wpisach
 
 
 # Kolejność, w jakiej nowe tagi dostają kolory: najpierw barwy najłatwiejsze do
@@ -94,8 +98,76 @@ def edytuj_tag_w_slowniku(auto_id, tag_id, stara_nazwa, nowa_nazwa, nowy_kolor):
     return True
 
 
+# Kwota wpisu w tabelach z tagami — tylko te wpisy mogą mieć tag.
+KOLUMNY_KWOTY_TAGOWANYCH = {"tankowania": "kwota", "wizyty": "koszt_calkowity", "inne_koszty": "kwota"}
+
+
+def koszty_wg_tagow(auto_id, od=None, do=None) -> dict[str, Any]:
+    """Wydatki z tagami w okresie [od, do] (`date` albo None): na tag suma i liczba wpisów (wpis
+    z kilkoma tagami liczy się przy KAŻDYM — suma tagów bywa większa niż wydatki), kolor ze
+    słownika; osobno wpisy bez tagu i wszystko razem. Liczą się tankowania, wizyty i inne
+    koszty — tylko one mają tagi."""
+    wynik = {"tagi": [], "bez_tagu": {"kwota": 0.0, "liczba": 0}, "razem": 0.0, "liczba": 0}
+    if not auto_id:
+        return wynik
+    slownik = {klucz_nazwy(n): (n, k) for _, n, k in pobierz_tagi(auto_id)}
+    warunek, parametry = warunek_zakresu_dat("data_iso", od, do)
+    sumy = {}
+    with polacz_baze(zmienia_dane=False) as conn:
+        for tabela in TABELE_Z_TAGAMI:
+            kolumna = KOLUMNY_KWOTY_TAGOWANYCH[tabela]
+            for kwota, tagi in conn.execute(
+                    f"SELECT {kolumna}, tagi FROM {tabela} WHERE auto_id=?{warunek}", [auto_id, *parametry]):
+                kwota = float(kwota or 0)
+                if kwota <= 0:
+                    continue
+                wynik["razem"] += kwota
+                wynik["liczba"] += 1
+                klucze = {}
+                for tag in str(tagi or "").split(","):
+                    klucz = klucz_nazwy(tag)
+                    if klucz and klucz not in klucze:
+                        klucze[klucz] = tag.strip()
+                if not klucze:
+                    wynik["bez_tagu"]["kwota"] += kwota
+                    wynik["bez_tagu"]["liczba"] += 1
+                for klucz, tag in klucze.items():
+                    nazwa, kolor = slownik.get(klucz, (tag, None))
+                    pozycja = sumy.setdefault(klucz, {"nazwa": nazwa, "klucz": klucz, "kolor": kolor,
+                                                      "kwota": 0.0, "liczba": 0})
+                    pozycja["kwota"] += kwota
+                    pozycja["liczba"] += 1
+    wynik["tagi"] = sorted(sumy.values(), key=lambda p: (-p["kwota"], p["klucz"]))
+    return wynik
+
+
+def tagi_miesiaca(auto_id, dzis=None) -> dict[str, Any] | None:
+    """Kafelek kokpitu: `koszty_wg_tagow` od 1. dnia bieżącego miesiąca do dziś; None, gdy auto
+    nie ma ani jednego otagowanego wpisu (kafelek „nie dotyczy” chowa się sam)."""
+    if not auto_id:
+        return None
+    dzis = dzis or datetime.now().date()
+    with polacz_baze(zmienia_dane=False) as conn:
+        uzywa = any(conn.execute(f"SELECT 1 FROM {t} WHERE auto_id=? AND tagi IS NOT NULL AND tagi <> '' LIMIT 1",
+                                 (auto_id,)).fetchone() for t in TABELE_Z_TAGAMI)
+    if not uzywa:
+        return None
+    return koszty_wg_tagow(auto_id, date(dzis.year, dzis.month, 1), dzis)
+
+
+def sumy_tagow_roku(auto_id, rok=None) -> dict[str, dict[str, Any]]:
+    """{klucz_nazwy(tag): pozycja z `koszty_wg_tagow`} za rok kalendarzowy (domyślnie bieżący) —
+    kwota przy tagu w edytorze tagów."""
+    rok = int(rok or datetime.now().year)
+    return {p["klucz"]: p for p in koszty_wg_tagow(auto_id, date(rok, 1, 1), date(rok, 12, 31))["tagi"]}
+
+
 __all__ = [
     "KOLEJNOSC_KOLOROW_TAGOW",
+    "KOLUMNY_KWOTY_TAGOWANYCH",
+    "koszty_wg_tagow",
+    "sumy_tagow_roku",
+    "tagi_miesiaca",
     "dodaj_tag",
     "edytuj_tag_w_slowniku",
     "kolor_tagu",

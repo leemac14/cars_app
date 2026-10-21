@@ -87,6 +87,8 @@ SEKCJE_PLIKU_POJAZDU = [
      "tabele": ("dokumenty_pojazdu",), "dla_kupujacego": False},
     {"id": "inne_koszty", "tytul": "Inne koszty", "opis": "Myjnia, parkingi, opłaty, mandaty i reszta",
      "tabele": ("inne_koszty",), "dla_kupujacego": False},
+    {"id": "szablony", "tytul": "Szablony wpisów", "opis": "Szybkie koszty i tankowania z menu „+”",
+     "tabele": ("szablony_wpisow",), "dla_kupujacego": False},
     {"id": "cykliczne", "tytul": "Wydatki cykliczne, leasing i kredyt", "opis": "Abonamenty, raty i umowy",
      "tabele": ("wydatki_cykliczne",), "dla_kupujacego": False},
     {"id": "budzety", "tytul": "Budżety", "opis": "Limity wydatków",

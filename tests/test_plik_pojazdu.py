@@ -188,7 +188,7 @@ def test_zestaw_dla_kupujacego_nie_wynosi_prywatnych_danych(baza, tmp_path):
     tabele = dane["migawka"]["tabele"]
 
     for tabela in ("inne_koszty", "wydatki_cykliczne", "budzety", "rozliczenia", "przejazdy", "trasy_szablony",
-                   "szkice_wpisow"):
+                   "szkice_wpisow", "szablony_wpisow"):
         assert tabele[tabela]["wiersze"] == [], tabela
     for tabela in ("historia", "wizyty", "tankowania", "odczyty_przebiegu", "zdjecia_karoserii", "magazyn_czesci",
                    "historia_czesci_magazynu", "warsztaty", "do_zrobienia"):

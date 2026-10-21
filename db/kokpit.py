@@ -36,6 +36,7 @@ from .statystyki import (
 )
 from .pojazd import pobierz_dane_do_porownania
 from .analiza import koszt_skumulowany, obserwacje_analityczne, pobierz_zasieg_na_baku, prognoza_kosztow, stan_budzetow
+from .tagi import tagi_miesiaca
 from .rejestry import pobierz_wydatki_cykliczne
 from .nawigacja import pobierz_ostatnia_aktywnosc
 from .odliczania import odliczania_pojazdu
@@ -127,6 +128,8 @@ METRYKI_KOKPITU = {
     "zuzycie_oleju": lambda auto_id: kafel_zuzycia_oleju(auto_id),
     # Zdrowie danych: ile rzeczy czeka na sprawdzenie (db/zdrowie_danych.py).
     "zdrowie_danych": lambda auto_id: podsumowanie_zdrowia_danych(auto_id),
+    # Tagi bieżącego miesiąca (db/tagi.py); None = auto bez otagowanych wpisów.
+    "tagi_miesiaca": lambda auto_id: tagi_miesiaca(auto_id),
     "do_zrobienia": lambda auto_id: podsumowanie_do_zrobienia(auto_id),
     "magazyn": lambda auto_id: pobierz_stan_magazynu(auto_id),
     # Rola przy pojeździe: kafelki akcji znikają przy „podglądzie”.
@@ -164,6 +167,7 @@ METRYKI_KAFELKOW = {
     "ewidencja": ("ewidencja",),
     "zuzycie_oleju": ("zuzycie_oleju",),
     "zdrowie_danych": ("zdrowie_danych",),
+    "tagi": ("tagi_miesiaca",),
     "akcja_tankowanie": ("tylko_podglad",),
     "akcja_paragon": ("tylko_podglad",),
     "akcja_licznik": ("tylko_podglad",),

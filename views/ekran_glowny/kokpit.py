@@ -1194,6 +1194,45 @@ class MiksinKokpitu:
                 ], spacing=4),
             )
 
+        def widget_tagi():
+            """Tagi miesiąca (U-16): trzy najdroższe tagi bieżącego miesiąca z kwotą; dotknięcie
+            otwiera wykres tagów. Auto bez żadnego otagowanego wpisu — „nie dotyczy”."""
+            stan = metryka("tagi_miesiaca")
+            ikona = utils.IKONY_KOKPITU["tagi"]
+
+            def idz_do_wykresu(e):
+                utils.przejdz(self._page, "/wykres/tagi")
+
+            if stan is None:
+                return kafel_pusty(ikona, ft.Colors.BLUE_GREY_700, "Tagi w tym miesiącu", "Nie używasz tagów",
+                                   idz_do_wykresu)
+            if not stan["tagi"]:
+                return kafel_wartosci(ikona, ft.Colors.BLUE_GREY_700, "Tagi w tym miesiącu",
+                                      "Bez tagów w tym miesiącu", idz_do_wykresu)
+            waluta = utils.symbol_waluty()
+            wiersze = [ft.Row([
+                ft.Container(width=10, height=10, border_radius=5, bgcolor=utils.kolor_tagu_lub_neutralny(p["kolor"])),
+                ft.Text(p["nazwa"], size=utils.FS["body"], max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+                        expand=True),
+                utils.wartosc(f"{utils.formatuj_liczba(p['kwota'], 0)} {waluta}", size=utils.FS["body"]),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER) for p in stan["tagi"][:3]]
+            reszta = len(stan["tagi"]) - 3
+            if reszta > 0:
+                wiersze.append(ft.Text(f"i {db.liczba_z_odmiana(reszta, 'tag', 'tagi', 'tagów')} więcej",
+                                       size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT))
+            return ft.Container(
+                width=SZER_KAFLA * 2, padding=15,
+                **utils.powierzchnia(self._page, "kafel"),
+                ink=True, on_click=idz_do_wykresu,
+                tooltip="Najwięcej wydane na tagi w tym miesiącu — wpis z kilkoma tagami liczy się przy każdym",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=ft.Colors.PRIMARY),
+                        utils.etykieta("Tagi w tym miesiącu", expand=True),
+                    ], spacing=6),
+                ] + wiersze, spacing=4),
+            )
+
         # ================= KAFELKI AKCJI =================
         # Kokpit odpowiadał dotąd wyłącznie na pytanie „co się dzieje”. Dwie
         # najczęstsze czynności w aplikacji — tankowanie i stan licznika —
@@ -1298,6 +1337,7 @@ class MiksinKokpitu:
             "ewidencja": widget_ewidencja,
             "zuzycie_oleju": widget_zuzycie_oleju,
             "zdrowie_danych": widget_zdrowie_danych,
+            "tagi": widget_tagi,
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
             "akcja_tankowanie": widget_akcja_tankowanie,

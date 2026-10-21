@@ -42,6 +42,7 @@ RODZAJE_WPISOW = {
     "szkice_wpisow": (ft.Icons.RECEIPT, ("szkic paragonu", "szkice paragonów", "szkiców paragonów")),
     "warsztaty": (ft.Icons.CAR_REPAIR, ("warsztat", "warsztaty", "warsztatów")),
     "ceny_czesci": (ft.Icons.SELL, ("cena części", "ceny części", "cen części")),
+    "szablony_wpisow": (ft.Icons.BOOKMARK, ("szablon wpisu", "szablony wpisów", "szablonów wpisów")),
     # Martwe pliki usunięte ze Zdrowia danych (N-08) — sam wpis pliku, bez pliku na dysku.
     "zalaczniki": (ft.Icons.BROKEN_IMAGE, ("plik wpisu", "pliki wpisów", "plików wpisów")),
 }
@@ -108,6 +109,9 @@ def _opis_wpisu(pozycja, j):
         return ikona, w.get("nazwa") or "Warsztat", ["Warsztat", w.get("telefon")]
     if tabela == "ceny_czesci":
         return ikona, w.get("nazwa") or "Cena części", ["Cena części", data]
+    if tabela == "szablony_wpisow":
+        rodzaj = "Szablon tankowania" if w.get("rodzaj") == db.SZABLON_TANKOWANIE else "Szablon kosztu"
+        return ikona, w.get("nazwa") or "Szablon wpisu", [rodzaj]
     if tabela == "zalaczniki":
         nazwa = str(w.get("sciezka") or "").replace("\\", "/").rsplit("/", 1)[-1]
         return ikona, "Plik wpisu", [nazwa or None, db.ETYKIETY_WPISOW.get(w.get("tabela"))]

@@ -308,7 +308,8 @@ def edytor(monkeypatch):
 
 
 def napis(chip):
-    return [k for k in chip.content.controls if isinstance(k, ft.Text)][-1].value
+    # Pierwszy napis to nazwa — za nią bywa kwota z bieżącego roku (U-16).
+    return [k for k in chip.content.controls if isinstance(k, ft.Text)][0].value
 
 
 def chip_o_napisie(kontener, tekst):

@@ -4,7 +4,9 @@ import io
 import os
 import sqlite3
 from date import parsuj_date
-from datetime import datetime
+import calendar
+from datetime import date, datetime
+from typing import Any
 try:
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
@@ -28,11 +30,13 @@ from .pomocnicze import SEPARATOR_TYSIECY, formatuj_liczba_eksport, liczba_na_te
 from .ustawienia import pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, slowo_dystansu
 from .energia import formatuj_zuzycie_tekst
-from .analiza import opis_porownania_miesiaca
+from .analiza import _wpisy_okresu, opis_porownania_miesiaca, podsumowanie_miesiaca
 from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, opis_gwarancji, zakres_gwarancji
 from .nazwy import klucz_nazwy
 from .rejestry import WARSZTAT_BEZ_NAZWY
+from .pojazd import pobierz_dane_pojazdu
+from .os_przyszlosci import os_przyszlosci
 from .eksport import FOLDER_ASSETS, KATEGORIE_EKSPORTU, _MAPA_TRANSLITERACJI_PL, _RaportPDF, generuj_csv
 
 
@@ -1039,6 +1043,296 @@ def generuj_csv_ewidencji(dane) -> bytes:
     return generuj_csv([k[0] for k in dane["kolumny"]], wiersze)
 
 
+# ==================== RAPORT MIESIĄCA NA JEDNĄ STRONĘ A4 (W-21) ====================
+# Treść liczy `dane_raportu_miesiaca` (z tego samego `podsumowanie_miesiaca`, co ekran
+# i grafika), `generuj_pdf_miesiaca` tylko ją układa. Jedna strona to zasada: wpisy, które
+# się nie zmieszczą, schodzą do jednego wiersza „i jeszcze N”.
+
+# Nazwy kategorii budżetu w raporcie (bez „razem”).
+KATEGORIE_RAPORTU_MIESIACA = {"paliwo": "Paliwo i energia", "serwis": "Serwis", "inne": "Inne koszty"}
+# Terminów następnego miesiąca najwyżej tyle — reszta zabrałaby miejsce wpisom.
+MAKS_TERMINOW_RAPORTU = 8
+
+
+def _kwota_raportu(kwota, waluta, miejsca=2):
+    return f"{liczba_na_tekst(kwota or 0, miejsca, SEPARATOR_TYSIECY)} {waluta}"
+
+
+def _wpisy_raportu(auto_id, od, do, waluta) -> tuple[list[tuple[str, str, str, str]], float]:
+    """(data, rodzaj, opis, kwota) każdego wpisu kosztowego z [od, do] od najstarszego i ich suma."""
+    with polacz_baze(zmienia_dane=False) as conn:
+        wpisy = _wpisy_okresu(conn, auto_id, od, do)
+    wiersze = []
+    for w in wpisy["tankowania"]:
+        prad = w.get("rodzaj_energii") == "prad"
+        jedn = "kWh" if prad else "l"
+        opis = ", ".join(filter(None, [
+            w.get("stacja"),
+            f"{liczba_na_tekst(w['litry'], 2, SEPARATOR_TYSIECY)} {jedn}" if w.get("litry") else None,
+            "do pełna" if w.get("do_pelna") else None,
+        ]))
+        wiersze.append((w["data_iso"], "Ładowanie" if prad else "Tankowanie", opis, float(w["kwota"] or 0)))
+    wiersze += [(w["data_iso"], "Serwis", w.get("nazwa") or "", float(w["cena"] or 0)) for w in wpisy["serwis"]]
+    wiersze += [(w["data_iso"], "Wizyta", w.get("wykonawca") or WARSZTAT_BEZ_NAZWY,
+                 float(w["koszt_calkowity"] or 0)) for w in wpisy["wizyty"]]
+    wiersze += [(w["data_iso"], "Inny koszt", w.get("nazwa") or "", float(w["kwota"] or 0)) for w in wpisy["inne"]]
+    wiersze.sort(key=lambda w: w[0])
+    suma = sum(w[3] for w in wiersze)
+    return [(f"{d[8:10]}.{d[5:7]}", rodzaj, opis, _kwota_raportu(kwota, waluta)) for d, rodzaj, opis, kwota in wiersze], suma
+
+
+def _terminy_raportu(auto_id, rok, miesiac, dzis, waluta) -> tuple[str | None, list[tuple[str, str, str]]]:
+    """Terminy miesiąca po raportowanym — tylko te jeszcze przed nami; (tytuł sekcji, wiersze)."""
+    nastepny = (rok + 1, 1) if miesiac == 12 else (rok, miesiac + 1)
+    poczatek = date(nastepny[0], nastepny[1], 1)
+    koniec = date(nastepny[0], nastepny[1], calendar.monthrange(*nastepny)[1])
+    od = max(poczatek, dzis)
+    if od > koniec:
+        return None, []
+    os_czasu = os_przyszlosci(auto_id, dni=(koniec - dzis).days + 1, dzis=dzis)
+    wiersze = []
+    for p in os_czasu["pozycje"]:
+        if not p.get("data") or not od <= p["data"] <= koniec or p.get("sugestia") or p.get("rodzaj") == "budzet":
+            continue
+        kwota = (("ok. " if p.get("szacunek") else "") + _kwota_raportu(p["kwota"], waluta, 0)) if p.get("kwota") else ""
+        wiersze.append((p["data"].strftime("%d.%m"), str(p.get("tytul") or ""), kwota))
+    tytul = f"Terminy: {MIESIACE_PELNE[nastepny[1] - 1].lower()} {nastepny[0]}"
+    if od > poczatek:
+        tytul += f" (od {od.strftime('%d.%m')})"
+    return tytul, wiersze[:MAKS_TERMINOW_RAPORTU]
+
+
+def dane_raportu_miesiaca(auto_id, rok, miesiac, dzis=None) -> dict[str, Any] | None:
+    """Treść raportu miesiąca na A4 z `podsumowanie_miesiaca`: nagłówek, kafle, porównania
+    z poprzednim miesiącem i rokiem wcześniej, kategorie, przebieg i tankowania, wpisy od
+    najstarszego, terminy następnego miesiąca. None bez wpisów kosztowych."""
+    dzis = dzis or datetime.now().date()
+    dane = podsumowanie_miesiaca(auto_id, rok, miesiac)
+    if not dane:
+        return None
+    pojazd = pobierz_dane_pojazdu(auto_id) or {}
+    waluta, j = pobierz_walute(), jednostka_dystansu()
+    rok, miesiac = dane["rok"], dane["miesiac"]
+    razem = dane["koszty"]["razem"]
+    elektryczny = bool(dane.get("zuzycie_elektryczne"))
+
+    porownania = []
+    for klucz in ("poprzedni_miesiac", "rok_temu"):
+        p = dane.get(klucz)
+        if p and p.get("kwota"):
+            zmiana = f" ({_procent_zmiany(p['zmiana'])})" if p.get("zmiana") is not None else ""
+            porownania.append(f"{opis_porownania_miesiaca(p, rok, dane.get('niepelny'))}: "
+                              f"{_kwota_raportu(p['kwota'], waluta, 0)}{zmiana}")
+
+    kategorie = [(KATEGORIE_RAPORTU_MIESIACA[k], _kwota_raportu(dane["koszty"][k], waluta),
+                  round(dane["koszty"][k] / razem * 100) if razem > 0 else 0)
+                 for k in ("paliwo", "serwis", "inne")]
+
+    przebieg = []
+    if dane.get("km"):
+        przebieg.append(("Przejechane", f"{liczba_na_tekst(dystans_z_km(dane['km'], j), 0, SEPARATOR_TYSIECY)} {j}"))
+    if dane.get("srednie_zuzycie"):
+        przebieg.append(("Średnie zużycie", formatuj_zuzycie_tekst(dane["srednie_zuzycie"], elektryczny)))
+    if dane.get("liczba_tankowan"):
+        ilosc = dane.get("kwh") if elektryczny else dane.get("litry")
+        przebieg.append(("Ładowania" if elektryczny else "Tankowania",
+                         str(dane["liczba_tankowan"]) + (f", {liczba_na_tekst(ilosc, 0, SEPARATOR_TYSIECY)} "
+                                                         f"{'kWh' if elektryczny else 'l'}" if ilosc else "")))
+    if dane.get("ulubiona_stacja"):
+        st = dane["ulubiona_stacja"]
+        przebieg.append(("Ulubiona stacja", f"{st['nazwa']} ({st['liczba']}×)"))
+    if dane.get("liczba_wizyt") or dane.get("liczba_wpisow_serwisu"):
+        przebieg.append(("Serwis", ", ".join(filter(None, [
+            liczba_z_odmiana(dane["liczba_wizyt"], "wizyta", "wizyty", "wizyt") if dane.get("liczba_wizyt") else None,
+            liczba_z_odmiana(dane["liczba_wpisow_serwisu"], "wpis", "wpisy", "wpisów")
+            if dane.get("liczba_wpisow_serwisu") else None]))))
+    if dane.get("najwiekszy_wydatek"):
+        nw = dane["najwiekszy_wydatek"]
+        przebieg.append(("Największy wydatek", f"{nw['opis']}, {_kwota_raportu(nw['kwota'], waluta, 0)}"))
+
+    od = date(rok, miesiac, 1)
+    wpisy, suma_wpisow = _wpisy_raportu(auto_id, od, parsuj_date(dane["do"]), waluta)
+    tytul_terminow, terminy = _terminy_raportu(auto_id, rok, miesiac, dzis, waluta)
+    nazwa_miesiaca = f"{MIESIACE_PELNE[miesiac - 1].lower()} {rok}"
+    return {
+        "tytul": f"Raport miesiąca: {nazwa_miesiaca}",
+        "podtytul": " · ".join(filter(None, [
+            pojazd.get("nazwa"), pojazd.get("nr_rej"),
+            f"miesiąc w toku, stan na {dane['do']}" if dane.get("niepelny") else None])),
+        "kafle": _kafle_pigulki(dane, waluta, j,
+                                srednia=f"~{formatuj_liczba_eksport(dane['sredni_koszt_dnia'], 0)} {waluta} dziennie",
+                                okres="w miesiącu"),
+        "porownania": porownania,
+        "kategorie": kategorie,
+        "przebieg": przebieg,
+        "wpisy": wpisy,
+        "suma_wpisow": _kwota_raportu(suma_wpisow, waluta),
+        "waluta": waluta,
+        "tytul_terminow": tytul_terminow,
+        "terminy": terminy,
+        "stopka": f"Wygenerowano {dzis.strftime('%d.%m.%Y')} · wydatki razem {_kwota_raportu(razem, waluta)}",
+        "nazwa_pliku": f"raport_{rok}-{miesiac:02d}",
+    }
+
+
+_SZARY_RAPORTU = (110, 110, 110)
+_TLO_RAPORTU = (242, 244, 247)
+
+
+def _sekcja_raportu(pdf, x, y, szerokosc, tytul, akcent):
+    pdf.set_xy(x, y)
+    pdf.set_font(pdf.czcionka, "B", 10.5)
+    pdf.set_text_color(*akcent)
+    pdf.cell(szerokosc, 6, _przytnij_do_szerokosci(pdf, tytul, szerokosc))
+    pdf.set_draw_color(*akcent)
+    pdf.line(x, y + 6.6, x + szerokosc, y + 6.6)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_text_color(0, 0, 0)
+    return y + 8.5
+
+
+def generuj_pdf_miesiaca(dane, akcent=(37, 99, 235)) -> bytes:
+    """PDF raportu miesiąca na JEDNĄ stronę A4 (W-21) z treści `dane_raportu_miesiaca`. Wpisy,
+    które się nie mieszczą, schodzą do wiersza „i jeszcze N”. RuntimeError bez fpdf2."""
+    if FPDF is None:
+        raise RuntimeError("Biblioteka 'fpdf2' nie jest zainstalowana — eksport do PDF jest niedostępny. "
+                           "Zainstaluj: pip install fpdf2")
+    pdf = _RaportPDF(orientation="P")
+    pdf.set_margins(12, 12, 12)
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page()
+    x0, szer = pdf.l_margin, pdf.w - pdf.l_margin - pdf.r_margin
+    dol = pdf.h - 18
+
+    pdf.set_font(pdf.czcionka, "B", 17)
+    pdf.cell(szer, 9, _przytnij_do_szerokosci(pdf, dane["tytul"], szer), **NOWA_LINIA)
+    pdf.set_font(pdf.czcionka, "", 10)
+    pdf.set_text_color(*_SZARY_RAPORTU)
+    pdf.cell(szer, 6, _przytnij_do_szerokosci(pdf, dane["podtytul"], szer), **NOWA_LINIA)
+    pdf.set_text_color(0, 0, 0)
+
+    # Kafle: cztery liczby miesiąca, jak na grafice.
+    y = pdf.get_y() + 3
+    odstep, wys = 3, 21
+    szer_kafla = (szer - odstep * (len(dane["kafle"]) - 1)) / max(1, len(dane["kafle"]))
+    for i, (etykieta_k, wartosc_k, podpis_k) in enumerate(dane["kafle"]):
+        x = x0 + i * (szer_kafla + odstep)
+        pdf.set_fill_color(*_TLO_RAPORTU)
+        pdf.rect(x, y, szer_kafla, wys, style="F")
+        pdf.set_fill_color(*akcent)
+        pdf.rect(x, y, 1.2, wys, style="F")
+        pdf.set_font(pdf.czcionka, "", 7.5)
+        pdf.set_text_color(*_SZARY_RAPORTU)
+        pdf.set_xy(x + 3.5, y + 2.5)
+        pdf.cell(szer_kafla - 5, 4, _przytnij_do_szerokosci(pdf, etykieta_k, szer_kafla - 5))
+        pdf.set_font(pdf.czcionka, "B", 12.5)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_xy(x + 3.5, y + 7)
+        pdf.cell(szer_kafla - 5, 6.5, _przytnij_do_szerokosci(pdf, wartosc_k, szer_kafla - 5))
+        if podpis_k:
+            pdf.set_font(pdf.czcionka, "", 7.5)
+            pdf.set_text_color(*_SZARY_RAPORTU)
+            pdf.set_xy(x + 3.5, y + 14.5)
+            pdf.cell(szer_kafla - 5, 4, _przytnij_do_szerokosci(pdf, podpis_k, szer_kafla - 5))
+    pdf.set_text_color(0, 0, 0)
+    y += wys + 3
+
+    if dane["porownania"]:
+        pdf.set_font(pdf.czcionka, "", 9)
+        pdf.set_xy(x0, y)
+        pdf.cell(szer, 5, _przytnij_do_szerokosci(pdf, "   ·   ".join(dane["porownania"]), szer))
+        y += 7
+
+    # Dwie kolumny: kategorie z paskami i przebieg z tankowaniami.
+    kol = (szer - 8) / 2
+    yl = _sekcja_raportu(pdf, x0, y, kol, "Na co poszły pieniądze", akcent)
+    for nazwa, kwota_txt, udzial in dane["kategorie"]:
+        pdf.set_xy(x0, yl)
+        pdf.set_font(pdf.czcionka, "", 9)
+        pdf.cell(kol * 0.5, 5, _przytnij_do_szerokosci(pdf, nazwa, kol * 0.5))
+        pdf.set_font(pdf.czcionka, "B", 9)
+        pdf.cell(kol * 0.34, 5, pdf.t(kwota_txt), align="R")
+        pdf.set_font(pdf.czcionka, "", 8)
+        pdf.set_text_color(*_SZARY_RAPORTU)
+        pdf.cell(kol * 0.16, 5, f"{udzial}%", align="R")
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_fill_color(*_TLO_RAPORTU)
+        pdf.rect(x0, yl + 5.6, kol, 1.8, style="F")
+        if udzial > 0:
+            pdf.set_fill_color(*akcent)
+            pdf.rect(x0, yl + 5.6, kol * min(udzial, 100) / 100, 1.8, style="F")
+        yl += 9.5
+    xr = x0 + kol + 8
+    yr = _sekcja_raportu(pdf, xr, y, kol, "Przebieg i tankowania", akcent)
+    for etykieta_p, wartosc_p in dane["przebieg"] or [("Przebieg", "brak odczytów w tym miesiącu")]:
+        pdf.set_font(pdf.czcionka, "", 9)
+        pdf.set_text_color(*_SZARY_RAPORTU)
+        pdf.set_xy(xr, yr)
+        pdf.cell(kol * 0.4, 5, _przytnij_do_szerokosci(pdf, etykieta_p, kol * 0.4))
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font(pdf.czcionka, "B", 9)
+        for i, linia in enumerate(_zawin_tekst(pdf, wartosc_p, kol * 0.6)[:2]):
+            pdf.set_xy(xr + kol * 0.4, yr)
+            pdf.cell(kol * 0.6, 5, linia)
+            yr += 5 if i == 0 else 4.6
+        yr += 0.9
+    y = max(yl, yr) + 2
+
+    # Terminy rezerwują miejsce na dole; wpisy biorą resztę strony.
+    terminy = dane["terminy"] if dane.get("tytul_terminow") else []
+    rezerwa = (8.5 + 5.2 * max(1, len(terminy)) + 3) if dane.get("tytul_terminow") else 0
+    koniec_wpisow = dol - rezerwa
+
+    y = _sekcja_raportu(pdf, x0, y, szer, f"Wpisy miesiąca ({len(dane['wpisy'])}) · razem {dane['suma_wpisow']}",
+                        akcent)
+    pdf.set_xy(x0, y)
+    szerokosci = [17, 25, szer - 17 - 25 - 30, 30]
+    wyrownania = ["L", "L", "L", "R"]
+    linia = 4.2
+    if not dane["wpisy"]:
+        pdf.set_font(pdf.czcionka, "", 9)
+        pdf.cell(szer, 6, pdf.t("Brak wpisów kosztowych w tym miesiącu."))
+        pdf.set_y(y + 7)
+    else:
+        _wiersz_tabeli(pdf, x0, szerokosci, ["Data", "Rodzaj", "Opis", "Kwota"], wyrownania, linia,
+                       pogrubiony=True, tlo=(235, 235, 235))
+        wpisy = dane["wpisy"]
+        for i, wiersz in enumerate(wpisy):
+            zostalo = len(wpisy) - i
+            wysokosc = _wysokosc_wiersza(pdf, szerokosci, wiersz, linia)
+            if pdf.get_y() + wysokosc + (6.6 if zostalo > 1 else 0) > koniec_wpisow:
+                reszta = wpisy[i:]
+                pdf.set_font(pdf.czcionka, "", 8.5)
+                pdf.set_text_color(*_SZARY_RAPORTU)
+                pdf.set_x(x0)
+                pdf.cell(szer, 6, pdf.t(f"… i jeszcze {liczba_z_odmiana(len(reszta), 'wpis', 'wpisy', 'wpisów')} "
+                                        f"— pełna lista w eksporcie CSV albo PDF."), **NOWA_LINIA)
+                pdf.set_text_color(0, 0, 0)
+                break
+            _wiersz_tabeli(pdf, x0, szerokosci, list(wiersz), wyrownania, linia)
+
+    if dane.get("tytul_terminow"):
+        y = _sekcja_raportu(pdf, x0, pdf.get_y() + 4, szer, dane["tytul_terminow"], akcent)
+        pdf.set_font(pdf.czcionka, "", 9)
+        if not terminy:
+            pdf.set_xy(x0, y)
+            pdf.cell(szer, 5, pdf.t("Do końca miesiąca bez terminów z datą."))
+        for data_t, tytul_t, kwota_t in terminy:
+            pdf.set_xy(x0, y)
+            pdf.set_font(pdf.czcionka, "B", 9)
+            pdf.cell(17, 5, data_t)
+            pdf.set_font(pdf.czcionka, "", 9)
+            pdf.cell(szer - 17 - 32, 5, _przytnij_do_szerokosci(pdf, tytul_t, szer - 17 - 34))
+            pdf.cell(32, 5, pdf.t(kwota_t), align="R")
+            y += 5.2
+
+    pdf.set_font(pdf.czcionka, "", 7.5)
+    pdf.set_text_color(*_SZARY_RAPORTU)
+    pdf.set_xy(x0, pdf.h - 12)
+    pdf.cell(szer, 4, _przytnij_do_szerokosci(pdf, dane["stopka"], szer))
+    return bytes(pdf.output())
+
+
 __all__ = [
     "MIESIACE_PELNE",
     "MIESIACE_SKROT",
@@ -1060,7 +1354,11 @@ __all__ = [
     "generuj_grafike_roku",
     "generuj_csv_ewidencji",
     "generuj_pdf_ewidencji",
+    "generuj_pdf_miesiaca",
     "generuj_pdf_raportu",
     "pobierz_dane_paszportu",
     "podpisy_dni_miesiaca",
+    "KATEGORIE_RAPORTU_MIESIACA",
+    "MAKS_TERMINOW_RAPORTU",
+    "dane_raportu_miesiaca",
 ]

@@ -123,6 +123,7 @@ class MiksinZakladkiInne:
                 pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj",
                                 "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_koszt", iid),
                                                   utils.przejdz(self._page, "/inne/nowy"))})
+                pozycje.append(utils.pozycja_menu_szablonu(self._page, self.state, db.SZABLON_KOSZT, iid))
                 pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń koszt", "akcja": usun_koszt,
                                 "kolor": utils.KOLOR_STATUS["destructive"]})
 

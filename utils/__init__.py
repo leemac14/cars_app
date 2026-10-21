@@ -37,6 +37,7 @@ from .ceny_czesci import *
 from .awarie import *
 from .dolewki import *
 from .szkice import *
+from .szablony import *
 from .karoseria import *
 from .kopie import *
 from .plik_pojazdu import *
@@ -81,6 +82,7 @@ from . import (
     awarie,
     dolewki,
     szkice,
+    szablony,
     karoseria,
     kopie,
     plik_pojazdu,

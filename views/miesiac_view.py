@@ -1,9 +1,36 @@
+import asyncio
+
 import flet as ft
 
 import db
+import log
 import utils
 from state import MIESIACE_NAZWY
 from views.rok_view import SekcjePigulki
+
+
+async def zapisz_raport_miesiaca(page: ft.Page, state, rok, miesiac):
+    """Raport miesiąca na jedną stronę A4 (W-21) przez page.zapisz_bajty_pliku — z „Miesiąca
+    w pigułce” i z Eksportu. True, gdy plik dotarł."""
+    zapisywacz = getattr(page, "zapisz_bajty_pliku", None)
+    if zapisywacz is None or db.FPDF is None:
+        utils.pokaz_komunikat(page, "Zapis PDF jest niedostępny w tej wersji aplikacji.", utils.KOLOR_STATUS["error"])
+        return False
+    dialog = utils.pokaz_ladowanie(page, "Składam raport...")
+    try:
+        dane = await asyncio.to_thread(db.dane_raportu_miesiaca, state.auto_id, rok, miesiac)
+        pdf = await asyncio.to_thread(db.generuj_pdf_miesiaca, dane) if dane else None
+    except Exception as ex:
+        log.polkniety("raport miesiąca PDF")
+        utils.ukryj_ladowanie(page, dialog)
+        utils.pokaz_komunikat(page, f"Nie udało się przygotować raportu: {ex}", utils.KOLOR_STATUS["error"])
+        return False
+    utils.ukryj_ladowanie(page, dialog)
+    if not pdf:
+        utils.pokaz_komunikat(page, "W tym miesiącu nie ma wpisów kosztowych do raportu.",
+                              utils.KOLOR_STATUS["warning"])
+        return False
+    return await zapisywacz(f"{dane['nazwa_pliku']}_{utils.bezpieczna_nazwa_pliku(state.auto_nazwa)}.pdf", pdf)
 
 
 class MiesiacWPigulceView(SekcjePigulki, ft.View):
@@ -79,6 +106,7 @@ class MiesiacWPigulceView(SekcjePigulki, ft.View):
                 elementy.append(self._wykres_dni())
                 elementy.append(self._werdykty())
                 elementy.append(self._przycisk_grafiki())
+                elementy.append(self._przycisk_raportu())
 
             elementy.append(utils.dol_bezpieczny(10))
             self.scena.uruchom(page)
@@ -246,6 +274,18 @@ class MiesiacWPigulceView(SekcjePigulki, ft.View):
 
     def _rysuj_grafike(self, akcent):
         return db.generuj_grafike_miesiaca(self.state.auto_nazwa, self.dane, akcent)
+
+    def _przycisk_raportu(self):
+        """Raport PDF na jedną stronę A4 (W-21) — do wydruku, teczki albo rozliczenia."""
+        return ft.Column([
+            ft.OutlinedButton("Raport PDF na jedną stronę A4", icon=ft.Icons.PICTURE_AS_PDF,
+                              on_click=self._zapisz_raport, width=10000, height=48, disabled=db.FPDF is None),
+            ft.Text("Liczby miesiąca, porównania, kategorie, wpisy i terminy następnego miesiąca.",
+                    size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
+        ], spacing=6)
+
+    async def _zapisz_raport(self, e):
+        await zapisz_raport_miesiaca(self._page, self.state, self.rok, self.miesiac)
 
     def _nazwa_grafiki(self):
         return (f"miesiac_{self.rok}-{self.miesiac:02d}_"

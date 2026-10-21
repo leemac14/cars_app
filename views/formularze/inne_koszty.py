@@ -17,6 +17,8 @@ class FormularzInneView(ft.View):
         state.duplikuj_zrodlo_koszt = None  # zużywamy jednorazowo
         # Szkic z kolejki „do wpisania” (utils/szkice.py) — nowy wpis z paragonu.
         self.szkic = utils.szkic_do_formularza(state, szkic_id, i_id)
+        # Szablon z menu „+” (bez kwoty) — wypełnia nowy koszt jak duplikat, tylko z nazwanego wzoru.
+        szablon = utils.szablon_do_formularza(state, db.SZABLON_KOSZT, i_id)
         if self.szkic:
             duplikuj_id = None
         zrodlo_id = i_id or duplikuj_id
@@ -40,6 +42,12 @@ class FormularzInneView(ft.View):
                     notatka_val = str(w[5] or "")
                     if duplikuj_id:
                         d_val = datetime.now().strftime("%d.%m.%Y")
+        elif szablon and not self.szkic:
+            kat_val = db.etykieta_kategorii_innych(szablon.get("kategoria"))
+            op_val = szablon.get("nazwa") or ""
+            kw_val = utils.liczba_do_pola(szablon.get("kwota"))
+            tagi_val = szablon.get("tagi") or ""
+            notatka_val = szablon.get("notatka") or ""
 
         if self.szkic:
             # Krótki opis z migawki („myjnia”, „A4 bramki”) to przy koszcie

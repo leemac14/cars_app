@@ -62,6 +62,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
     "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
     "trasy_szablony", "checklisty", "checklisty_pozycje", "budzety",
     "rozliczenia", "ceny_czesci", "przejazdy", "dokumenty_pojazdu", "dolewki",
+    "szablony_wpisow",
 ]
 
 

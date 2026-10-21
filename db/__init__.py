@@ -30,6 +30,7 @@ from .przebieg import *
 from .nazwy import *
 from .kosz_wpisow import *
 from .koszty import *
+from .szablony import *
 from .dolewki import *
 from .awarie import *
 from .gwarancje import *

@@ -636,6 +636,14 @@ def init_db():
             # i odciski chmury uzupełnia blok `if i == 54` niżej.
             """
             ALTER TABLE magazyn_czesci ADD COLUMN ilosc_bazowa REAL;
+            """,
+            # Wersja 56: szablony wpisów (M-02, db/szablony.py) — nazwany wzór kosztu albo
+            # tankowania z menu „+”; `dane` to pola wpisu w JSON. Jedzie do chmury jak trasy,
+            # `uzycia` i `ostatnie_uzycie` (kolejność w menu) zostają na telefonie.
+            """
+            CREATE TABLE IF NOT EXISTS szablony_wpisow (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, rodzaj TEXT NOT NULL, dane TEXT NOT NULL DEFAULT '{}', uzycia INTEGER NOT NULL DEFAULT 0, ostatnie_uzycie TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_szablony_wpisow_auto ON szablony_wpisow(auto_id);
+            CREATE INDEX IF NOT EXISTS idx_szablony_wpisow_auto_zdalne ON szablony_wpisow(auto_id, zdalne_id);
             """
         ]
 

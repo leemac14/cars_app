@@ -74,6 +74,8 @@ class FormularzTankowanieView(ft.View):
         state.duplikuj_zrodlo_tankowanie = None  # zużywamy jednorazowo
         # Szkic z kolejki „do wpisania” (utils/szkice.py) — nowy wpis z paragonu.
         self.szkic = utils.szkic_do_formularza(state, szkic_id, t_id)
+        # Szablon z menu „+”: stacja, paliwo, „do pełna”, tagi i notatka; licznik i litry z dnia.
+        szablon = utils.szablon_do_formularza(state, db.SZABLON_TANKOWANIE, t_id)
         if self.szkic:
             duplikuj_id = None
         zrodlo_id = t_id or duplikuj_id
@@ -125,6 +127,14 @@ class FormularzTankowanieView(ft.View):
                     self.ostatni_prz = int(res[0])
                 if duplikuj_id:
                     d_val = datetime.now().strftime("%d.%m.%Y")
+        if szablon and not zrodlo_id and not self.szkic:
+            if szablon.get("rodzaj_energii") in self.rodzaje:
+                self.rodzaj_energii = szablon["rodzaj_energii"]
+            ladowanie_val = szablon.get("typ_ladowania") or ""
+            pelna_val = bool(szablon.get("do_pelna", True))
+            stacja_val = szablon.get("stacja") or ""
+            tagi_val = szablon.get("tagi") or ""
+            notatka_val = szablon.get("notatka") or ""
         if self.szkic:
             # Data migawki, zdjęcie paragonu jako załącznik (bez kopiowania pliku),
             # licznik i opis wpisane zaraz po zdjęciu.

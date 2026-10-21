@@ -6,7 +6,7 @@ import flet as ft
 
 from .stale import (
     FS, IKONY_OBSERWACJI, KOLORY_TONU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, SPACING,
-    ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych, kolory_chipa_tagu,
+    formatuj_liczba, ikona_kategorii_innych, ikona_z_mapy, kolor_kategorii_innych, kolory_chipa_tagu,
 )
 from .typografia import etykieta, podpis
 from .wyglad import pasek_zawijany, powierzchnia, tlo_karty, wypelnienie_karty
@@ -14,7 +14,7 @@ from .haptyka import wibracja
 from .zgodnosc import ustaw_blad
 from .dialogi import otworz_dialog, potwierdz, przejdz, zamknij_dialog
 from .formularze import styl_dropdown, styl_pola
-from .format import formatuj_telefon
+from .format import formatuj_telefon, symbol_waluty
 from .system import kopiuj_do_schowka, pokaz_na_mapie, zadzwon
 
 
@@ -177,22 +177,39 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
     # znikałyby bez śladu.
     spoza_slownika = sorted(t for t in wybrane if db.klucz_nazwy(t) not in slownik)
     kontener_tagow = ft.Row(wrap=True, spacing=8, run_spacing=8)
+    # Kwota z bieżącego roku przy tagu (U-16) — podział wydatków, który użytkownik nadaje sam.
+    sumy_roku = db.sumy_tagow_roku(state.auto_id)
+
+    def kwota_roku(nazwa):
+        poz = sumy_roku.get(db.klucz_nazwy(nazwa))
+        return f"{formatuj_liczba(poz['kwota'], 0)} {symbol_waluty()}" if poz else None
 
     def pole_koloru(aktualny):
         """Kółka palety zamiast listy samych nazw — kolor widać, zanim się go wybierze."""
         return komponent_wyboru_koloru(page, aktualny, z_brakiem=False, rozmiar=36)
 
-    def tresc_okna(e_nazwa, k_kolor):
-        return ft.Column([e_nazwa, etykieta("Kolor tagu"), k_kolor], tight=True, spacing=10)
+    def tresc_okna(e_nazwa, k_kolor, nazwa=None):
+        elementy = [e_nazwa, etykieta("Kolor tagu"), k_kolor]
+        if nazwa:
+            poz = sumy_roku.get(db.klucz_nazwy(nazwa))
+            elementy.append(podpis(
+                f"W tym roku: {kwota_roku(nazwa)} w {db.liczba_z_odmiana(poz['liczba'], 'wpisie', 'wpisach', 'wpisach')}."
+                if poz else "W tym roku bez wydatków z tym tagiem."))
+        return ft.Column(elementy, tight=True, spacing=10)
 
     def chip_w_edytorze(nazwa, kolor, zaznaczony, on_long_press, tooltip):
         """Zaznaczony tag wygląda tak, jak potem na karcie wpisu — w pełnym
-        kolorze, z ptaszkiem; niezaznaczony to sama obwódka w jego kolorze."""
+        kolorze, z ptaszkiem; niezaznaczony to sama obwódka w jego kolorze. Obok nazwy
+        kwota z bieżącego roku."""
         kolory = kolory_chipa_tagu(kolor)
         tlo, napis = kolory if kolory else (ft.Colors.with_opacity(0.16, ft.Colors.ON_SURFACE), ft.Colors.ON_SURFACE)
         obwodka = kolory[0] if kolory else ft.Colors.OUTLINE
         tresc = [ft.Text(nazwa, size=FS["label"], weight="bold" if zaznaczony else "normal",
                          color=napis if zaznaczony else ft.Colors.ON_SURFACE)]
+        kwota = kwota_roku(nazwa)
+        if kwota:
+            tresc.append(ft.Text(kwota, size=FS["caption"],
+                                 color=napis if zaznaczony else ft.Colors.ON_SURFACE_VARIANT))
         if zaznaczony:
             tresc.insert(0, ft.Icon(ft.Icons.CHECK, size=14, color=napis))
         return ft.Container(
@@ -260,7 +277,7 @@ def komponent_tagow(page: ft.Page, state, aktualne_tagi_str):
 
                     dlg = ft.AlertDialog(
                         title=ft.Text(f"Opcje tagu: {tn}", weight="bold"),
-                        content=tresc_okna(e_nazwa, k_kolor),
+                        content=tresc_okna(e_nazwa, k_kolor, tn),
                         actions=[
                             ft.TextButton("Usuń", style=ft.ButtonStyle(color=KOLOR_STATUS["destructive"]), on_click=usun_tag),
                             ft.TextButton("Anuluj", on_click=lambda e: zamknij_dialog(page, dlg)),
@@ -915,10 +932,27 @@ def pigulka_fab(ikona, napis, on_click):
     )
 
 
-def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szybkie akcje"):
+def chip_fab(ikona, napis, on_click):
+    """Szybka pozycja menu FAB (szablon wpisu): niższa pigułka w drugim kolorze, po kilka w rzędzie —
+    trzy szablony więcej w stosie pigułek nie zmieściłyby się nad przyciskiem na niskim telefonie."""
+    return ft.Container(
+        height=40, padding=ft.Padding(12, 0, 14, 0), border_radius=RADIUS["pill"],
+        bgcolor=ft.Colors.SECONDARY_CONTAINER, ink=True, on_click=on_click,
+        shadow=ft.BoxShadow(blur_radius=6, offset=ft.Offset(0, 2),
+                            color=ft.Colors.with_opacity(0.16, ft.Colors.BLACK)),
+        content=ft.Row([
+            ft.Icon(ikona, size=18, color=ft.Colors.ON_SECONDARY_CONTAINER),
+            ft.Text(napis, size=FS["body"], weight=ft.FontWeight.W_500,
+                    color=ft.Colors.ON_SECONDARY_CONTAINER),
+        ], spacing=8, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+    )
+
+
+def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szybkie akcje", szybkie=None):
     """Menu FAB: główny przycisk odsłania stos pigułek (`pigulka_fab`) i sam zmienia się w okrągłe
-    „zamknij”. `akcje`: [(ikona, etykieta, on_click)] — on_click z `e`, sync albo async. Zamyka
-    się po wyborze albo ponownym dotknięciu."""
+    „zamknij”. `akcje`: [(ikona, etykieta, on_click)] — on_click z `e`, sync albo async; `szybkie`
+    (ten sam kształt) — rząd niższych pigułek (`chip_fab`) nad stosem. Zamyka się po wyborze albo
+    ponownym dotknięciu."""
     stan = {"otwarte": False}
     kontener_akcji = ft.Column(
         spacing=SPACING["sm"], horizontal_alignment=ft.CrossAxisAlignment.END, visible=False,
@@ -975,6 +1009,11 @@ def fab_speed_dial(page: ft.Page, akcje, ikona_glowna=ft.Icons.ADD, tooltip="Szy
         return wrapper
 
     kontener_akcji.controls = [pigulka_fab(ikona, napis, opakuj_akcje(akcja)) for ikona, napis, akcja in akcje]
+    if szybkie:
+        kontener_akcji.controls.insert(0, ft.Row(
+            [chip_fab(ikona, napis, opakuj_akcje(akcja)) for ikona, napis, akcja in szybkie],
+            wrap=True, spacing=SPACING["sm"], run_spacing=SPACING["sm"], alignment=ft.MainAxisAlignment.END,
+        ))
     return ft.Column([kontener_akcji, fab_glowny], horizontal_alignment=ft.CrossAxisAlignment.END,
                      spacing=SPACING["md"], tight=True)
 
@@ -1005,6 +1044,7 @@ def fab_animowany(icon, on_click, tooltip=None):
 
 __all__ = [
     "nota_o_liczeniu",
+    "chip_fab",
     "chip_tagu",
     "chipy_kwot",
     "ekran_braku_danych",

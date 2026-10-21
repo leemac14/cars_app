@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, date
 import db
 import utils
 from date import parsuj_date
+from state import MIESIACE_NAZWY
+from views.miesiac_view import zapisz_raport_miesiaca
 
 PRESETY_OKRESU = [
     "Cały okres",
@@ -158,12 +160,41 @@ class EksportView(ft.View):
             width=float("inf")
         )
 
-        elementy = [k1, k2, k3, info, ft.Container(height=10), self.btn_eksportuj, utils.dol_bezpieczny(30)]
+        # --- Raport miesiąca na jedną stronę A4 (W-21): osobna droga, bez kategorii i zakresu ---
+        miesiace = db.miesiace_z_danymi(self.state.auto_id)
+        domyslny = db.wybierz_miesiac_pigulki(miesiace)
+        self.e_miesiac_raportu = ft.Dropdown(
+            label="Miesiąc",
+            options=[ft.DropdownOption(key=f"{r}-{m}", text=f"{MIESIACE_NAZWY[m - 1]} {r}")
+                     for r, m in sorted(miesiace, reverse=True)],
+            value=f"{domyslny[0]}-{domyslny[1]}" if domyslny else None,
+            **utils.styl_dropdown()
+        )
+        self.btn_raport_miesiaca = ft.OutlinedButton(
+            "Zapisz raport miesiąca", icon=ft.Icons.PICTURE_AS_PDF, on_click=self.zapisz_raport_miesiaca,
+            disabled=not (pdf_dostepny and miesiace),
+        )
+        k_raport = utils.karta_formularza(
+            [utils.podpis("Jedna strona: liczby miesiąca, porównania, kategorie, wpisy i terminy następnego "
+                          "miesiąca — do wydruku albo teczki."),
+             self.e_miesiac_raportu, self.btn_raport_miesiaca],
+            "Raport miesiąca na jedną stronę A4", ft.Icons.PICTURE_AS_PDF, domyslnie_otwarte=False
+        )
+
+        elementy = [k1, k2, k3, info, ft.Container(height=10), self.btn_eksportuj, k_raport,
+                    utils.dol_bezpieczny(30)]
 
         super().__init__(
             route="/eksport", padding=15, spacing=15, appbar=appbar,
             controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    async def zapisz_raport_miesiaca(self, e):
+        rok, _, miesiac = (self.e_miesiac_raportu.value or "").partition("-")
+        if not (rok.isdigit() and miesiac.isdigit()):
+            utils.pokaz_komunikat(self._page, "Wybierz miesiąc raportu.", utils.KOLOR_STATUS["warning"])
+            return
+        await zapisz_raport_miesiaca(self._page, self.state, int(rok), int(miesiac))
 
     def eksportuj(self, e):
         wybrane = [chk.data for chk in self.checkboxy_kategorii if chk.value]

@@ -89,6 +89,7 @@ WYWOLANIA = {
     "pobierz_koszty_miesieczne": lambda k: (k["id"]["auto_id"],),
     "pobierz_koszty_miesieczne_wg_kategorii": lambda k: (k["id"]["auto_id"],),
     "pobierz_nagrobki": lambda k: (k["id"]["auto_id"],),
+    "pobierz_szablony": lambda k: (k["id"]["auto_id"],),
     "pobierz_notatke": lambda k: ("tankowania", k["id"]["tankowanie"]),
     "pobierz_odlozone_powiadomienia": lambda k: (k["id"]["auto_id"],),
     "pobierz_ostatnia_aktywnosc": lambda k: (k["id"]["auto_id"],),

@@ -129,6 +129,9 @@ KONFIGURACJA_SYNC = [
     {"tabela": "trasy_szablony", "kolumny": ["nazwa", "dystans", "powrot", "osoby", "oplaty", "notatki",
                                              "skad", "dokad", "cel", "sluzbowy"], "fk": {},
      "dopisane": ["skad", "dokad", "cel", "sluzbowy"]},
+    # Szablon wpisu (M-02) to cecha auta jak zapisana trasa — druga osoba ma tę samą
+    # „Myjnię 40 zł” w menu „+”. Licznik użyć zostaje na telefonie.
+    {"tabela": "szablony_wpisow", "kolumny": ["nazwa", "rodzaj", "dane"], "fk": {}},
     # Ewidencja przebiegu jest wspólna dla auta: druga osoba dopisuje swoje
     # przejazdy (kierowca), a raport miesiąca ma być jeden dla obojga.
     {"tabela": "przejazdy", "kolumny": ["data", "skad", "dokad", "cel", "km", "powrot", "sluzbowy", "kierowca",
@@ -203,6 +206,7 @@ ETYKIETY_TABEL_SYNC = {
     "pakiety_serwisowe_wlasne": "Własny pakiet serwisowy",
     "budzety": "Limit budżetu",
     "trasy_szablony": "Zapisana trasa",
+    "szablony_wpisow": "Szablon wpisu",
     "przejazdy": "Przejazd",
     "dolewki": "Dolewka płynu",
     "checklisty": "Checklista",

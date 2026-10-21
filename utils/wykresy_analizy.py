@@ -10,7 +10,7 @@ import log
 from date import parsuj_date
 
 from .stale import (FS, IKONY_KATEGORII_KOSZTOW, KOLOR_STATUS, KOLORY_RODZAJU_SERWISU, RADIUS, SPACING,
-                    formatuj_liczba, ikona_kategorii_innych, kolor_kategorii_innych)
+                    formatuj_liczba, ikona_kategorii_innych, kolor_kategorii_innych, kolor_tagu_lub_neutralny)
 from .format import MIESIACE_MIEJSCOWNIK, formatuj_dni, formatuj_spalanie, jednostka_dystansu, symbol_waluty
 from .typografia import KOLOR_DRUGIEGO_PLANU, etykieta, podpis, wartosc
 from .wyglad import powierzchnia, wiersz_udzialu
@@ -71,6 +71,11 @@ WYKRESY_ANALIZY = [
      "pytanie": "Czy auto zaczyna się sypać?", "nazwa": "Awarie kontra eksploatacja",
      "opis": "Planowe naprawy to zwykły koszt jazdy, awarie — znak, że coś się psuje. Rosnący udział "
              "awarii i coraz krótsze odstępy między nimi mówią więcej niż sama suma serwisu."},
+    {"klucz": "tagi", "grupa": "podzial", "ikona": ft.Icons.SELL,
+     "pytanie": "Ile kosztują twoje tagi?", "nazwa": "Wydatki według tagów",
+     "opis": "Tankowania, wizyty i inne koszty z danym tagiem — tagi nadajesz sam, więc to podział wydatków "
+             "po twojemu: wyjazdy, praca, dojazdy. Wpis z kilkoma tagami liczy się przy każdym z nich. "
+             "Dotknij tagu, żeby zobaczyć jego wpisy."},
     {"klucz": "spalanie", "grupa": "energia", "ikona": ft.Icons.SPEED,
      "pytanie": "Czy pali więcej niż zwykle?", "pytanie_prad": "Czy zużywa więcej prądu?",
      "nazwa": "Trend spalania", "nazwa_prad": "Trend zużycia energii",
@@ -175,6 +180,8 @@ def dane_wykresu(state, klucz, pelne=False):
         dane["porownania"] = db.porownaj_czesci_wlasne(auto_id, granica) if pelne else []
     elif klucz == "awarie":
         dane["a"] = db.awarie_i_eksploatacja(auto_id, granica)
+    elif klucz == "tagi":
+        dane["t"] = db.koszty_wg_tagow(auto_id, granica)
     elif klucz == "spalanie":
         dane.update(_dane_spalania(auto_id, granica))
     elif klucz == "ceny":
@@ -340,6 +347,20 @@ def _odpowiedz(state, klucz, dane, scena=None):
                   for r in (db.SERWIS_AWARIA, db.SERWIS_PLANOWE, db.SERWIS_MODERNIZACJA, None)]
         return (f"{formatuj_liczba(udzial, 0)}% to awarie" if udzial is not None else "—", None,
                 f"{zdanie} · {okres}", pasek_skladu(czesci, 10, 88, scena))
+
+    if klucz == "tagi":
+        t = dane["t"]
+        if not t["tagi"]:
+            zdanie = (f"Wpisy {za_okres} nie mają tagów — nadasz je w formularzu wpisu." if t["liczba"]
+                      else f"Brak wydatków {za_okres}.")
+            return None, None, zdanie, None
+        pierwszy = t["tagi"][0]
+        suma_tagow = sum(p["kwota"] for p in t["tagi"])
+        return (f"{formatuj_liczba(pierwszy['kwota'], 0)} {w}", None,
+                f"najwięcej: {pierwszy['nazwa']} · {db.liczba_z_odmiana(len(t['tagi']), 'tag', 'tagi', 'tagów')} "
+                f"{za_okres}",
+                pasek_skladu([(p["kwota"] / suma_tagow, kolor_tagu_lub_neutralny(p["kolor"])) for p in t["tagi"]],
+                             10, 88, scena))
 
     if klucz == "spalanie":
         if not dane["punkty"] or dane["ostatnia"] is None:
@@ -676,6 +697,47 @@ def karta_stacji(page: ft.Page, dane):
     return _karta(page, wiersze, spacing=10)
 
 
+def _szukaj_tagu(page: ft.Page, state, nazwa, od=None):
+    """Wyszukiwarka z operatorem tagu (w cudzysłowie, gdy nazwa ma spację) od granicy zakresu."""
+    fraza = f'tag:"{nazwa}"' if " " in nazwa else f"tag:{nazwa}"
+    if od:
+        fraza += f" od {od.strftime('%d.%m.%Y')}"
+    state.fraza_wyszukiwania = fraza
+    przejdz(page, "/szukaj")
+
+
+def karta_tagow(page: ft.Page, state, dane, scena=None):
+    """Suma na tag z udziałem we WSZYSTKICH wydatkach okresu; dotknięcie tagu — jego wpisy."""
+    t = dane["t"]
+    if not t["tagi"]:
+        return _brak(page, "Żaden wpis z wybranego okresu nie ma tagu. Tag nadasz w formularzu tankowania, "
+                           "wizyty albo innego kosztu.")
+    razem = t["razem"]
+    w = symbol_waluty()
+    wiersze = [ft.Column([etykieta(f"Wydatki z tagami — {okres_slowami(dane['zakres'])}"),
+                          wartosc(f"{formatuj_liczba(razem - t['bez_tagu']['kwota'])} {w}", size=FS["display"]),
+                          podpis(f"z {formatuj_liczba(razem)} {w} wszystkich wydatków")], spacing=2)]
+    for p in t["tagi"]:
+        wiersze.append(ft.Container(
+            ink=True, border_radius=RADIUS["sm"], tooltip=f"Pokaż wpisy z tagiem „{p['nazwa']}”",
+            on_click=lambda e, n=p["nazwa"]: _szukaj_tagu(page, state, n, dane["granica"]),
+            content=wiersz_udzialu(page, ft.Icons.SELL, p["nazwa"], p["kwota"], p["kwota"] / razem * 100,
+                                   kolor_tagu_lub_neutralny(p["kolor"]), scena=scena,
+                                   dopisek=db.liczba_z_odmiana(p["liczba"], "wpis", "wpisy", "wpisów")),
+        ))
+    bez = t["bez_tagu"]
+    if bez["liczba"]:
+        wiersze.append(wiersz_udzialu(page, ft.Icons.LABEL_OFF_OUTLINED, "Bez tagu", bez["kwota"],
+                                      bez["kwota"] / razem * 100, ft.Colors.OUTLINE, scena=scena,
+                                      dopisek=db.liczba_z_odmiana(bez["liczba"], "wpis", "wpisy", "wpisów")))
+    wiersze.append(nota_o_liczeniu(
+        page, "Jak liczone",
+        "Liczą się tankowania, wizyty i inne koszty — tylko one mają tagi. Wpis z kilkoma tagami liczy się "
+        "przy każdym z nich, więc tagi razem mogą dać więcej niż wydatki; procent to udział we wszystkich "
+        "wydatkach okresu."))
+    return _karta(page, wiersze)
+
+
 def tresc_wykresu(page: ft.Page, state, klucz, scena=None):
     """Kontrolki ekranu wykresu pod wstępem: przełączniki (każdy w swoim wierszu, żeby na 360 dp
     nic się nie ścisnęło) i karta(y)."""
@@ -708,6 +770,8 @@ def tresc_wykresu(page: ft.Page, state, klucz, scena=None):
         return [pasek_zakresu_czasu(page, state, "awarie"),
                 karta_awarii(page, auto_id, dane["a"], dane["zakres"], scena,
                              po_zmianie=lambda: odswiez_ekran(page))]
+    if klucz == "tagi":
+        return [pasek_zakresu_czasu(page, state, "tagi"), karta_tagow(page, state, dane, scena)]
     if klucz == "spalanie":
         return [pasek_zakresu_czasu(page, state, "spalanie"), karta_spalania(page, dane)]
     if klucz == "ceny":
@@ -782,6 +846,7 @@ __all__ = [
     "karta_spalania",
     "karta_stacji",
     "karta_struktury",
+    "karta_tagow",
     "karta_wydatkow",
     "kafel_liczby",
     "naglowek_analizy",

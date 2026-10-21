@@ -24,6 +24,11 @@ class AppState:
         # z tą samą listą części — duplikat wizyty oszczędza odklikiwanie ich
         # od zera. Kopiuje wszystko poza datą, załącznikiem i zużyciem magazynu.
         self.duplikuj_zrodlo_wizyta = None
+        # Szablon z menu „+” (db/szablony.py), który wypełni NAJBLIŻSZY nowy koszt albo
+        # tankowanie — zużywany jednorazowo, jak źródło duplikatu.
+        self.szablon_wpisu = None
+        # Fraza, z którą otworzy się wyszukiwarka (tag z wykresu tagów) — zużywana raz.
+        self.fraza_wyszukiwania = None
         self.wybrane_zadanie_nazwa = ""
         # „Widziane” w dzwonku jest w bazie per powiadomienie i pojazd
         # (db.powiadomienia), nie w stanie. Poniżej: pojazd, dla którego animacja liczb

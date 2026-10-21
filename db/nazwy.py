@@ -1,6 +1,9 @@
 """Normalizacja i scalanie duplikatów nazw (stacje, warsztaty, tagi)."""
 
+import json
 from typing import Any
+
+import log
 
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, klucz_nazwy, normalizuj_nazwe
@@ -236,27 +239,47 @@ def przepisz_tag_we_wpisach(c, auto_id, stara_nazwa, nowa_nazwa=None):
     klucz_starej = klucz_nazwy(stara_nazwa)
     if not klucz_starej:
         return 0
+
+    def przepisz(tekst):
+        elementy = [t.strip() for t in str(tekst or "").split(",") if t.strip()]
+        if not any(klucz_nazwy(t) == klucz_starej for t in elementy):
+            return tekst
+        nowe, widziane = [], set()
+        for element in elementy:
+            docelowy = element
+            if klucz_nazwy(element) == klucz_starej:
+                if not nowa_nazwa:
+                    continue
+                docelowy = nowa_nazwa
+            if klucz_nazwy(docelowy) not in widziane:
+                widziane.add(klucz_nazwy(docelowy))
+                nowe.append(docelowy)
+        return ",".join(nowe)
+
     zmienione = 0
     for tabela in TABELE_Z_TAGAMI:
         c.execute(f"SELECT id, tagi FROM {tabela} WHERE auto_id=? AND tagi IS NOT NULL AND tagi <> ''", (auto_id,))
         for wiersz_id, tekst in c.fetchall():
-            elementy = [t.strip() for t in str(tekst or "").split(",") if t.strip()]
-            if not any(klucz_nazwy(t) == klucz_starej for t in elementy):
-                continue
-            nowe, widziane = [], set()
-            for element in elementy:
-                docelowy = element
-                if klucz_nazwy(element) == klucz_starej:
-                    if not nowa_nazwa:
-                        continue
-                    docelowy = nowa_nazwa
-                if klucz_nazwy(docelowy) not in widziane:
-                    widziane.add(klucz_nazwy(docelowy))
-                    nowe.append(docelowy)
-            nowy_tekst = ",".join(nowe)
+            nowy_tekst = przepisz(tekst)
             if nowy_tekst != tekst:
                 c.execute(f"UPDATE {tabela} SET tagi=? WHERE id=?", (nowy_tekst or None, wiersz_id))
                 zmienione += 1
+    # Szablon wpisu (db/szablony.py) niesie tagi w JSON-ie — inaczej nowy koszt z szablonu
+    # dostałby tag sprzed zmiany nazwy. Szablonów nie liczymy jako wpisów.
+    c.execute("SELECT id, dane FROM szablony_wpisow WHERE auto_id=? AND dane LIKE '%tagi%'", (auto_id,))
+    for wiersz_id, tekst in c.fetchall():
+        try:
+            dane = json.loads(tekst or "{}")
+        except ValueError:
+            log.polkniety("dane szablonu przy zmianie nazwy tagu")
+            continue
+        if not isinstance(dane, dict) or not dane.get("tagi"):
+            continue
+        nowe_tagi = przepisz(dane["tagi"])
+        if nowe_tagi != dane["tagi"]:
+            dane["tagi"] = nowe_tagi or None
+            c.execute("UPDATE szablony_wpisow SET dane=? WHERE id=?",
+                      (json.dumps(dane, ensure_ascii=False, sort_keys=True), wiersz_id))
     return zmienione
 
 

@@ -52,10 +52,14 @@ class SzukajView(ft.View):
             )
             return
 
+        # Fraza podana przez inny ekran (tag z wykresu tagów) — wyniki gotowe od wejścia.
+        fraza_startowa = getattr(state, "fraza_wyszukiwania", None)
+        state.fraza_wyszukiwania = None
         self.pole_wyszukiwarki = ft.TextField(
+            value=fraza_startowa or "",
             hint_text="Szukaj wpisów i ekranów",
             prefix_icon=ft.Icons.SEARCH,
-            autofocus=True,
+            autofocus=not fraza_startowa,
             on_change=utils.z_opoznieniem(self._page, self._wyszukaj),
             **utils.styl_pola()
         )
@@ -120,6 +124,8 @@ class SzukajView(ft.View):
             route="/szukaj", padding=15, spacing=15, appbar=appbar,
             controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+        if fraza_startowa:
+            self._wyszukaj(None, odswiez=False)
 
     def _odswiez_ostatnie(self):
         """Chipy z ostatnimi frazami, widoczne WYŁĄCZNIE przy pustym polu.
@@ -296,7 +302,7 @@ class SzukajView(ft.View):
             )
         )
 
-    def _wyszukaj(self, e):
+    def _wyszukaj(self, e, odswiez=True):
         zapytanie = (self.pole_wyszukiwarki.value or "").strip()
         self.lista_wynikow.controls.clear()
         self._odswiez_ostatnie()
@@ -310,7 +316,8 @@ class SzukajView(ft.View):
             self.pasek_trybu.visible = False
             self.podpowiedz_skladni.visible = True
             self._pokaz_ekrany("", sa_wpisy=False)
-            self.update()
+            if odswiez:
+                self.update()
             return
 
         if filtr:
@@ -358,4 +365,5 @@ class SzukajView(ft.View):
             for w in wyniki:
                 self.lista_wynikow.controls.append(self._karta_wyniku(w))
 
-        self.update()
+        if odswiez:
+            self.update()

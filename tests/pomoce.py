@@ -243,6 +243,11 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (auto, "Do teściów", 180.0, 1, 2, 45.0, "Dom", "Teściowie", "Wizyta rodzinna", 0, "trasa-1"))
         zid["trasa"] = c.lastrowid
 
+        c.execute("INSERT INTO szablony_wpisow (auto_id, nazwa, rodzaj, dane, uzycia, zdalne_id) VALUES (?,?,?,?,?,?)",
+                  (auto, "Myjnia", "koszt", '{"kategoria": "Myjnia i kosmetyka", "kwota": 40.0, "nazwa": "Myjnia", '
+                   '"notatka": null, "tagi": "Trasa"}', 2, "szablon-1"))
+        zid["szablon"] = c.lastrowid
+
         # Przejazd z ewidencji — służbowy, ze stanem licznika po przejeździe
         # (kolejne źródło historii licznika) i notatką z podpisem.
         c.execute("INSERT INTO przejazdy (auto_id, data, skad, dokad, cel, km, powrot, sluzbowy, kierowca, licznik, "
