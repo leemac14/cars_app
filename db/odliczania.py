@@ -92,13 +92,14 @@ def _prognoza(zostalo_km, sredni_dzienny, dzis):
 def _pozycja(**pola):
     """Komplet kluczy pozycji — ekran i kafelek czytają je bez `.get()` na
     każdym kroku. Tytuł None: nazwa zależy od jednostki z Ustawień i składa ją
-    dopiero ekran (utils.tytul_odliczania)."""
+    dopiero ekran (utils.tytul_odliczania). `prog_dni` — próg przypomnienia w dniach,
+    którym liczy się status (alarm wpisu w kalendarzu, db/kalendarz.py)."""
     pozycja = {
         "klucz": None, "rodzaj": None, "ikona": None, "tytul": None,
         "dni": None, "dni_sortowania": None, "data": None, "prognoza": False,
         "zostalo_km": None, "cel_km": None, "od_km": None, "udzial": None,
         "poczatek": None, "poczatek_z": None, "drugi": None, "gwarancja": None,
-        "status": "ok", "trasa": None, "opis_oferty": None, "rata": None,
+        "status": "ok", "trasa": None, "opis_oferty": None, "rata": None, "prog_dni": None,
     }
     pozycja.update(pola)
     if pozycja["dni_sortowania"] is None:
@@ -125,7 +126,7 @@ def _dokumenty(auto_id, dane, dzis):
             klucz=f"dokument:{termin['klucz']}", rodzaj="dokument", ikona=termin["klucz"],
             tytul=termin["etykieta"], dni=termin["dni"], data=koniec,
             udzial=udzial, poczatek=poczatek, poczatek_z=skad,
-            status=termin["status"], trasa=f"/auto/edytuj/{auto_id}",
+            status=termin["status"], trasa=f"/auto/edytuj/{auto_id}", prog_dni=termin["prog"],
             opis_oferty=oferta["zdanie"] if oferta and termin["klucz"] in KLUCZE_TERMINOW_Z_OFERTA else None,
         ))
     return wynik
@@ -142,7 +143,7 @@ def _dokumenty_skarbca(auto_id, dzis):
             klucz=f"skarbiec:{d['id']}", rodzaj="skarbiec", ikona=d["rodzaj"], tytul=d["tytul_pelny"],
             dni=d["dni"], data=koniec, poczatek=poczatek,
             udzial=1.0 if d["dni"] < 0 else _udzial(poczatek, koniec, dzis),
-            status=d["status"], trasa="/dokumenty",
+            status=d["status"], trasa="/dokumenty", prog_dni=d["prog"],
         ))
     return wynik
 
@@ -202,7 +203,7 @@ def _podzespoly(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis):
             zostalo_km=licznik["zostalo"] if czy_km else None,
             udzial=max(0.0, min(1.0, licznik["zuzycie"])), drugi=drugi,
             status=STATUS_Z_INTERWALU.get(licznik["status"], "ok"),
-            trasa=f"/zadanie/edytuj/{zadanie['id']}",
+            trasa=f"/zadanie/edytuj/{zadanie['id']}", prog_dni=_dodatnia(zadanie["prog_dni"]) or int(prog_dni),
         ))
     return wynik
 
@@ -224,7 +225,7 @@ def _gwarancje_napraw(auto_id, przebieg, sredni_dzienny, prog_km, prog_dni, dzis
             cel_km=g["limit_km"], od_km=g["przebieg_wymiany"],
             udzial=g["udzial"], poczatek=g["data_wymiany"], gwarancja=g,
             status="blisko" if g["status"] == STATUS_GWARANCJI_BLISKO else "ok",
-            trasa=f"/historia/{g['zadanie_id']}",
+            trasa=f"/historia/{g['zadanie_id']}", prog_dni=prog_dni,
         ))
     return wynik
 
@@ -248,7 +249,7 @@ def _raty(auto_id, prog_dni, dzis):
             tytul=f"{nazwa} — {cel}" if nazwa else cel[:1].upper() + cel[1:],
             dni=dni, data=koniec, udzial=h["udzial"], rata=h,
             status="po_terminie" if dni < 0 else ("blisko" if dni <= prog_dni else "ok"),
-            trasa="/raty",
+            trasa="/raty", prog_dni=prog_dni,
         ))
     return wynik
 
@@ -297,7 +298,7 @@ def odliczania_pojazdu(auto_id, dzis=None) -> list[dict[str, Any]]:
     - zostalo_km, cel_km, od_km; udzial (0–1, None bez początku), poczatek, poczatek_z;
     - drugi (drugi licznik podzespołu), gwarancja (stan gwarancji naprawy), status
       („po_terminie”/„blisko”/„ok”/„info”), opis_oferty (OC i AC), rata (harmonogram
-      umowy)."""
+      umowy), prog_dni (próg przypomnienia, None przy kilometrach)."""
     if not auto_id:
         return []
     dane = pobierz_dane_pojazdu(auto_id)

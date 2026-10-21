@@ -49,6 +49,7 @@ from .kosz import *
 from .nawigacja import *
 from .odliczania import *
 from .os_przyszlosci import *
+from .kalendarz import *
 from .kokpit import *
 from .wyszukiwanie import *
 from .os_czasu import *
@@ -104,6 +105,7 @@ from . import (
     nawigacja,
     odliczania,
     os_przyszlosci,
+    kalendarz,
     kokpit,
     wyszukiwanie,
     os_czasu,

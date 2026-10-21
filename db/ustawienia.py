@@ -25,6 +25,7 @@ USTAWIENIA_INTERFEJSU = frozenset({
     "ostatnia_podzakladka_kosztow",
     "ostatnie_wyszukiwania",        # db.KLUCZ_HISTORII_WYSZUKIWAN
     "okno_przyszlosci",             # db.KLUCZ_OKNA_PRZYSZLOSCI
+    "kalendarz_eksport",            # db.KLUCZ_EKSPORTU_KALENDARZA
 })
 
 # Układ kokpitu: wspólny „kokpit_widgety” i per pojazd „kokpit_widgety_<id>”.
@@ -568,6 +569,30 @@ def zapisz_okno_przyszlosci(dni):
     zapisz_ustawienie(KLUCZ_OKNA_PRZYSZLOSCI, str(dni))
 
 
+# Terminy w kalendarzu telefonu (db/kalendarz.py). To, co TEN telefon wysłał do kalendarza,
+# należy do urządzenia (przedrostek odkładany przy wczytaniu kopii, db/kopie.py); znacznik
+# bazy w UID jedzie z kopią — nowy telefon z tą samą kopią podmieni te same wpisy.
+PRZEDROSTEK_USTAWIEN_KALENDARZA = "kalendarz_"
+KLUCZ_EKSPORTU_KALENDARZA = "kalendarz_eksport"
+KLUCZ_ZNACZNIKA_KALENDARZA = "znacznik_kalendarza"
+
+
+def pobierz_eksport_kalendarza() -> dict[str, Any]:
+    """{"numer": ostatni numer wysyłki, "pojazdy": {"<auto_id>": {"dzien", "do", "grupy"}}};
+    nieczytelny zapis = nic nie wysłano."""
+    try:
+        stan = json.loads(pobierz_ustawienie(KLUCZ_EKSPORTU_KALENDARZA, "") or "{}")
+        numer = int(stan.get("numer") or 0)
+        pojazdy = stan.get("pojazdy")
+    except (TypeError, ValueError, AttributeError):
+        return {"numer": 0, "pojazdy": {}}
+    return {"numer": max(0, numer), "pojazdy": pojazdy if isinstance(pojazdy, dict) else {}}
+
+
+def zapisz_eksport_kalendarza(stan):
+    zapisz_ustawienie(KLUCZ_EKSPORTU_KALENDARZA, json.dumps(stan, ensure_ascii=False, sort_keys=True))
+
+
 # ============================================================================
 # EWIDENCJA PRZEBIEGU — tryb, stawka kilometrówki, dane do raportu
 # ============================================================================
@@ -756,6 +781,11 @@ __all__ = [
     "OKNO_PRZYSZLOSCI_DOMYSLNE",
     "pobierz_okno_przyszlosci",
     "zapisz_okno_przyszlosci",
+    "PRZEDROSTEK_USTAWIEN_KALENDARZA",
+    "KLUCZ_EKSPORTU_KALENDARZA",
+    "KLUCZ_ZNACZNIKA_KALENDARZA",
+    "pobierz_eksport_kalendarza",
+    "zapisz_eksport_kalendarza",
     "_klucz_kokpitu",
     "_klucz_ewidencji",
     "KLUCZE_DANYCH_OSOBY",

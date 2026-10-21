@@ -130,6 +130,8 @@ WYWOLANIA = {
     "sprawdz_kopie_przed_wczytaniem": lambda k: (db.BAZA_DANYCH,),
     "stan_budzetow": lambda k: (k["id"]["auto_id"],),
     "tabela_z_wierszy": lambda k: (db.wczytaj_wiersze_csv(str(k["csv"])),),
+    # Leasing z dosyp_dane — raty idą do kalendarza, więc lista nie jest pusta.
+    "terminy_kalendarza": lambda k: (k["id"]["auto_id"],),
     "terminy_skarbca": lambda k: (k["id"]["auto_id"],),
     "ustal_oferte_oc_ac": lambda k: ("Warta 1 240 zł", "Link4 1 310 zł", "01.10.2025"),
     "utworz_wizyte_z_do_zrobienia": lambda k: (k["id"]["auto_id"], [k["id"]["do_zrobienia"]]),

@@ -29,7 +29,10 @@ import log
 from .stale import BAZA_DANYCH, FOLDER_KOSZ, FOLDER_ZALACZNIKI, STORAGE_PATH
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
-from .ustawienia import PRZEDROSTEK_USTAWIEN_NOWOSCI, pobierz_ustawienie, usun_ustawienie, zapisz_ustawienie
+from .ustawienia import (
+    PRZEDROSTEK_USTAWIEN_KALENDARZA, PRZEDROSTEK_USTAWIEN_NOWOSCI, pobierz_ustawienie, usun_ustawienie,
+    zapisz_ustawienie,
+)
 
 
 # ============================================================================
@@ -561,8 +564,11 @@ def wykonaj_kopie(wymus=False) -> dict[str, Any]:
 
 # Ten sam los czeka „Co nowego”: to, które wydania ten telefon już pokazał,
 # opisuje urządzenie, nie dane — kopia z drugiego telefonu pokazałaby nowości
-# jeszcze raz albo schowała te, których tu nikt nie widział (db/nowosci.py).
-PRZEDROSTKI_USTAWIEN_URZADZENIA = (PRZEDROSTEK_USTAWIEN_KOPII, PRZEDROSTEK_USTAWIEN_NOWOSCI)
+# jeszcze raz albo schowała te, których tu nikt nie widział (db/nowosci.py). Tak samo
+# to, co ten telefon wysłał do swojego kalendarza (db/kalendarz.py).
+PRZEDROSTKI_USTAWIEN_URZADZENIA = (
+    PRZEDROSTEK_USTAWIEN_KOPII, PRZEDROSTEK_USTAWIEN_NOWOSCI, PRZEDROSTEK_USTAWIEN_KALENDARZA,
+)
 
 
 def _warunek_ustawien_urzadzenia():
@@ -572,7 +578,7 @@ def _warunek_ustawien_urzadzenia():
 
 
 def ustawienia_kopii_urzadzenia():
-    """Ustawienia urządzenia tej bazy (`kopia_*` i `nowosci_*`) — do odłożenia
+    """Ustawienia urządzenia tej bazy (`kopia_*`, `nowosci_*`, `kalendarz_*`) — do odłożenia
     przed wczytaniem kopii. Pusty słownik, gdy bazy nie da się przeczytać
     (wtedy nie ma czego chronić)."""
     warunek, parametry = _warunek_ustawien_urzadzenia()

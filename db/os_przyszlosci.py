@@ -91,7 +91,7 @@ def _pozycja(**pola):
         "kwota": None, "szacunek": False,
         "status": "ok", "trasa": None, "akcja": None,
         "okres_dni": None, "platnosc": None, "budzet": None, "sezon": None,
-        "zrodlo": None, "cel_km": None, "zostalo_km": None,
+        "zrodlo": None, "cel_km": None, "zostalo_km": None, "prog_dni": None,
     }
     pozycja.update(pola)
     return pozycja
@@ -125,7 +125,7 @@ def _z_odliczan(odliczania, dzis, koniec):
         wspolne = dict(
             klucz=o["klucz"], rodzaj=o["rodzaj"], ikona=o["ikona"], tytul=o["tytul"],
             status=o["status"], trasa=o["trasa"], zrodlo=o,
-            cel_km=o["cel_km"], zostalo_km=o["zostalo_km"],
+            cel_km=o["cel_km"], zostalo_km=o["zostalo_km"], prog_dni=o["prog_dni"],
         )
         if o["status"] == "po_terminie":
             # Skończona gwarancja (data albo limit przebiegu) to nie sprawa do
@@ -322,7 +322,7 @@ def _cykliczne(wpisy, z_harmonogramem, zamontowany, prog_dni, dzis, koniec):
                 klucz=f"cykliczny:{wid}:{dzien.isoformat()}", data=dzien, dni=dni, zalegla=dni < 0,
                 kwota=kwota_wpisu if kwota_wpisu > 0 else None, status=status, okres_dni=okres,
                 tytul=nazwa, rodzaj="cykliczny", ikona="cykliczny" if czy_koszt else "przypomnienie",
-                akcja="cykliczne",
+                akcja="cykliczne", prog_dni=wlasny_prog,
             )
             if opony:
                 # Kierunek z tego, co JEST na aucie (na przemian od pierwszej
@@ -405,7 +405,7 @@ def _raty(umowy, prog_dni, dzis, koniec):
             wynik.append(_pozycja(
                 klucz=f"rata:{umowa['id']}:{p['numer']}", rodzaj="rata", ikona=umowa["typ"],
                 tytul=nazwa, data=p["data"], dni=dni, zalegla=dni < 0, kwota=p["kwota"],
-                status=status, trasa="/raty",
+                status=status, trasa="/raty", prog_dni=wlasny_prog,
                 platnosc=opis_platnosci(umowa["typ"], p, h["liczba_rat"]),
             ))
     return wynik, z_harmonogramem
@@ -575,7 +575,7 @@ def os_przyszlosci(auto_id, dni=None, dzis=None) -> dict[str, Any]:
       („dokument”/„skarbiec”/„gwarancja_km”/„gwarancja_naprawy”/„podzespol”/„przebieg”/„cykliczny”/„opony”/„rata”/„budzet”),
       ikona, tytul, data, dni, zalegla, prognoza, najpozniej, zakladana, sugestia,
       kwota, szacunek, status, trasa albo akcja („cykliczne”, „opony”), okres_dni,
-      platnosc, budzet, sezon, zrodlo, cel_km, zostalo_km;
+      platnosc, budzet, sezon, zrodlo, cel_km, zostalo_km, prog_dni (próg statusu w dniach);
     - bez_daty — km bez średniego przebiegu;
     - miesiace: rok, miesiac, od, do, pelny, biezacy, biezace, zaplanowane, razem,
       liczba, wydano;

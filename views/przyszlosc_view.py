@@ -9,14 +9,19 @@ class PrzyszloscView(ft.View):
     """„Co przede mną” (N-02): terminy, wymiany, cykliczne, raty, zmiana opon, końce
     budżetów i prognoza kosztu miesięcy w oknie 30/90/365 dni, zaległe na górze. Liczy
     db.os_przyszlosci, wiersze składa utils/przyszlosc.py, okno pamięta
-    db.pobierz_okno_przyszlosci."""
+    db.pobierz_okno_przyszlosci. Terminy do kalendarza telefonu: utils/kalendarz.py."""
 
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
         self.j = utils.jednostka_dystansu()  # km albo mi — raz na ekran
 
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Co przede mną", "/", ikona=ft.Icons.EVENT_NOTE)
+        akcje = None
+        if self.state.auto_id and not db.czy_pojazd_sprzedany(self.state.auto_id):
+            akcje = [ft.IconButton(icon=ft.Icons.EDIT_CALENDAR, tooltip="Dodaj terminy do kalendarza",
+                                   on_click=self._do_kalendarza)]
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Co przede mną", "/", akcje_dodatkowe=akcje,
+                                               ikona=ft.Icons.EVENT_NOTE)
 
         if not self.state.auto_id:
             super().__init__(
@@ -82,11 +87,14 @@ class PrzyszloscView(ft.View):
         self._odswiez("przebudowa osi przyszłości po zmianie okna")
 
     def odswiez_w_miejscu(self):
-        """Po „Zapłacone” w panelu wydatków albo wpisie licznika z banera
-        (utils.odswiez_ekran): oś liczy się od nowa, okno i miejsce zostają."""
+        """Po „Zapłacone” w panelu wydatków, wpisie licznika z banera (utils.odswiez_ekran)
+        albo wysyłce do kalendarza: oś liczy się od nowa, okno i miejsce zostają."""
         if self.os is None:
             return
         self._odswiez("odświeżenie osi przyszłości w miejscu")
+
+    def _do_kalendarza(self, e=None):
+        utils.wyslij_terminy_do_kalendarza(self._page, self.state, po_wyslaniu=self.odswiez_w_miejscu)
 
     # ================= STANY BEZ LISTY =================
 
@@ -130,9 +138,10 @@ class PrzyszloscView(ft.View):
             return [self._pusto(), utils.dol_bezpieczny(10)]
 
         elementy = [utils.karta_podsumowania_osi(self._page, os_dane)]
-        baner = self._baner_licznika()
-        if baner is not None:
-            elementy.append(baner)
+        for baner in (self._baner_licznika(),
+                      utils.baner_kalendarza(self._page, db.stan_kalendarza(self.state.auto_id), self._do_kalendarza)):
+            if baner is not None:
+                elementy.append(baner)
 
         zalegle = [p for p in pozycje if p["zalegla"]]
         if zalegle:
@@ -159,6 +168,7 @@ class PrzyszloscView(ft.View):
             ))
             elementy.extend(self._karty(bez_daty))
 
+        elementy.append(utils.karta_kalendarza(self._do_kalendarza))
         elementy.append(self._nota_o_liczeniu())
         elementy.append(utils.dol_bezpieczny(10))
         return elementy

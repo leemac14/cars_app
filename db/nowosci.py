@@ -28,6 +28,13 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.21", "pozycje": [
+        {"tytul": "Terminy w kalendarzu telefonu", "ikona": "EVENT_AVAILABLE", "ekran": "co-przede-mna",
+         "opis": "„Co przede mną” wyśle do kalendarza w telefonie polisy, przegląd, wymiany z datą, raty "
+                 "i wydatki cykliczne — każdy termin z przypomnieniem w progu z Ustawień i dzień wcześniej, więc "
+                 "kalendarz przypomni też przy zamkniętej aplikacji. Gdy terminy się zmienią, ekran podpowie, "
+                 "żeby wysłać plik jeszcze raz."},
+    ]},
     {"wersja": "2026.10.20.3", "pozycje": [
         {"tytul": "Magazyn bez rozjazdów między telefonami", "ikona": "INVENTORY_2", "ekran": "magazyn",
          "opis": "Stan części liczy się ze stanu wyjściowego minus zużycie ze wszystkich telefonów — dwie osoby, "

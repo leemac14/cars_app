@@ -467,23 +467,25 @@ def main(page: ft.Page):
             _schowaj_ladowanie()
 
     async def _zapisz_bajty_pliku(nazwa_pliku, dane_bytes):
-        """Uniwersalny zapis/udostępnienie gotowych bajtów pliku — współdzielony mechanizm
-        używany zarówno przy eksporcie kopii bazy, jak i nowym eksporcie danych CSV/PDF."""
+        """Uniwersalny zapis/udostępnienie gotowych bajtów pliku (eksport CSV/PDF, grafika
+        roku, kalendarz). True, gdy plik dotarł: wybrana aplikacja w „Udostępnij” albo zapis."""
         if page.platform in ["android", "ios"] and share_service is not None:
             try:
                 sciezka_tmp = os.path.join(tempfile.gettempdir(), nazwa_pliku)
                 with open(sciezka_tmp, "wb") as f:
                     f.write(dane_bytes)
-                await share_service.share_files([ft.ShareFile.from_path(sciezka_tmp)])
-                return
+                wynik = await share_service.share_files([ft.ShareFile.from_path(sciezka_tmp)])
+                return utils.czy_udostepniono(wynik)
             except Exception:
                 log.polkniety(f"udostępnianie pliku {nazwa_pliku} przez system")
 
         try:
             if await file_picker.save_file(file_name=nazwa_pliku, src_bytes=dane_bytes):
                 utils.pokaz_komunikat(page, "Wyeksportowano pomyślnie!", utils.KOLOR_STATUS["ok"])
+                return True
         except Exception as ex:
             utils.pokaz_komunikat(page, f"Błąd otwierania menedżera: {ex}", utils.KOLOR_STATUS["error"])
+        return False
 
     # Widoki generujące własne pliki (np. grafika „Rok w pigułce”) korzystają
     # z TEGO SAMEGO mechanizmu zapisu, co eksport danych — łącznie z udostępnianiem
