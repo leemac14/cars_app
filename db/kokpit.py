@@ -41,6 +41,7 @@ from .rejestry import pobierz_wydatki_cykliczne
 from .nawigacja import pobierz_ostatnia_aktywnosc
 from .odliczania import odliczania_pojazdu
 from .os_przyszlosci import OKNO_KAFELKA_PRZYSZLOSCI, os_przyszlosci
+from .flota import kafel_floty
 
 
 def _koszt_poprzedniego_miesiaca(auto_id):
@@ -130,6 +131,8 @@ METRYKI_KOKPITU = {
     "zdrowie_danych": lambda auto_id: podsumowanie_zdrowia_danych(auto_id),
     # Tagi bieżącego miesiąca (db/tagi.py); None = auto bez otagowanych wpisów.
     "tagi_miesiaca": lambda auto_id: tagi_miesiaca(auto_id),
+    # Flota (db/flota.py): wydatki miesiąca wszystkich aut i pilne terminy pozostałych.
+    "flota": lambda auto_id: kafel_floty(auto_id),
     "do_zrobienia": lambda auto_id: podsumowanie_do_zrobienia(auto_id),
     "magazyn": lambda auto_id: pobierz_stan_magazynu(auto_id),
     # Rola przy pojeździe: kafelki akcji znikają przy „podglądzie”.
@@ -168,6 +171,7 @@ METRYKI_KAFELKOW = {
     "zuzycie_oleju": ("zuzycie_oleju",),
     "zdrowie_danych": ("zdrowie_danych",),
     "tagi": ("tagi_miesiaca",),
+    "flota": ("flota",),
     "akcja_tankowanie": ("tylko_podglad",),
     "akcja_paragon": ("tylko_podglad",),
     "akcja_licznik": ("tylko_podglad",),

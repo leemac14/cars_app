@@ -51,6 +51,7 @@ from .nawigacja import *
 from .odliczania import *
 from .os_przyszlosci import *
 from .kalendarz import *
+from .flota import *
 from .kokpit import *
 from .wyszukiwanie import *
 from .os_czasu import *
@@ -107,6 +108,7 @@ from . import (
     odliczania,
     os_przyszlosci,
     kalendarz,
+    flota,
     kokpit,
     wyszukiwanie,
     os_czasu,

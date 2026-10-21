@@ -28,6 +28,12 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.22.2", "pozycje": [
+        {"tytul": "Flota — wszystkie auta naraz", "ikona": "EMOJI_TRANSPORTATION", "ekran": "flota",
+         "opis": "Ile w tym miesiącu i roku kosztują wszystkie auta razem i każde z osobna — z porównaniem do "
+                 "zeszłego roku i najdroższym autem — terminy wszystkich aut na jednej liście i kondycja każdego. "
+                 "Wejście z „Wybierz pojazd” albo z szuflady, a kafelek „Flota” postawisz na kokpicie."},
+    ]},
     {"wersja": "2026.10.22", "pozycje": [
         {"tytul": "Szablony wpisów w menu „+”", "ikona": "BOOKMARKS", "ekran": "kokpit",
          "opis": "Myjnia, autostrada albo stała stacja jednym dotknięciem: zapisz koszt lub tankowanie jako szablon "

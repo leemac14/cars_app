@@ -229,11 +229,12 @@ def wskaznik_kondycji(wynik):
     return KOLOR_STATUS["critical"], ft.Icons.HEART_BROKEN, "Wymaga pilnej reakcji"
 
 
-def pokaz_panel_kondycji(page: ft.Page, state):
+def pokaz_panel_kondycji(page: ft.Page, state, auto_id=None, nazwa=None):
     """Rozpiska tego, co obniża kondycję pojazdu. Sam wynik 0-100 nie mówi, CO
     poprawić — tu każdy minus ma powód, liczbę punktów i prowadzi tam, gdzie da
-    się z nim coś zrobić."""
-    rozbicie = db.pobierz_rozbicie_kondycji(state.auto_id)
+    się z nim coś zrobić. `auto_id` innego auta (ekran floty): odnośnik najpierw je wybiera."""
+    auto_id = auto_id or state.auto_id
+    rozbicie = db.pobierz_rozbicie_kondycji(auto_id)
     wynik = rozbicie["wynik"]
     powody = rozbicie["powody"]
     kolor, ikona, etykieta = wskaznik_kondycji(wynik)
@@ -243,13 +244,16 @@ def pokaz_panel_kondycji(page: ft.Page, state):
     def idz_do(trasa):
         def handler(e):
             zamknij_dno(page, bs)
+            if auto_id != state.auto_id:
+                state.auto_id, state.auto_nazwa = auto_id, str(nazwa or state.auto_nazwa)
             przejdz(page, trasa)
         return handler
 
     naglowek = ft.Row([
         ft.Icon(ikona, size=26, color=kolor),
         ft.Column([
-            ft.Text("Kondycja pojazdu", weight="bold", size=18, color=ft.Colors.PRIMARY),
+            ft.Text(f"Kondycja: {nazwa}" if nazwa else "Kondycja pojazdu", weight="bold", size=18,
+                    color=ft.Colors.PRIMARY, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
             ft.Text(f"{wynik if wynik is not None else '-'}/100 · {etykieta}",
                     size=FS["label"], weight="bold", color=kolor),
         ], spacing=0, tight=True, expand=True),
@@ -349,7 +353,7 @@ def pokaz_panel_kondycji(page: ft.Page, state):
         ))
 
     # Zdrowie danych (N-08): nieścisłości licznika i braki w danych razem z poprawkami.
-    zdrowie = db.podsumowanie_zdrowia_danych(state.auto_id)
+    zdrowie = db.podsumowanie_zdrowia_danych(auto_id)
     zawartosc.append(ft.Container(
         padding=ft.Padding(12, 10, 12, 10), **powierzchnia(page, "blok"),
         ink=True, on_click=idz_do("/zdrowie-danych"),

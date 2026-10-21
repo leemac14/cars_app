@@ -201,6 +201,7 @@ IKONY_KOKPITU = {
     "akcja_dolewka": ft.Icons.WATER_DROP,
     "zdrowie_danych": ft.Icons.HEALTH_AND_SAFETY,
     "tagi": ft.Icons.SELL,
+    "flota": ft.Icons.EMOJI_TRANSPORTATION,
 }
 
 

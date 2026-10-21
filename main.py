@@ -38,6 +38,7 @@ from views.pojazd_view import PojazdView
 from views.odliczania_view import OdliczaniaView
 from views.przyszlosc_view import PrzyszloscView
 from views.zdrowie_danych_view import ZdrowieDanychView
+from views.flota_view import FlotaView
 from views.warsztaty_view import WarsztatyView
 from views.do_wpisania_view import DoWpisaniaView
 from views.migawka_view import MigawkaView
@@ -725,6 +726,8 @@ def main(page: ft.Page):
             page.views.append(PrzyszloscView(page, app_state))
         elif segmenty[0] == "zdrowie-danych":
             page.views.append(ZdrowieDanychView(page, app_state))
+        elif segmenty[0] == "flota":
+            page.views.append(FlotaView(page, app_state))
         elif segmenty[0] == "do-wpisania":
             page.views.append(DoWpisaniaView(page, app_state))
         elif segmenty[0] == "paragon":

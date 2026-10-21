@@ -7,9 +7,10 @@ co musi wyglądać tak samo w kilku testach naraz.
 import hashlib
 import os
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 
 import db
+from date import na_iso
 
 
 # Tabele pomijane przy porównywaniu zawartości bazy „przed” i „po”.
@@ -141,6 +142,20 @@ def jpeg(kiedy=None, kolor=(200, 180, 160)):
     bufor = io.BytesIO()
     obraz.save(bufor, "JPEG", exif=exif)
     return bufor.getvalue()
+
+
+def dzien(dni, od=None):
+    """DD.MM.RRRR sprzed `dni` dni od dziś albo od `od` (ujemne — w przyszłości)."""
+    return ((od or date.today()) - timedelta(days=dni)).strftime("%d.%m.%Y")
+
+
+def wstaw(tabela, /, **pola):
+    """Wiersz wprost SQL-em (tabela z datą dostaje `data_iso`); zwraca id."""
+    if "data" in pola and tabela in db.TABELE_Z_DATA_ISO:
+        pola["data_iso"] = na_iso(pola["data"])
+    with db.polacz_baze() as conn:
+        return conn.execute(f"INSERT INTO {tabela} ({', '.join(pola)}) VALUES ({', '.join('?' * len(pola))})",
+                            list(pola.values())).lastrowid
 
 
 def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_wzgledne=True):

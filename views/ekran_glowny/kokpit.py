@@ -1233,6 +1233,39 @@ class MiksinKokpitu:
                 ] + wiersze, spacing=4),
             )
 
+        def widget_flota():
+            """Flota (N-07): wydatki wszystkich aut w tym miesiącu i pilne terminy POZOSTAŁYCH aut
+            (swoje ma dzwonek); podnosi się tylko od nich. Przy jednym aucie — nie dotyczy."""
+            stan = metryka("flota")
+            ikona = utils.IKONY_KOKPITU["flota"]
+
+            def do_floty(e):
+                utils.przejdz(self._page, "/flota")
+
+            if stan is None:
+                return kafel_pusty(ikona, ft.Colors.BLUE_GREY_700, "Flota", "Jedno auto w garażu", do_floty)
+            pilne, zalegle = stan["pilne_innych"], stan["zalegle_innych"]
+            kolor = utils.KOLOR_STATUS["critical" if zalegle else "warning"] if pilne else None
+            return ft.Container(
+                width=SZER_KAFLA + 40, padding=15,
+                **utils.powierzchnia(self._page, "kafel", stan=utils.stan_z_koloru(kolor)),
+                ink=True, on_click=do_floty,
+                tooltip="Wszystkie auta naraz: wydatki, terminy i kondycja",
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ikona, size=15, color=kolor or ft.Colors.PRIMARY),
+                        utils.etykieta(f"Flota · {db.liczba_z_odmiana(stan['liczba_aut'], 'auto', 'auta', 'aut')}",
+                                       expand=True),
+                    ], spacing=6),
+                    liczba_kafelka(stan["miesiac"], lambda v: f"{utils.formatuj_liczba(v)} {waluta}"),
+                    utils.podpis("w tym miesiącu", size=utils.FS["caption"]),
+                    ft.Text(f"Pozostałe auta: {utils.opis_pilnych(pilne, zalegle)}" if pilne
+                            else "Pozostałe auta bez pilnych terminów",
+                            size=utils.FS["caption"], color=kolor or ft.Colors.ON_SURFACE_VARIANT,
+                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                ], spacing=4),
+            )
+
         # ================= KAFELKI AKCJI =================
         # Kokpit odpowiadał dotąd wyłącznie na pytanie „co się dzieje”. Dwie
         # najczęstsze czynności w aplikacji — tankowanie i stan licznika —
@@ -1338,6 +1371,7 @@ class MiksinKokpitu:
             "zuzycie_oleju": widget_zuzycie_oleju,
             "zdrowie_danych": widget_zdrowie_danych,
             "tagi": widget_tagi,
+            "flota": widget_flota,
             "do_zrobienia": widget_do_zrobienia,
             "magazyn": widget_magazyn,
             "akcja_tankowanie": widget_akcja_tankowanie,

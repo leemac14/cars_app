@@ -16,7 +16,7 @@ from .format import (
 )
 from .typografia import etykieta, podpis
 from .wyglad import powierzchnia, tlo_karty, tlo_toru
-from .pojazd import IKONY_ODLICZAN, KOLORY_STATUSU_ODLICZANIA
+from .pojazd import IKONY_ODLICZAN, KOLORY_STATUSU_ODLICZANIA, odznaka_pojazdu
 
 
 # Klucze ikon z db.os_przyszlosci: to, co znają odliczania, plus wpisy
@@ -248,10 +248,15 @@ def blok_dnia_osi(dzien, kolor, z_miesiacem=False, pusty=False):
     ], spacing=0, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER))
 
 
-def wiersz_osi(pozycja, j=None, pokaz_dzien=True, z_miesiacem=False):
+def wiersz_osi(pozycja, j=None, pokaz_dzien=True, z_miesiacem=False, pojazd=None):
     """Wiersz osi: kolumna dnia, a obok ikona, nazwa i kwota, pod nimi zdanie
-    „kiedy i co” i ewentualny dopisek."""
+    „kiedy i co” i ewentualny dopisek. `pojazd` (oś floty) — nad nazwą odznaka i nazwa auta."""
     kolor = kolor_pozycji_osi(pozycja)
+    auto = [] if not pojazd else [ft.Row([
+        odznaka_pojazdu(pojazd, rozmiar=18),
+        podpis(str(pojazd.get("nazwa") or ""), size=FS["caption"], max_lines=1,
+               overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+    ], spacing=6)]
     gora = [
         ft.Icon(ikona_z_mapy(IKONY_OSI, pozycja.get("ikona"), ft.Icons.EVENT), size=16, color=kolor),
         ft.Text(tytul_pozycji_osi(pozycja, j), size=FS["body_strong"], weight="bold", expand=True,
@@ -260,7 +265,7 @@ def wiersz_osi(pozycja, j=None, pokaz_dzien=True, z_miesiacem=False):
     kwota = kwota_osi(pozycja)
     if kwota:
         gora.append(ft.Text(kwota, size=FS["body_strong"], weight="bold", no_wrap=True))
-    linie = [ft.Row(gora, spacing=6)]
+    linie = auto + [ft.Row(gora, spacing=6)]
     opis = opis_pozycji_osi(pozycja, j)
     if opis:
         mowi_kolorem = pozycja.get("status") in STATUSY_Z_KOLOREM

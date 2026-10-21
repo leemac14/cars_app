@@ -221,6 +221,15 @@ class MiksinNaglowkaAuta:
                 wrap=True, spacing=10, run_spacing=10,
             )
 
+            def do_floty(e):
+                utils.zamknij_dno(self._page, bs)
+                utils.przejdz(self._page, "/flota")
+
+            # Przy dwóch i więcej autach zamiast licznika — wejście na ekran floty (N-07).
+            prawa = ft.TextButton("Cała flota", icon=utils.IKONA_FLOTY, on_click=do_floty) if len(auta_siatki) >= 2 \
+                else ft.Text(f"{len(auta_siatki)} w garażu", size=utils.FS["caption"],
+                             color=ft.Colors.ON_SURFACE_VARIANT)
+
             bs.content = ft.Container(
                 padding=20,
                 bgcolor=ft.Colors.SURFACE,
@@ -228,10 +237,7 @@ class MiksinNaglowkaAuta:
                     ft.Row([
                         ft.Icon(ft.Icons.GARAGE, color=ft.Colors.PRIMARY, size=22),
                         ft.Text("Wybierz pojazd", weight="bold", size=18, color=ft.Colors.PRIMARY, expand=True),
-                        ft.Text(
-                            f"{len(auta_siatki)} w garażu",
-                            size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
-                        ),
+                        prawa,
                     ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
                     ft.Divider(height=1),
                     siatka,

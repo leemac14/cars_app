@@ -189,6 +189,11 @@ def pobierz_przypiete_ekrany() -> list[str]:
         return list(DOMYSLNE_PRZYPIETE)
 
 
+# Odznaki z modułów ładowanych PÓŹNIEJ (oś przyszłości stoi dalej w kolejności importu):
+# ekran_id -> funkcja(auto_id) -> liczba; moduł dopisuje się sam przy imporcie (db/flota.py).
+LICZNIKI_DALSZYCH_MODULOW = {}
+
+
 def liczniki_nawigacji(auto_id):
     """Odznaki nawigacji POLICZONE RAZ, jednym wejściem do bazy (szuflada, kafelki i
     zakładki pokazują te same liczby); pamięć (db/pamiec.py) do najbliższego zapisu.
@@ -264,6 +269,15 @@ def _policz_liczniki_nawigacji(auto_id):
         n = 0
     if n:
         wynik["dolewki"] = n
+
+    for ekran_id, licz in LICZNIKI_DALSZYCH_MODULOW.items():
+        try:
+            n = licz(auto_id)
+        except Exception:
+            log.polkniety(f"odznaka „{ekran_id}” w szufladzie")
+            n = 0
+        if n:
+            wynik[ekran_id] = n
 
     return wynik
 
@@ -370,6 +384,7 @@ def zainicjuj_domyslne_auto(state):
 __all__ = [
     "DOMYSLNE_PRZYPIETE",
     "LICZBA_ZAKLADEK_GLOWNYCH",
+    "LICZNIKI_DALSZYCH_MODULOW",
     "MAKS_PRZYPIETYCH",
     "_sparsuj_datetime",
     "liczniki_nawigacji",

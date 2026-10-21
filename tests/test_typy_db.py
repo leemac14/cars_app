@@ -45,6 +45,7 @@ def _widziane_do(wersja):
 # swoje wywołanie, inaczej dopisywałoby się adnotacje, których nikt nie sprawdza.
 # `k` to kontekst: k["id"] — identyfikatory z utworz_pojazd(), k["tmp"] — katalog.
 WYWOLANIA = {
+    "auta_floty": lambda k: (),
     "brakujace_podzespoly": lambda k: (k["id"]["auto_id"], "LPG"),
     "dokumenty_pojazdu": lambda k: (k["id"]["auto_id"],),
     "domyslne_zadania": lambda k: ("LPG",),

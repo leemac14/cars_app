@@ -45,6 +45,7 @@ from .zaproszenia import *
 from .powiadomienia import *
 from .przyszlosc import *
 from .kalendarz import *
+from .flota import *
 from .wykresy_analizy import *
 from .nawigacja import *
 from .zaznaczanie import *
@@ -90,6 +91,7 @@ from . import (
     powiadomienia,
     przyszlosc,
     kalendarz,
+    flota,
     wykresy_analizy,
     nawigacja,
     zaznaczanie,

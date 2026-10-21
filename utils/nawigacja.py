@@ -5,7 +5,7 @@ import flet as ft
 import inspect
 import re
 
-from .stale import FS, KOLOR_STATUS, RADIUS
+from .stale import FS, IKONY_KOKPITU, KOLOR_STATUS, RADIUS
 from .format import bez_ogonkow
 from .wyglad import dol_bezpieczny, pasek_przewijany, pasek_zawijany, tlo_karty
 from .haptyka import z_wibracja
@@ -179,6 +179,12 @@ EKRANY = [
      "ikona": ft.Icons.COMPARE_ARROWS, "grupa": "analiza", "trasa": "/porownanie",
      "slowa": ["porównanie", "które auto", "zestawienie", "werdykt", "radar"]},
 
+    # Flota (N-07): wszystkie auta naraz. Opis i słowa bez „oc”, „olej”, „koszt”, „opon”,
+    # „budż” i „rozrz” (tests/test_wyszukiwarka_ekranow.py).
+    {"id": "flota", "tytul": "Flota", "opis": "Wszystkie auta naraz: wydatki, terminy i kondycja",
+     "ikona": IKONY_KOKPITU["flota"], "grupa": "garaz", "trasa": "/flota",
+     "slowa": ["wszystkie auta", "cały garaż", "kilka aut", "dwa auta", "rodzina", "suma", "razem",
+               "terminy wszystkich", "najdroższe auto", "ile wydaję", "ile wydajemy"]},
     {"id": "auto-nowy", "tytul": "Dodaj pojazd", "opis": "Nowe auto w garażu",
      "ikona": ft.Icons.ADD_CIRCLE_OUTLINE, "grupa": "garaz", "trasa": "/auto/nowy",
      "kolor": ft.Colors.GREEN_700, "wymaga_pojazdu": False,

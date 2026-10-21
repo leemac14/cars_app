@@ -391,6 +391,7 @@ KOKPIT_WIDGETY = {
     "zuzycie_oleju": "Zużycie oleju",
     "zdrowie_danych": "Zdrowie danych",
     "tagi": "Tagi w tym miesiącu",
+    "flota": "Flota: wszystkie auta",
     # Kafelki AKCJI: zamiast liczby mają czynność. Te same wpisy, co pod FAB-em
     # w rogu ekranu, plus stan licznika, którego FAB nie ma. Kokpit odpowiadał
     # dotąd wyłącznie na pytanie „co się dzieje”, nigdy „zrób”.
