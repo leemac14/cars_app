@@ -64,9 +64,9 @@ def chip_plynu(plyn, aktywny, on_click, liczba=None):
     )
 
 
-def pasek_plynow(plyny, aktualny, wybierz, liczby=None):
+def pasek_plynow(plyny, aktualny, wybierz, liczby=None, page=None):
     return pasek_przewijany([chip_plynu(p, p == aktualny, lambda e, p=p: wybierz(p), (liczby or {}).get(p))
-                             for p in plyny], spacing=8)
+                             for p in plyny], spacing=8, page=page)
 
 
 def zdanie_okresu(okres, j=None) -> str:

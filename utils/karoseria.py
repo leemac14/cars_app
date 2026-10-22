@@ -329,7 +329,7 @@ def pasek_par_przed_po(page, pary, on_para):
             wartosc("Przed i po naprawie", expand=True),
             podpis(db.liczba_z_odmiana(len(pary), "naprawa", "naprawy", "napraw")),
         ], spacing=SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        pasek_przewijany([_kafel_pary(page, p, on_para) for p in pary], spacing=SPACING["sm"]),
+        pasek_przewijany([_kafel_pary(page, p, on_para) for p in pary], spacing=SPACING["sm"], page=page),
     ], spacing=SPACING["sm"])
 
 

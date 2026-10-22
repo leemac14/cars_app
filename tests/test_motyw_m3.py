@@ -149,3 +149,22 @@ def test_menu_fab_to_pigulki_a_glowny_zmienia_sie_w_zamknij(baza, monkeypatch):
 
     asyncio.run(pigulki.controls[1].on_click(None))
     assert klikniete == ["koszt"] and not pigulki.visible and fab.shape is None
+
+
+class _Urzadzenie:
+    def __init__(self, platforma):
+        self.platform = platforma
+
+
+def test_pasek_przewijany_bez_suwaka_na_telefonie():
+    """Na telefonie przewija palec — stały szary suwak pod kartami sekcji był szumem;
+    na komputerze suwak zostaje (myszą bez niego nie da się przewinąć)."""
+    def pasek(platforma):
+        karty = [ft.Container(width=190, height=80) for _ in range(3)]
+        return utils.pasek_przewijany(karty, page=_Urzadzenie(platforma))
+
+    telefon, komputer = pasek(ft.PagePlatform.ANDROID), pasek(ft.PagePlatform.WINDOWS)
+
+    assert telefon.scroll == ft.ScrollMode.HIDDEN and telefon.controls[0].padding.bottom == 0
+    assert komputer.scroll == ft.ScrollMode.ALWAYS
+    assert komputer.controls[0].padding.bottom == utils.MIEJSCE_NA_SUWAK

@@ -259,8 +259,11 @@ def _drabinka_powierzchni(page):
     mapa = {}
     for poziom in (1, 2, 3):
         mapa[str(utils.tlo_karty(page, poziom=poziom))] = f"poziom {poziom}"
+    # Karta i kafel w jasnym motywie: nieprzezroczyste odpowiedniki tych samych szczebli.
+    mapa[str(utils.powierzchnia(page, "karta")["bgcolor"])] = f"poziom {utils.poziom_karty(page)}"
     for stan in utils.STANY_PODNOSZACE:
         mapa[str(utils.tlo_stanu(page, stan))] = f"stan {stan}"
+        mapa[str(utils.powierzchnia(page, "karta", stan=stan)["bgcolor"])] = f"stan {stan}"
     return mapa
 
 
@@ -277,7 +280,7 @@ def znajdz_plaskie_powierzchnie(korzen, page=None):
             ma_ramke = bool(getattr(kontrolka, "border", None))
             sciezka = _sciezka(przodkowie, kontrolka)
 
-            if rodzic_tlo is not None and tlo == rodzic_tlo:
+            if rodzic_tlo is not None and opis_tla == rodzic_tlo:
                 znaleziska.append({
                     "powod": f"powierzchnia w powierzchni na tym samym szczeblu ({opis_tla})",
                     "sciezka": sciezka,
@@ -289,7 +292,7 @@ def znajdz_plaskie_powierzchnie(korzen, page=None):
                     "powod": "cień i ramka naraz — dwa sposoby na to samo",
                     "sciezka": sciezka,
                 })
-            rodzic_tlo, rodzic_cien = tlo, rodzic_cien or ma_cien
+            rodzic_tlo, rodzic_cien = opis_tla, rodzic_cien or ma_cien
 
         for _, dziecko in _dzieci(kontrolka):
             zejdz(dziecko, przodkowie + [kontrolka], rodzic_tlo, rodzic_cien)
@@ -330,6 +333,65 @@ def znajdz_expand_w_kontenerze(korzen):
                              "— `Expanded` działa tylko w Row/Column, więc dziecko dostaje nieskończoność",
                     "sciezka": _sciezka(przodkowie + [kontrolka], dziecko),
                 })
+        for _, dziecko in _dzieci(kontrolka):
+            zejdz(dziecko, przodkowie + [kontrolka])
+
+    zejdz(korzen, [])
+    return znaleziska
+
+
+# ============================================================================
+#  AUDYT 2d — cień pod półprzezroczystym tłem (drzewo kontrolek)
+# ============================================================================
+# Flutter rysuje cień POD całym prostokątem, nie tylko wokół niego, a tło z
+# przezroczystością (`with_opacity`) go przepuszcza: karty formularzy w jasnym
+# motywie wyglądały jak zamglona szarość. Kontener z cieniem ma tło nieprzezroczyste —
+# własne albo (karta listy: cień na opakowaniu) w kontenerach leżących zaraz pod nim.
+
+
+def _przepuszcza_cien(kolor):
+    """Czy tło przepuszcza cień: `kolor,krycie` z with_opacity, przezroczyste, #AARRGGBB < FF."""
+    tekst = str(getattr(kolor, "value", kolor) or "").strip().lower()
+    if tekst == "transparent":
+        return True
+    if "," in tekst:
+        try:
+            return float(tekst.rsplit(",", 1)[1]) < 1
+        except ValueError:
+            return True
+    return tekst.startswith("#") and len(tekst) == 9 and tekst[1:3] != "ff"
+
+
+def _tla_pod_cieniem(kontener, glebokosc=3):
+    """Tła, przez które widać cień: własne, a bez niego — pierwsze tła kontenerów
+    pod nim (przez `content` oraz wiersze i kolumny)."""
+    if kontener.bgcolor:
+        return [kontener.bgcolor]
+    tla, kolejka = [], [(kontener.content, glebokosc)]
+    while kolejka:
+        kontrolka, zostalo = kolejka.pop()
+        if kontrolka is None or zostalo == 0:
+            continue
+        if isinstance(kontrolka, ft.Container):
+            if kontrolka.bgcolor:
+                tla.append(kontrolka.bgcolor)
+            else:
+                kolejka.append((kontrolka.content, zostalo - 1))
+        elif isinstance(kontrolka, (ft.Row, ft.Column)):
+            kolejka.extend((dziecko, zostalo - 1) for dziecko in kontrolka.controls)
+    return tla
+
+
+def znajdz_cien_pod_przezroczystym_tlem(korzen):
+    """Kontenery z cieniem, przez których tło ten cień prześwituje."""
+    znaleziska = []
+
+    def zejdz(kontrolka, przodkowie):
+        if isinstance(kontrolka, ft.Container) and getattr(kontrolka, "shadow", None):
+            przepuszczajace = [t for t in _tla_pod_cieniem(kontrolka) if _przepuszcza_cien(t)]
+            if przepuszczajace:
+                znaleziska.append({"powod": f"cień pod tłem {przepuszczajace[0]}",
+                                   "sciezka": _sciezka(przodkowie, kontrolka)})
         for _, dziecko in _dzieci(kontrolka):
             zejdz(dziecko, przodkowie + [kontrolka])
 

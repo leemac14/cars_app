@@ -159,6 +159,10 @@ KOLOR_STATUS = {
     "accent": ft.Colors.AMBER_700,            # wyróżnienie: rekord, trofeum, „najlepszy”
 }
 
+# Wartości barw podnoszących powierzchnię — do NIEPRZEZROCZYSTEGO tła karty z cieniem
+# (`utils.tlo_stanu_nieprzezroczyste`); Flet zna te kolory tylko z nazwy.
+HEX_KOLOROW_STANU = {ft.Colors.RED_700: "#D32F2F", ft.Colors.ORANGE_700: "#F57C00"}
+
 
 # ============== JEDNA RODZINA IKON (Material) ==============
 # Bez emoji — wyłącznie ft.Icons. db nie zna Fleta, więc zwraca KLUCZE, a mapy niżej
@@ -427,6 +431,7 @@ IKONY_NADWOZIA = {
 __all__ = [
     "FS",
     "HEX_KOLOROW",
+    "HEX_KOLOROW_STANU",
     "IKONY_AKTYWNOSCI",
     "IKONY_EKSPORTU",
     "KOLORY_RODZAJU_PRZEJAZDU",

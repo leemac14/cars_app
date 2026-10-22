@@ -1578,9 +1578,9 @@ def heatmapa_aktywnosci(page: ft.Page, daty_zdarzen, tygodnie=53, opis_okresu="o
         kolumny_tygodni.append(ft.Column(komorki, spacing=3))
 
     # Najnowszy tydzień po lewej (widoczny bez przewijania); rok kwadracików musi jechać
-    # w bok — z widocznym suwakiem na własnym marginesie.
+    # w bok — na komputerze z widocznym suwakiem na własnym marginesie.
     siatka = pasek_przewijany(list(reversed(kolumny_tygodni)), spacing=3,
-                              wyrownanie=ft.CrossAxisAlignment.START)
+                              wyrownanie=ft.CrossAxisAlignment.START, page=page)
 
     def kw_legendy(poziom, kolor_bazowy=None):
         return ft.Container(width=WYM, height=WYM, border_radius=3, bgcolor=ft.Colors.with_opacity(poziom, kolor_bazowy or ft.Colors.PRIMARY))

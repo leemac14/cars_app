@@ -28,6 +28,17 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.23", "pozycje": [
+        {"tytul": "Czystsze karty", "ikona": "AUTO_AWESOME", "ekran": "pojazd",
+         "opis": "W jasnym motywie karty i formularze są jasne i wyraźne — zniknęła szara mgiełka, która "
+                 "prześwitywała przez nie spod cienia. Pola formularzy lepiej odcinają się od karty."},
+        {"tytul": "Karty sekcji bez paska", "ikona": "SWIPE", "ekran": "serwis",
+         "opis": "Na telefonie pod kartami sekcji w Serwisie i Analizie, mapą aktywności i parami zdjęć "
+                 "„przed i po” nie ma już szarego paska przewijania — przesuwasz je palcem."},
+        {"tytul": "Zwarte szybkie akcje", "ikona": "TOUCH_APP", "ekran": "kokpit",
+         "opis": "Kafelki tankowania, stanu licznika i pozostałych akcji na Kokpicie są niższe: ikona "
+                 "w kółku i nazwa, bez powtarzanego napisu nad każdym kafelkiem."},
+    ]},
     {"wersja": "2026.10.22.3", "pozycje": [
         {"tytul": "Pliki z telefonu przez „Udostępnij”", "ikona": "IOS_SHARE", "ekran": "co-przede-mna",
          "opis": "Terminy do kalendarza, raporty, eksport i kopia zapasowa otwierają na telefonie systemowe "

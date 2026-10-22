@@ -1272,27 +1272,25 @@ class MiksinKokpitu:
         # siedziały pod FAB-em w rogu, czyli o dwa dotknięcia dalej niż ekran,
         # na którym i tak się jest.
         def kafel_akcji(ikona, tytul, on_click, podpowiedz=None):
-            """Kafelek-przycisk: zamiast liczby ma czynność. Rola „podgląd” nie
-            dostaje go wcale (None) — przycisk, który zawsze odmawia, jest gorszy
-            od jego braku (ta sama zasada, co przy chowaniu akcji w menu wpisu)."""
+            """Kafelek-przycisk: zamiast liczby ma czynność — ikona w tonowanym kółku i nazwa
+            w jednym wierszu (napis „Szybka akcja” nad każdym był szumem). Rola „podgląd” nie
+            dostaje go wcale (None) — przycisk, który zawsze odmawia, jest gorszy od jego braku."""
             if metryka("tylko_podglad"):
                 return None
             return ft.Container(
-                width=SZER_KAFLA, padding=15,
+                width=SZER_KAFLA, padding=ft.Padding(12, 10, 10, 10),
                 **utils.powierzchnia(self._page, "kafel"),
                 ink=True, on_click=on_click,
                 tooltip=podpowiedz or tytul,
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.Icons.ADD_CIRCLE_OUTLINE, size=15, color=ft.Colors.PRIMARY),
-                        utils.etykieta("Szybka akcja", expand=True),
-                    ], spacing=6),
-                    ft.Row([
-                        ft.Icon(ikona, size=17, color=ft.Colors.PRIMARY),
-                        ft.Text(tytul, size=utils.FS["title"], weight="bold", max_lines=2,
-                                overflow=ft.TextOverflow.ELLIPSIS, expand=True),
-                    ], spacing=6),
-                ], spacing=4),
+                content=ft.Row([
+                    ft.Container(
+                        width=32, height=32, border_radius=16, alignment=ft.Alignment.CENTER,
+                        bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                        content=ft.Icon(ikona, size=18, color=ft.Colors.ON_PRIMARY_CONTAINER),
+                    ),
+                    ft.Text(tytul, size=utils.FS["title"], weight="bold", max_lines=2,
+                            overflow=ft.TextOverflow.ELLIPSIS, expand=True),
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
             )
 
         def widget_akcja_tankowanie():

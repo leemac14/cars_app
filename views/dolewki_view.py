@@ -36,7 +36,7 @@ class DolewkiView(ft.View):
         state.dolewki_plyn = self.plyn
 
         elementy = [utils.pasek_plynow(plyny, self.plyn, self._zmien_plyn,
-                                       {p: z["liczba"] for p, z in self.zuzycie.items()})]
+                                       {p: z["liczba"] for p, z in self.zuzycie.items()}, page=self._page)]
         z = self.zuzycie.get(self.plyn)
         if not z:
             elementy.append(self._pusto())

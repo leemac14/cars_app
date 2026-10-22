@@ -137,7 +137,9 @@ def test_stan_barwi_powierzchnie(rola, stan):
     co się dzieje — a nie szarością OBOK barwy."""
     plaszczyzna = utils.powierzchnia(JASNY, rola, stan=stan)
 
-    assert plaszczyzna["bgcolor"] == utils.tlo_stanu(JASNY, stan)
+    # Karta ma cień, więc jej barwa stanu jest nieprzezroczysta (audyt 2d).
+    oczekiwane = utils.tlo_stanu_nieprzezroczyste(stan) if rola == "karta" else utils.tlo_stanu(JASNY, stan)
+    assert plaszczyzna["bgcolor"] == oczekiwane
     assert plaszczyzna["bgcolor"] != utils.powierzchnia(JASNY, rola)["bgcolor"]
 
 
@@ -145,7 +147,29 @@ def test_stan_barwi_powierzchnie(rola, stan):
 def test_stan_bez_powodu_do_dzialania_nie_podnosi(stan):
     """„Na czas” barwione na zielono krzyczało tak samo głośno jak termin po
     terminie. Brak powodu do działania nie jest powodem do wyróżnienia."""
-    assert utils.powierzchnia(JASNY, "kafel", stan=stan)["bgcolor"] == utils.tlo_karty(JASNY, poziom=1)
+    assert utils.powierzchnia(JASNY, "kafel", stan=stan)["bgcolor"] == utils.powierzchnia(JASNY, "kafel")["bgcolor"]
+
+
+@pytest.mark.parametrize("stan", [None] + sorted(utils.STANY_PODNOSZACE))
+def test_karta_w_jasnym_nie_przepuszcza_cienia(stan):
+    """Cień leży pod całą kartą — przez półprzezroczyste tło widać go jako szarą mgłę."""
+    plaszczyzna = utils.powierzchnia(JASNY, "karta", stan=stan)
+
+    assert plaszczyzna["shadow"]
+    assert not audyty._przepuszcza_cien(plaszczyzna["bgcolor"]), plaszczyzna["bgcolor"]
+
+
+@pytest.mark.parametrize("stan", sorted(utils.STANY_PODNOSZACE))
+def test_barwa_stanu_ma_wartosc_do_zmieszania(stan):
+    """Nowy kolor stanu podnoszącego bez wpisu w HEX_KOLOROW_STANU dałby kartę bez barwy."""
+    assert utils.KOLOR_STATUS[stan] in utils.HEX_KOLOROW_STANU
+    tlo = utils.tlo_stanu_nieprzezroczyste(stan)
+    assert tlo.startswith("#") and len(tlo) == 7 and tlo != "#FFFFFF"
+
+
+def test_karta_bez_strony_zostaje_przy_barwie_przezroczystej():
+    """Bez strony motyw jest nieznany — jasna barwa nieprzezroczysta raziłaby w ciemnym."""
+    assert utils.powierzchnia(None, "karta", stan="warning")["bgcolor"] == utils.tlo_stanu(None, "warning")
 
 
 @pytest.mark.parametrize("stan", sorted(utils.STANY_PODNOSZACE))
@@ -227,6 +251,28 @@ def test_audyt_podaje_sciezke():
     assert "Container" in audyty.znajdz_plaskie_powierzchnie(drzewo, JASNY)[0]["sciezka"]
 
 
+def test_audyt_cienia_lapie_przezroczyste_tlo_karty():
+    drzewo = _powierzchnia(JASNY, "karta", bgcolor=utils.tlo_karty(JASNY, poziom=1))
+
+    assert len(audyty.znajdz_cien_pod_przezroczystym_tlem(drzewo)) == 1
+
+
+def test_audyt_cienia_zaglada_pod_opakowanie_z_cieniem():
+    """Karta listy: cień na opakowaniu bez tła, tło w kontenerze pod nim."""
+    wnetrze = ft.Container(bgcolor=utils.tlo_stanu(JASNY, "warning"), content=ft.Text("wpis"))
+    drzewo = ft.Container(shadow=utils.cien_karty(JASNY, "sm"), content=ft.Row([wnetrze]))
+
+    assert len(audyty.znajdz_cien_pod_przezroczystym_tlem(drzewo)) == 1
+
+
+@pytest.mark.parametrize("stan", [None] + sorted(utils.STANY_PODNOSZACE))
+def test_audyt_cienia_przepuszcza_karty_z_powierzchni(stan):
+    karta, _ = utils.karta_listy([ft.Text("wpis")], page=JASNY)
+    drzewo = ft.Column([ft.Container(**utils.powierzchnia(JASNY, "karta", stan=stan), content=ft.Text("x")), karta])
+
+    assert audyty.znajdz_cien_pod_przezroczystym_tlem(drzewo) == []
+
+
 # ============================================================================
 #  3. PRAWDZIWE WIDOKI
 # ============================================================================
@@ -255,6 +301,8 @@ def test_widok_stopniuje_zagniezdzone_powierzchnie(baza, nazwa_widoku, scenarius
         "utils.powierzchnia(page, \"blok\") — bierze wtedy tło o stopień wyżej "
         "i nie dokłada cienia ani ramki."
     )
+    cienie = audyty.znajdz_cien_pod_przezroczystym_tlem(widok)
+    assert cienie == [], "cień prześwituje przez tło (karta z cieniem bierze tło z utils.powierzchnia):\n" + _opis(cienie)
 
 
 @pytest.mark.parametrize("zakladka, podzakladka_kosztow, podzakladka_statystyk", UKLADY_EKRANU_GLOWNEGO)
@@ -269,6 +317,8 @@ def test_ekran_glowny_stopniuje_zagniezdzone_powierzchnie(baza, zakladka, podzak
     znaleziska = audyty.znajdz_plaskie_powierzchnie(widok, strona)
 
     assert znaleziska == [], _opis(znaleziska)
+    cienie = audyty.znajdz_cien_pod_przezroczystym_tlem(widok)
+    assert cienie == [], _opis(cienie)
 
 
 def _kokpit_z_kompletem(scenariusz, swiezy_licznik=False):

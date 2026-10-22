@@ -835,7 +835,8 @@ def pasek_sekcji(page: ft.Page, state, identyfikatory, akcje=None, liczniki=None
     ]
     if not karty:
         return ft.Container()
-    return pasek_przewijany(karty, spacing=10)
+    # Karty różnej wysokości (opis w jednej albo dwóch linijkach) — równo od góry.
+    return pasek_przewijany(karty, spacing=10, wyrownanie=ft.CrossAxisAlignment.START, page=page)
 
 
 def pokaz_edytor_skrotow(page: ft.Page, state, po_zapisie=None):

@@ -4,7 +4,7 @@ import colorsys
 import db
 import flet as ft
 
-from .stale import FS, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, formatuj_liczba
+from .stale import FS, HEX_KOLOROW_STANU, KOLOR_STATUS, MAPA_KOLOROW, RADIUS, formatuj_liczba
 from .format import symbol_waluty
 from .typografia import KOLOR_DRUGIEGO_PLANU, SKALA_TEKSTU, podpis
 
@@ -247,6 +247,22 @@ def tlo_stanu(page: ft.Page = None, stan=None):
     return ft.Colors.with_opacity(udzial, kolor)
 
 
+# Jasny motyw: cień leży POD całą kartą, więc półprzezroczyste tło przepuszcza go jako szarą
+# mgłę. Karta i kafel biorą nieprzezroczysty ton M3 szczebla 1, karta podniesiona stanem —
+# barwę stanu zmieszaną z bielą w udziale `tlo_stanu` (audyt 2d w tests/audyty.py).
+TLO_POWIERZCHNI_JASNEJ = ft.Colors.SURFACE_CONTAINER_LOW
+
+
+def tlo_stanu_nieprzezroczyste(stan):
+    """Nieprzezroczysty odpowiednik `tlo_stanu` w jasnym motywie — pod kartę z cieniem."""
+    wartosc = HEX_KOLOROW_STANU.get(KOLOR_STATUS.get(stan))
+    if not wartosc:
+        return TLO_POWIERZCHNI_JASNEJ
+    udzial = UDZIAL_TLA_STANU["jasny"]
+    kanaly = (round(255 + (int(wartosc[i:i + 2], 16) - 255) * udzial) for i in (1, 3, 5))
+    return "#" + "".join(f"{k:02X}" for k in kanaly)
+
+
 def cien_karty(page: ft.Page = None, poziom="md"):
     """Cień Material 3 (dwie warstwy) — WYŁĄCZNIE w jasnym motywie; w ciemnym None, a
     powierzchnie różnicuje jaśniejszy `bgcolor` (`powierzchnia`)."""
@@ -328,8 +344,16 @@ def powierzchnia(page: ft.Page = None, rola="karta", stan=None, cien="sm",
     else:
         cienie = cien_karty(page, "md" if (podniesiony and cien == "sm") else cien)
 
+    if _czy_ciemny(page):
+        tlo = tlo_stanu(page, stan) if podniesiony else tlo_karty(page, poziom=baza)
+    elif not podniesiony:
+        tlo = TLO_POWIERZCHNI_JASNEJ
+    else:
+        # Bez strony motyw nieznany: barwa przezroczysta pasuje do obu.
+        tlo = tlo_stanu_nieprzezroczyste(stan) if cienie and page is not None else tlo_stanu(page, stan)
+
     return {
-        "bgcolor": tlo_stanu(page, stan) if podniesiony else tlo_karty(page, poziom=baza),
+        "bgcolor": tlo,
         "shadow": cienie,
         "border": obramowanie_karty(page),
         "border_radius": RADIUS["lg"],
@@ -416,19 +440,25 @@ def _mieszaj_kolory(kolor_a, kolor_b, udzial):
 MIEJSCE_NA_SUWAK = 16
 
 
+def _na_telefonie(page) -> bool:
+    return getattr(page, "platform", None) in (ft.PagePlatform.ANDROID, ft.PagePlatform.IOS)
+
+
 def pasek_przewijany(kontrolki, spacing=10, miejsce_na_suwak=MIEJSCE_NA_SUWAK,
-                     wyrownanie=ft.CrossAxisAlignment.CENTER):
-    """Poziomy pasek z chwytalnym suwakiem, który NIE nachodzi na treść (padding
-    wewnątrz przewijanego wiersza). Tylko dla treści, która musi jechać w bok (mapa
-    cieplna, karty sekcji); kokpit to siatka (ResponsiveRow)."""
+                     wyrownanie=ft.CrossAxisAlignment.CENTER, page=None):
+    """Poziomy pasek przewijany w bok — tylko dla treści, która musi jechać w bok (mapa
+    cieplna, karty sekcji); kokpit to siatka (ResponsiveRow). Na komputerze z chwytalnym
+    suwakiem na własnym marginesie; na telefonie bez suwaka i marginesu (przewija palec,
+    a stały szary pasek pod kartami był szumem)."""
     if not kontrolki:
         return ft.Container()
+    telefon = _na_telefonie(page)
     return ft.Row(
         [ft.Container(
             content=ft.Row(kontrolki, spacing=spacing, vertical_alignment=wyrownanie),
-            padding=ft.Padding.only(bottom=miejsce_na_suwak),
+            padding=ft.Padding.only(bottom=0 if telefon else miejsce_na_suwak),
         )],
-        scroll=ft.ScrollMode.ALWAYS,
+        scroll=ft.ScrollMode.HIDDEN if telefon else ft.ScrollMode.ALWAYS,
     )
 
 
@@ -455,6 +485,7 @@ __all__ = [
     "ROLE_POWIERZCHNI",
     "STOPNIE_PISMA_M3",
     "STANY_PODNOSZACE",
+    "TLO_POWIERZCHNI_JASNEJ",
     "UDZIAL_TLA_STANU",
     "UDZIAL_TLA_ODZNAKI",
     "UDZIAL_TLA_TORU",
@@ -479,6 +510,7 @@ __all__ = [
     "tlo_karty",
     "tlo_odznaki",
     "tlo_stanu",
+    "tlo_stanu_nieprzezroczyste",
     "tlo_toru",
     "wiersz_udzialu",
     "wypelnienie_karty",

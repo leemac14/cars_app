@@ -65,6 +65,15 @@ def test_kazda_akcja_ma_swoj_kafelek(baza):
     assert "Stan licznika" in teksty(widok.kokpit_kontener)
 
 
+def test_kafelek_akcji_to_kolko_z_ikona_i_nazwa(baza):
+    """Napis „Szybka akcja” nad każdym kafelkiem powtarzał to, co mówi kółko z ikoną."""
+    widok, _ = kokpit()
+    kolka = [k for k in _wszystkie(widok.kokpit_kontener, ft.Container)
+             if k.bgcolor == ft.Colors.PRIMARY_CONTAINER and k.width == k.height]
+    assert len(kolka) == len(AKCJE)
+    assert "Szybka akcja" not in teksty(widok.kokpit_kontener)
+
+
 def test_akcje_wchodza_tylko_do_ukladu_domyslnego(baza):
     """Auto z własnym układem nie zmienia się samo po aktualizacji."""
     assert db.KOKPIT_WIDGETY_DOMYSLNE[:2] == ["akcja_tankowanie", "akcja_licznik"]
