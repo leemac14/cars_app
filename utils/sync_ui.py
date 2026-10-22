@@ -88,6 +88,19 @@ def podsumowanie_konfliktow(konflikty, maks_nazw=2):
     return f"Edycja z dwóch urządzeń — nadpisano: {tekst}. Zachowano wersję z tego telefonu."
 
 
+# Błędy sieci po nazwach klas — bez importu httpx (supabase ładuje się dopiero przy synchronizacji).
+_BLEDY_SIECI = {"ConnectError", "ConnectTimeout", "ReadTimeout", "WriteTimeout", "PoolTimeout",
+                "TimeoutException", "NetworkError", "RemoteProtocolError", "gaierror"}
+
+
+def opis_bledu_synchronizacji(ex):
+    """Błąd chmury do komunikatu: brak połączenia po ludzku zamiast „[Errno 11001] getaddrinfo failed”."""
+    if (isinstance(ex, (ConnectionError, TimeoutError)) or "getaddrinfo" in str(ex)
+            or _BLEDY_SIECI & {k.__name__ for k in type(ex).__mro__}):
+        return "nie ma połączenia z serwerem synchronizacji (brak internetu albo serwer nie odpowiada)"
+    return str(ex)
+
+
 def podsumowanie_odrzuconych(odrzucone, maks_nazw=2):
     """Zmiany cofnięte, bo dotyczyły cudzych wpisów przy roli współautora."""
     if not odrzucone:
@@ -133,7 +146,8 @@ def pokaz_dialog_konfliktow(page: ft.Page, konflikty, auto_id=None, po_zmianie=N
                 pokaz_komunikat(page, f"Przywrócono wersję z chmury: {db.liczba_z_odmiana(ile, 'rekord', 'rekordy', 'rekordów')}.")
             except Exception as ex:
                 ukryj_ladowanie(page, okno)
-                pokaz_komunikat(page, f"Nie udało się przywrócić: {ex}", KOLOR_STATUS["error"])
+                pokaz_komunikat(page, f"Nie udało się przywrócić: {opis_bledu_synchronizacji(ex)}",
+                                KOLOR_STATUS["error"])
 
         page.run_task(_zrob)
 
@@ -187,7 +201,8 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
             db.zakolejkuj_synchronizacje(auto_id, "reczna", str(ex))
             pokaz_komunikat(
                 page,
-                f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
+                f"Błąd synchronizacji: {opis_bledu_synchronizacji(ex)}. Zmiany zostały zakolejkowane "
+                f"i spróbujemy ponownie automatycznie.",
                 KOLOR_STATUS["error"]
             )
     return _synchronizuj
@@ -496,6 +511,7 @@ __all__ = [
     "_moment_ostatniej_synchronizacji",
     "funkcja_szybkiej_synchronizacji",
     "odsiej_akcje",
+    "opis_bledu_synchronizacji",
     "pasek_roli",
     "podsumowanie_konfliktow",
     "podsumowanie_odrzuconych",

@@ -301,6 +301,10 @@ def main(page: ft.Page):
             os.makedirs(folder, exist_ok=True)
 
     def wykonaj_import(sciezka_zrodlowa):
+        """Podmienia bazę, załączniki i kosz na zawartość kopii. Sama praca na plikach, bez
+        interfejsu — woła ją wątek w tle, a przebudowa ekranu z wątku ścigała się z pętlą Fleta
+        (zawieszenie po wczytaniu). Ekran rysuje `_po_imporcie` z wyniku:
+        {"stan": "ok" | "brak_pliku" | "odmowa" | "blad_bazy" | "blad", …}."""
         import sqlite3
         baza_bak = db.BAZA_DANYCH + ".bak"
         kopia_zrobiona = False
@@ -317,15 +321,12 @@ def main(page: ft.Page):
                             shutil.rmtree(folder, ignore_errors=True)
                         shutil.copytree(zapasowy, folder)
                 db.init_db()
-                app_state.auto_id = None
-                db.zainicjuj_domyslne_auto(app_state)
             except Exception:
                 log.polkniety("przywracanie kopii bezpieczeństwa po nieudanym imporcie")
 
         try:
             if not sciezka_zrodlowa or not os.path.exists(sciezka_zrodlowa):
-                utils.pokaz_komunikat(page, "Nie można odczytać wybranego pliku.", utils.KOLOR_STATUS["error"])
-                return
+                return {"stan": "brak_pliku"}
 
             # PRZED kopią bezpieczeństwa i przed czymkolwiek innym: migracje idą
             # tylko w przód, więc kopia z nowszej wersji aplikacji nie ma jak się
@@ -333,8 +334,7 @@ def main(page: ft.Page):
             wolno, powod = db.sprawdz_kopie_przed_wczytaniem(sciezka_zrodlowa)
             if not wolno:
                 log.ostrzezenie(f"Odmowa wczytania kopii: {powod}")
-                utils.pokaz_ostrzezenie(page, "Kopia z nowszej wersji aplikacji", powod)
-                return
+                return {"stan": "odmowa", "powod": powod}
 
             # Folder, rytm i daty kopii zapasowych należą do TEGO urządzenia, nie
             # do danych: kopia z komputera nie może przynieść telefonowi folderu
@@ -364,41 +364,71 @@ def main(page: ft.Page):
             # (/data/user/0/<pakiet>/files/data/zalaczniki/...) — bez tej naprawy import
             # „się udaje”, a zdjęcia się nie pokazują.
             naprawione, brakujace_zalaczniki = db.napraw_sciezki_zalacznikow()
-
-            app_state.auto_id = None
-            app_state.wybrane_zadanie_id = None
-            app_state.wybrane_zadanie_nazwa = ""
-            db.zainicjuj_domyslne_auto(app_state)
-            
-            kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
-            # Import podmienił całą bazę, więc razem z kolorem mógł się zmienić
-            # także przełącznik czystej czerni — czyścimy jego pamięć podręczną.
-            utils.odswiez_cache_czerni()
-            utils.zastosuj_motywy(page, kolor_biezacy)
-            zastosuj_tryb_motywu()
-            page.update()
-            kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
-            kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
-            
-            utils.przejdz(page, "/")
-            komunikat = "Pomyślnie wczytano bazę! Stara zapisana jako .bak"
-            if naprawione:
-                komunikat += (f" Dopasowano do tego urządzenia "
-                              f"{db.liczba_z_odmiana(naprawione, 'załącznik', 'załączniki', 'załączników')}.")
-            if brakujace_zalaczniki:
-                komunikat += (f" Uwaga: w archiwum brakuje "
-                              f"{db.liczba_z_odmiana(brakujace_zalaczniki, 'załącznika', 'załączników', 'załączników')}.")
-            utils.pokaz_komunikat(page, komunikat)
+            return {"stan": "ok", "naprawione": naprawione, "brakujace": brakujace_zalaczniki}
         except sqlite3.DatabaseError:
             if kopia_zrobiona:
                 przywroc_kopie_bezpieczenstwa()
-                utils.przejdz(page, "/")
-            utils.pokaz_komunikat(page, "Wybrany plik nie jest poprawną bazą danych SQLite. Przywrócono poprzednią bazę.", utils.KOLOR_STATUS["error"])
+            return {"stan": "blad_bazy", "przywrocono": kopia_zrobiona}
         except Exception as ex:
             if kopia_zrobiona:
                 przywroc_kopie_bezpieczenstwa()
+            return {"stan": "blad", "blad": str(ex), "przywrocono": kopia_zrobiona}
+
+    def _po_imporcie(wynik):
+        """Ekran po `wykonaj_import` — już w pętli Fleta: pojazd, motyw, kokpit i komunikat."""
+        stan = wynik["stan"]
+        if stan == "brak_pliku":
+            utils.pokaz_komunikat(page, "Nie można odczytać wybranego pliku.", utils.KOLOR_STATUS["error"])
+            return
+        if stan == "odmowa":
+            utils.pokaz_ostrzezenie(page, "Kopia z nowszej wersji aplikacji", wynik["powod"])
+            return
+        if stan != "ok":
+            if wynik.get("przywrocono"):
+                app_state.auto_id = None
                 utils.przejdz(page, "/")
-            utils.pokaz_komunikat(page, f"Błąd importu: {ex}. Przywrócono poprzednią bazę.", utils.KOLOR_STATUS["error"])
+            if stan == "blad_bazy":
+                utils.pokaz_komunikat(page, "Wybrany plik nie jest poprawną bazą danych SQLite. Przywrócono poprzednią bazę.", utils.KOLOR_STATUS["error"])
+            else:
+                utils.pokaz_komunikat(page, f"Błąd importu: {wynik['blad']}. Przywrócono poprzednią bazę.", utils.KOLOR_STATUS["error"])
+            return
+
+        app_state.auto_id = None
+        app_state.wybrane_zadanie_id = None
+        app_state.wybrane_zadanie_nazwa = ""
+        db.zainicjuj_domyslne_auto(app_state)
+
+        kolor_biezacy = db.pobierz_kolor_auta(app_state.auto_id)
+        # Import podmienił całą bazę, więc razem z kolorem mógł się zmienić
+        # także przełącznik czystej czerni — czyścimy jego pamięć podręczną.
+        utils.odswiez_cache_czerni()
+        utils.zastosuj_motywy(page, kolor_biezacy)
+        zastosuj_tryb_motywu()
+        page.update()
+        kolor_motywu_zastosowany["nazwa"] = kolor_biezacy
+        kolor_motywu_zastosowany["auto_id"] = app_state.auto_id
+
+        utils.przejdz(page, "/")
+        komunikat = "Pomyślnie wczytano bazę! Stara zapisana jako .bak"
+        if wynik["naprawione"]:
+            komunikat += (f" Dopasowano do tego urządzenia "
+                          f"{db.liczba_z_odmiana(wynik['naprawione'], 'załącznik', 'załączniki', 'załączników')}.")
+        if wynik["brakujace"]:
+            komunikat += (f" Uwaga: w archiwum brakuje "
+                          f"{db.liczba_z_odmiana(wynik['brakujace'], 'załącznika', 'załączników', 'załączników')}.")
+        utils.pokaz_komunikat(page, komunikat)
+
+    async def _wczytaj_kopie(sciezka, okno_ladowania=None):
+        """Import w wątku, ekran po nim w pętli; `okno_ladowania` — napis okna na czas pracy na plikach."""
+        dlg = utils.pokaz_ladowanie(page, okno_ladowania) if okno_ladowania else None
+        try:
+            wynik = await asyncio.to_thread(wykonaj_import, sciezka)
+        finally:
+            utils.ukryj_ladowanie(page, dlg)
+        try:
+            _po_imporcie(wynik)
+        except Exception:
+            log.polkniety("ekran po wczytaniu kopii")
 
     def zapytaj_o_import(sciezka):
         """Podgląd kopii i pytanie „wczytać?” — dopiero po „Wczytaj” rusza
@@ -410,7 +440,7 @@ def main(page: ft.Page):
             return
 
         async def _wczytaj():
-            await asyncio.to_thread(wykonaj_import, sciezka)
+            await _wczytaj_kopie(sciezka)
 
         utils.zapytaj_o_wczytanie_kopii(page, sciezka, lambda: page.run_task(_wczytaj))
 
@@ -433,6 +463,10 @@ def main(page: ft.Page):
     page.haptyka = ft.HapticFeedback()  # utils.wibracja
     page.services.append(page.haptyka)
 
+    def _na_telefonie():
+        # page.platform to enum PagePlatform — porównanie z napisem „android” nigdy nie trafiało.
+        return getattr(page, "platform", None) in (ft.PagePlatform.ANDROID, ft.PagePlatform.IOS)
+
     async def eksportuj_baze(e=None):
         dlg_ladowania = utils.pokaz_ladowanie(page, "Przygotowywanie kopii zapasowej...")
 
@@ -443,7 +477,7 @@ def main(page: ft.Page):
                 dlg_ladowania = None
 
         try:
-            if page.platform in ["android", "ios"] and share_service is not None:
+            if _na_telefonie() and share_service is not None:
                 try:
                     sciezka_zip = await asyncio.to_thread(_zapisz_tymczasowy_zip)
                     _schowaj_ladowanie()
@@ -470,7 +504,7 @@ def main(page: ft.Page):
     async def _zapisz_bajty_pliku(nazwa_pliku, dane_bytes):
         """Uniwersalny zapis/udostępnienie gotowych bajtów pliku (eksport CSV/PDF, grafika
         roku, kalendarz). True, gdy plik dotarł: wybrana aplikacja w „Udostępnij” albo zapis."""
-        if page.platform in ["android", "ios"] and share_service is not None:
+        if _na_telefonie() and share_service is not None:
             try:
                 sciezka_tmp = os.path.join(tempfile.gettempdir(), nazwa_pliku)
                 with open(sciezka_tmp, "wb") as f:
@@ -538,11 +572,7 @@ def main(page: ft.Page):
             utils.pokaz_komunikat(page, "Właśnie zapisuje się kopia zapasowa — spróbuj za chwilę.",
                                   utils.KOLOR_STATUS["warning"])
             return
-        dlg = utils.pokaz_ladowanie(page, "Wczytywanie kopii zapasowej...")
-        try:
-            await asyncio.to_thread(wykonaj_import, sciezka)
-        finally:
-            utils.ukryj_ladowanie(page, dlg)
+        await _wczytaj_kopie(sciezka, "Wczytywanie kopii zapasowej...")
 
     page.wczytaj_kopie = wczytaj_kopie_z_folderu
 

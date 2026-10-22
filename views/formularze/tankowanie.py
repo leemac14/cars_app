@@ -188,7 +188,10 @@ class FormularzTankowanieView(ft.View):
                 if not txt or txt == ".":
                     self.e_p.value = ""
                 else:
-                    dys = float(txt)
+                    # Parser pól jak przy zapisie, nie float(): „inf” wywracało formularz na int().
+                    dys = utils.parsuj_float(self.e_dys.value, None)
+                    if dys is None:
+                        raise ValueError(txt)
                     if self.ostatni_prz_pola > 0:
                         self.e_p.value = str(int(self.ostatni_prz_pola + dys))
                     else:

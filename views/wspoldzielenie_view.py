@@ -407,7 +407,8 @@ class WspoldzielenieView(ft.View):
                 utils.pokaz_komunikat(self._page, f"Udostępniono! Kod pełnego dostępu: {kod}")
             except Exception as ex:
                 utils.ukryj_ladowanie(self._page, dlg)
-                utils.pokaz_komunikat(self._page, f"Błąd łączenia z Supabase: {ex}", utils.KOLOR_STATUS["error"])
+                utils.pokaz_komunikat(self._page, f"Błąd łączenia z Supabase: {utils.opis_bledu_synchronizacji(ex)}",
+                                      utils.KOLOR_STATUS["error"])
         self._page.run_task(_zrob)
 
     def _dolacz(self, e):
@@ -447,7 +448,8 @@ class WspoldzielenieView(ft.View):
                     utils.pokaz_komunikat(self._page, f"Dołączono do pojazdu „{nazwa}”! Zaimportowano dotychczasową historię.")
             except Exception as ex:
                 utils.ukryj_ladowanie(self._page, dlg)
-                utils.pokaz_komunikat(self._page, f"Błąd: {ex}", utils.KOLOR_STATUS["error"])
+                utils.pokaz_komunikat(self._page, f"Błąd: {utils.opis_bledu_synchronizacji(ex)}",
+                                      utils.KOLOR_STATUS["error"])
         self._page.run_task(_zrob)
 
     def _synchronizuj(self, e):
@@ -498,7 +500,8 @@ class WspoldzielenieView(ft.View):
                 utils.ukryj_ladowanie(self._page, dlg)
                 utils.pokaz_komunikat(
                     self._page,
-                    f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
+                    f"Błąd synchronizacji: {utils.opis_bledu_synchronizacji(ex)}. Zmiany zostały zakolejkowane "
+                    f"i spróbujemy ponownie automatycznie.",
                     utils.KOLOR_STATUS["error"]
                 )
         self._page.run_task(_zrob)
@@ -517,7 +520,8 @@ class WspoldzielenieView(ft.View):
                         utils.pokaz_komunikat(self._page, "Brak danych do przywrócenia — wszystko już jest na miejscu.")
                 except Exception as ex:
                     utils.ukryj_ladowanie(self._page, dlg)
-                    utils.pokaz_komunikat(self._page, f"Błąd przywracania: {ex}", utils.KOLOR_STATUS["error"])
+                    utils.pokaz_komunikat(self._page, f"Błąd przywracania: {utils.opis_bledu_synchronizacji(ex)}",
+                                          utils.KOLOR_STATUS["error"])
             self._page.run_task(_zrob)
 
         utils.potwierdz(

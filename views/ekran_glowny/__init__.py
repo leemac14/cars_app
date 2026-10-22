@@ -376,7 +376,8 @@ class MainView(
             db.zakolejkuj_synchronizacje(self.state.auto_id, "reczna", str(ex))
             utils.pokaz_komunikat(
                 self._page,
-                f"Błąd synchronizacji: {ex}. Zmiany zostały zakolejkowane i spróbujemy ponownie automatycznie.",
+                f"Błąd synchronizacji: {utils.opis_bledu_synchronizacji(ex)}. Zmiany zostały zakolejkowane "
+                f"i spróbujemy ponownie automatycznie.",
                 utils.KOLOR_STATUS["error"]
             )
 

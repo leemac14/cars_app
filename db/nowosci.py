@@ -28,6 +28,14 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.22.3", "pozycje": [
+        {"tytul": "Pliki z telefonu przez „Udostępnij”", "ikona": "IOS_SHARE", "ekran": "co-przede-mna",
+         "opis": "Terminy do kalendarza, raporty, eksport i kopia zapasowa otwierają na telefonie systemowe "
+                 "„Udostępnij” — prosto do kalendarza, na Dysk albo do poczty — zamiast pytać, gdzie zapisać plik."},
+        {"tytul": "Poprawki stabilności", "ikona": "BUILD_CIRCLE", "ekran": "wspoldzielenie",
+         "opis": "Wczytanie kopii zapasowej nie zawiesza już aplikacji, okno konfliktów po synchronizacji nie "
+                 "znika spod kręcącego się kółka, a brak połączenia z serwerem jest opisany zwykłymi słowami."},
+    ]},
     {"wersja": "2026.10.22.2", "pozycje": [
         {"tytul": "Flota — wszystkie auta naraz", "ikona": "EMOJI_TRANSPORTATION", "ekran": "flota",
          "opis": "Ile w tym miesiącu i roku kosztują wszystkie auta razem i każde z osobna — z porównaniem do "

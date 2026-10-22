@@ -96,8 +96,15 @@ def otworz_dialog(page: ft.Page, kontrolka):
 
 
 def zamknij_dialog(page: ft.Page, kontrolka):
+    """Zamyka TO okno, nie to z wierzchu: `pop_dialog()` Fleta 1.0 zamyka najnowsze otwarte
+    (okno konfliktów nad kółkiem ładowania znikało, a kółko zostawało). Tożsamość, nie `in` —
+    dwa okna o tej samej treści Flet uznaje za równe."""
+    otwarte = getattr(getattr(page, "_dialogs", None), "controls", None)
     if hasattr(page, "close"): page.close(kontrolka)
-    elif hasattr(page, "pop_dialog"): page.pop_dialog()
+    elif otwarte is not None:
+        if kontrolka is not None and kontrolka.open and any(d is kontrolka for d in otwarte):
+            kontrolka.open = False
+            kontrolka.update()
     else:
         kontrolka.open = False
         if kontrolka in page.overlay: page.overlay.remove(kontrolka)
