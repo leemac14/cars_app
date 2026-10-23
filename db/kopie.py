@@ -4,11 +4,13 @@ folderu, z rotacją do K ostatnich.
   „Wczytaj kopię bazy”.
 - Starsze kopie znikają dopiero po sprawdzeniu nowej: `PRAGMA quick_check`, zapis do
   `.czesc`, test CRC, zmiana nazwy na `.zip`, rotacja.
-- Rotacja rusza tylko własne pliki `flota_kopia_RRRR-MM-DD_GGMMSS.zip` w tym folderze.
+- Rotacja rusza tylko własne pliki `leemac_app_kopia_RRRR-MM-DD_GGMMSS.zip` (i sprzed
+  zmiany nazwy `flota_kopia_…`) w tym folderze; kolejność po dacie z nazwy.
 - Ustawienia `kopia_*` należą do urządzenia i przeżywają wczytanie kopii
   (`ustawienia_kopii_urzadzenia`, `przywroc_ustawienia_kopii_urzadzenia`).
-Folder domyślny: Android — Documents/Flota Mobile (przeżywa odinstalowanie, Android 11+
-bez uprawnień); komputer — `kopie/` obok bazy."""
+Folder domyślny: Android — Documents/<nazwa aplikacji> (przeżywa odinstalowanie, Android
+11+ bez uprawnień; kopie ze starego Documents/Flota Mobile przechodzą tam same przy
+pierwszym `wykonaj_kopie`); komputer — `kopie/` obok bazy."""
 
 import errno
 import io
@@ -26,7 +28,7 @@ from typing import Any
 
 import log
 
-from .stale import BAZA_DANYCH, FOLDER_KOSZ, FOLDER_ZALACZNIKI, STORAGE_PATH
+from .stale import BAZA_DANYCH, FOLDER_KOSZ, FOLDER_ZALACZNIKI, NAZWA_APLIKACJI, STORAGE_PATH
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .ustawienia import (
@@ -55,14 +57,20 @@ KOPIA_CO_DNI_DOMYSLNIE = 7
 KOPIA_ILE_OPCJE = [2, 3, 5, 10, 20]
 KOPIA_ILE_DOMYSLNIE = 5
 
-NAZWA_FOLDERU_KOPII_ANDROID = "Flota Mobile"
-PRZEDROSTEK_PLIKU_KOPII = "flota_kopia_"
+NAZWA_FOLDERU_KOPII_ANDROID = NAZWA_APLIKACJI
+PRZEDROSTEK_PLIKU_KOPII = "leemac_app_kopia_"
+# Sprzed zmiany nazwy (wydanie 2026.10.23.2): stary folder opróżnia
+# `przenies_kopie_ze_starego_folderu`, a stare pliki dalej liczą się do rotacji i listy.
+STARA_NAZWA_FOLDERU_KOPII_ANDROID = "Flota Mobile"
+STARY_PRZEDROSTEK_PLIKU_KOPII = "flota_kopia_"
 KONCOWKA_CZESCI_KOPII = ".czesc"
 
-# Data i godzina w nazwie, od roku do sekundy: kolejność nazw jest kolejnością
+# Data i godzina w nazwie, od roku do sekundy: kolejność dat z nazw jest kolejnością
 # kopii, więc rotacja nie musi ufać datom modyfikacji (kopiowanie folderu na
 # inny dysk albo synchronizacja w chmurze potrafią je przestawić).
-_WZOR_PLIKU_KOPII = re.compile(r"^flota_kopia_(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})\.zip$")
+_WZOR_PLIKU_KOPII = re.compile(
+    rf"^(?:{re.escape(PRZEDROSTEK_PLIKU_KOPII)}|{re.escape(STARY_PRZEDROSTEK_PLIKU_KOPII)})"
+    r"(\d{4})-(\d{2})-(\d{2})_(\d{2})(\d{2})(\d{2})\.zip$")
 
 # Zdjęcia są już skompresowane: deflate mieliłby je na telefonie sekundami
 # i nic by nie zyskał. Baza i reszta plików idą skompresowane jak dotąd.
@@ -108,13 +116,17 @@ def na_androidzie():
             or bool(os.environ.get("ANDROID_ROOT") and os.environ.get("ANDROID_DATA")))
 
 
+def _folder_w_dokumentach(nazwa):
+    pamiec = os.environ.get("EXTERNAL_STORAGE") or "/storage/emulated/0"
+    return os.path.join(pamiec, "Documents", nazwa)
+
+
 def domyslny_folder_kopii():
-    """Documents/Flota Mobile na telefonie, `kopie/` obok bazy na komputerze. Nie folder
-    aplikacji — ginie z nią (odinstalowanie, „Wyczyść dane”); w Dokumentach i Pobranych
-    Android 11+ pozwala pisać bez uprawnień."""
+    """Documents/<nazwa aplikacji> na telefonie, `kopie/` obok bazy na komputerze. Nie
+    folder aplikacji — ginie z nią (odinstalowanie, „Wyczyść dane”); w Dokumentach
+    i Pobranych Android 11+ pozwala pisać bez uprawnień."""
     if na_androidzie():
-        pamiec = os.environ.get("EXTERNAL_STORAGE") or "/storage/emulated/0"
-        return os.path.join(pamiec, "Documents", NAZWA_FOLDERU_KOPII_ANDROID)
+        return _folder_w_dokumentach(NAZWA_FOLDERU_KOPII_ANDROID)
     return os.path.abspath(os.path.join(STORAGE_PATH, "kopie"))
 
 
@@ -399,8 +411,10 @@ def _nazwy_kopii(folder):
         nazwy = os.listdir(folder)
     except OSError:
         return []
+    # Po dacie, nie po nazwie: dwa przedrostki (stary i nowy) pomieszałyby kolejność.
     return sorted((n for n in nazwy if _data_z_nazwy(n) is not None
-                   and os.path.isfile(os.path.join(folder, n))), reverse=True)
+                   and os.path.isfile(os.path.join(folder, n))),
+                  key=lambda n: (_data_z_nazwy(n), n), reverse=True)
 
 
 def lista_kopii(folder=None) -> list[dict[str, Any]]:
@@ -446,6 +460,41 @@ def _rotuj_kopie(folder, ile, zostaw):
         except OSError:
             log.polkniety(f"sprzątanie po przerwanej kopii: {nazwa}")
     return usuniete
+
+
+def przenies_kopie_ze_starego_folderu():
+    """Kopie z Documents/Flota Mobile (sprzed zmiany nazwy) do folderu domyślnego; pusty
+    stary folder znika. Tylko telefon z folderem domyślnym — wskazany w Ustawieniach
+    zostaje nietknięty. Plik, którego Android nie da przenieść (np. sprzed reinstalacji),
+    zostaje na miejscu i da się go wczytać ręcznie. Zwraca liczbę przeniesionych."""
+    if not na_androidzie() or not czy_folder_kopii_domyslny():
+        return 0
+    stary = _folder_w_dokumentach(STARA_NAZWA_FOLDERU_KOPII_ANDROID)
+    nowy = domyslny_folder_kopii()
+    if not os.path.isdir(stary) or os.path.abspath(stary) == os.path.abspath(nowy):
+        return 0
+    przeniesione = 0
+    for nazwa in _nazwy_kopii(stary):
+        cel = os.path.join(nowy, nazwa)
+        if os.path.exists(cel):
+            continue
+        try:
+            os.makedirs(nowy, exist_ok=True)
+            os.replace(os.path.join(stary, nazwa), cel)
+            przeniesione += 1
+        except OSError:
+            log.polkniety(f"przeniesienie kopii {nazwa} do {nowy}")
+    try:
+        for nazwa in os.listdir(stary):
+            if nazwa.endswith(KONCOWKA_CZESCI_KOPII) and _data_z_nazwy(nazwa[:-len(KONCOWKA_CZESCI_KOPII)]):
+                os.remove(os.path.join(stary, nazwa))
+        if not os.listdir(stary):
+            os.rmdir(stary)
+    except OSError:
+        log.polkniety(f"sprzątanie starego folderu kopii {stary}")
+    if przeniesione:
+        log.zapisz(f"Kopie zapasowe: {przeniesione} przeniesione z {stary} do {nowy}")
+    return przeniesione
 
 
 def _nowa_sciezka_kopii(folder, teraz):
@@ -505,6 +554,15 @@ def wykonaj_kopie(wymus=False) -> dict[str, Any]:
     zostaje w ustawieniach i dzienniku błędów."""
     wynik = {"ok": False, "pominieta": False, "w_toku": False, "sciezka": None,
              "rozmiar": 0, "usuniete": 0, "folder": None, "blad": None}
+    # Przed sprawdzeniem, czy kopia należna: lista „Wczytaj” ma widzieć stare kopie od
+    # pierwszego startu po zmianie nazwy, a nie dopiero po następnej kopii.
+    if _ZAMEK_KOPII.acquire(blocking=False):
+        try:
+            przenies_kopie_ze_starego_folderu()
+        except Exception:
+            log.polkniety("przeniesienie kopii ze starego folderu")
+        finally:
+            _ZAMEK_KOPII.release()
     if not wymus and not stan_kopii_zapasowej()["nalezna"]:
         wynik["pominieta"] = True
         return wynik
@@ -619,6 +677,8 @@ __all__ = [
     "PRZEDROSTEK_PLIKU_KOPII",
     "PRZEDROSTEK_USTAWIEN_KOPII",
     "PRZEDROSTKI_USTAWIEN_URZADZENIA",
+    "STARA_NAZWA_FOLDERU_KOPII_ANDROID",
+    "STARY_PRZEDROSTEK_PLIKU_KOPII",
     "czy_folder_kopii_domyslny",
     "domyslny_folder_kopii",
     "kopia_w_toku",
@@ -626,6 +686,7 @@ __all__ = [
     "na_androidzie",
     "pobierz_folder_kopii",
     "pobierz_ile_kopii",
+    "przenies_kopie_ze_starego_folderu",
     "przygotuj_zip_kopii",
     "przywroc_ustawienia_kopii_urzadzenia",
     "skopiuj_baze",

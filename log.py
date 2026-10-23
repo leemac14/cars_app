@@ -388,7 +388,7 @@ def zbierz_raport(dodatkowe=None):
     szerokosc = max((len(k) for k in wiersze), default=0) + 2
     naglowek = [
         "=" * 72,
-        " Flota Mobile — log diagnostyczny",
+        " LEEMAC APP — log diagnostyczny",
         "=" * 72,
     ]
     naglowek += [f"{k + ':':<{szerokosc}}{w}" for k, w in wiersze.items()]

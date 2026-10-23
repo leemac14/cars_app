@@ -32,11 +32,12 @@ def _moment(dni_temu):
     return (datetime.now() - timedelta(days=dni_temu)).isoformat(timespec="seconds")
 
 
-def _stara_kopia(folder, dni_temu, tresc=b"stara kopia"):
+def _stara_kopia(folder, dni_temu, tresc=b"stara kopia", przedrostek=None):
     """Plik o nazwie kopii automatycznej sprzed `dni_temu` dni."""
     os.makedirs(folder, exist_ok=True)
     moment = datetime.now() - timedelta(days=dni_temu)
-    sciezka = os.path.join(folder, moment.strftime("flota_kopia_%Y-%m-%d_%H%M%S.zip"))
+    przedrostek = przedrostek or db.PRZEDROSTEK_PLIKU_KOPII
+    sciezka = os.path.join(folder, moment.strftime(przedrostek + "%Y-%m-%d_%H%M%S.zip"))
     with open(sciezka, "wb") as plik:
         plik.write(tresc)
     return sciezka
@@ -96,7 +97,7 @@ def test_pierwszy_start_z_danymi_robi_kopie_od_razu(baza):
     wynik = db.wykonaj_kopie()
     assert wynik["ok"] and wynik["blad"] is None
     assert os.path.dirname(wynik["sciezka"]) == db.domyslny_folder_kopii() == os.path.join(db.STORAGE_PATH, "kopie")
-    assert os.path.basename(wynik["sciezka"]).startswith("flota_kopia_")
+    assert os.path.basename(wynik["sciezka"]).startswith("leemac_app_kopia_")
 
     po = db.stan_kopii_zapasowej()
     assert po["dni"] == 0 and po["rodzaj_ostatniej"] == "automatyczna"
@@ -234,6 +235,23 @@ def test_rotacja_zostawia_k_najnowszych_i_nie_rusza_cudzych_plikow(baza):
     assert os.path.exists(zagniezdzona), "rotacja nie schodzi do podfolderów"
 
 
+def test_rotacja_i_lista_ukladaja_obie_nazwy_po_dacie(baza):
+    """Kopie sprzed zmiany nazwy (`flota_kopia_…`) i nowe przeplatają się w czasie —
+    rotacja liczy je razem, od najnowszej daty, a nie alfabetycznie."""
+    _auto()
+    folder = db.domyslny_folder_kopii()
+    stary = db.STARY_PRZEDROSTEK_PLIKU_KOPII
+    k30, k20, k10, k5 = (_stara_kopia(folder, 30, przedrostek=stary), _stara_kopia(folder, 20),
+                         _stara_kopia(folder, 10, przedrostek=stary), _stara_kopia(folder, 5))
+    db.zapisz_ile_kopii(3)
+
+    wynik = db.wykonaj_kopie(wymus=True)
+
+    assert wynik["ok"] and wynik["usuniete"] == 2
+    assert [k["sciezka"] for k in db.lista_kopii(folder)] == [wynik["sciezka"], k5, k10]
+    assert not os.path.exists(k20) and not os.path.exists(k30)
+
+
 def test_resztki_przerwanej_kopii_znikaja_przy_nastepnej(baza):
     _auto()
     folder = db.domyslny_folder_kopii()
@@ -246,7 +264,8 @@ def test_resztki_przerwanej_kopii_znikaja_przy_nastepnej(baza):
 
     assert db.wykonaj_kopie(wymus=True)["ok"]
     assert not os.path.exists(resztka) and os.path.exists(obca)
-    assert not [n for n in os.listdir(folder) if n.endswith(db.KONCOWKA_CZESCI_KOPII) and n.startswith("flota_kopia_")]
+    assert not [n for n in os.listdir(folder) if n.endswith(db.KONCOWKA_CZESCI_KOPII)
+                and n.startswith((db.PRZEDROSTEK_PLIKU_KOPII, db.STARY_PRZEDROSTEK_PLIKU_KOPII))]
 
 
 def test_zepsuta_baza_nie_wypycha_dobrych_kopii(baza):
@@ -365,7 +384,71 @@ def test_domyslny_folder_na_androidzie_w_dokumentach(baza, monkeypatch):
     monkeypatch.setenv("ANDROID_DATA", "/data")
     monkeypatch.setenv("EXTERNAL_STORAGE", "/sdcard")
     assert db.na_androidzie()
-    assert db.domyslny_folder_kopii() == os.path.join("/sdcard", "Documents", "Flota Mobile")
+    assert db.domyslny_folder_kopii() == os.path.join("/sdcard", "Documents", "LEEMAC APP")
+
+
+def _telefon(monkeypatch, tmp_path):
+    """Android z pamięcią współdzieloną w tmp_path; zwraca (stary, nowy) folder kopii."""
+    monkeypatch.setenv("ANDROID_ROOT", "/system")
+    monkeypatch.setenv("ANDROID_DATA", "/data")
+    monkeypatch.setenv("EXTERNAL_STORAGE", str(tmp_path))
+    return (os.path.join(str(tmp_path), "Documents", "Flota Mobile"),
+            os.path.join(str(tmp_path), "Documents", "LEEMAC APP"))
+
+
+def test_kopie_ze_starego_folderu_przechodza_do_nowego_przy_starcie(baza, monkeypatch, tmp_path):
+    """Start po zmianie nazwy: kopia jeszcze nienależna, a stare kopie już są w nowym
+    folderze i na liście „Wczytaj”; resztka `.czesc` znika razem z pustym folderem."""
+    _auto()
+    stary, nowy = _telefon(monkeypatch, tmp_path)
+    p = db.STARY_PRZEDROSTEK_PLIKU_KOPII
+    k10, k3 = _stara_kopia(stary, 10, b"dziesiec", przedrostek=p), _stara_kopia(stary, 3, b"trzy", przedrostek=p)
+    urwana = _stara_kopia(stary, 1, przedrostek=p)
+    os.replace(urwana, urwana + db.KONCOWKA_CZESCI_KOPII)
+    db.zapisz_ustawienie(db.KLUCZ_KOPIA_OSTATNIA_AUTO, _moment(0))
+
+    wynik = db.wykonaj_kopie()
+
+    assert wynik["pominieta"], "kopia nienależna, a przeniesienie i tak poszło"
+    assert [k["nazwa"] for k in db.lista_kopii()] == [os.path.basename(k3), os.path.basename(k10)]
+    assert open(os.path.join(nowy, os.path.basename(k3)), "rb").read() == b"trzy"
+    assert not os.path.exists(stary), "pusty stary folder znika"
+    assert db.przenies_kopie_ze_starego_folderu() == 0, "drugi raz nie ma czego przenosić"
+
+
+def test_stary_folder_z_cudzym_plikiem_zostaje_a_kolizja_nie_nadpisuje(baza, monkeypatch, tmp_path):
+    _auto()
+    stary, nowy = _telefon(monkeypatch, tmp_path)
+    p = db.STARY_PRZEDROSTEK_PLIKU_KOPII
+    k7 = _stara_kopia(stary, 7, b"ze starego", przedrostek=p)
+    k2 = _stara_kopia(stary, 2, b"przeniesie sie", przedrostek=p)
+    os.makedirs(nowy)
+    juz_jest = os.path.join(nowy, os.path.basename(k7))
+    with open(juz_jest, "wb") as f:
+        f.write(b"nowsza wersja")
+    with open(os.path.join(stary, "notatki.txt"), "wb") as f:
+        f.write(b"moje")
+
+    assert db.przenies_kopie_ze_starego_folderu() == 1
+    assert open(juz_jest, "rb").read() == b"nowsza wersja", "plik o tej nazwie w nowym folderze zostaje"
+    assert os.path.exists(k7) and os.path.exists(os.path.join(stary, "notatki.txt"))
+    assert os.path.exists(os.path.join(nowy, os.path.basename(k2))) and not os.path.exists(k2)
+
+
+def test_wlasny_folder_kopii_i_komputer_bez_przenoszenia(baza, monkeypatch, tmp_path):
+    _auto()
+    p = db.STARY_PRZEDROSTEK_PLIKU_KOPII
+    stary, nowy = _telefon(monkeypatch, tmp_path)
+    k = _stara_kopia(stary, 4, przedrostek=p)
+    wlasny = os.path.join(str(tmp_path), "Download", "kopie_auta")
+    os.makedirs(wlasny)
+    db.zapisz_folder_kopii(wlasny)
+    assert db.przenies_kopie_ze_starego_folderu() == 0 and os.path.exists(k), "folder z Ustawień — nie ruszamy"
+
+    db.zapisz_folder_kopii("")
+    monkeypatch.delenv("ANDROID_ROOT")
+    assert not db.na_androidzie()
+    assert db.przenies_kopie_ze_starego_folderu() == 0 and os.path.exists(k), "na komputerze nie ma starego folderu"
 
 
 def test_sprawdz_folder_kopii_plikiem_probnym(baza, tmp_path):

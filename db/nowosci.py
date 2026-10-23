@@ -28,6 +28,14 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.23.2", "pozycje": [
+        {"tytul": "Nowa nazwa i logo: LEEMAC APP", "ikona": "DIRECTIONS_CAR", "ekran": "ustawienia",
+         "opis": "Aplikacja nazywa się teraz LEEMAC APP i ma własne logo — czerwone auto na ikonie, "
+                 "ekranie powitalnym i startowym, w Ustawieniach oraz w stopce grafiki „Rok w pigułce”."},
+        {"tytul": "Kopie w folderze LEEMAC APP", "ikona": "DRIVE_FILE_MOVE", "ekran": "ustawienia",
+         "opis": "Kopie automatyczne trafiają na telefonie do Dokumentów, do folderu LEEMAC APP. "
+                 "Dotychczasowe kopie przenoszą się tam same przy pierwszym uruchomieniu."},
+    ]},
     {"wersja": "2026.10.23", "pozycje": [
         {"tytul": "Czystsze karty", "ikona": "AUTO_AWESOME", "ekran": "pojazd",
          "opis": "W jasnym motywie karty i formularze są jasne i wyraźne — zniknęła szara mgiełka, która "

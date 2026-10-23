@@ -173,7 +173,9 @@ def main(page: ft.Page):
     log.zapisz(f"=== Start aplikacji · wersja {db.WERSJA_APLIKACJI} · Flet {utils.wersja_fleta()} "
                f"· platforma {page.platform} ===")
 
-    page.title = "Flota Mobile"
+    page.title = db.NAZWA_APLIKACJI
+    # Ikona okna przy `flet run` na Windows (assets/); telefon dostaje ikonę z buildu.
+    page.window.icon = "icon.ico"
     page.window.width = 400
     page.window.height = 800
     page.padding = 0

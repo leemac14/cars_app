@@ -17,8 +17,6 @@ from .dialogi import pokaz_komunikat, pokaz_menu_kontekstowe
 from .przyszlosc import co_ile_osi, kwota_osi, tytul_pozycji_osi
 
 
-NAZWA_APLIKACJI = "Flota Mobile"
-
 OPIS_KALENDARZA = ("Polisy, przegląd i inne dokumenty, wymiany z datą, a do tego raty i wydatki cykliczne "
                    "na rok do przodu — każdy termin z przypomnieniem w progu z Ustawień i dzień wcześniej. "
                    "Kalendarz telefonu przypomni też wtedy, gdy aplikacja jest zamknięta.")
@@ -83,7 +81,7 @@ def opis_wpisu_kalendarza(termin, pojazd, dzis):
             linie.append(zdanie)
     nazwa, numer = str(pojazd.get("nazwa") or "").strip(), str(pojazd.get("nr_rej") or "").strip()
     linie.append(f"Pojazd: {nazwa} ({numer})." if numer else f"Pojazd: {nazwa}.")
-    linie.append(f"Z aplikacji {NAZWA_APLIKACJI}, stan na {dzis:%d.%m.%Y}. Po zmianie terminu "
+    linie.append(f"Z aplikacji {db.NAZWA_APLIKACJI}, stan na {dzis:%d.%m.%Y}. Po zmianie terminu "
                  "w aplikacji wyślij plik do kalendarza jeszcze raz.")
     return "\n".join(linie)
 
@@ -210,7 +208,6 @@ def baner_kalendarza(page: ft.Page, stan, on_click):
 
 
 __all__ = [
-    "NAZWA_APLIKACJI",
     "OPIS_KALENDARZA",
     "baner_kalendarza",
     "karta_kalendarza",

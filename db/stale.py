@@ -3,6 +3,10 @@
 import os
 
 
+# Nazwa w tekstach aplikacji (okno, tablica startowa, kalendarz, grafiki, folder kopii).
+# Podpis pod ikoną telefonu bierze się z pyproject.toml — zgodność: test_nazwa_aplikacji.py.
+NAZWA_APLIKACJI = "LEEMAC APP"
+
 STORAGE_PATH = os.environ.get("FLET_APP_STORAGE_DATA", "")
 
 BAZA_DANYCH = os.path.join(STORAGE_PATH, 'flota_zadania.db')
@@ -451,6 +455,7 @@ __all__ = [
     "OCENA_OLEJU",
     "TRYBY_EWIDENCJI",
     "TRYB_EWIDENCJI_DOMYSLNY",
+    "NAZWA_APLIKACJI",
     "BAZA_DANYCH",
     "CHECKLISTA_PRZEDWYJAZDOWA",
     "DNI_KOSZA_DOMYSLNIE",

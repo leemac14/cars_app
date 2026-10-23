@@ -38,11 +38,18 @@ from .rejestry import WARSZTAT_BEZ_NAZWY
 from .pojazd import pobierz_dane_pojazdu
 from .os_przyszlosci import os_przyszlosci
 from .eksport import FOLDER_ASSETS, KATEGORIE_EKSPORTU, _MAPA_TRANSLITERACJI_PL, _RaportPDF, generuj_csv
+from .stale import NAZWA_APLIKACJI
 
 
 # ==================== GRAFIKA „ROK / MIESIĄC W PIGUŁCE” ====================
 # Podsumowanie jako obrazek do wysłania, rysowane Pillow. Rysownik jest JEDEN
 # (`_narysuj_pigulke`); rok i miesiąc podają tylko liczby.
+
+# Auto z logo w stopce (assets/ w korzeniu, obok czcionek), na białej plakietce —
+# czarny dach na granatowym tle by zniknął.
+PLIK_LOGO_GRAFIKI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "assets", "logo.png")
+SZEROKOSC_LOGO_STOPKI = 96
 
 MIESIACE_SKROT = ["sty", "lut", "mar", "kwi", "maj", "cze",
                   "lip", "sie", "wrz", "paź", "lis", "gru"]
@@ -263,7 +270,20 @@ def _narysuj_pigulke(naglowek, nazwa, tytul, plakietki, kafle, wykres, fakty, ak
         rysuj.line([(MARGINES, y + 44), (SZER - MARGINES, y + 44)], fill=(45, 58, 80), width=2)
         y += WYS_WIERSZA
 
-    tekst((MARGINES, STOPKA_Y), f"Flota Mobile • {datetime.now().strftime('%d.%m.%Y')}", 22, (100, 116, 139))
+    x_stopki = MARGINES
+    try:
+        with Image.open(PLIK_LOGO_GRAFIKI) as plik_logo:
+            logo = plik_logo.convert("RGBA")
+        logo = logo.resize((SZEROKOSC_LOGO_STOPKI, round(logo.height * SZEROKOSC_LOGO_STOPKI / logo.width)),
+                           Image.Resampling.LANCZOS)
+        gora = STOPKA_Y + 11 - (logo.height + 12) // 2
+        rysuj.rounded_rectangle((MARGINES, gora, MARGINES + logo.width + 16, gora + logo.height + 12),
+                                radius=10, fill=(255, 255, 255))
+        obraz.paste(logo, (MARGINES + 8, gora + 6), logo)
+        x_stopki = MARGINES + logo.width + 16 + 14
+    except (OSError, ValueError):
+        log.polkniety("logo w stopce grafiki")
+    tekst((x_stopki, STOPKA_Y), f"{NAZWA_APLIKACJI} • {datetime.now().strftime('%d.%m.%Y')}", 22, (100, 116, 139))
 
     bufor = io.BytesIO()
     obraz.save(bufor, format="PNG", optimize=True)
@@ -1336,6 +1356,8 @@ def generuj_pdf_miesiaca(dane, akcent=(37, 99, 235)) -> bytes:
 __all__ = [
     "MIESIACE_PELNE",
     "MIESIACE_SKROT",
+    "PLIK_LOGO_GRAFIKI",
+    "SZEROKOSC_LOGO_STOPKI",
     "_CZCIONKI_KANDYDACI",
     "_gwarancje_do_paszportu",
     "_kafle_pigulki",

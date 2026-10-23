@@ -550,6 +550,10 @@ class UstawieniaView(ft.View):
         return utils.karta_formularza(
             [
                 ft.Row([
+                    utils.logo_aplikacji(112),
+                    utils.wartosc(db.NAZWA_APLIKACJI, size=utils.FS["heading"]),
+                ], spacing=utils.SPACING["md"], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.Row([
                     ft.Icon(ft.Icons.NEW_RELEASES, size=20, color=ft.Colors.PRIMARY),
                     ft.Column([
                         utils.wartosc(f"Wersja {wersja}"),

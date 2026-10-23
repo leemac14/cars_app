@@ -1,12 +1,21 @@
 # Wersja, którą Android pokazuje w informacjach o aplikacji — `flet build apk`
 # bierze ją stąd (--build-name). To ZAWSZE najnowsze wydanie z listy „Co nowego”
 # (db/nowosci.py, numer = data wydania); zgodności pilnuje tests/test_co_nowego.py.
-# Sekcja świadomie bez `name` i `dependencies`: nazwa paczki zostaje z nazwy
-# folderu, a zależności z requirements.txt — dokładnie tak, jak bez tej sekcji.
+# Sekcja świadomie bez `name` i `dependencies`: zależności zostają z requirements.txt,
+# a `name` nic by nie dał — nazwę pod ikoną ustawia `product`, a identyfikator pakietu
+# jest przypięty w [tool.flet.android].
 [project]
-version = "2026.10.23"
+version = "2026.10.23.2"
 
 [tool.flet]
+# Nazwa pod ikoną na telefonie (bez niej Flet brał nazwę folderu, „cars_app”). Ta sama
+# co db.NAZWA_APLIKACJI — pilnuje tests/test_nazwa_aplikacji.py.
+product = "LEEMAC APP"
+# Nazwa pliku z `flet build apk`: build/apk/LEEMAC_APP.apk (bez spacji — do wysyłki).
+artifact = "LEEMAC_APP"
+# Logo: assets/icon.png (ikona i ekran powitalny w jasnym motywie), assets/splash_dark.png
+# (białe koło z autem w ciemnym — czarny dach na ciemnym tle by zniknął).
+
 # Aparat w aplikacji (flet-camera, kolejka paragonów „do wpisania”). Gotowy
 # zestaw Fleta: uprawnienie CAMERA na Androidzie, opis dla iOS i aparat jako
 # sprzęt NIEWYMAGANY — telefon bez aparatu nadal zainstaluje aplikację
@@ -30,6 +39,11 @@ exclude = [
 ]
 
 [tool.flet.android]
+# Identyfikator pakietu przypięty: dotąd brał się z nazwy folderu (cars_app). Inny
+# identyfikator to dla Androida INNA aplikacja — stanęłaby obok starej z pustą bazą.
+# Nie zmieniać, także przy zmianie nazwy aplikacji czy folderu.
+bundle_id = "com.flet.cars_app"
+
 # Bez tego Flet buduje jeden „gruby" APK z TRZEMA architekturami naraz — czyli
 # trzy komplety bibliotek natywnych (cryptography, pydantic_core, Pillow,
 # fontTools, runtime Pythona, silnik Fluttera). Same pakiety Pythona to 37 MB

@@ -195,6 +195,19 @@ def test_ekran_startowy_pokazuje_tablice_zanim_wiadomo_czyja():
     assert "PL" in teksty, "bez niebieskiego paska UE to nie jest ta tablica"
 
 
+def test_ekran_startowy_ma_logo_na_srodku_w_bialym_kole():
+    """Logo stoi tam, gdzie chwilę wcześniej na ekranie powitalnym Androida (środek
+    ekranu), na białym kole — w ciemnym motywie czarny dach zlałby się z tłem."""
+    kolumna = utils.EkranStartowy(None).widok.controls[0]
+    odstep, kolo, pasek = kolumna.controls[0], kolumna.controls[1], kolumna.controls[-1]
+
+    assert isinstance(kolo.content, ft.Image) and kolo.content.src == utils.PLIK_LOGO
+    assert kolo.bgcolor == ft.Colors.WHITE and kolo.width == kolo.height == utils.SREDNICA_LOGO_STARTU
+    assert odstep.height == 2 * utils.SPACING["lg"] + utils.WYSOKOSC_TABLICY + pasek.height, \
+        "odstęp nad logo równy temu, co pod nim — inaczej logo nie stoi na środku"
+    assert (pathlib.Path(__file__).resolve().parents[1] / "assets" / utils.PLIK_LOGO).is_file()
+
+
 def test_ekran_startowy_ma_ruch_ktorego_nie_zatrzyma_zajety_python():
     """W chwili, gdy ekran startowy jest na wyświetlaczu, pętla zdarzeń otwiera
     bazę. Pasek NIEOKREŚLONY rysuje Flutter po swojej stronie."""

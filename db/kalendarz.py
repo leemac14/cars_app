@@ -16,6 +16,7 @@ import secrets
 from datetime import date as date_cls, datetime, time, timedelta, timezone
 from typing import Any
 
+from .stale import NAZWA_APLIKACJI
 from .ustawienia import (
     KLUCZ_ZNACZNIKA_KALENDARZA, pobierz_eksport_kalendarza, pobierz_prog_dni, pobierz_ustawienie,
     zapisz_eksport_kalendarza, zapisz_ustawienie,
@@ -44,7 +45,8 @@ RODZAJE_KALENDARZA = ("dokument", "skarbiec", "rata", "cykliczny", "opony", "pod
 # Grupy liczone w krótszym oknie (płatności i serie) — po przedrostku klucza osi.
 PRZEDROSTKI_PLATNOSCI = ("cykliczny:", "rata:")
 
-PRODID_KALENDARZA = "-//Flota Mobile//Terminy pojazdu//PL"
+PRODID_KALENDARZA = f"-//{NAZWA_APLIKACJI}//Terminy pojazdu//PL"
+# Bez zmian przy zmianie nazwy: inna domena = inne UID, a kalendarz zdublowałby terminy.
 DOMENA_UID = "cars-app"
 
 _PRZEDROSTEK_SERII = "cykliczny:"
