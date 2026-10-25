@@ -98,6 +98,8 @@ WYWOLANIA = {
     "pobierz_pelna_historie_przebiegu": lambda k: (k["id"]["auto_id"],),
     "pobierz_pojazdy": lambda k: (),
     "pobierz_powiadomienia": lambda k: (k["id"]["auto_id"],),
+    "pobierz_pozycje_do_zrobienia": lambda k: (k["id"]["auto_id"],),
+    "pobierz_zdarzenia_do_zrobienia": lambda k: (k["id"]["do_zrobienia"],),
     "pobierz_pozycje_wizyty": lambda k: (k["id"]["wizyta"],),
     "pobierz_przebieg_miesieczny": lambda k: (k["id"]["auto_id"],),
     "pobierz_przejazdy": lambda k: (k["id"]["auto_id"],),

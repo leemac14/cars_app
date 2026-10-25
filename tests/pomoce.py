@@ -287,9 +287,14 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (auto, "Paliwo", "miesiac", 600.0, "budzet-1"))
         zid["budzet"] = c.lastrowid
 
-        c.execute("INSERT INTO do_zrobienia (auto_id, tytul, opis, priorytet, zadanie_id, wykonane, data_utworzenia, zdalne_id) VALUES (?,?,?,?,?,?,?,?)",
-                  (auto, "Umówić przegląd", "Zadzwonić do Janka", "Wysoki", zid["zadanie"], 0, "2026-02-01", "todo-1"))
+        c.execute("INSERT INTO do_zrobienia (auto_id, tytul, opis, priorytet, zadanie_id, wykonane, data_utworzenia, "
+                  "termin_przebieg, przebieg_startowy, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                  (auto, "Umówić przegląd", "Zadzwonić do Janka", "Wysoki", zid["zadanie"], 0, "2026-02-01",
+                   115000, 100000, "todo-1"))
         zid["do_zrobienia"] = c.lastrowid
+        c.execute("INSERT INTO do_zrobienia_zdarzenia (pozycja_id, rodzaj, dane, moment, dodane_przez, zdalne_id) "
+                  "VALUES (?,?,?,?,?,?)", (zid["do_zrobienia"], "dodano", "{}", "2026-02-01 10:00:00", "Kamil", "todo-zd-1"))
+        zid["zdarzenie_do_zrobienia"] = c.lastrowid
 
         # Z gwarancją naprawy (dwa lata albo 30 000 km) i rodzajem, tymi samymi co
         # wizyty — kosz i synchronizacja mają je przenieść jak każdą inną kolumnę.
@@ -298,6 +303,9 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
                   (zid["zadanie"], zid["wizyta"], "2026-01-10", 100000, "Serwis", 480.0, "Warsztat u Janka", "Olej Castrol",
                    "10.01.2028", 130000, db.SERWIS_PLANOWE, "hist-1"))
         zid["historia"] = c.lastrowid
+        # Odwołania pozycji do wpisu, kosztu i wizyty — kosz i plik pojazdu przemapowują je jak resztę.
+        c.execute("UPDATE do_zrobienia SET historia_id=?, koszt_id=?, wizyta_id=? WHERE id=?",
+                  (zid["historia"], zid["inny_koszt"], zid["wizyta"], zid["do_zrobienia"]))
 
         c.execute("INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta, koszt, zdalne_id) VALUES (?,?,?,?,?)",
                   (zid["wizyta"], zid["magazyn"], 1.0, 19.5, "wcm-1"))
@@ -840,12 +848,18 @@ def dosyp_dane(auto_id, dni_wstecz=200):
                       (auto_id, data(dni_wstecz - i * 25), 100200 + i * 900,
                        list(db.ZRODLA_ODCZYTU)[i % len(db.ZRODLA_ODCZYTU)]))
 
+        # Wykonane (co trzecie) z dniem, licznikiem, kosztem i notatką; jedno aktywne z terminem przebiegowym.
         for i in range(5):
+            wykonane = i % 3 == 0
             c.execute(
                 "INSERT INTO do_zrobienia (auto_id, tytul, opis, priorytet, szacowany_koszt, termin, wykonane, "
-                "data_utworzenia) VALUES (?,?,?,?,?,?,?,?)",
+                "data_utworzenia, data_wykonania, przebieg_wykonania, koszt_wykonania, notatka_wykonania, "
+                "wykonane_przez, termin_przebieg, przebieg_startowy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (auto_id, f"Zadanie {i + 1}", "Opis zadania", priorytety[i % len(priorytety)],
-                 100.0 * (i + 1), data(-30 + i * 5), 1 if i % 3 == 0 else 0, data(dni_wstecz)),
+                 100.0 * (i + 1), data(-30 + i * 5), 1 if wykonane else 0, data(dni_wstecz),
+                 data(5 + i) if wykonane else None, 101000 + i * 300 if wykonane else None,
+                 90.0 * (i + 1) if wykonane else None, "Zrobione w garażu u Janka" if i == 3 else None,
+                 "Kamil" if wykonane else None, 104000 if i == 1 else None, 101000 if i == 1 else None),
             )
 
         for i, strefa in enumerate(db.STREFY_KAROSERII[:4]):

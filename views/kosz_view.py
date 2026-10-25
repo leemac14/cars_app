@@ -97,6 +97,8 @@ def _opis_wpisu(pozycja, j):
     if tabela == "zdjecia_karoserii":
         return ikona, " · ".join(filter(None, ["Zdjęcie karoserii", w.get("strefa")])), [data, w.get("opis")]
     if tabela == "do_zrobienia":
+        if w.get("wykonane"):
+            return ikona, w.get("tytul") or "Do zrobienia", ["Wykonane", w.get("data_wykonania")]
         return ikona, w.get("tytul") or "Do zrobienia", ["Do zrobienia", w.get("priorytet")]
     if tabela == "zestawy_opon":
         return ikona, " · ".join(filter(None, ["Opony", w.get("sezon")])), [w.get("rozmiar")]

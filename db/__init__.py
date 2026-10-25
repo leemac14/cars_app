@@ -33,6 +33,7 @@ from .koszty import *
 from .szablony import *
 from .dolewki import *
 from .awarie import *
+from .do_zrobienia import *
 from .gwarancje import *
 from .raty import *
 from .ewidencja import *
@@ -90,6 +91,7 @@ from . import (
     koszty,
     dolewki,
     awarie,
+    do_zrobienia,
     gwarancje,
     raty,
     ewidencja,

@@ -311,7 +311,9 @@ def test_nowa_kolumna_jest_w_synchronizacji_jako_dopisana():
         konfig = next(k for k in sync.KONFIGURACJA_SYNC if k["tabela"] == tabela)
         assert "koszt_robocizny" in konfig["kolumny"] and "koszt_robocizny" in konfig["dopisane"]
     for konfig in sync.KONFIGURACJA_SYNC:
-        assert set(konfig.get("dopisane") or ()) <= set(konfig["kolumny"]), konfig["tabela"]
+        # Odwołanie dołożone później jedzie w chmurze jako `<kolumna>_zdalne` — pod tą nazwą.
+        odwolania = {f"{k}_zdalne" for k in konfig.get("fk") or {}}
+        assert set(konfig.get("dopisane") or ()) <= set(konfig["kolumny"]) | odwolania, konfig["tabela"]
 
 
 def test_pusta_dopisana_kolumna_nie_zmienia_rekordu():

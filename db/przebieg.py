@@ -283,6 +283,27 @@ def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
     return [wg_daty[d] for d in sorted(wg_daty.keys())]
 
 
+def szacuj_przebieg_w_dniu(auto_id, data_str, punkty=None):
+    """Licznik (km) w danym dniu z historii licznika: wpis z tego dnia, liniowo między
+    sąsiednimi, po ostatnim — ostatni znany. None przed pierwszym wpisem i bez historii."""
+    d = parsuj_date(data_str)
+    if not auto_id or d == datetime.min.date():
+        return None
+    punkty = pobierz_historie_przebiegu(auto_id) if punkty is None else punkty
+    poprzedni = None
+    for tekst, km in punkty:
+        dzien = parsuj_date(tekst)
+        if dzien == d:
+            return km
+        if dzien > d:
+            if not poprzedni:
+                return None
+            d0, km0 = poprzedni
+            return int(round(km0 + (km - km0) * (d - d0).days / max(1, (dzien - d0).days)))
+        poprzedni = (dzien, km)
+    return poprzedni[1] if poprzedni else None
+
+
 def dodaj_odczyt_przebiegu(auto_id, przebieg, data_str=None, notatka=None, zrodlo=ZRODLO_ODCZYTU_DOMYSLNE):
     """Ręczny odczyt licznika w osobnym dzienniku; odczyt z tego samego dnia jest
     nadpisywany. Zwraca True przy nadpisaniu, False przy nowym."""
@@ -596,4 +617,5 @@ __all__ = [
     "sprawdz_czy_przebieg_podejrzany",
     "sprawdz_czy_tankowanie_duplikat",
     "swiezosc_licznika",
+    "szacuj_przebieg_w_dniu",
 ]

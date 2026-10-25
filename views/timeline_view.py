@@ -12,6 +12,7 @@ IKONY_TIMELINE = {
     "Zdjęcie karoserii": (ft.Icons.PHOTO_CAMERA, ft.Colors.PURPLE_700),
     "Odczyt przebiegu": (ft.Icons.SPEED, ft.Colors.TEAL_700),
     "Dolewka": (ft.Icons.WATER_DROP, ft.Colors.BROWN_400),
+    "Zadanie wykonane": (ft.Icons.TASK_ALT, ft.Colors.INDIGO_400),
 }
 
 class TimelineView(ft.View):

@@ -644,6 +644,28 @@ def init_db():
             CREATE TABLE IF NOT EXISTS szablony_wpisow (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, nazwa TEXT NOT NULL, rodzaj TEXT NOT NULL, dane TEXT NOT NULL DEFAULT '{}', uzycia INTEGER NOT NULL DEFAULT 0, ostatnie_uzycie TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_szablony_wpisow_auto ON szablony_wpisow(auto_id);
             CREATE INDEX IF NOT EXISTS idx_szablony_wpisow_auto_zdalne ON szablony_wpisow(auto_id, zdalne_id);
+            """,
+            # Wersja 57: wykonanie pozycji Do zrobienia (db/do_zrobienia.py) — data, licznik w km,
+            # faktyczny koszt, notatka, kto; `historia_id` / `koszt_id` — wpis serwisowy albo Inny
+            # koszt z wykonania, `wizyta_id` — wizyta z listy; termin przebiegowy z licznikiem
+            # startowym paska. `do_zrobienia_zdarzenia` — dziennik pozycji (`dane` w JSON), jedzie
+            # do chmury. Starych wykonanych nie wypełniamy (sync `dopisane`).
+            """
+            ALTER TABLE do_zrobienia ADD COLUMN data_wykonania TEXT;
+            ALTER TABLE do_zrobienia ADD COLUMN przebieg_wykonania INTEGER;
+            ALTER TABLE do_zrobienia ADD COLUMN koszt_wykonania REAL;
+            ALTER TABLE do_zrobienia ADD COLUMN notatka_wykonania TEXT;
+            ALTER TABLE do_zrobienia ADD COLUMN wykonane_przez TEXT;
+            ALTER TABLE do_zrobienia ADD COLUMN historia_id INTEGER REFERENCES historia(id) ON DELETE SET NULL;
+            ALTER TABLE do_zrobienia ADD COLUMN koszt_id INTEGER REFERENCES inne_koszty(id) ON DELETE SET NULL;
+            ALTER TABLE do_zrobienia ADD COLUMN wizyta_id INTEGER REFERENCES wizyty(id) ON DELETE SET NULL;
+            ALTER TABLE do_zrobienia ADD COLUMN termin_przebieg INTEGER;
+            ALTER TABLE do_zrobienia ADD COLUMN przebieg_startowy INTEGER;
+            CREATE INDEX IF NOT EXISTS idx_do_zrobienia_historia ON do_zrobienia(historia_id);
+            CREATE INDEX IF NOT EXISTS idx_do_zrobienia_koszt ON do_zrobienia(koszt_id);
+            CREATE INDEX IF NOT EXISTS idx_do_zrobienia_wizyta ON do_zrobienia(wizyta_id);
+            CREATE TABLE IF NOT EXISTS do_zrobienia_zdarzenia (id INTEGER PRIMARY KEY AUTOINCREMENT, pozycja_id INTEGER NOT NULL, rodzaj TEXT NOT NULL, dane TEXT NOT NULL DEFAULT '{}', moment TEXT NOT NULL, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (pozycja_id) REFERENCES do_zrobienia(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_do_zrobienia_zdarzenia_pozycja ON do_zrobienia_zdarzenia(pozycja_id);
             """
         ]
 

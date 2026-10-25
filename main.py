@@ -877,6 +877,9 @@ def main(page: ft.Page):
         elif segmenty[0] == "szukaj":
             page.views.append(SzukajView(page, app_state))
         elif segmenty[0] == "do-zrobienia":
+            # Z dziennika życia auta: wykonane zadanie otwiera podzakładkę Wykonane.
+            if len(segmenty) >= 2 and segmenty[1] == "wykonane":
+                app_state.do_zrobienia_podzakladka = 2
             page.views.append(DoZrobieniaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":
                 page.views.append(FormularzDoZrobieniaView(page, app_state, None))

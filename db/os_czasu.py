@@ -10,6 +10,7 @@ from .jednostki import jednostka_dystansu, tekst_dystansu
 from .energia import normalizuj_rodzaj_energii
 from .zalaczniki import zalaczniki_pojazdu
 from .dolewki import tekst_litrow
+from .do_zrobienia import pobierz_pozycje_do_zrobienia
 
 
 def _km(przebieg, jednostka):
@@ -122,6 +123,18 @@ def pobierz_dane_timeline(auto_id) -> list[tuple[str, str, str, str, str, float 
                 f"/dolewki/edytuj/{r['id']}",
                 r["dodane_przez"], r["notatka"],
             ))
+
+    # Wykonane z listy Do zrobienia — tylko bez wpisu serwisowego, kosztu i wizyty: tamte
+    # stoją w dzienniku same, z kwotą. Bez kwoty, bo koszt bez wpisu nie jest wydatkiem.
+    for p in pobierz_pozycje_do_zrobienia(auto_id, wykonane=True):
+        if p["historia_id"] or p["koszt_id"] or p["wizyta_id"] or not p["data_wykonania"]:
+            continue
+        opis = " • ".join(x for x in (_km(p["przebieg_wykonania"], jednostka) if p["przebieg_wykonania"] else "",
+                                      p["zadanie_nazwa"] or "") if x)
+        zdarzenia.append((
+            f"zrobione_{p['id']}", "Zadanie wykonane", p["data_wykonania"], p["tytul"], opis,
+            None, [], "/do-zrobienia/wykonane", p["wykonane_przez"], p["notatka_wykonania"],
+        ))
 
     return zdarzenia
 

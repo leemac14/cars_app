@@ -5,7 +5,7 @@
 # a `name` nic by nie dał — nazwę pod ikoną ustawia `product`, a identyfikator pakietu
 # jest przypięty w [tool.flet.android].
 [project]
-version = "2026.10.23.2"
+version = "2026.10.25"
 
 [tool.flet]
 # Nazwa pod ikoną na telefonie (bez niej Flet brał nazwę folderu, „cars_app”). Ta sama

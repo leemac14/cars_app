@@ -75,7 +75,8 @@ SEKCJE_PLIKU_POJAZDU = [
      "tabele": ("magazyn_czesci", "ceny_czesci", "wizyta_czesci_magazynu", "historia_czesci_magazynu"),
      "liczone": ("magazyn_czesci", "ceny_czesci"), "dla_kupujacego": True},
     {"id": "do_zrobienia", "tytul": "Do zrobienia i checklisty", "opis": "Zaplanowane prace i listy kontrolne",
-     "tabele": ("do_zrobienia", "checklisty", "checklisty_pozycje"), "liczone": ("do_zrobienia", "checklisty"),
+     "tabele": ("do_zrobienia", "do_zrobienia_zdarzenia", "checklisty", "checklisty_pozycje"),
+     "liczone": ("do_zrobienia", "checklisty"),
      "dla_kupujacego": True},
     {"id": "warsztaty", "tytul": "Warsztaty", "opis": "Kontakty do warsztatów",
      "tabele": ("warsztaty",), "dla_kupujacego": True},
@@ -107,13 +108,15 @@ SEKCJE_PLIKU_POJAZDU = [
      "kolumny_pojazdu": ("ubezpieczyciel", "nr_polisy", "skladka_roczna", "oferta_oc_ac", "oferta_oc_ac_data"),
      "dla_kupujacego": False},
     {"id": "podpisy", "tytul": "Podpisy osób", "opis": "Kto dodał i zmienił wpis, kto podpisał notatkę",
-     "kolumny_wpisow": ("dodane_przez", "zmodyfikowane_przez", "notatka_autor"), "dla_kupujacego": False},
+     "kolumny_wpisow": ("dodane_przez", "zmodyfikowane_przez", "notatka_autor", "wykonane_przez"),
+     "dla_kupujacego": False},
     {"id": "ustawienia", "tytul": "Ustawienia pojazdu", "opis": "Układ kokpitu, zakresy wykresów, tryb ewidencji",
      "ustawienia": True, "dla_kupujacego": False},
 ]
 
 # Odwołania, bez których wiersz dalej ma sens (reszta bez rodzica wypada).
-_KLUCZE_OPCJONALNE = {("do_zrobienia", "zadanie_id"), ("historia", "wizyta_id"),
+_KLUCZE_OPCJONALNE = {("do_zrobienia", "zadanie_id"), ("do_zrobienia", "historia_id"),
+                      ("do_zrobienia", "koszt_id"), ("do_zrobienia", "wizyta_id"), ("historia", "wizyta_id"),
                       ("dolewki", "magazyn_id"), ("dolewki", "koszt_id")}
 # Wiersz, który JEST plikiem i bez niego nie istnieje (kolumna NOT NULL).
 _WIERSZE_Z_PLIKIEM_WYMAGANYM = {"zalaczniki", "zdjecia_karoserii"}

@@ -46,6 +46,7 @@ from .powiadomienia import *
 from .przyszlosc import *
 from .kalendarz import *
 from .flota import *
+from .do_zrobienia import *
 from .wykresy_analizy import *
 from .nawigacja import *
 from .zaznaczanie import *
@@ -92,6 +93,7 @@ from . import (
     przyszlosc,
     kalendarz,
     flota,
+    do_zrobienia,
     wykresy_analizy,
     nawigacja,
     zaznaczanie,

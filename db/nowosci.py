@@ -28,6 +28,20 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.25", "pozycje": [
+        {"tytul": "Wykonane z dniem, licznikiem i kosztem", "ikona": "TASK_ALT", "ekran": "do-zrobienia",
+         "opis": "Odhaczenie pozycji pyta, kiedy naprawdę ją zrobiłeś, przy jakim stanie licznika i za ile. "
+                 "Pozycja z podzespołem od razu dopisuje się do serwisu, a reszta może trafić do Innych kosztów."},
+        {"tytul": "Zakładka Wykonane i historia pozycji", "ikona": "HISTORY", "ekran": "wykonane",
+         "opis": "Zrobione rzeczy nie szarzeją na liście, tylko przechodzą do Wykonanych, ułożone według "
+                 "miesięcy. Każda pozycja pamięta, kiedy ją dodano, przesuwano, zrobiono albo cofnięto."},
+        {"tytul": "Termin przy przebiegu", "ikona": "SPEED", "ekran": "do-zrobienia",
+         "opis": "Pozycję zaplanujesz także na stan licznika — pasek na karcie pokazuje, ile zostało, a po "
+                 "przekroczeniu liczy się jak termin, który minął."},
+        {"tytul": "Szczegóły i przesuwanie terminu", "ikona": "EVENT_REPEAT", "ekran": "do-zrobienia",
+         "opis": "Dotknięcie pozycji pokazuje wszystko o niej, a termin przesuniesz o tydzień albo miesiąc "
+                 "jednym dotknięciem. Kilka zaznaczonych odhaczysz naraz, z jednym dniem wykonania."},
+    ]},
     {"wersja": "2026.10.23.2", "pozycje": [
         {"tytul": "Nowa nazwa i logo: LEEMAC APP", "ikona": "DIRECTIONS_CAR", "ekran": "ustawienia",
          "opis": "Aplikacja nazywa się teraz LEEMAC APP i ma własne logo — czerwone auto na ikonie, "

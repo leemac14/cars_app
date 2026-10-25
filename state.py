@@ -72,6 +72,7 @@ class AppState:
             "historia": ("data", True),
             "wizyty": ("data", True),
             "do_zrobienia": ("priorytet", False),
+            "do_zrobienia_wykonane": ("data", True),
             "stat_miesiace": ("okres", True),
             "stat_lata": ("rok", True),
             "magazyn_czesci": ("nazwa", False),
@@ -83,6 +84,4 @@ class AppState:
         # Klucz = nazwa filtra, wartość = aktualnie wybrana opcja.
         # Domyślną wartością jest zawsze "Wszystko" (patrz utils._zbuduj_popup_filtra),
         # więc tu wystarczy wypisać tylko wyjątki od tej reguły.
-        self.filtry = {
-            "do_zrobienia_status": "Aktywne",
-        }
+        self.filtry = {}

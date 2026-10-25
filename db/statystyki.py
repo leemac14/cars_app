@@ -12,7 +12,8 @@ from .polaczenie import polacz_baze
 from .ustawienia import OKNO_1000KM_DOMYSLNE
 from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, opis_terminu_dni
 from .energia import ETYKIETY_RODZAJU, czy_pojazd_dwuzrodlowy, domyslny_rodzaj_energii, etykiety_energii, rodzaje_energii_pojazdu
-from .przebieg import pobierz_historie_przebiegu, podsumowanie_historii_przebiegu
+from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu, podsumowanie_historii_przebiegu
+from .jednostki import tekst_dystansu
 from .koszty import KATEGORIE_BUDZETU, pobierz_koszty_miesieczne, pobierz_koszty_miesieczne_wg_kategorii, siatka_miesiecy
 from .powiadomienia import pobierz_powiadomienia
 
@@ -216,21 +217,23 @@ def _policz_rozbicie_kondycji(auto_id):
         # Tylko najwyższy priorytet i tylko po terminie: reszta listy „Do
         # zrobienia” to plany, a nie stan auta.
         c.execute(
-            "SELECT tytul, termin FROM do_zrobienia "
+            "SELECT tytul, termin, termin_przebieg FROM do_zrobienia "
             "WHERE auto_id=? AND wykonane=0 AND priorytet=?",
             (auto_id, PRIORYTET_USTERKI)
         )
-        for u in c.fetchall():
-            termin = str(u["termin"] or "").strip()
-            if not termin:
-                continue
-            d_u = parsuj_date(termin)
-            if d_u == datetime.min.date() or d_u >= dzis:
+        usterki = c.fetchall()
+        licznik = pobierz_aktualny_przebieg(auto_id) if any(u["termin_przebieg"] for u in usterki) else None
+        for u in usterki:
+            d_u = parsuj_date(str(u["termin"] or "").strip())
+            if d_u != datetime.min.date() and d_u < dzis:
+                przekroczenie = liczba_z_odmiana((dzis - d_u).days, 'dzień', 'dni', 'dni')
+            elif u["termin_przebieg"] and licznik and licznik >= u["termin_przebieg"]:
+                przekroczenie = tekst_dystansu(licznik - u["termin_przebieg"])
+            else:
                 continue
             dodaj("usterka", KARY_KONDYCJI["usterka_po_terminie"],
                   f"{u['tytul']} — zaległa usterka",
-                  szczegol=f"Priorytet {PRIORYTET_USTERKI.lower()} • przekroczono o "
-                           f"{liczba_z_odmiana((dzis - d_u).days, 'dzień', 'dni', 'dni')}",
+                  szczegol=f"Priorytet {PRIORYTET_USTERKI.lower()} • przekroczono o {przekroczenie}",
                   trasa="/do-zrobienia")
 
     # ---- Wiarygodność danych ----
@@ -736,14 +739,14 @@ def pobierz_zasieg_ev(auto_id):
 
 def podsumowanie_do_zrobienia(auto_id):
     """Ile rzeczy czeka na zrobienie, ile z nich jest pilnych i co wypada
-    najbliżej. „Pilne” liczymy po TERMINIE, a nie po priorytecie: zaległy
-    termin jest faktem, priorytet tylko deklaracją."""
+    najbliżej. „Pilne” liczymy po TERMINIE (dacie albo przebiegu), a nie po
+    priorytecie: zaległy termin jest faktem, priorytet tylko deklaracją."""
     if not auto_id:
         return None
     with polacz_baze() as conn:
         c = conn.cursor()
         c.execute(
-            "SELECT tytul, priorytet, termin, szacowany_koszt FROM do_zrobienia "
+            "SELECT tytul, priorytet, termin, szacowany_koszt, termin_przebieg FROM do_zrobienia "
             "WHERE auto_id=? AND wykonane=0",
             (auto_id,)
         )
@@ -752,15 +755,18 @@ def podsumowanie_do_zrobienia(auto_id):
         return {"otwarte": 0, "po_terminie": 0, "najblizsze": None, "szacowany_koszt": 0.0}
 
     dzis = datetime.now().date()
+    licznik = pobierz_aktualny_przebieg(auto_id) if any(w[4] for w in wiersze) else None
     po_terminie = 0
     z_terminem = []
     koszt = 0.0
-    for tytul, priorytet, termin, szacunek in wiersze:
+    for tytul, priorytet, termin, szacunek, termin_km in wiersze:
         koszt += float(szacunek or 0.0)
+        po_przebiegu = bool(termin_km and licznik and licznik >= termin_km)
         d = parsuj_date(termin)
         if d == datetime.min.date():
+            po_terminie += po_przebiegu
             continue
-        if d < dzis:
+        if d < dzis or po_przebiegu:
             po_terminie += 1
         z_terminem.append((d, str(tytul or ""), str(priorytet or "")))
 

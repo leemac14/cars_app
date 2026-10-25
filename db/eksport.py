@@ -10,7 +10,7 @@ try:
 except ImportError:
     FPDF = None
 
-from .stale import ENERGIA_PRAD, RODZAJE_PLYNOW
+from .stale import ENERGIA_PRAD, KOLEJNOSC_PRIORYTETU, RODZAJE_PLYNOW
 from .polaczenie import polacz_baze
 from .pomocnicze import formatuj_liczba_eksport
 from .daty import warunek_zakresu_dat
@@ -20,6 +20,7 @@ from .energia import domyslny_rodzaj_energii
 from .koszty import rozbicie_kosztu
 from .awarie import ETYKIETY_RODZAJU_SERWISU, rodzaj_serwisu
 from .ewidencja import miejsca_km
+from .do_zrobienia import pobierz_pozycje_do_zrobienia
 
 
 # ==================== EKSPORT DANYCH (CSV / PDF) ====================
@@ -212,15 +213,20 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             wynik["zestawy_opon"] = (["Sezon", "Rozmiar", "Marka/model", "Bieżnik (mm)", "Ilość", "Stan", "Cena"], wiersze)
 
         if "do_zrobienia" in kategorie:
-            c.execute(
-                "SELECT tytul, priorytet, szacowany_koszt, termin, wykonane FROM do_zrobienia "
-                "WHERE auto_id=? ORDER BY priorytet", (auto_id,)
-            )
+            # Wykonanie z wpisem serwisowym albo kosztem bierze datę i kwotę z niego (jak lista).
+            pozycje = pobierz_pozycje_do_zrobienia(auto_id) + pobierz_pozycje_do_zrobienia(auto_id, wykonane=True)
+            pozycje.sort(key=lambda p: (p["wykonane"], KOLEJNOSC_PRIORYTETU.get(p["priorytet"], 9), p["id"]))
             wiersze = [
-                [tyt, pr or "", formatuj_liczba_eksport(koszt), term or "", "Tak" if wyk else "Nie"]
-                for tyt, pr, koszt, term, wyk in c.fetchall()
+                [p["tytul"], p["priorytet"], formatuj_liczba_eksport(p["szacowany_koszt"]), p["termin"],
+                 licznik(p["termin_przebieg"]) if p["termin_przebieg"] else "",
+                 (p["data_wykonania"] or "Tak") if p["wykonane"] else "",
+                 licznik(p["przebieg_wykonania"]) if p["przebieg_wykonania"] else "",
+                 formatuj_liczba_eksport(p["koszt_wykonania"]), p["notatka_wykonania"] or ""]
+                for p in pozycje
             ]
-            wynik["do_zrobienia"] = (["Tytuł", "Priorytet", "Szac. koszt", "Termin", "Wykonane"], wiersze)
+            # „Notatka” jak w innych tabelach — PDF ją pomija, CSV ma.
+            wynik["do_zrobienia"] = (["Tytuł", "Priorytet", "Szac. koszt", "Termin", f"Termin ({j})", "Wykonano",
+                                      f"Przebieg ({j})", "Koszt", "Notatka"], wiersze)
 
         if "zadania" in kategorie:
             c.execute(

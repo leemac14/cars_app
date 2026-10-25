@@ -101,6 +101,10 @@ EKRANY = [
      "ikona": ft.Icons.CHECKLIST_RTL, "grupa": "serwis", "trasa": "/do-zrobienia",
      "stan": {"do_zrobienia_podzakladka": 0},
      "slowa": ["todo", "zadania", "lista", "plan", "przypomnienia"]},
+    {"id": "wykonane", "tytul": "Wykonane zadania", "opis": "Historia zrobionych rzeczy z dniem i licznikiem",
+     "ikona": ft.Icons.TASK_ALT, "grupa": "serwis", "trasa": "/do-zrobienia",
+     "stan": {"do_zrobienia_podzakladka": 2},
+     "slowa": ["zrobione", "wykonane", "historia zadań", "odhaczone", "dziennik zadań"]},
     # Checklisty i opony mieszkają w PODZAKŁADKACH innych ekranów, więc bez
     # własnego wpisu nie dało się do nich trafić ani z szuflady, ani
     # z wyszukiwarki — a to osobne rzeczy, nie warianty tego samego widoku.

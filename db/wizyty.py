@@ -14,17 +14,37 @@ from .przebieg import pobierz_aktualny_przebieg, przelicz_wszystkie_zadania
 from .kosz_wpisow import usun_do_kosza
 from .awarie import domyslny_rodzaj_serwisu
 from .nazwy import klucz_nazwy
+from .do_zrobienia import ZDARZENIE_WIZYTA, ZDARZENIE_ZWROT, usun_zdarzenia_do_zrobienia, zanotuj_zdarzenie_do_zrobienia
+
+
+_ODWOLANIA_DO_ZROBIENIA = {"zadanie_id": "zadania", "historia_id": "historia", "koszt_id": "inne_koszty",
+                           "wizyta_id": "wizyty"}
+
+
+def _przywroc_pozycje_do_zrobienia(conn, migawki):
+    """Wiersze do_zrobienia wracają do stanu z migawki (cofnięcie); odwołanie do wiersza,
+    którego już nie ma, wraca jako NULL."""
+    for migawka in migawki:
+        dane = {k: v for k, v in migawka.items() if k != "id"}
+        for kolumna, tabela in _ODWOLANIA_DO_ZROBIENIA.items():
+            if dane.get(kolumna) and not conn.execute(f"SELECT 1 FROM {tabela} WHERE id=?", (dane[kolumna],)).fetchone():
+                dane[kolumna] = None
+        conn.execute(f"UPDATE do_zrobienia SET {', '.join(f'{k}=?' for k in dane)} WHERE id=?",
+                     (*dane.values(), migawka["id"]))
 
 
 def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> tuple[int | None, list[str], dict[str, Any] | None]:
-    """Zwraca (wizyta_id, duplikaty, wynik_cofniecia). wynik_cofniecia to słownik
+    """Pozycje idą do Wykonanych z odnośnikiem do nowej wizyty (i swojego wpisu w niej).
+    Zwraca (wizyta_id, duplikaty, wynik_cofniecia). wynik_cofniecia to słownik
     {"cofnij": fn, "finalizuj": fn} analogiczny do pozostałych operacji usuwających —
     pozwala pokazać snackbar z możliwością cofnięcia całej operacji."""
     if not ids_list: return None, [], None
     dzis = datetime.now().strftime("%d.%m.%Y")
     prz = pobierz_aktualny_przebieg(auto_id) or 0
+    ja = pobierz_moje_imie()
     duplikaty = []
     nowo_utworzone_zadania_ids = []
+    zdarzenia = []
 
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
@@ -36,18 +56,19 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
         placeholders = ",".join("?" for _ in ids_list)
         cur.execute(f"SELECT * FROM do_zrobienia WHERE id IN ({placeholders})", tuple(ids_list))
         do_zrobienia_dane = [{k: w[k] for k in kol_dz} for w in cur.fetchall()]
-        pozycje = [(d["tytul"], d["szacowany_koszt"], d["zadanie_id"]) for d in do_zrobienia_dane]
+        pozycje = [(d["id"], d["tytul"], d["szacowany_koszt"], d["zadanie_id"]) for d in do_zrobienia_dane]
 
-        suma_kosztow = sum((p[1] or 0.0) for p in pozycje)
-        tytuly = [p[0] for p in pozycje]
+        suma_kosztow = sum((p[2] or 0.0) for p in pozycje)
+        tytuly = [p[1] for p in pozycje]
         notatki = "Utworzono z listy: " + ", ".join(tytuly)
 
         cur.execute("INSERT INTO wizyty (auto_id, data, data_iso, przebieg, wykonawca, koszt_calkowity, notatki, dodane_przez) VALUES (?,?,?,?,?,?,?,?)",
-                    (auto_id, dzis, na_iso(dzis), prz, "", suma_kosztow, notatki, pobierz_moje_imie()))
+                    (auto_id, dzis, na_iso(dzis), prz, "", suma_kosztow, notatki, ja))
         wizyta_id = cur.lastrowid
         zadania_wizyty = []
+        wpisy_pozycji = {}
 
-        for tytul, koszt, zadanie_id in pozycje:
+        for pozycja_id, tytul, koszt, zadanie_id in pozycje:
             czy_opony = False
             if not zadanie_id and utworz_podzespoly:
                 # Dopasowanie po klucz_nazwy, więc „Filtr oleju” z listy trafia
@@ -73,8 +94,9 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
             if zadanie_id:
                 kat = "Letnie" if czy_opony else None
                 cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (wizyta_id, zadanie_id, dzis, na_iso(dzis), prz, koszt or 0.0, "", kat, pobierz_moje_imie()))
+                            (wizyta_id, zadanie_id, dzis, na_iso(dzis), prz, koszt or 0.0, "", kat, ja))
                 zadania_wizyty.append(zadanie_id)
+                wpisy_pozycji[pozycja_id] = cur.lastrowid
 
         # Rodzaj jak w nowej wizycie z formularza: „planowe”, gdy każdy podzespół ma interwał.
         rodzaj = domyslny_rodzaj_serwisu(zadania_wizyty, conn=conn)
@@ -82,7 +104,13 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
             cur.execute("UPDATE wizyty SET rodzaj=? WHERE id=?", (rodzaj, wizyta_id))
             cur.execute("UPDATE historia SET rodzaj=? WHERE wizyta_id=?", (rodzaj, wizyta_id))
 
-        cur.execute(f"DELETE FROM do_zrobienia WHERE id IN ({placeholders})", tuple(ids_list))
+        # Pozycje nie znikają: trafiają do Wykonanych z odnośnikiem do wizyty (i swojego wpisu).
+        for pozycja_id, _, koszt, _ in pozycje:
+            cur.execute("UPDATE do_zrobienia SET wykonane=1, data_wykonania=?, przebieg_wykonania=?, koszt_wykonania=?, "
+                        "notatka_wykonania=NULL, wykonane_przez=?, wizyta_id=?, historia_id=?, koszt_id=NULL WHERE id=?",
+                        (dzis, prz or None, koszt, ja or None, wizyta_id, wpisy_pozycji.get(pozycja_id), pozycja_id))
+            zdarzenia.append(zanotuj_zdarzenie_do_zrobienia(conn, pozycja_id, ZDARZENIE_WIZYTA,
+                                                            {"wizyta_id": wizyta_id, "data": dzis}, ja))
 
     przelicz_wszystkie_zadania(auto_id)
 
@@ -97,12 +125,8 @@ def utworz_wizyte_z_do_zrobienia(auto_id, ids_list, utworz_podzespoly=False) -> 
             if nowo_utworzone_zadania_ids:
                 p_z = ",".join("?" for _ in nowo_utworzone_zadania_ids)
                 conn.execute(f"DELETE FROM zadania WHERE id IN ({p_z})", tuple(nowo_utworzone_zadania_ids))
-            if do_zrobienia_dane:
-                kol_bez_id = [k for k in kol_dz if k != "id"]
-                p_ins = ",".join("?" for _ in kol_bez_id)
-                n_ins = ",".join(kol_bez_id)
-                for d in do_zrobienia_dane:
-                    conn.execute(f"INSERT INTO do_zrobienia ({n_ins}) VALUES ({p_ins})", tuple(d[k] for k in kol_bez_id))
+            _przywroc_pozycje_do_zrobienia(conn, do_zrobienia_dane)
+        usun_zdarzenia_do_zrobienia(zdarzenia, auto_id)
         przelicz_wszystkie_zadania(auto_id)
 
     return wizyta_id, duplikaty, {"cofnij": cofnij, "finalizuj": lambda: None}
@@ -131,9 +155,9 @@ def pobierz_pozycje_wizyty(wizyta_id) -> list[dict[str, Any]]:
 
 def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
     """Zdejmuje pozycje z wizyty i odkłada na listę Do zrobienia (odwrotność
-    utworz_wizyte_z_do_zrobienia). Cena pozycji wraca jako szacowany koszt i jest
-    ODEJMOWANA od kosztu wizyty. Zwraca słownik dla utils.pokaz_komunikat_cofnij z
-    „liczba” i „nazwy”."""
+    utworz_wizyte_z_do_zrobienia): pozycja, z której wpis powstał, wraca z Wykonanych,
+    reszta jako nowe. Cena pozycji wraca jako szacowany koszt i jest ODEJMOWANA od kosztu
+    wizyty. Zwraca słownik dla utils.pokaz_komunikat_cofnij z „liczba” i „nazwy”."""
     if not wizyta_id or not historia_ids:
         return None
 
@@ -179,16 +203,33 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
     czesci_wpisow = _zdejmij_powiazania_czesci_wpisow([d["id"] for d in historia_dane])
 
     nowe_do_zrobienia_ids = []
+    wznowione, zdarzenia = [], []
+    ja = pobierz_moje_imie()
+    zrodlo = {"data": wiz["data"], "wykonawca": wiz["wykonawca"] or None}
     with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
         c = conn.cursor()
         for d, nazwa in zip(historia_dane, nazwy):
-            c.execute(
+            # Pozycja, z której wpis powstał, wraca na listę sama — z całym swoim dziennikiem.
+            dawna = c.execute("SELECT * FROM do_zrobienia WHERE historia_id=? AND wykonane=1 ORDER BY id LIMIT 1",
+                              (d["id"],)).fetchone()
+            cena = float(d.get("cena") or 0.0)
+            if dawna:
+                wznowione.append(dict(dawna))
+                c.execute("UPDATE do_zrobienia SET wykonane=0, data_wykonania=NULL, przebieg_wykonania=NULL, "
+                          "koszt_wykonania=NULL, notatka_wykonania=NULL, wykonane_przez=NULL, historia_id=NULL, "
+                          "koszt_id=NULL, wizyta_id=NULL, szacowany_koszt=? WHERE id=?",
+                          (cena or dawna["szacowany_koszt"], dawna["id"]))
+                zdarzenia.append(zanotuj_zdarzenie_do_zrobienia(conn, dawna["id"], ZDARZENIE_ZWROT, zrodlo, ja))
+                continue
+            nowa = c.execute(
                 "INSERT INTO do_zrobienia (auto_id, tytul, opis, priorytet, szacowany_koszt, "
                 "zadanie_id, wykonane, data_utworzenia) VALUES (?,?,?,?,?,?,0,?)",
-                (auto_id, nazwa, opis_zrodla, "Średni", float(d.get("cena") or 0.0),
+                (auto_id, nazwa, opis_zrodla, "Średni", cena,
                  d.get("zadanie_id"), dzis)
-            )
-            nowe_do_zrobienia_ids.append(c.lastrowid)
+            ).lastrowid
+            nowe_do_zrobienia_ids.append(nowa)
+            zanotuj_zdarzenie_do_zrobienia(conn, nowa, ZDARZENIE_ZWROT, zrodlo, ja)
 
         c.execute(f"DELETE FROM historia WHERE id IN ({placeholders})", tuple(historia_ids))
         c.execute(
@@ -230,6 +271,8 @@ def zwroc_pozycje_wizyty_do_zrobienia(wizyta_id, historia_ids):
             # Koszt całkowity wraca do wartości sprzed zwrotu, a nie przez
             # dodanie sumy — MAX(0, ...) przy odejmowaniu mogło ją przyciąć.
             conn.execute("UPDATE wizyty SET koszt_calkowity=? WHERE id=?", (koszt_przed, wizyta_id))
+            _przywroc_pozycje_do_zrobienia(conn, wznowione)
+        usun_zdarzenia_do_zrobienia(zdarzenia, auto_id)
         # Wpisy historii wracają tu z oryginalnymi ID (kolumny_historii zawierają id)
         _przywroc_powiazania_czesci_wpisow(czesci_wpisow)
         przywroc_odlozone_zalaczniki(pliki_historii)

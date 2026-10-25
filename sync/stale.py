@@ -116,7 +116,19 @@ KONFIGURACJA_SYNC = [
      "dopisane": ["liczba_rat", "zaplacone_platnosci", "data_pierwszej_raty", "kwota_finansowania",
                   "oplata_wstepna", "wykup", "oprocentowanie", "rodzaj_rat"]},
     {"tabela": "odczyty_przebiegu", "kolumny": ["data", "przebieg", "zrodlo", "notatka", "notatka_autor", "notatka_data"], "fk": {}},
-    {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane", "data_utworzenia"], "fk": {"zadanie_id": "zadania"}},
+    # Wykonanie i termin przebiegowy (wersja 57) dołożone, gdy pozycje leżały już w chmurze;
+    # odwołania jadą jako `<kolumna>_zdalne`, więc pod tą nazwą stoją w `dopisane`. Dziennik
+    # pozycji tuż za nią — rodzic przed dzieckiem.
+    {"tabela": "do_zrobienia", "kolumny": ["tytul", "opis", "priorytet", "szacowany_koszt", "termin", "wykonane",
+                                           "data_utworzenia", "data_wykonania", "przebieg_wykonania",
+                                           "koszt_wykonania", "notatka_wykonania", "wykonane_przez",
+                                           "termin_przebieg", "przebieg_startowy"],
+     "fk": {"zadanie_id": "zadania", "historia_id": "historia", "koszt_id": "inne_koszty", "wizyta_id": "wizyty"},
+     "dopisane": ["data_wykonania", "przebieg_wykonania", "koszt_wykonania", "notatka_wykonania", "wykonane_przez",
+                  "termin_przebieg", "przebieg_startowy", "historia_id_zdalne", "koszt_id_zdalne",
+                  "wizyta_id_zdalne"]},
+    {"tabela": "do_zrobienia_zdarzenia", "kolumny": ["rodzaj", "dane", "moment", "dodane_przez"],
+     "fk": {"pozycja_id": "do_zrobienia"}},
     {"tabela": "pakiety_serwisowe_wlasne", "kolumny": ["nazwa", "pozycje"], "fk": {}},
     # Budżet wspólny dla pojazdu. 'klucz_scalania' konieczny: (kategoria, okres) ma
     # UNIQUE, więc rekord z chmury przejmuje lokalny wiersz (_pobierz_tabele).
@@ -169,6 +181,12 @@ TABELE_POSREDNIE = {
         "warunek": "w.auto_id=?",
         "reset_where": "wizyta_id IN (SELECT id FROM wizyty WHERE auto_id=?)",
     },
+    "do_zrobienia_zdarzenia": {
+        "alias": "zd",
+        "join": "JOIN do_zrobienia d ON zd.pozycja_id = d.id",
+        "warunek": "d.auto_id=?",
+        "reset_where": "pozycja_id IN (SELECT id FROM do_zrobienia WHERE auto_id=?)",
+    },
     "checklisty_pozycje": {
         "alias": "p",
         "join": "JOIN checklisty l ON p.checklista_id = l.id",
@@ -202,6 +220,7 @@ ETYKIETY_TABEL_SYNC = {
     "wydatki_cykliczne": "Wydatek cykliczny",
     "odczyty_przebiegu": "Odczyt licznika",
     "do_zrobienia": "Zadanie do zrobienia",
+    "do_zrobienia_zdarzenia": "Zdarzenie zadania do zrobienia",
     "tagi": "Tag",
     "pakiety_serwisowe_wlasne": "Własny pakiet serwisowy",
     "budzety": "Limit budżetu",

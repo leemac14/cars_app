@@ -49,6 +49,9 @@ KOSZ_ZAPYTANIA_POSREDNIE = {
     "checklisty_pozycje": (
         "SELECT p.* FROM checklisty_pozycje p JOIN checklisty l ON p.checklista_id = l.id WHERE l.auto_id=?"
     ),
+    "do_zrobienia_zdarzenia": (
+        "SELECT zd.* FROM do_zrobienia_zdarzenia zd JOIN do_zrobienia d ON zd.pozycja_id = d.id WHERE d.auto_id=?"
+    ),
 }
 
 
@@ -62,7 +65,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
     "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
     "trasy_szablony", "checklisty", "checklisty_pozycje", "budzety",
     "rozliczenia", "ceny_czesci", "przejazdy", "dokumenty_pojazdu", "dolewki",
-    "szablony_wpisow",
+    "szablony_wpisow", "do_zrobienia_zdarzenia",
 ]
 
 

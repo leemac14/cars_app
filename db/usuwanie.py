@@ -66,11 +66,6 @@ def usun_wiele_z_cofnieciem(tabela, ids_list):
     return usun_do_kosza(tabela, ids_list, do_kosza=tabela not in POZA_KOSZEM_WPISOW)
 
 
-def przelacz_wykonane_do_zrobienia(pozycja_id, status):
-    with polacz_baze() as conn:
-        conn.execute("UPDATE do_zrobienia SET wykonane=? WHERE id=?", (1 if status else 0, pozycja_id))
-
-
 def usun_zadanie_z_cofnieciem(zadanie_id):
     """Usuwa podzespół z całą historią, plikami i częściami (wracają na półkę) do kosza."""
     return usun_do_kosza("zadania", [zadanie_id])
@@ -100,7 +95,6 @@ def usun_wiele_czesci_magazynu_z_cofnieciem(ids_list):
 __all__ = [
     "aktualizuj_wiele_zdjec_karoserii",
     "oznacz_zamontowany_zestaw",
-    "przelacz_wykonane_do_zrobienia",
     "usun_czesc_magazynu_z_cofnieciem",
     "usun_wiele_czesci_magazynu_z_cofnieciem",
     "usun_wiele_z_cofnieciem",

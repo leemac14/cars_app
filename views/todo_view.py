@@ -6,13 +6,24 @@ import sync
 import utils
 from date import parsuj_date
 
+# Podzakładki: wartość w stanie (1 = Checklisty od dawna, w adresach i skrótach) i kolejność
+# w pasku — Wykonane stoją przy liście, z której wyrastają.
+DO_ZROBIENIA, CHECKLISTY, WYKONANE = 0, 1, 2
+KOLEJNOSC_PODZAKLADEK = (DO_ZROBIENIA, WYKONANE, CHECKLISTY)
+TYTULY_PODZAKLADEK = {
+    DO_ZROBIENIA: ("Do zrobienia", ft.Icons.CHECKLIST, ft.Icons.CHECKLIST_RTL),
+    WYKONANE: ("Wykonane", ft.Icons.TASK_ALT, ft.Icons.TASK_ALT),
+    CHECKLISTY: ("Checklisty", ft.Icons.FACT_CHECK, ft.Icons.FACT_CHECK),
+}
+
+
 class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
     def __init__(self, page: ft.Page, state):
         self._page = page
         self.state = state
 
         podzakladka = int(getattr(state, "do_zrobienia_podzakladka", 0) or 0)
-        podzakladka = podzakladka if podzakladka in (0, 1) else 0
+        podzakladka = podzakladka if podzakladka in KOLEJNOSC_PODZAKLADEK else DO_ZROBIENIA
 
         state.do_zrobienia_podzakladka = podzakladka
         self.wspolny_id, _ = sync.czy_udostepniony(state.auto_id)
@@ -27,8 +38,9 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         # ------------------------------------------------------
         self.przewijana_tresc = utils.PrzewijanaTresc()
 
-        # Dwie listy o różnym cyklu życia: „Do zrobienia” (pozycja znika po wykonaniu) i
-        # checklisty (odhaczane i zerowane); pasek nad nimi zostaje na miejscu.
+        # Trzy listy: „Do zrobienia” (wykonana pozycja przechodzi do Wykonanych z dniem,
+        # licznikiem i kosztem), „Wykonane” i checklisty (odhaczane i zerowane); pasek nad nimi
+        # zostaje na miejscu.
         self.pasek_podzakladek = ft.Container(content=self._pasek_podzakladek())
         self.przelacznik = utils.PrzelacznikEkranow(
             self._zawartosc_podzakladki(), wlaczony=db.czy_animacje_interfejsu()
@@ -48,19 +60,21 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             controls=[self.przewijana_tresc.kontrolka],
         )
 
-    # ----- Podzakładki: Do zrobienia / Checklisty -----
+    # ----- Podzakładki: Do zrobienia / Wykonane / Checklisty -----
+    def _podzakladka(self):
+        return int(self.state.do_zrobienia_podzakladka or 0)
+
     def _pasek_podzakladek(self):
         return utils.segmented_control(
             self._page,
-            [("Do zrobienia", 0, ft.Icons.CHECKLIST_RTL), ("Checklisty", 1, ft.Icons.FACT_CHECK)],
-            int(self.state.do_zrobienia_podzakladka or 0), self._przelacz_podzakladke,
+            [(TYTULY_PODZAKLADEK[p][0], p, TYTULY_PODZAKLADEK[p][2]) for p in KOLEJNOSC_PODZAKLADEK],
+            self._podzakladka(), self._przelacz_podzakladke,
         )
 
     def _appbar_podzakladki(self):
-        czy_checklisty = int(self.state.do_zrobienia_podzakladka or 0) == 1
+        tytul, ikona, _ = TYTULY_PODZAKLADEK.get(self._podzakladka(), TYTULY_PODZAKLADEK[DO_ZROBIENIA])
         return utils.zbuduj_pasek_z_powrotem(
-            self._page, "Checklisty" if czy_checklisty else "Do zrobienia", "/",
-            ikona=ft.Icons.FACT_CHECK if czy_checklisty else ft.Icons.CHECKLIST,
+            self._page, tytul, "/", ikona=ikona,
             akcje_dodatkowe=[utils.przycisk_synchronizacji(
                 self._page,
                 utils.funkcja_szybkiej_synchronizacji(self._page, self.state.auto_id, "/do-zrobienia"),
@@ -68,14 +82,16 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         )
 
     def _fab_podzakladki(self):
-        if int(self.state.do_zrobienia_podzakladka or 0) == 1:
+        if self._podzakladka() == CHECKLISTY:
             return utils.fab_animowany(ft.Icons.ADD, lambda e: self._okno_edytora_checklisty(None))
+        if self._podzakladka() == WYKONANE:
+            return None
         return utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe"))
 
     def _przelacz_podzakladke(self, idx):
-        stara = int(self.state.do_zrobienia_podzakladka or 0)
+        stara = self._podzakladka()
         idx = int(idx)
-        if idx == stara:
+        if idx == stara or idx not in KOLEJNOSC_PODZAKLADEK:
             return
 
         self.state.do_zrobienia_podzakladka = idx
@@ -90,7 +106,8 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self.pasek_podzakladek.content = self._pasek_podzakladek()
         self.przelacznik.pokaz(
             self._page, self._zawartosc_podzakladki(),
-            kierunek=utils.PrzelacznikEkranow.kierunek(stara, idx),
+            kierunek=utils.PrzelacznikEkranow.kierunek(KOLEJNOSC_PODZAKLADEK.index(stara) if stara in
+                                                       KOLEJNOSC_PODZAKLADEK else 0, KOLEJNOSC_PODZAKLADEK.index(idx)),
         )
         # Pasek górny niesie tytuł podzakładki, więc idzie za nią — razem
         # z kopią, do której wraca się po wyjściu z trybu zaznaczania.
@@ -106,95 +123,163 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         """Zawartość aktywnej podzakładki jako JEDNA kontrolka — to ona jedzie
         przez przełącznik."""
         elementy = []
-        if int(self.state.do_zrobienia_podzakladka or 0) == 1:
+        podzakladka = self._podzakladka()
+        if podzakladka == CHECKLISTY:
             self._buduj_checklisty(elementy)
+        elif podzakladka == WYKONANE:
+            self._buduj_wykonane(elementy)
         else:
-
-            with db.polacz_baze() as conn:
-                c = conn.cursor()
-                c.execute(
-                    "SELECT d.id, d.tytul, d.opis, d.priorytet, d.szacowany_koszt, d.termin, "
-                    "d.zadanie_id, d.wykonane, z.nazwa "
-                    "FROM do_zrobienia d LEFT JOIN zadania z ON d.zadanie_id = z.id "
-                    "WHERE d.auto_id=?", (self.state.auto_id,)
-                )
-                pozycje = c.fetchall()
-
-            if not pozycje:
-                elementy.append(utils.ekran_braku_danych(
-                    ikona=ft.Icons.CHECKLIST_RTL,
-                    tytul="Lista jest pusta",
-                    opis="Dodawaj tu wszystko, co planujesz zrobić przy aucie. Gdy przyjdzie czas, zamienisz to jednym kliknięciem w Wizytę w warsztacie.",
-                    tekst_przycisku="Dodaj pozycję",
-                    on_click=lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")
-                ))
-            else:
-                # Doklejamy syntetyczne pole statusu, żeby użyć gotowego mechanizmu filtrowania po kategorii
-                dane = [tuple(p) + ("Zakończone" if p[7] else "Aktywne",) for p in pozycje]
-
-                opcje_sort = [
-                    ("Priorytet", "priorytet", lambda x: db.KOLEJNOSC_PRIORYTETU.get(x[3], 9)),
-                    ("Termin", "termin", lambda x: parsuj_date(x[5])),
-                    ("Nazwa", "nazwa", lambda x: str(x[1]).lower()),
-                    ("Koszt", "koszt", lambda x: float(x[4] or 0)),
-                ]
-
-                sort_ui = utils.przycisk_sortowania(self._page, self.state, "do_zrobienia", opcje_sort)
-                chipy_filtrow, dane_po_filtrach = utils.pasek_filtrow(
-                    self._page, self.state, dane,
-                    [("kategoria", "do_zrobienia_status", 9, "Status"),
-                     ("kategoria", "do_zrobienia_priorytet", 3, "Priorytet")])
-
-                elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
-
-                def filtruj_pozycje(e):
-                    zapytanie = e.control.value.lower().strip()
-                    self.miesiace.ustaw(
-                        [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
-                        grupuj=utils.czy_po_dacie(self.state, "do_zrobienia", ("termin",)),
-                    )
-                    self.update()
-
-                self.pole_wyszukiwarki = ft.TextField(
-                    hint_text="Szukaj (tytuł, opis, podzespół)",
-                    prefix_icon=ft.Icons.SEARCH,
-                    on_change=utils.z_opoznieniem(self._page, filtruj_pozycje),
-                    **utils.styl_pola()
-                )
-                elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
-
-                self.lista_kart = utils.lista_kart()
-                self.wszystkie_karty = []
-                # Tu miesiąc bierze się z TERMINU, nie z daty dopisania — i tylko
-                # przy sortowaniu po terminie, bo lista domyślnie idzie po
-                # priorytecie i miesiące nie byłyby wtedy ciągłe.
-                self.miesiace = utils.GrupyMiesiecy(
-                    self._page, self.lista_kart, wysokosc_pozycji=185, widok=self, klucz="do_zrobienia"
-                )
-
-                po_filtrach = dane_po_filtrach
-                utils.posortuj_liste(po_filtrach, self.state, "do_zrobienia", opcje_sort)
-
-                if not po_filtrach:
-                    elementy.append(ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
-                else:
-                    for w in po_filtrach:
-                        karta = self._karta_pozycji(w)
-                        _, tytul, opis, priorytet, koszt, termin, _, _, zadanie_nazwa = w[:9]
-                        tekst_szukaj = f"{tytul} {opis} {priorytet} {termin} {zadanie_nazwa}".lower()
-                        self.wszystkie_karty.append({
-                            "karta": karta, "szukaj": tekst_szukaj,
-                            "data": termin, "kwota": float(koszt or 0),
-                        })
-
-                    self.miesiace.ustaw(
-                        self.wszystkie_karty,
-                        grupuj=utils.czy_po_dacie(self.state, "do_zrobienia", ("termin",)),
-                    )
-
-                elementy.append(self.lista_kart)
-
+            self._buduj_aktywne(elementy)
         return ft.Column(elementy, spacing=15)
+
+    # ==================== DO ZROBIENIA I WYKONANE ====================
+
+    def _podsumowanie(self, pary):
+        """Karta z liczbami nad listą: (etykieta, wartość, kolor albo None)."""
+        return ft.Container(
+            padding=utils.wypelnienie_karty(), **utils.powierzchnia(self._page, "karta"),
+            content=ft.Row([ft.Container(utils.pole(n, w, color=k), expand=True) for n, w, k in pary],
+                           spacing=utils.SPACING["sm"], vertical_alignment=ft.CrossAxisAlignment.START),
+        )
+
+    def _pole_szukania(self, podpowiedz, klucz, pola_dat):
+        def filtruj_pozycje(e):
+            zapytanie = (e.control.value or "").lower().strip()
+            self.miesiace.ustaw(
+                [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
+                grupuj=utils.czy_po_dacie(self.state, klucz, pola_dat),
+            )
+            self.update()
+
+        self.pole_wyszukiwarki = ft.TextField(
+            hint_text=podpowiedz, prefix_icon=ft.Icons.SEARCH,
+            on_change=utils.z_opoznieniem(self._page, filtruj_pozycje), **utils.styl_pola()
+        )
+        return utils.na_cala_szerokosc(self.pole_wyszukiwarki)
+
+    @staticmethod
+    def _brak_wynikow():
+        return ft.Row([ft.Text("Brak wyników dla tych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)],
+                      alignment=ft.MainAxisAlignment.CENTER)
+
+    def _buduj_aktywne(self, elementy):
+        pozycje = db.pobierz_pozycje_do_zrobienia(self.state.auto_id)
+        if not pozycje:
+            elementy.append(utils.ekran_braku_danych(
+                ikona=ft.Icons.CHECKLIST_RTL,
+                tytul="Lista jest pusta",
+                opis="Dodawaj tu wszystko, co planujesz zrobić przy aucie. Gdy przyjdzie czas, zamienisz to jednym kliknięciem w Wizytę w warsztacie.",
+                tekst_przycisku="Dodaj pozycję",
+                on_click=lambda e: utils.przejdz(self._page, "/do-zrobienia/nowe")
+            ))
+            return
+
+        # „Po terminie” liczy też termin przebiegowy, który licznik już minął.
+        stan = db.podsumowanie_do_zrobienia(self.state.auto_id) or {}
+        po_terminie, szacunek = stan.get("po_terminie", 0), stan.get("szacowany_koszt") or 0
+        elementy.append(self._podsumowanie([
+            ("Aktywne", str(stan.get("otwarte", len(pozycje))), None),
+            ("Po terminie", str(po_terminie), utils.KOLOR_STATUS["critical"] if po_terminie else None),
+            ("Szacunek", f"~{utils.formatuj_liczba(szacunek, 0)} {utils.symbol_waluty()}" if szacunek else "—", None),
+        ]))
+
+        opcje_sort = [
+            ("Priorytet", "priorytet", lambda x: db.KOLEJNOSC_PRIORYTETU.get(x["priorytet"], 9)),
+            ("Termin", "termin", lambda x: parsuj_date(x["termin"])),
+            ("Nazwa", "nazwa", lambda x: x["tytul"].lower()),
+            ("Koszt", "koszt", lambda x: float(x["szacowany_koszt"] or 0)),
+        ]
+        sort_ui = utils.przycisk_sortowania(self._page, self.state, "do_zrobienia", opcje_sort)
+        chipy_filtrow, po_filtrach = utils.pasek_filtrow(
+            self._page, self.state, pozycje, [("kategoria", "do_zrobienia_priorytet", "priorytet", "Priorytet")])
+        elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+        elementy.append(self._pole_szukania("Szukaj (tytuł, opis, podzespół)", "do_zrobienia", ("termin",)))
+
+        self.lista_kart = utils.lista_kart()
+        self.wszystkie_karty = []
+        # Tu miesiąc bierze się z TERMINU, nie z daty dopisania — i tylko
+        # przy sortowaniu po terminie, bo lista domyślnie idzie po
+        # priorytecie i miesiące nie byłyby wtedy ciągłe.
+        self.miesiace = utils.GrupyMiesiecy(
+            self._page, self.lista_kart, wysokosc_pozycji=185, widok=self, klucz="do_zrobienia"
+        )
+        utils.posortuj_liste(po_filtrach, self.state, "do_zrobienia", opcje_sort)
+
+        if not po_filtrach:
+            elementy.append(self._brak_wynikow())
+        else:
+            j = utils.jednostka_dystansu()
+            wolno = utils.wolno_zmieniac_rekord(self.state.auto_id)
+            for p in po_filtrach:
+                self.wszystkie_karty.append({
+                    "karta": self._karta_pozycji(p, j, wolno),
+                    "szukaj": f"{p['tytul']} {p['opis']} {p['priorytet']} {p['termin']} {p['zadanie_nazwa'] or ''}".lower(),
+                    "data": p["termin"], "kwota": float(p["szacowany_koszt"] or 0),
+                })
+            self.miesiace.ustaw(
+                self.wszystkie_karty,
+                grupuj=utils.czy_po_dacie(self.state, "do_zrobienia", ("termin",)),
+            )
+
+        elementy.append(self.lista_kart)
+
+    def _buduj_wykonane(self, elementy):
+        pozycje = db.pobierz_pozycje_do_zrobienia(self.state.auto_id, wykonane=True)
+        if not pozycje:
+            elementy.append(utils.ekran_braku_danych(
+                ikona=ft.Icons.TASK_ALT,
+                tytul="Nic jeszcze nie wykonano",
+                opis="Odhaczona pozycja trafia tutaj z dniem wykonania, stanem licznika i kosztem — razem "
+                     "z historią: kiedy ją dodano, przesuwano i zrobiono.",
+                tekst_przycisku="Przejdź do listy",
+                on_click=lambda e: self._przelacz_podzakladke(DO_ZROBIENIA),
+            ))
+            return
+
+        rok = datetime.now().year
+        w_roku = [p for p in pozycje if parsuj_date(p["data_wykonania"]).year == rok]
+        suma = sum(float(p["koszt_wykonania"] or 0) for p in w_roku)
+        elementy.append(self._podsumowanie([
+            ("W tym roku", str(len(w_roku)), None),
+            ("Wydane w tym roku", f"{utils.formatuj_liczba(suma, 0)} {utils.symbol_waluty()}" if suma else "—", None),
+            ("Wszystkie", str(len(pozycje)), None),
+        ]))
+
+        opcje_sort = [
+            ("Data wykonania", "data", lambda x: parsuj_date(x["data_wykonania"])),
+            ("Nazwa", "nazwa", lambda x: x["tytul"].lower()),
+            ("Koszt", "koszt", lambda x: float(x["koszt_wykonania"] or 0)),
+        ]
+        sort_ui = utils.przycisk_sortowania(self._page, self.state, "do_zrobienia_wykonane", opcje_sort)
+        chipy_filtrow, po_filtrach = utils.pasek_filtrow(
+            self._page, self.state, pozycje, [("rok", "do_zrobienia_wykonane_rok", "data_wykonania", "Rok")])
+        elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+        elementy.append(self._pole_szukania("Szukaj (tytuł, notatka, podzespół)", "do_zrobienia_wykonane", ("data",)))
+
+        self.lista_kart = utils.lista_kart()
+        self.wszystkie_karty = []
+        self.miesiace = utils.GrupyMiesiecy(
+            self._page, self.lista_kart, wysokosc_pozycji=150, widok=self, klucz="do_zrobienia_wykonane"
+        )
+        utils.posortuj_liste(po_filtrach, self.state, "do_zrobienia_wykonane", opcje_sort)
+
+        if not po_filtrach:
+            elementy.append(self._brak_wynikow())
+        else:
+            j = utils.jednostka_dystansu()
+            for p in po_filtrach:
+                self.wszystkie_karty.append({
+                    "karta": self._karta_wykonanej(p, j),
+                    "szukaj": f"{p['tytul']} {p['opis']} {p['notatka_wykonania'] or ''} {p['zadanie_nazwa'] or ''} "
+                              f"{p['data_wykonania'] or ''}".lower(),
+                    "data": p["data_wykonania"], "kwota": float(p["koszt_wykonania"] or 0),
+                })
+            self.miesiace.ustaw(
+                self.wszystkie_karty,
+                grupuj=utils.czy_po_dacie(self.state, "do_zrobienia_wykonane", ("data",)),
+            )
+
+        elementy.append(self.lista_kart)
 
     # ==================== CHECKLISTY ====================
     # Lista przedwyjazdowa różni się od „Do zrobienia” jedną rzeczą, ale
@@ -380,55 +465,57 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         )
         utils.otworz_dialog(self._page, dlg)
 
-    # --- KARTA POJEDYNCZEJ POZYCJI ---
-    def _karta_pozycji(self, w):
-        p_id, tytul, opis, priorytet, koszt, termin, zadanie_id, wykonane, zadanie_nazwa = w[:9]
-        priorytet = priorytet or "Średni"
-        zrobione = bool(wykonane)
+    # --- KARTY POZYCJI ---
+    def _podepnij_gesty(self, kontener, p_id):
+        """Dotknięcie — szczegóły (w trybie zaznaczania: zaznacz), przytrzymanie — zaznaczanie."""
+        def _on_click(e, pid=p_id):
+            if self.tryb_zaznaczania:
+                self.zaznacz_odznacz(pid, self.karty_ref[pid])
+            else:
+                self._pokaz_szczegoly(pid)
 
-        kolor_priorytetu = {
-            "Wysoki": utils.KOLOR_STATUS["critical"],
-            "Średni": utils.KOLOR_STATUS["warning"],
-            "Niski": utils.KOLOR_STATUS["info"],
-        }.get(priorytet, utils.KOLOR_STATUS["neutral"])
+        def _on_long_press(e, pid=p_id):
+            if not self.tryb_zaznaczania:
+                self.tryb_zaznaczania = True
+                self.zaznacz_odznacz(pid, self.karty_ref[pid])
 
-        chip_priorytet = ft.Container(
-            padding=8, border_radius=20,
-            bgcolor=ft.Colors.with_opacity(0.15, kolor_priorytetu),
-            content=ft.Text(str(priorytet), size=11, weight="bold", color=kolor_priorytetu)
-        )
+        self.karty_ref[p_id] = kontener
+        kontener.on_click = utils.z_efektem_nacisniecia(kontener, _on_click)
+        kontener.on_long_press = _on_long_press
 
-        kolor_term, tekst_term = utils.kolor_i_tekst_terminu(termin) if termin else (None, None)
+    def _karta_pozycji(self, p, j=None, wolno=True):
+        kolor_priorytetu = utils.kolor_priorytetu(p["priorytet"])
+        kolor_term, tekst_term = utils.kolor_i_tekst_terminu(p["termin"]) if p["termin"] else (None, None)
 
-        def przelacz(e, pid=p_id):
-            db.przelacz_wykonane_do_zrobienia(pid, e.control.value)
-            utils.przejdz(self._page, "/do-zrobienia")
-
-        chk = ft.Checkbox(value=zrobione, on_change=przelacz, active_color=utils.KOLOR_STATUS["ok"], tooltip="Oznacz jako zrobione")
+        # Ptaszek nie odhacza sam — otwiera okno „Wykonano” z dniem, licznikiem i kosztem.
+        chk = ft.Checkbox(value=False, on_change=lambda e, pid=p["id"]: self._odhacz(e, pid),
+                          active_color=utils.KOLOR_STATUS["ok"], tooltip="Oznacz jako wykonane", disabled=not wolno)
 
         podtytul_bits = []
-        if opis:
-            podtytul_bits.append(str(opis))
-        if zadanie_nazwa:
-            podtytul_bits.append(f"Podzespół: {zadanie_nazwa}")
+        if p["opis"]:
+            podtytul_bits.append(str(p["opis"]))
+        if p["zadanie_nazwa"]:
+            podtytul_bits.append(f"Podzespół: {p['zadanie_nazwa']}")
 
         stopka_bits = []
-        if koszt:
-            stopka_bits.append(utils.podpis(f"~{utils.formatuj_liczba(float(koszt))} {utils.symbol_waluty()}"))
+        if p["szacowany_koszt"]:
+            stopka_bits.append(utils.podpis(f"~{utils.formatuj_liczba(float(p['szacowany_koszt']))} {utils.symbol_waluty()}"))
         if tekst_term:
             stopka_bits.append(ft.Text(tekst_term, size=12, weight="bold", color=kolor_term))
 
         tresc_kolumny = [
             ft.Row([
-                ft.Text(str(tytul), size=16, weight="bold", expand=True,
-                        color=ft.Colors.ON_SURFACE_VARIANT if zrobione else ft.Colors.ON_SURFACE),
-                chip_priorytet
+                ft.Text(str(p["tytul"]), size=16, weight="bold", expand=True),
+                utils.chip_priorytetu(p["priorytet"]),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER)
         ]
         if podtytul_bits:
             tresc_kolumny.append(ft.Text("  •  ".join(podtytul_bits), size=13, color=ft.Colors.ON_SURFACE_VARIANT))
         if stopka_bits:
             tresc_kolumny.append(ft.Row(stopka_bits, spacing=12))
+        przebieg = utils.termin_przebiegowy_karty(p, j)
+        if przebieg:
+            tresc_kolumny.append(przebieg)
 
         karta, kontener = utils.karta_listy(
             ft.Row([
@@ -438,53 +525,153 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
             kolor_paska=kolor_priorytetu,
             page=self._page,
         )
-        karta.content.opacity = 0.55 if zrobione else 1.0
-
-        self.karty_ref[p_id] = kontener
-
-        def _on_click(e, pid=p_id, tyt=tytul, zr=zrobione):
-            if self.tryb_zaznaczania:
-                self.zaznacz_odznacz(pid, self.karty_ref[pid])
-            else:
-                self._otworz_menu(pid, tyt, zr)
-
-        def _on_long_press(e, pid=p_id):
-            if not self.tryb_zaznaczania:
-                self.tryb_zaznaczania = True
-                self.zaznacz_odznacz(pid, self.karty_ref[pid])
-
-        kontener.on_click = utils.z_efektem_nacisniecia(kontener, _on_click)
-        kontener.on_long_press = _on_long_press
-
+        self._podepnij_gesty(kontener, p["id"])
         return karta
 
-    # --- MENU POJEDYNCZEJ POZYCJI (BOTTOM SHEET) ---
-    def _otworz_menu(self, p_id, tytul, zrobione):
+    def _karta_wykonanej(self, p, j=None):
+        tresc = [
+            ft.Text(str(p["tytul"]), size=16, weight="bold"),
+            utils.podpis(utils.tekst_wykonania(p, j), max_lines=2),
+        ]
+        if p["notatka_wykonania"]:
+            tresc.append(ft.Text(f"„{p['notatka_wykonania']}”", size=13, italic=True, max_lines=2))
+        dopiski = []
+        if p["wizyta_id"]:
+            dopiski.append((ft.Icons.HOME_REPAIR_SERVICE, "w wizycie"))
+        elif p["historia_id"]:
+            dopiski.append((ft.Icons.BUILD, "w serwisie"))
+        if p["koszt_id"]:
+            dopiski.append((ft.Icons.RECEIPT_LONG, "w Innych kosztach"))
+        if self.wspolny_id and p["wykonane_przez"]:
+            dopiski.append((ft.Icons.PERSON, str(p["wykonane_przez"])))
+        if dopiski:
+            tresc.append(ft.Row([
+                ft.Row([ft.Icon(ikona, size=14, color=ft.Colors.ON_SURFACE_VARIANT), utils.podpis(tekst)],
+                       spacing=4, tight=True)
+                for ikona, tekst in dopiski
+            ], spacing=12, wrap=True))
+
+        karta, kontener = utils.karta_listy(
+            ft.Row([
+                ft.Icon(ft.Icons.TASK_ALT, size=22, color=utils.KOLOR_STATUS["ok"]),
+                ft.Column(tresc, spacing=4, expand=True),
+            ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=10),
+            kolor_paska=utils.KOLOR_STATUS["ok"],
+            page=self._page,
+        )
+        self._podepnij_gesty(kontener, p["id"])
+        return karta
+
+    # --- WYKONANIE ---
+    def _odhacz(self, e, p_id):
+        e.control.value = False
+        try:
+            e.control.update()
+        except Exception:
+            log.polkniety("ptaszek pozycji Do zrobienia przed oknem wykonania")
+        self._okno_wykonania([db.pozycja_do_zrobienia(p_id)])
+
+    def _okno_wykonania(self, pozycje):
+        utils.okno_wykonania(self._page, self.state.auto_id, pozycje, po_zapisie=self._po_wykonaniu)
+
+    def _po_wykonaniu(self, wynik, poprawka=False):
+        # Ekran i tak buduje się od nowa (przejdz) — wystarczy zapomnieć zaznaczenie.
+        self.tryb_zaznaczania, self.zaznaczone_id = False, set()
+        self._odswiez(utils.komunikat_wykonania(wynik, poprawka))
+
+    def _odswiez(self, komunikat=None):
+        utils.wypchnij_w_tle(self._page, self.state.auto_id, "do zrobienia")
+        utils.przejdz(self._page, "/do-zrobienia")
+        if komunikat:
+            utils.pokaz_komunikat(self._page, komunikat)
+
+    def _cofnij_wykonanie(self, p):
+        if p["historia_id"] and not p["w_wizycie"]:
+            tresc = "Pozycja wróci na listę Do zrobienia, a wpis serwisowy z tego wykonania trafi do kosza."
+        elif p["koszt_id"]:
+            tresc = "Pozycja wróci na listę Do zrobienia, a Inny koszt z tego wykonania trafi do kosza."
+        elif p["wizyta_id"]:
+            tresc = "Pozycja wróci na listę Do zrobienia — wizyta zostaje bez zmian."
+        else:
+            tresc = "Pozycja wróci na listę Do zrobienia, a jej historia zapamięta to wykonanie."
+
+        def wykonaj():
+            wynik = db.cofnij_wykonanie_do_zrobienia(p["id"])
+            if not wynik:
+                utils.pokaz_komunikat(self._page, "Nie udało się cofnąć wykonania.", utils.KOLOR_STATUS["error"])
+                return
+            self._odswiez("Pozycja wróciła na listę." + (" Wpis z wykonania jest w koszu." if wynik["do_kosza"] else ""))
+
+        utils.potwierdz(self._page, "Cofnąć wykonanie?", tresc, wykonaj, tekst_potwierdzenia="Cofnij", destrukcyjne=False)
+
+    def _zwroc_z_wizyty(self, p):
+        wynik = db.zwroc_pozycje_wizyty_do_zrobienia(p["wizyta_id"], [p["historia_id"]])
+        utils.przejdz(self._page, "/do-zrobienia")
+        utils.pokaz_komunikat_cofnij(self._page, "Pozycja wróciła z wizyty na listę.", wynik,
+                                     wiadomosc_bledu="Nie udało się zwrócić pozycji z wizyty.")
+
+    # --- SZCZEGÓŁY POZYCJI (BOTTOM SHEET) ---
+    def _pokaz_szczegoly(self, p_id):
+        p = db.pozycja_do_zrobienia(p_id)
+        if not p:
+            return
+        j = utils.jednostka_dystansu()
+        utils.pokaz_menu_kontekstowe(
+            self._page, p["tytul"],
+            utils.odsiej_akcje(self.state.auto_id, self._akcje_pozycji(p), "do_zrobienia", p_id),
+            tresc=utils.szczegoly_pozycji_do_zrobienia(p, bool(self.wspolny_id), j),
+            dopisek=utils.historia_pozycji_do_zrobienia(p, db.pobierz_zdarzenia_do_zrobienia(p_id), j),
+        )
+
+    def _akcje_pozycji(self, p):
+        p_id, tytul = p["id"], p["tytul"]
+
         def usun_pozycje():
             def wykonaj():
                 wynik = db.usun_z_cofnieciem("do_zrobienia", p_id)
                 utils.przejdz(self._page, "/do-zrobienia")
                 utils.pokaz_komunikat_cofnij(self._page, "Usunięto pozycję.", wynik)
-            utils.potwierdz(self._page, "Usunąć?", "Czy na pewno chcesz usunąć tę pozycję z listy?", wykonaj)
-
-        def przelacz_status():
-            db.przelacz_wykonane_do_zrobienia(p_id, not zrobione)
-            utils.przejdz(self._page, "/do-zrobienia")
-            utils.pokaz_komunikat(self._page, "Cofnięto oznaczenie." if zrobione else "Oznaczono jako zrobione!")
+            utils.potwierdz(self._page, "Usunąć?", "Czy na pewno chcesz usunąć tę pozycję razem z jej historią?", wykonaj)
 
         def poprosz_o_wizyte():
             self._zapytaj_i_utworz_wizyte(
-                [p_id], 
-                "Utworzyć wizytę?", 
-                f"Z pozycji „{tytul}” powstanie nowa Wizyta w warsztacie, gotowa do uzupełnienia szczegółów."
+                [p_id],
+                "Utworzyć wizytę?",
+                f"Z pozycji „{tytul}” powstanie nowa Wizyta w warsztacie, gotowa do uzupełnienia szczegółów. "
+                "Pozycja trafi do Wykonanych z odnośnikiem do wizyty."
             )
 
-        utils.pokaz_menu_kontekstowe(self._page, str(tytul), utils.odsiej_akcje(self.state.auto_id, [
-            {"ikona": ft.Icons.BUILD_CIRCLE, "tekst": "Utwórz wizytę w warsztacie", "akcja": poprosz_o_wizyte, "kolor": ft.Colors.PRIMARY},
-            {"ikona": ft.Icons.UNDO if zrobione else ft.Icons.CHECK_CIRCLE, "tekst": "Cofnij ukończenie" if zrobione else "Oznacz jako zrobione", "akcja": przelacz_status, "kolor": ft.Colors.GREEN},
-            {"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/do-zrobienia/edytuj/{p_id}")},
-            {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_pozycje, "kolor": utils.KOLOR_STATUS["destructive"]}
-        ], "do_zrobienia", p_id))
+        edytuj = {"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/do-zrobienia/edytuj/{p_id}")}
+        usun = {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_pozycje, "kolor": utils.KOLOR_STATUS["destructive"]}
+        if not p["wykonane"]:
+            return [
+                {"ikona": ft.Icons.CHECK_CIRCLE, "tekst": "Oznacz jako wykonane", "akcja": lambda: self._okno_wykonania([p]),
+                 "kolor": utils.KOLOR_STATUS["ok"]},
+                {"ikona": ft.Icons.EVENT_REPEAT, "tekst": "Przesuń termin",
+                 "akcja": lambda: utils.okno_przesuniecia_terminu(self._page, p, po_zmianie=lambda: self._odswiez("Przesunięto termin."))},
+                {"ikona": ft.Icons.BUILD_CIRCLE, "tekst": "Utwórz wizytę w warsztacie", "akcja": poprosz_o_wizyte, "kolor": ft.Colors.PRIMARY},
+                edytuj, usun,
+            ]
+
+        akcje = []
+        if not p["w_wizycie"]:
+            akcje.append({"ikona": ft.Icons.EDIT_CALENDAR, "tekst": "Popraw wykonanie", "akcja": lambda: self._okno_wykonania([p])})
+        if p["wizyta_id"]:
+            akcje.append({"ikona": ft.Icons.HOME_REPAIR_SERVICE, "tekst": "Otwórz wizytę",
+                          "akcja": lambda: utils.przejdz(self._page, f"/wizyty/edytuj/{p['wizyta_id']}")})
+        elif p["historia_id"]:
+            akcje.append({"ikona": ft.Icons.BUILD, "tekst": "Otwórz wpis serwisowy",
+                          "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{p['historia_id']}")})
+        if p["koszt_id"]:
+            akcje.append({"ikona": ft.Icons.RECEIPT_LONG, "tekst": "Otwórz Inny koszt",
+                          "akcja": lambda: utils.przejdz(self._page, f"/inne/edytuj/{p['koszt_id']}")})
+        if p["w_wizycie"] and p["wizyta_id"] and p["historia_id"]:
+            akcje.append({"ikona": ft.Icons.ASSIGNMENT_RETURN, "tekst": "Zwróć z wizyty na listę",
+                          "akcja": lambda: self._zwroc_z_wizyty(p)})
+        else:
+            akcje.append({"ikona": ft.Icons.UNDO, "tekst": "Cofnij wykonanie", "akcja": lambda: self._cofnij_wykonanie(p),
+                          "kolor": utils.KOLOR_STATUS["warning"]})
+        return akcje + [edytuj, usun]
 
     def potwierdz_grupowe_usuwanie(self, e):
         ile = len(self.zaznaczone_id)
@@ -538,12 +725,20 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self._zapytaj_i_utworz_wizyte(
             ids, 
             "Utworzyć wizytę?", 
-            f"Z {ile} zaznaczonych pozycji powstanie nowa Wizyta w warsztacie, a te pozycje znikną z listy Do zrobienia. Kontynuować?"
+            f"Z {ile} zaznaczonych pozycji powstanie nowa Wizyta w warsztacie, a te pozycje trafią do Wykonanych "
+            "z odnośnikiem do wizyty. Kontynuować?"
         )
+
+    def oznacz_zaznaczone_jako_wykonane(self, e):
+        """Jedno okno „Wykonano” — wspólny dzień, licznik i notatka; koszt każdej to jej szacunek."""
+        pozycje = [db.pozycja_do_zrobienia(i) for i in sorted(self.zaznaczone_id)]
+        self._okno_wykonania([p for p in pozycje if p and not p["wykonane"]])
 
     def aktualizuj_appbar_zaznaczania(self, dodatkowe_akcje=None):
         extra = []
-        if self.wolno_zmieniac_zaznaczone():
+        if self.wolno_zmieniac_zaznaczone() and self._podzakladka() == DO_ZROBIENIA:
+            extra.append(ft.IconButton(ft.Icons.TASK_ALT, tooltip="Oznacz zaznaczone jako wykonane",
+                                       on_click=self.oznacz_zaznaczone_jako_wykonane))
             extra.append(ft.IconButton(ft.Icons.BUILD_CIRCLE, tooltip="Utwórz wizytę z zaznaczonych", on_click=self.utworz_wizyte_z_zaznaczonych))
         super().aktualizuj_appbar_zaznaczania(dodatkowe_akcje=extra)
 
@@ -555,22 +750,17 @@ class FormularzDoZrobieniaView(ft.View):
 
         tyt_val, opis_val, priorytet_val = "", "", "Średni"
         koszt_val, termin_val, zadanie_val = "", "", ""
+        self.km_terminu = None
 
-        if pozycja_id:
-            with db.polacz_baze() as conn:
-                c = conn.cursor()
-                c.execute(
-                    "SELECT tytul, opis, priorytet, szacowany_koszt, termin, zadanie_id FROM do_zrobienia WHERE id=?",
-                    (pozycja_id,)
-                )
-                w = c.fetchone()
-                if w:
-                    tyt_val = str(w[0] or "")
-                    opis_val = str(w[1] or "")
-                    priorytet_val = str(w[2] or "Średni")
-                    koszt_val = str(w[3]) if w[3] not in (None, "") else ""
-                    termin_val = str(w[4] or "")
-                    zadanie_val = str(w[5]) if w[5] else ""
+        w = db.pozycja_do_zrobienia(pozycja_id) if pozycja_id else None
+        if w:
+            tyt_val = w["tytul"]
+            opis_val = w["opis"]
+            priorytet_val = w["priorytet"]
+            koszt_val = utils.liczba_do_pola(w["szacowany_koszt"])
+            termin_val = w["termin"]
+            zadanie_val = str(w["zadanie_id"]) if w["zadanie_id"] else ""
+            self.km_terminu = w["termin_przebieg"]
 
         with db.polacz_baze() as conn:
             c = conn.cursor()
@@ -587,6 +777,12 @@ class FormularzDoZrobieniaView(ft.View):
         )
         self.e_koszt = ft.TextField(label=f"Szacowany koszt ({utils.symbol_waluty()})", value=koszt_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
         self.e_termin = utils.pole_daty(page, "Termin realizacji", termin_val)
+        # Termin przebiegowy: pasek na karcie liczy się od licznika z chwili zaplanowania.
+        self.e_termin_km = ft.TextField(
+            label=f"Albo przy przebiegu ({utils.jednostka_dystansu()})",
+            value=db.wartosc_pola_dystansu(self.km_terminu) if self.km_terminu else "",
+            hint_text="np. 150 000", keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola()
+        )
 
         opcje_zadan = [ft.DropdownOption(key="", text="— Brak (utworzy się) —")]
         opcje_zadan += [ft.DropdownOption(key=str(z_id), text=str(z_nazwa)) for z_id, z_nazwa in lista_zadan]
@@ -601,7 +797,7 @@ class FormularzDoZrobieniaView(ft.View):
         appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if pozycja_id else "Nowa pozycja", "/do-zrobienia", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         k1 = utils.karta_formularza([self.e_tytul, self.e_opis, self.e_priorytet], "Co i jak pilnie", ft.Icons.CHECKLIST_RTL)
-        k2 = utils.karta_formularza([self.e_koszt, self.e_termin], "Koszt i termin", ft.Icons.EVENT)
+        k2 = utils.karta_formularza([self.e_koszt, self.e_termin, self.e_termin_km], "Koszt i termin", ft.Icons.EVENT)
         k3 = utils.karta_formularza([self.e_zadanie], "Powiązanie z podzespołem", ft.Icons.LINK)
 
         elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz pozycję", self.zapisz, "/do-zrobienia")]
@@ -613,7 +809,7 @@ class FormularzDoZrobieniaView(ft.View):
 
     def _migawka_formularza(self):
         return (self.e_tytul.value, self.e_opis.value, self.e_priorytet.value,
-                self.e_koszt.value, self.e_termin.value, self.e_zadanie.value)
+                self.e_koszt.value, self.e_termin.value, self.e_termin_km.value, self.e_zadanie.value)
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
@@ -621,6 +817,7 @@ class FormularzDoZrobieniaView(ft.View):
     def zapisz(self, e):
         utils.ustaw_blad(self.e_tytul)
         utils.ustaw_blad(self.e_koszt)
+        utils.ustaw_blad(self.e_termin_km)
 
         tytul = (self.e_tytul.value or "").strip()
         bledy = []
@@ -633,23 +830,23 @@ class FormularzDoZrobieniaView(ft.View):
             if koszt is None or koszt < 0:
                 bledy.append((self.e_koszt, "Podaj poprawny koszt"))
 
+        km = None
+        if (self.e_termin_km.value or "").strip():
+            km = db.dystans_na_km(self.e_termin_km.value, calkowity=True, km_przy_otwarciu=self.km_terminu)
+            if not km or km <= 0:
+                bledy.append((self.e_termin_km, "Podaj poprawny stan licznika"))
+
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
         zadanie_id = utils.parsuj_int(self.e_zadanie.value, None) if self.e_zadanie.value else None
-
-        with db.polacz_baze() as conn:
-            if self.pozycja_id:
-                conn.execute(
-                    "UPDATE do_zrobienia SET tytul=?, opis=?, priorytet=?, szacowany_koszt=?, termin=?, zadanie_id=? WHERE id=?",
-                    (tytul, self.e_opis.value, self.e_priorytet.value, koszt, self.e_termin.value, zadanie_id, self.pozycja_id)
-                )
-            else:
-                conn.execute(
-                    "INSERT INTO do_zrobienia (auto_id, tytul, opis, priorytet, szacowany_koszt, termin, zadanie_id, wykonane, data_utworzenia) "
-                    "VALUES (?,?,?,?,?,?,?,0,?)",
-                    (self.state.auto_id, tytul, self.e_opis.value, self.e_priorytet.value, koszt, self.e_termin.value, zadanie_id, datetime.now().strftime("%d.%m.%Y"))
-                )
+        zapisana = db.zapisz_pozycje_do_zrobienia(self.state.auto_id, {
+            "tytul": tytul, "opis": self.e_opis.value, "priorytet": self.e_priorytet.value,
+            "szacowany_koszt": koszt, "termin": self.e_termin.value, "zadanie_id": zadanie_id, "termin_przebieg": km,
+        }, self.pozycja_id)
+        if not zapisana:
+            return utils.pokaz_komunikat(self._page, "Nie zapisano: pozycji już nie ma albo nie masz do niej uprawnień.",
+                                         utils.KOLOR_STATUS["error"])
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "do zrobienia")
         utils.przejdz(self._page, "/do-zrobienia")

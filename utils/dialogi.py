@@ -187,10 +187,11 @@ def _zamknij_i_wykonaj(page: ft.Page, bs, akcja):
     return wrapper
 
 
-def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
+def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list, tresc=None, dopisek=None):
     """
     Tworzy i wyświetla ujednolicone menu kontekstowe (BottomSheet).
     Automatycznie zamyka menu przed wykonaniem podpiętej akcji (wspiera sync i async).
+    `tresc` / `dopisek` — kontrolki nad akcjami i pod nimi (arkusz szczegółów wpisu).
     """
     bs = ft.BottomSheet(ft.Container(padding=20, bgcolor=ft.Colors.SURFACE))
 
@@ -198,6 +199,8 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
         ft.Text(tytul, weight="bold", size=18, color=ft.Colors.PRIMARY),
         ft.Divider()
     ]
+    if tresc:
+        elementy_menu += list(tresc) + [ft.Divider()]
 
     # Pozycje puste/None pomijamy tak samo jak w pokaz_menu_grupowane — dzięki
     # temu wołający może budować listę warunkowo (patrz utils.odsiej_akcje,
@@ -215,6 +218,8 @@ def pokaz_menu_kontekstowe(page: ft.Page, tytul: str, pozycje: list):
                 on_click=_zamknij_i_wykonaj(page, bs, akcja)
             )
         )
+    if dopisek:
+        elementy_menu += [ft.Divider()] + list(dopisek)
 
     bs.content.content = ft.Column(elementy_menu, tight=True)
     otworz_dno(page, bs)

@@ -27,15 +27,16 @@ from .stan_magazynu import ZUZYCIE_MAGAZYNU, przelicz_stan_magazynu, zapewnij_st
 
 # Kolejność MA ZNACZENIE przy odtwarzaniu (pojazdu i wpisów) — klucz obcy wymaga, żeby
 # rodzic istniał wcześniej: historia zależy od zadań i wizyt, wizyta_czesci_magazynu od
-# wizyt i magazynu, do_zrobienia od zadań. `zalaczniki` na końcu: ich rekord_id
-# przemapowuje się po wpisach każdej tabeli.
+# wizyt i magazynu, do_zrobienia od zadań, wpisu serwisowego, kosztu i wizyty (a jej
+# dziennik od niej). `zalaczniki` na końcu: ich rekord_id przemapowuje się po wpisach
+# każdej tabeli.
 KOSZ_TABELE_POTOMNE = [
     "zadania", "wizyty", "magazyn_czesci", "tagi", "tankowania",
     "inne_koszty", "zestawy_opon", "zdjecia_karoserii", "odczyty_przebiegu",
     "warsztaty", "wydatki_cykliczne", "pakiety_serwisowe_wlasne",
     "trasy_szablony", "szablony_wpisow", "checklisty",
-    "do_zrobienia", "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
-    "checklisty_pozycje",
+    "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
+    "checklisty_pozycje", "do_zrobienia", "do_zrobienia_zdarzenia",
     "budzety", "rozliczenia", "szkice_wpisow", "ceny_czesci", "przejazdy",
     "dolewki", "dokumenty_pojazdu", "zalaczniki",
 ]
@@ -44,6 +45,7 @@ KOSZ_TABELE_POTOMNE = [
 # Tabele bez kolumny auto_id — z pojazdem związane wyłącznie pośrednio.
 KOSZ_TABELE_BEZ_AUTO_ID = {
     "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu", "checklisty_pozycje",
+    "do_zrobienia_zdarzenia",
 }
 
 
@@ -52,7 +54,9 @@ KOSZ_TABELE_BEZ_AUTO_ID = {
 # historia wróciłaby podpięta pod cudzy podzespół. Kosz wpisów czyta stąd też
 # kaskadę usunięcia (ON DELETE CASCADE zabiera dziecko, SET NULL zeruje odwołanie).
 KOSZ_KLUCZE_OBCE = {
-    "do_zrobienia": {"zadanie_id": "zadania"},
+    "do_zrobienia": {"zadanie_id": "zadania", "historia_id": "historia", "koszt_id": "inne_koszty",
+                     "wizyta_id": "wizyty"},
+    "do_zrobienia_zdarzenia": {"pozycja_id": "do_zrobienia"},
     "historia": {"zadanie_id": "zadania", "wizyta_id": "wizyty"},
     "wizyta_czesci_magazynu": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"},
     "historia_czesci_magazynu": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"},

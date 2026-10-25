@@ -674,13 +674,18 @@ def _wszystkie_wpisy(auto_id):
                                f"/inne/edytuj/{r['id']}", kwota=r["kwota"],
                                kategoria=r["kategoria"], tag=r["tagi"], notatka=r["notatka"]))
 
-        c.execute("SELECT id, tytul, opis, priorytet, szacowany_koszt, termin "
-                  "FROM do_zrobienia WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, tytul, opis, priorytet, szacowany_koszt, termin, wykonane, data_wykonania, "
+                  "notatka_wykonania FROM do_zrobienia WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
-            wpisy.append(_wpis("Do zrobienia", r["tytul"], r["opis"] or r["priorytet"] or "",
-                               r["termin"], f"/do-zrobienia/edytuj/{r['id']}",
-                               kwota=r["szacowany_koszt"], opis=r["opis"],
-                               priorytet=r["priorytet"]))
+            # Wykonana pozycja leży w historii pod dniem wykonania, z notatką z wykonania.
+            wykonana = bool(r["wykonane"])
+            podpis = (f"Wykonano {r['data_wykonania']}" if r["data_wykonania"] else "Wykonane") if wykonana else \
+                (r["opis"] or r["priorytet"] or "")
+            wpisy.append(_wpis("Do zrobienia", r["tytul"], podpis,
+                               (r["data_wykonania"] or r["termin"]) if wykonana else r["termin"],
+                               f"/do-zrobienia/edytuj/{r['id']}",
+                               kwota=r["szacowany_koszt"], tekst_dodatkowy=r["notatka_wykonania"] or "",
+                               opis=r["opis"], priorytet=r["priorytet"]))
 
         c.execute("SELECT id, data, przebieg, notatka FROM odczyty_przebiegu WHERE auto_id=?",
                   (auto_id,))
