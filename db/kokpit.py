@@ -24,6 +24,7 @@ from .checklisty import podsumowanie_checklist
 from .przebieg import oblicz_sredni_dzienny_przebieg
 from .koszty import pobierz_koszt_miesiaca_do_dnia, pobierz_koszty_miesieczne, suma_kategorii_innych
 from .dolewki import kafel_zuzycia_oleju
+from .opony import dane_opon
 from .awarie import sygnal_awarii
 from .raty import podsumowanie_rat
 from .ewidencja import kafel_ewidencji
@@ -74,13 +75,14 @@ def _spalanie(auto_id):
 
 
 def _opony(auto_id):
-    """Zestaw na aucie i termin zmiany z przypomnienia typu „opony” — to ono jest
-    w tej aplikacji źródłem prawdy o dacie. None: auto nie ma żadnego zestawu."""
+    """Zestaw na aucie, termin zmiany z przypomnienia typu „opony” (to ono jest źródłem prawdy
+    o dacie) i zamontowane komplety z db/opony.py: wiek, kilometry sezonu, prognoza. None: auto
+    nie ma żadnego zestawu."""
     stan = pobierz_stan_opon(auto_id)
     if not stan:
         return None
     terminy = [w for w in pobierz_wydatki_cykliczne(auto_id) if w[6] == TYP_CYKLICZNY_OPONY]
-    return {"stan": stan, "terminy": terminy}
+    return {"stan": stan, "terminy": terminy, "zamontowane": dane_opon(auto_id)["zamontowane"]}
 
 
 def _koszt_1000km(auto_id):

@@ -38,6 +38,8 @@ RODZAJE_WPISOW = {
     "zdjecia_karoserii": (ft.Icons.CAMERA_ALT, ("zdjęcie karoserii", "zdjęcia karoserii", "zdjęć karoserii")),
     "do_zrobienia": (ft.Icons.CHECKLIST, ("pozycja do zrobienia", "pozycje do zrobienia", "pozycji do zrobienia")),
     "zestawy_opon": (ft.Icons.TIRE_REPAIR, ("komplet opon", "komplety opon", "kompletów opon")),
+    "pomiary_bieznika": (ft.Icons.STRAIGHTEN, ("pomiar bieżnika", "pomiary bieżnika", "pomiarów bieżnika")),
+    "montaze_opon": (ft.Icons.TIRE_REPAIR, ("sezon opon", "sezony opon", "sezonów opon")),
     "magazyn_czesci": (ft.Icons.INVENTORY_2, ("część z magazynu", "części z magazynu", "części z magazynu")),
     "szkice_wpisow": (ft.Icons.RECEIPT, ("szkic paragonu", "szkice paragonów", "szkiców paragonów")),
     "warsztaty": (ft.Icons.CAR_REPAIR, ("warsztat", "warsztaty", "warsztatów")),
@@ -102,6 +104,11 @@ def _opis_wpisu(pozycja, j):
         return ikona, w.get("tytul") or "Do zrobienia", ["Do zrobienia", w.get("priorytet")]
     if tabela == "zestawy_opon":
         return ikona, " · ".join(filter(None, ["Opony", w.get("sezon")])), [w.get("rozmiar")]
+    if tabela == "pomiary_bieznika":
+        return ikona, "Pomiar bieżnika", [data, db.tekst_bieznika(db.najplytszy_bieznik(w))]
+    if tabela == "montaze_opon":
+        return ikona, "Sezon opon", [" – ".join(filter(None, [data, w.get("data_zdjecia")])),
+                                     utils.formatuj_dystans(w.get("przebieg"), 0, j) if w.get("przebieg") else None]
     if tabela == "magazyn_czesci":
         ilosc = f"{utils.tekst_ilosci(w.get('ilosc'))} {w.get('jednostka') or ''}".strip()
         return ikona, w.get("nazwa") or "Część", ["Magazyn", ilosc]

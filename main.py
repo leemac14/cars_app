@@ -20,6 +20,7 @@ from views.formularze import (
 from views.settings_view import UstawieniaView
 from views.todo_view import DoZrobieniaView, FormularzDoZrobieniaView
 from views.garage_view import MagazynView, FormularzOponyView, FormularzCzesciView
+from views.opony_view import FormularzPomiaruView, KompletOponView
 from views.body_view import KaroseriaView, FormularzZdjecieKaroseriiView
 from views.obchod_view import ObchodKaroseriiView
 from views.porownanie_view import PorownanieView
@@ -95,6 +96,15 @@ def _cel_trasy(segmenty):
             return True, True, None, None
         if trzeci == "edytuj":
             return True, False, None, None
+        # Pomiar bieżnika (/magazyn/opony/<id>/pomiar, /magazyn/opony/pomiar/edytuj/<id>) ma autora.
+        if drugi == "opony" and len(segmenty) > 3 and segmenty[3] == "pomiar":
+            return True, True, None, None
+        if drugi == "opony" and trzeci == "pomiar":
+            try:
+                rekord_id = int(segmenty[4]) if len(segmenty) > 4 else None
+            except (TypeError, ValueError):
+                rekord_id = None
+            return True, False, "pomiary_bieznika", rekord_id
         return False, False, None, None
 
     if glowa == "interwal":
@@ -711,6 +721,17 @@ def main(page: ft.Page):
                 page.views.append(FormularzOponyView(page, app_state, None))
             elif len(segmenty) >= 4 and segmenty[1] == "opony" and segmenty[2] == "edytuj":
                 page.views.append(FormularzOponyView(page, app_state, utils.parsuj_int(segmenty[3], None)))
+            elif len(segmenty) >= 5 and segmenty[1] == "opony" and segmenty[2] == "pomiar" and segmenty[3] == "edytuj":
+                pomiar = db.pobierz_pomiar(utils.parsuj_int(segmenty[4], None)) or {}
+                if pomiar:
+                    page.views.append(KompletOponView(page, app_state, pomiar["zestaw_id"]))
+                page.views.append(FormularzPomiaruView(page, app_state, None, utils.parsuj_int(segmenty[4], None)))
+            elif len(segmenty) >= 3 and segmenty[1] == "opony" and segmenty[2].isdigit():
+                # Ekran kompletu leży NA magazynie, formularz pomiaru — na ekranie kompletu.
+                zestaw_id = int(segmenty[2])
+                page.views.append(KompletOponView(page, app_state, zestaw_id))
+                if len(segmenty) >= 4 and segmenty[3] == "pomiar":
+                    page.views.append(FormularzPomiaruView(page, app_state, zestaw_id))
             elif len(segmenty) >= 3 and segmenty[1] == "czesci" and segmenty[2] == "nowa":
                 page.views.append(FormularzCzesciView(page, app_state, None))
             elif len(segmenty) >= 4 and segmenty[1] == "czesci" and segmenty[2] == "edytuj":

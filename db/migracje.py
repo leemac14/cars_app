@@ -666,6 +666,27 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_do_zrobienia_wizyta ON do_zrobienia(wizyta_id);
             CREATE TABLE IF NOT EXISTS do_zrobienia_zdarzenia (id INTEGER PRIMARY KEY AUTOINCREMENT, pozycja_id INTEGER NOT NULL, rodzaj TEXT NOT NULL, dane TEXT NOT NULL DEFAULT '{}', moment TEXT NOT NULL, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (pozycja_id) REFERENCES do_zrobienia(id) ON DELETE CASCADE);
             CREATE INDEX IF NOT EXISTS idx_do_zrobienia_zdarzenia_pozycja ON do_zrobienia_zdarzenia(pozycja_id);
+            """,
+            # Wersja 58: opony (db/opony.py) — pomiary bieżnika każdego koła (mm; `przebieg` NULL =
+            # licznik z historii), okresy montażu kompletu (od–do z licznikiem, oś; `historia_id` /
+            # `koszt_id` — wpis serwisowy albo Inny koszt zmiany) oraz przechowalnia i felgi kompletu.
+            # Kolumny kompletu jadą do chmury jako `dopisane`.
+            """
+            ALTER TABLE zestawy_opon ADD COLUMN miejsce TEXT;
+            ALTER TABLE zestawy_opon ADD COLUMN numer_kwitu TEXT;
+            ALTER TABLE zestawy_opon ADD COLUMN oplata_przechowania REAL;
+            ALTER TABLE zestawy_opon ADD COLUMN na_felgach INTEGER;
+            ALTER TABLE zestawy_opon ADD COLUMN felgi TEXT;
+            CREATE TABLE IF NOT EXISTS pomiary_bieznika (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, zestaw_id INTEGER NOT NULL, data TEXT NOT NULL, data_iso TEXT, przebieg INTEGER, lp REAL, pp REAL, lt REAL, pt REAL, uwagi TEXT, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE, FOREIGN KEY (zestaw_id) REFERENCES zestawy_opon(id) ON DELETE CASCADE);
+            CREATE INDEX IF NOT EXISTS idx_pomiary_bieznika_auto_data_iso ON pomiary_bieznika(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_pomiary_bieznika_zestaw ON pomiary_bieznika(zestaw_id);
+            CREATE INDEX IF NOT EXISTS idx_pomiary_bieznika_auto_zdalne ON pomiary_bieznika(auto_id, zdalne_id);
+            CREATE TABLE IF NOT EXISTS montaze_opon (id INTEGER PRIMARY KEY AUTOINCREMENT, auto_id INTEGER NOT NULL, zestaw_id INTEGER NOT NULL, os_montazu TEXT NOT NULL DEFAULT 'Wszystkie', data TEXT NOT NULL, data_iso TEXT, przebieg INTEGER, data_zdjecia TEXT, przebieg_zdjecia INTEGER, historia_id INTEGER, koszt_id INTEGER, dodane_przez TEXT, zdalne_id TEXT, zdalny_hash TEXT, FOREIGN KEY (auto_id) REFERENCES samochody(id) ON DELETE CASCADE, FOREIGN KEY (zestaw_id) REFERENCES zestawy_opon(id) ON DELETE CASCADE, FOREIGN KEY (historia_id) REFERENCES historia(id) ON DELETE SET NULL, FOREIGN KEY (koszt_id) REFERENCES inne_koszty(id) ON DELETE SET NULL);
+            CREATE INDEX IF NOT EXISTS idx_montaze_opon_auto_data_iso ON montaze_opon(auto_id, data_iso);
+            CREATE INDEX IF NOT EXISTS idx_montaze_opon_zestaw ON montaze_opon(zestaw_id);
+            CREATE INDEX IF NOT EXISTS idx_montaze_opon_auto_zdalne ON montaze_opon(auto_id, zdalne_id);
+            CREATE INDEX IF NOT EXISTS idx_montaze_opon_historia ON montaze_opon(historia_id);
+            CREATE INDEX IF NOT EXISTS idx_montaze_opon_koszt ON montaze_opon(koszt_id);
             """
         ]
 

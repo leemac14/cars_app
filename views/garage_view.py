@@ -23,16 +23,8 @@ IKONY_KATEGORII_MAGAZYNU = {
 }
 
 
-def interpretuj_dot(kod):
-    """Jeśli kod wygląda jak standardowy 4-cyfrowy znacznik DOT (tydzień+rok), zwraca czytelny opis."""
-    kod = (kod or "").strip()
-    if len(kod) == 4 and kod.isdigit():
-        tydzien = int(kod[:2])
-        rok = int(kod[2:])
-        if 1 <= tydzien <= 53:
-            rok_pelny = 2000 + rok if rok <= 79 else 1900 + rok
-            return f"tydz. {tydzien:02d}/{rok_pelny}"
-    return None
+def _z_wielkiej(zdanie):
+    return zdanie[:1].upper() + zdanie[1:] if zdanie else zdanie
 
 
 class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
@@ -181,248 +173,222 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
 
     # ============== ZAKŁADKA: OPONY ==============
     def _buduj_opony(self):
-        elementy = []
-        with db.polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT id, sezon, rozmiar, marka_model, glebokosc_bieznika, data_pomiaru, numer_dot, ilosc, zamontowane, cena, os_montazu, NULL "
-                "FROM zestawy_opon WHERE auto_id=? ORDER BY zamontowane DESC, sezon",
-                (self.state.auto_id,)
-            )
-            # Ostatnie pole — lista plików zestawu (db.zalaczniki_pojazdu), jednym zapytaniem.
-            pliki_opon = db.zalaczniki_pojazdu(self.state.auto_id, "zestawy_opon")
-            zestawy = [z[:-1] + (pliki_opon.get(z[0], []),) for z in c.fetchall()]
+        """Na górze karta „Na aucie” (bieżnik, wiek, kilometry sezonu, prognoza, zmiana, ciśnienie),
+        pod nią komplety w magazynie. Dotknięcie otwiera ekran kompletu (views/opony_view.py)."""
+        auto_id = self.state.auto_id
+        dane = db.dane_opon(auto_id) if auto_id else None
+        # Lista kompletów w magazynie przewija się razem z ekranem (pamięć pozycji szuka jej tu).
+        self.lista_kart_opony = utils.lista_kart()
+        if not dane or not dane["komplety"]:
+            return [ft.Text("Brak zapisanych zestawów opon. Dotknij + poniżej, aby dodać pierwszy zestaw — ten na "
+                            "aucie i ten z piwnicy; aplikacja policzy ich kilometry, bieżnik i wiek.",
+                            color=ft.Colors.ON_SURFACE_VARIANT)]
+        self.moge_opony = db.czy_moge_dodawac(auto_id)
+        self.j_opon = utils.jednostka_dystansu()
+        self.pliki_opon = db.zalaczniki_pojazdu(auto_id, "zestawy_opon")
+        elementy = self._karty_na_aucie(dane)
+        baner = self._baner_dziennika_opon(dane)
+        if baner is not None:
+            elementy.append(baner)
 
-        if not zestawy:
-            elementy.append(ft.Text("Brak zapisanych zestawów opon. Dotknij + poniżej, aby dodać pierwszy zestaw.", color=ft.Colors.ON_SURFACE_VARIANT))
+        w_magazynie = [k for k in dane["komplety"] if not k["zamontowany"]]
+        if not w_magazynie:
+            elementy.append(utils.podpis("W magazynie nie ma drugiego kompletu — dodaj go plusem, a zmiana sezonu "
+                                         "przestawi oba jednym dotknięciem.", max_lines=3))
             return elementy
 
-        # Karta sezonu stoi NAD listą, bo odpowiada na pytanie zadawane tu
-        # najczęściej: co mam na aucie i kiedy zmiana. Sama lista zestawów tego
-        # nie mówi — trzeba było czytać, przy którym z nich stoi znacznik.
-        elementy.append(self._karta_sezonu_opon())
-
-        sort_opcje = [
-            ("Zamontowane", "zamontowane", lambda x: int(x[8] or 0)),
-            ("Sezon", "sezon", lambda x: str(x[1]).lower()),
-            ("Bieżnik", "bieznik", lambda x: float(x[4] or 0)),
-        ]
-        sort_ui = utils.przycisk_sortowania(self._page, self.state, "zestawy_opon", sort_opcje)
-        chipy_filtrow, zestawy_po_filtrach = utils.pasek_filtrow(
-            self._page, self.state, zestawy, [("kategoria", "opony_sezon", 1, "Sezon")])
-        
-        elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
-
-        def filtruj_opony(e):
-            zapytanie = e.control.value.lower().strip()
-            self.lista_kart_opony.controls.clear()
-            for k in self.wszystkie_karty_opony:
-                if zapytanie in k["szukaj"]:
-                    self.lista_kart_opony.controls.append(k["karta"])
-            self.update()
-
-        elementy.append(utils.na_cala_szerokosc(
-            ft.TextField(
-                hint_text="Szukaj (sezon, rozmiar, DOT)",
-                prefix_icon=ft.Icons.SEARCH,
-                on_change=utils.z_opoznieniem(self._page, filtruj_opony),
-                **utils.styl_pola()
-            )
-        ))
-        self.lista_kart_opony = utils.lista_kart()
-        self.wszystkie_karty_opony = []
-
-        zestawy = zestawy_po_filtrach
-        utils.posortuj_liste(zestawy, self.state, "zestawy_opon", sort_opcje)
-
-        for z in zestawy:
-            karta = self._karta_zestawu(z)
-            z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, pliki = z
-            tekst_szukaj = f"{sezon} {rozmiar} {marka} {dot} {cena}".lower()
-            self.wszystkie_karty_opony.append({"karta": karta, "szukaj": tekst_szukaj})
-            self.lista_kart_opony.controls.append(karta)
-
+        elementy.append(utils.wartosc(f"W magazynie ({len(w_magazynie)})"))
+        if len(w_magazynie) > 3:
+            sort_opcje = [
+                ("Sezon", "sezon", lambda k: k["sezon"].lower()),
+                ("Bieżnik", "bieznik", lambda k: k["bieznik"] or 0.0),
+                ("Wiek", "wiek", lambda k: (k["wiek"] or {}).get("lata") or 0.0),
+            ]
+            sort_ui = utils.przycisk_sortowania(self._page, self.state, "opony_magazyn", sort_opcje)
+            chipy_filtrow, w_magazynie = utils.pasek_filtrow(
+                self._page, self.state, w_magazynie, [("kategoria", "opony_sezon", "sezon", "Sezon")])
+            elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
+            utils.posortuj_liste(w_magazynie, self.state, "opony_magazyn", sort_opcje)
+        self.lista_kart_opony.controls.extend(self._karta_zestawu(k) for k in w_magazynie)
         elementy.append(self.lista_kart_opony)
         return elementy
 
-    def _karta_sezonu_opon(self):
-        """Sezonowa zmiana opon wprost z magazynu: montaż i przesunięcie przypomnienia
-        jednym dotknięciem (db.wykonaj_sezonowa_zmiane_opon)."""
+    def _karty_na_aucie(self, dane):
+        """Karta zamontowanego kompletu (przy osiach — po jednej) z akcjami zmiany na pierwszej."""
+        page = self._page
+        if not dane["zamontowane"]:
+            return [ft.Container(
+                padding=utils.SPACING["md"], **utils.powierzchnia(page, "karta"),
+                content=ft.Column([
+                    ft.Row([ft.Icon(ft.Icons.TIRE_REPAIR, size=20, color=ft.Colors.ON_SURFACE_VARIANT),
+                            utils.wartosc("Żaden komplet nie jest na aucie", expand=True, max_lines=2)], spacing=8),
+                    utils.podpis("Dotknij kompletu niżej i wybierz „Załóż na auto” — od tego dnia policzę jego "
+                                 "kilometry.", max_lines=3),
+                ], spacing=8),
+            )]
+
         stan = db.pobierz_stan_opon(self.state.auto_id) or {}
         przypomnienia = db.pobierz_przypomnienia_o_oponach(self.state.auto_id)
+        pojazd = db.pobierz_dane_pojazdu(self.state.auto_id) or {}
+        cisnienie = " / ".join(str(x) for x in (pojazd.get("cisnienie_przod"), pojazd.get("cisnienie_tyl")) if x)
+        karty = []
+        for numer, k in enumerate(dane["zamontowane"]):
+            naglowek = f"Na aucie: {k['sezon']}" if k["sezon"] else "Na aucie"
+            if k["os"] != "Wszystkie":
+                naglowek += f" · {k['os'].lower()}"
+            tresc = [ft.Row([utils.ikona_sezonu(k["sezon"], 22),
+                             utils.wartosc(naglowek, size=utils.FS["title"], expand=True, max_lines=2),
+                             ft.Icon(ft.Icons.CHEVRON_RIGHT, size=20, color=ft.Colors.ON_SURFACE_VARIANT)],
+                            spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)]
+            if utils.opis_kompletu(k):
+                tresc.append(utils.podpis(utils.opis_kompletu(k), max_lines=2))
+            tresc.append(utils.pasek_bieznika(k))
+            linia = [db.tekst_wieku(k["wiek"])]
+            if k["km_biezacy"]:
+                linia.append(f"{utils.formatuj_dystans(k['km_biezacy'], 0, self.j_opon)} w tym sezonie")
+            if k["km"] and k["km"] != k["km_biezacy"]:
+                linia.append(f"razem {utils.formatuj_dystans(k['km'], 0, self.j_opon)}")
+            if any(linia):
+                tresc.append(utils.podpis(" · ".join(x for x in linia if x), max_lines=2))
+            if k["prognoza"]:
+                tresc.append(utils.podpis(_z_wielkiej(db.opis_prognozy(k["prognoza"], self.j_opon)), max_lines=2))
+            for zdanie, kolor in ((utils.opis_bieznika_ponizej(k), utils.kolor_bieznika(k["status_bieznika"])),
+                                  (utils.opis_wieku(k["wiek"]), utils.kolor_wieku(k["wiek"])),
+                                  (utils.wskazowka_osi(k), utils.KOLOR_STATUS["warning"])):
+                if zdanie:
+                    tresc.append(utils.podpis(_z_wielkiej(zdanie), color=kolor, max_lines=3))
+            if numer == 0:
+                docelowy = str(stan.get("docelowy_sezon") or "").lower()
+                if przypomnienia:
+                    termin = utils.tekst_terminu_zmiany(dane["termin_zmiany"])
+                    tresc.append(utils.podpis(f"Zmiana na {docelowy}: {termin}" if termin and docelowy
+                                              else f"Następna zmiana: {termin or przypomnienia[0][4]}", max_lines=2))
+                else:
+                    tresc.append(utils.podpis("Bez przypomnienia o sezonowej zmianie", max_lines=2))
+                if cisnienie:
+                    tresc.append(utils.podpis(f"Ciśnienie (przód / tył): {cisnienie}", max_lines=2))
+            if self.moge_opony and k["id"] in dane["brak_poczatku"]:
+                tresc.append(utils.podpis("Od kiedy ten komplet jest na aucie? Bez tego dnia nie policzę jego "
+                                          "kilometrów.", max_lines=3))
+            akcje = self._akcje_na_aucie(k, stan, przypomnienia, dane) if numer == 0 or (
+                self.moge_opony and k["id"] in dane["brak_poczatku"]) else []
+            if akcje:
+                tresc.append(utils.pasek_zawijany(akcje, spacing=4))
+            karty.append(ft.Container(
+                padding=utils.SPACING["md"], **utils.powierzchnia(page, "karta", stan=utils.stan_kompletu(k)),
+                ink=True, on_click=lambda e, zid=k["id"]: utils.przejdz(self._page, f"/magazyn/opony/{zid}"),
+                content=ft.Column(tresc, spacing=8),
+            ))
+        return karty
 
-        sezon = stan.get("sezon")
-        docelowy = stan.get("docelowy_sezon")
-        kolor = utils.KOLORY_SEZONU_OPON.get(sezon or "", ft.Colors.BLUE_GREY_600)
-
-        naglowek = ft.Row([
-            ft.Icon(utils.IKONY_SEZONU_OPON.get(sezon or "", ft.Icons.TIRE_REPAIR), size=20, color=kolor),
-            ft.Text(f"Na aucie: {sezon}" if sezon else "Żaden zestaw nie jest zamontowany",
-                    weight="bold", size=15, expand=True,
-                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-        ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
-        podpis = []
-        if stan.get("bieznik") is not None:
-            podpis.append(f"bieżnik {utils.formatuj_liczba(stan['bieznik'], 1)} mm")
-        if przypomnienia:
-            _, tekst_terminu = utils.kolor_i_tekst_terminu(przypomnienia[0][4])
-            podpis.append(f"następna zmiana: {tekst_terminu or przypomnienia[0][4]}")
-        else:
-            podpis.append("bez przypomnienia o zmianie")
-
-        def zmien(e):
-            wynik = db.wykonaj_sezonowa_zmiane_opon(self.state.auto_id)
-            utils.przejdz(self._page, "/magazyn")
-            komunikat = utils.komunikat_zmiany_opon(wynik)
-            if wynik.get("termin_przesuniety"):
-                komunikat += " Termin następnej zmiany przesunięty."
-            utils.pokaz_komunikat(
-                self._page, komunikat,
-                kolor=utils.KOLOR_STATUS["ok"] if wynik.get("ok") else utils.KOLOR_STATUS["warning"],
-            )
-
-        def ustaw_przypomnienie(e):
-            db.dodaj_przypomnienie_o_oponach(self.state.auto_id)
-            utils.przejdz(self._page, "/magazyn")
-            utils.pokaz_komunikat(self._page, "Dodano przypomnienie o sezonowej zmianie opon (co pół roku).")
-
+    def _akcje_na_aucie(self, k, stan, przypomnienia, dane):
+        if not self.moge_opony:
+            return []
         akcje = []
-        if stan.get("ma_para"):
-            akcje.append(ft.FilledButton(
-                f"Zmień na {str(docelowy or '').lower()}", icon=ft.Icons.SWAP_HORIZ, on_click=zmien,
-            ))
-        else:
-            podpis.append(f"brak wolnego kompletu ({str(docelowy or '').lower()})")
-        if not przypomnienia:
-            akcje.append(ft.TextButton(
-                "Ustaw przypomnienie", icon=ft.Icons.NOTIFICATIONS_ACTIVE, on_click=ustaw_przypomnienie,
-            ))
+        if k["id"] in dane["brak_poczatku"]:
+            akcje.append(ft.TextButton("Ustaw dzień założenia", icon=ft.Icons.EVENT, on_click=lambda e, zid=k["id"]:
+                                       utils.okno_poczatku_montazu(self._page, self.state, zid)))
+        if k is not dane["zamontowane"][0]:
+            return akcje
+        kandydat = utils.kandydat_zmiany(self.state.auto_id)
+        if kandydat:
+            przypomnienie = przypomnienia[0] if przypomnienia else None
 
-        tresc = [
-            naglowek,
-            ft.Text(" • ".join(podpis), size=utils.FS["caption"],
-                    color=ft.Colors.ON_SURFACE_VARIANT),
-        ]
-        if akcje:
-            tresc.append(utils.pasek_zawijany(akcje, spacing=4))
+            def zmien(e, zid=kandydat, wpis=przypomnienie):
+                utils.okno_zmiany_opon(self._page, self.state, zid, przypomnienie_id=wpis[0] if wpis else None,
+                                       koszt=wpis[2] if wpis and wpis[2] else None)
+
+            akcje.append(ft.FilledButton(f"Zmień na {str(stan.get('docelowy_sezon') or '').lower()}",
+                                         icon=ft.Icons.SWAP_HORIZ, on_click=zmien))
+        akcje.append(ft.TextButton("Pomiar", icon=ft.Icons.SQUARE_FOOT,
+                                   on_click=lambda e, zid=k["id"]: utils.przejdz(self._page, f"/magazyn/opony/{zid}/pomiar")))
+        if not przypomnienia:
+            def ustaw_przypomnienie(e):
+                db.dodaj_przypomnienie_o_oponach(self.state.auto_id)
+                utils.przejdz(self._page, "/magazyn")
+                utils.pokaz_komunikat(self._page, "Dodano przypomnienie o sezonowej zmianie opon (co pół roku).")
+
+            akcje.append(ft.TextButton("Ustaw przypomnienie", icon=ft.Icons.NOTIFICATIONS_ACTIVE,
+                                       on_click=ustaw_przypomnienie))
+        return akcje
+
+    def _baner_dziennika_opon(self, dane):
+        """Zmiany opon z Serwisu, z których da się odtworzyć sezony kompletów (auto bez dziennika)."""
+        if not self.moge_opony or not dane["do_odtworzenia"] or dane["jest_dziennik"]:
+            return None
+
+        def odtworz(e):
+            ile = db.odtworz_sezony_z_serwisu(self.state.auto_id)
+            utils.wypchnij_w_tle(self._page, self.state.auto_id, "sezony opon")
+            utils.przejdz(self._page, "/magazyn")
+            utils.pokaz_komunikat(self._page, f"Odtworzono sezony: {ile}." if ile else
+                                  "Nie było czego odtworzyć — sezon da się przypisać tylko kompletowi jedynemu "
+                                  "w swojej porze roku.", utils.KOLOR_STATUS["ok"] if ile else utils.KOLOR_STATUS["warning"])
 
         return ft.Container(
-            padding=utils.SPACING["md"], border_radius=utils.RADIUS["lg"],
-            bgcolor=ft.Colors.with_opacity(0.10, kolor),
-            content=ft.Column(tresc, spacing=8),
+            padding=utils.SPACING["md"], **utils.powierzchnia(self._page, "karta"),
+            content=ft.Column([
+                ft.Row([ft.Icon(ft.Icons.HISTORY, size=20, color=ft.Colors.PRIMARY),
+                        utils.wartosc("Sezony z historii serwisu", expand=True, max_lines=2)], spacing=8),
+                utils.podpis(f"W Serwisie są zmiany opon z rodzajem opon ({dane['do_odtworzenia']}) — odtworzę z nich, "
+                             "kiedy który komplet był na aucie, i policzę jego kilometry.", max_lines=4),
+                ft.Row([ft.TextButton("Odtwórz z Serwisu", icon=ft.Icons.HISTORY, on_click=odtworz)],
+                       alignment=ft.MainAxisAlignment.END),
+            ], spacing=6),
         )
 
-    def _karta_zestawu(self, z):
-        z_id, sezon, rozmiar, marka, glebokosc, data_pomiaru, dot, ilosc, zamontowane, cena, os_montazu, pliki = z
-        ikona_sezonu = IKONY_SEZONU.get(sezon, ft.Icons.TIRE_REPAIR)
-
-        if glebokosc is not None and str(glebokosc) != "":
-            try:
-                g = float(glebokosc)
-                if g < 1.6:
-                    kol_gl = utils.KOLOR_STATUS["critical"]
-                elif g < 3.0:
-                    kol_gl = utils.KOLOR_STATUS["warning"]
-                else:
-                    kol_gl = utils.KOLOR_STATUS["ok"]
-                tekst_gl = f"{utils.formatuj_liczba(g, 1)} mm"
-            except (TypeError, ValueError):
-                kol_gl = ft.Colors.ON_SURFACE_VARIANT
-                tekst_gl = "-"
-        else:
-            kol_gl = ft.Colors.ON_SURFACE_VARIANT
-            tekst_gl = "brak pomiaru"
-
-        podtytul_bits = [str(x) for x in (rozmiar, marka) if x]
-        podtytul = "  |  ".join(podtytul_bits) if podtytul_bits else "Brak danych o rozmiarze / marce"
-
-        dot_tekst = str(dot) if dot else ""
-        interpretacja = interpretuj_dot(dot)
-        if dot_tekst and interpretacja:
-            dot_tekst += f" ({interpretacja})"
-
-        if zamontowane:
-            etykieta_osi = f" ({os_montazu})" if os_montazu and os_montazu != "Wszystkie" else ""
-            znacznik = ft.Container(
-                padding=8, border_radius=20, bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.GREEN),
-                content=ft.Text(f"Na aucie{etykieta_osi}", size=11, weight="bold", color=utils.KOLOR_STATUS["ok"])
-            )
-        else:
-            znacznik = ft.Container(
-                padding=8, border_radius=20, bgcolor=utils.tlo_odznaki(self._page),
-                content=utils.etykieta("W magazynie")
-            )
-
-        stopka = f"Ilość: {ilosc or 4} szt."
-        # Zero to „nie wpisano”, nie darmowe opony.
-        if utils.parsuj_float(cena, 0) > 0:
-            stopka += f"  |  Cena: {utils.formatuj_liczba(cena)} {utils.symbol_waluty()}"
-        if data_pomiaru:
-            stopka += f"\nPomiar bieżnika: {data_pomiaru}"
-
+    def _karta_zestawu(self, k):
+        pliki = self.pliki_opon.get(k["id"], [])
+        tresc = [ft.Row([
+            utils.wskaznik_zalacznikow(self._page, pliki, "Zestaw opon") if pliki else ft.Container(),
+            ft.Row([utils.ikona_sezonu(k["sezon"], 17),
+                    utils.wartosc(k["sezon"] or "Komplet", size=utils.FS["title"], no_wrap=True,
+                                  overflow=ft.TextOverflow.ELLIPSIS)], spacing=6, expand=True),
+            utils.chip_kompletu(self._page, k),
+        ], spacing=6)]
+        tresc.append(utils.podpis(utils.opis_kompletu(k) or "Brak danych o rozmiarze i marce", max_lines=2))
+        tresc.append(utils.pasek_bieznika(k))
+        if utils.linijka_kompletu(k, self.j_opon):
+            tresc.append(utils.podpis(utils.linijka_kompletu(k, self.j_opon), max_lines=2))
+        for zdanie, kolor in ((utils.opis_bieznika_ponizej(k), utils.kolor_bieznika(k["status_bieznika"])),
+                              (utils.opis_wieku(k["wiek"]), utils.kolor_wieku(k["wiek"]))):
+            if zdanie:
+                tresc.append(utils.podpis(_z_wielkiej(zdanie), color=kolor, max_lines=3))
         karta, kontener = utils.karta_listy(
-            ft.Column([
-                ft.Row([
-                    utils.wskaznik_zalacznikow(self._page, pliki, "Zestaw opon") if pliki else ft.Container(),
-                    ft.Row([
-                        ft.Icon(ikona_sezonu, size=17, color=ft.Colors.PRIMARY),
-                        ft.Text(str(sezon), weight="bold", size=16, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                    ], spacing=6, expand=True),
-                    znacznik,
-                ], spacing=6),
-                ft.Text(podtytul, size=13, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.Row([
-                    utils.etykieta("Bieżnik:", size=13),
-                    # Zmierzony bieżnik jest wartością i dostaje pogrubienie; „brak
-                    # pomiaru" to informacja o BRAKU i zostaje w drugim planie.
-                    ft.Text(tekst_gl, size=13, color=kol_gl, no_wrap=True,
-                            weight="bold" if kol_gl != ft.Colors.ON_SURFACE_VARIANT else "normal"),
-                    # Numer DOT bywa długi — to on ma ustąpić, a nie wypchnąć
-                    # wiersz poza kartę.
-                    ft.Text(f"|  DOT: {dot_tekst}" if dot_tekst else "", size=13, color=ft.Colors.ON_SURFACE_VARIANT,
-                            expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                ], spacing=6),
-                ft.Text(stopka, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-            ], spacing=4),
-            kolor_paska=kol_gl if (glebokosc is not None and str(glebokosc) != "") else None,
+            ft.Column(tresc, spacing=6),
+            kolor_paska=utils.kolor_bieznika(k["status_bieznika"]) if k["status_bieznika"] else None,
             page=self._page,
         )
-
-        self.karty_ref[z_id] = kontener
-        self.podepnij_zdarzenia_grupowe(kontener, z_id, lambda zid=z_id, zsez=sezon, zpl=pliki: self._pokaz_menu(zid, zsez, zpl), "zestawy_opon")
-
+        self.karty_ref[k["id"]] = kontener
+        self.podepnij_zdarzenia_grupowe(
+            kontener, k["id"], lambda zid=k["id"], zk=k, zpl=pliki: self._pokaz_menu(zk, zpl), "zestawy_opon")
         return karta
 
-    def _pokaz_menu(self, zid, sezon, pliki=None):
-        def zamontuj(os):
-            poprzedni = (db.pobierz_stan_opon(self.state.auto_id) or {}).get("sezon")
-            db.oznacz_zamontowany_zestaw(self.state.auto_id, zid, os)
-            etykieta = {"Wszystkie": "na całym aucie", "Przód": "na przedniej osi", "Tył": "na tylnej osi"}[os]
-            komunikat = f"Zestaw „{sezon}” oznaczono jako zamontowany {etykieta}."
-            # Ręczny montaż drugiego sezonu to ta sama czynność, co odhaczenie
-            # przypomnienia — więc też przesuwa termin. Bez tego przypomnienie
-            # dobijało się o coś, co zostało już zrobione.
-            if sezon != poprzedni and sezon in db.SEZONY_PRZELACZALNE and os == "Wszystkie":
-                if db.przesun_przypomnienie_o_oponach(self.state.auto_id):
-                    komunikat += " Termin następnej zmiany przesunięty."
-            utils.przejdz(self._page, "/magazyn")
-            utils.pokaz_komunikat(self._page, komunikat)
+    def _pokaz_menu(self, k, pliki=None):
+        zid, sezon = k["id"], k["sezon"]
+
+        def zaloz(os_montazu):
+            utils.okno_zmiany_opon(self._page, self.state, zid, os_montazu)
 
         def usun_zestaw():
             def wykonaj():
                 wynik = db.usun_z_cofnieciem("zestawy_opon", zid)
                 utils.przejdz(self._page, "/magazyn")
                 utils.pokaz_komunikat_cofnij(self._page, "Usunięto zestaw opon.", wynik)
-            utils.potwierdz(self._page, "Usunąć?", f"Czy na pewno usunąć zestaw „{sezon}”?", wykonaj)
+            utils.potwierdz(self._page, "Usunąć?", f"Czy na pewno usunąć zestaw „{sezon}” razem z jego pomiarami "
+                                                   "i sezonami?", wykonaj)
 
-        pozycje_menu = utils.pozycje_menu_zalacznikow(self._page, "zestawy_opon", zid, pliki, "Zestaw opon",
-                                                      lambda: utils.przejdz(self._page, "/magazyn"))
-
+        pozycje_menu = [{"ikona": ft.Icons.TIRE_REPAIR, "tekst": "Szczegóły kompletu", "czyta": True,
+                         "akcja": lambda: utils.przejdz(self._page, f"/magazyn/opony/{zid}")}]
+        pozycje_menu += utils.pozycje_menu_zalacznikow(self._page, "zestawy_opon", zid, pliki, "Zestaw opon",
+                                                       lambda: utils.przejdz(self._page, "/magazyn"))
         pozycje_menu.extend([
-            {"ikona": ft.Icons.CHECK_CIRCLE, "tekst": "Zamontuj na całym aucie", "akcja": lambda: zamontuj("Wszystkie"), "kolor": ft.Colors.GREEN},
-            {"ikona": ft.Icons.ARROW_UPWARD, "tekst": "Zamontuj tylko na przedniej osi", "akcja": lambda: zamontuj("Przód"), "kolor": ft.Colors.GREEN},
-            {"ikona": ft.Icons.ARROW_DOWNWARD, "tekst": "Zamontuj tylko na tylnej osi", "akcja": lambda: zamontuj("Tył"), "kolor": ft.Colors.GREEN},
+            {"ikona": ft.Icons.SWAP_HORIZ, "tekst": "Załóż na całe auto", "akcja": lambda: zaloz("Wszystkie"),
+             "kolor": utils.KOLOR_STATUS["ok"]},
+            {"ikona": ft.Icons.ARROW_UPWARD, "tekst": "Załóż tylko na przednią oś", "akcja": lambda: zaloz("Przód")},
+            {"ikona": ft.Icons.ARROW_DOWNWARD, "tekst": "Załóż tylko na tylną oś", "akcja": lambda: zaloz("Tył")},
+            {"ikona": ft.Icons.SQUARE_FOOT, "tekst": "Dodaj pomiar bieżnika",
+             "akcja": lambda: utils.przejdz(self._page, f"/magazyn/opony/{zid}/pomiar")},
             {"ikona": ft.Icons.EDIT, "tekst": "Edytuj zestaw", "akcja": lambda: utils.przejdz(self._page, f"/magazyn/opony/edytuj/{zid}")},
             {"ikona": ft.Icons.DELETE, "tekst": "Usuń zestaw", "akcja": usun_zestaw, "kolor": utils.KOLOR_STATUS["destructive"]}
         ])
@@ -710,41 +676,29 @@ class MagazynView(ft.View, utils.ZaznaczanieGrupowe):
         utils.pokaz_menu_kontekstowe(self._page, f"Pozycja: {nazwa}", pozycje_menu)
 
 class FormularzOponyView(ft.View):
+    # Kolumny kompletu w formularzu — kolejność jak w zapytaniu.
+    POLA = ("sezon", "rozmiar", "marka_model", "numer_dot", "ilosc", "data_zakupu", "przebieg_zakupu", "cena", "notatki",
+            "miejsce", "numer_kwitu", "oplata_przechowania", "na_felgach", "felgi")
+
     def __init__(self, page: ft.Page, state, zestaw_id=None):
         self._page = page
         self.state = state
         self.zestaw_id = zestaw_id
-
-        sezon_val, rozmiar_val, marka_val = SEZONY[0], "", ""
-        gl_val, dp_val, dot_val, il_val = "", "", "", "4"
-        zam_val, dz_val, pz_val, cena_val, not_val = False, "", "", "", ""
-        os_val = "Wszystkie"
-        self.pz_km = None  # przebieg przy zakupie w km, jak w bazie
-
+        w = {}
         if zestaw_id:
             with db.polacz_baze() as conn:
-                c = conn.cursor()
-                c.execute(
-                    "SELECT sezon, rozmiar, marka_model, glebokosc_bieznika, data_pomiaru, numer_dot, "
-                    "ilosc, zamontowane, data_zakupu, przebieg_zakupu, cena, notatki, os_montazu FROM zestawy_opon WHERE id=?",
-                    (zestaw_id,)
-                )
-                w = c.fetchone()
-                if w:
-                    sezon_val = str(w[0] or SEZONY[0])
-                    rozmiar_val = str(w[1] or "")
-                    marka_val = str(w[2] or "")
-                    gl_val = str(w[3] or "")
-                    dp_val = str(w[4] or "")
-                    dot_val = str(w[5] or "")
-                    il_val = str(w[6] or "4")
-                    zam_val = bool(w[7])
-                    dz_val = str(w[8] or "")
-                    self.pz_km = w[9] or None
-                    pz_val = db.wartosc_pola_dystansu(self.pz_km)
-                    cena_val = str(w[10] or "")
-                    not_val = str(w[11] or "")
-                    os_val = str(w[12] or "Wszystkie")
+                wiersz = conn.execute(f"SELECT {', '.join(self.POLA)} FROM zestawy_opon WHERE id=?",
+                                      (zestaw_id,)).fetchone()
+            w = dict(zip(self.POLA, wiersz)) if wiersz else {}
+        else:
+            # Nowy komplet zwykle ma rozmiar z Karty pojazdu — ten sam, co na naklejce w drzwiach.
+            w["rozmiar"] = (db.pobierz_dane_pojazdu(state.auto_id) or {}).get("rozmiar_opon") if state.auto_id else None
+        self.pz_km = w.get("przebieg_zakupu") or None  # przebieg przy zakupie w km, jak w bazie
+        self.na_felgach_pocz = w.get("na_felgach")
+        self.powrot = f"/magazyn/opony/{zestaw_id}" if zestaw_id else "/magazyn"
+
+        def tekst(pole):
+            return str(w.get(pole) or "")
 
         self.pliki = utils.PolaZalacznikow(page, "zestawy_opon", zestaw_id)
         # Ikona idzie do leading_icon, a NIE do tekstu: ft.Icons to wyliczenie,
@@ -752,73 +706,98 @@ class FormularzOponyView(ft.View):
         self.e_sezon = ft.Dropdown(
             label="Sezon",
             options=[ft.DropdownOption(key=s, text=s, leading_icon=IKONY_SEZONU[s]) for s in SEZONY],
-            value=sezon_val, **utils.styl_dropdown()
+            value=tekst("sezon") or SEZONY[0], **utils.styl_dropdown()
         )
-        self.e_rozmiar = ft.TextField(label="Rozmiar (np. 205/55 R16)", value=rozmiar_val, **utils.styl_pola())
-        self.e_marka = ft.TextField(label="Marka / model opony", value=marka_val, **utils.styl_pola())
-        
-        self.e_gl = ft.TextField(label="Głębokość bieżnika (mm)", value=gl_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_dp = utils.pole_daty(page, "Data pomiaru bieżnika", dp_val)
-        self.e_dot = ft.TextField(label="Numer DOT", hint_text="np. 2321 = tydz. 23/2021", value=dot_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_il = ft.TextField(label="Ilość opon w zestawie", value=il_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_zam = ft.Checkbox(label="Ten zestaw jest aktualnie zamontowany na aucie", value=zam_val)
-        self.e_os = ft.Dropdown(
-            label="Na jakiej osi",
-            options=[ft.DropdownOption(key=o, text=o) for o in db.OSIE_MONTAZU],
-            value=os_val,
-            visible=zam_val,
-            **utils.styl_dropdown()
-        )
+        self.e_rozmiar = ft.TextField(label="Rozmiar (np. 205/55 R16)", value=tekst("rozmiar"), **utils.styl_pola())
+        self.e_marka = ft.TextField(label="Marka / model opony", value=tekst("marka_model"), **utils.styl_pola())
+        self.e_dot = ft.TextField(label="Kod DOT (data produkcji)", value=tekst("numer_dot"),
+                                  hint_text="np. 2321, 0222 — tydzień i rok", **utils.styl_pola())
+        self.e_il = ft.TextField(label="Ilość opon w zestawie", value=str(w.get("ilosc") or 4),
+                                 keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+
+        # Nowy komplet: pierwszy pomiar i montaż od razu; potem zmienia się je na ekranie kompletu.
+        self.e_gl = ft.TextField(label="Bieżnik teraz (mm, opcjonalnie)", keyboard_type=ft.KeyboardType.NUMBER,
+                                 **utils.styl_pola())
+        self.e_zam = ft.Checkbox(label="Ten komplet jest teraz na aucie", value=False)
+        self.e_os = ft.Dropdown(label="Na jakiej osi", options=[ft.DropdownOption(key=o, text=o) for o in db.OSIE_MONTAZU],
+                                value="Wszystkie", visible=False, **utils.styl_dropdown())
+        self.e_od = utils.pole_daty(page, "Na aucie od (opcjonalnie)", "")
+        self.e_od.visible = False
 
         def _przelacz_os(e):
-            self.e_os.visible = self.e_zam.value
-            self.e_os.update()
+            self.e_os.visible = self.e_od.visible = bool(self.e_zam.value)
+            self.update()
 
         self.e_zam.on_change = _przelacz_os
-        
-        self.e_dz = utils.pole_daty(page, "Data zakupu", dz_val)
-        self.e_pz = ft.TextField(label=f"Przebieg przy zakupie ({utils.jednostka_dystansu()})", value=pz_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_cena = ft.TextField(label=f"Koszt zakupu ({utils.symbol_waluty()})", value=cena_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
-        self.e_not = ft.TextField(label="Dodatkowe notatki", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
+
+        self.e_miejsce = ft.TextField(label="Gdzie leży (garaż, przechowalnia)", value=tekst("miejsce"), **utils.styl_pola())
+        self.e_kwit = ft.TextField(label="Numer kwitu przechowalni", value=tekst("numer_kwitu"), **utils.styl_pola())
+        self.e_oplata = ft.TextField(label=f"Opłata za sezon ({utils.symbol_waluty()})",
+                                     value=utils.liczba_do_pola(w.get("oplata_przechowania"))
+                                     if w.get("oplata_przechowania") else "",
+                                     keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_na_felgach = ft.Checkbox(label="Opony są na felgach (komplet kół)", value=bool(w.get("na_felgach")))
+        self.e_felgi = ft.TextField(label="Felgi (np. alu 16″ 6,5J ET42)", value=tekst("felgi"), **utils.styl_pola())
+
+        self.e_dz = utils.pole_daty(page, "Data zakupu", tekst("data_zakupu"))
+        self.e_pz = ft.TextField(label=f"Przebieg przy zakupie ({utils.jednostka_dystansu()})",
+                                 value=db.wartosc_pola_dystansu(self.pz_km) if self.pz_km else "",
+                                 keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_cena = ft.TextField(label=f"Koszt zakupu ({utils.symbol_waluty()})",
+                                   value=utils.liczba_do_pola(w.get("cena")) if w.get("cena") else "",
+                                   keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
+        self.e_not = ft.TextField(label="Dodatkowe notatki", value=tekst("notatki"), multiline=True, min_lines=2,
+                                  max_lines=4, **utils.styl_pola())
 
         self._stan_poczatkowy = self._migawka_formularza()
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja zestawu opon" if zestaw_id else "Nowy zestaw opon", "/magazyn", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
-        
-        k1 = utils.karta_formularza([self.e_sezon, self.e_rozmiar, self.e_marka], "Specyfikacja opony", ft.Icons.INFO_OUTLINE, domyslnie_otwarte=True)
-        k2 = utils.karta_formularza([self.e_gl, self.e_dp, self.e_dot, self.e_il, utils.pole_wyboru(self.e_zam), self.e_os], "Stan i pomiary", ft.Icons.SEARCH)
-        k3 = utils.karta_formularza([self.e_dz, self.e_pz, self.e_cena, self.e_not], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
-        k4 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (faktura, zdjęcia opon)", ft.Icons.ATTACH_FILE,
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja zestawu opon" if zestaw_id else "Nowy zestaw opon",
+                                               self.powrot, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+
+        k1 = utils.karta_formularza([self.e_sezon, self.e_rozmiar, self.e_marka, self.e_dot, self.e_il],
+                                    "Specyfikacja opony", ft.Icons.INFO_OUTLINE, domyslnie_otwarte=True)
+        if zestaw_id:
+            k2 = utils.karta_formularza([utils.podpis(
+                "Bieżnik każdego koła i zmiany opon zapisujesz na ekranie kompletu — z nich liczą się kilometry, "
+                "tempo zużycia i prognoza.", max_lines=4)], "Stan i montaż", ft.Icons.SQUARE_FOOT)
+        else:
+            k2 = utils.karta_formularza([self.e_gl, utils.pole_wyboru(self.e_zam), self.e_os, self.e_od],
+                                        "Stan i montaż", ft.Icons.SQUARE_FOOT, domyslnie_otwarte=True)
+        k3 = utils.karta_formularza([self.e_miejsce, self.e_kwit, self.e_oplata, utils.pole_wyboru(self.e_na_felgach),
+                                     self.e_felgi], "Przechowywanie i felgi", ft.Icons.WAREHOUSE,
+                                    domyslnie_otwarte=bool(w.get("miejsce") or w.get("felgi")))
+        k4 = utils.karta_formularza([self.e_dz, self.e_pz, self.e_cena, self.e_not], "Zakup i uwagi", ft.Icons.SHOPPING_CART)
+        k5 = utils.karta_formularza([self.pliki.kontrolka], "Pliki (faktura, zdjęcia opon)", ft.Icons.ATTACH_FILE,
                                     domyslnie_otwarte=bool(self.pliki.pozycje))
 
-        elementy = [k1, k2, k3, k4, utils.przyciski_akcji(page, "Zapisz zestaw", self.zapisz, "/magazyn")]
+        elementy = [k1, k2, k3, k4, k5, utils.przyciski_akcji(page, "Zapisz zestaw", self.zapisz, self.powrot)]
 
         super().__init__(
             route=f"/magazyn/opony/edytuj/{zestaw_id}" if zestaw_id else "/magazyn/opony/nowy",
-            padding=15, 
-            spacing=15, 
-            appbar=appbar, 
-            controls=elementy, 
+            padding=15,
+            spacing=15,
+            appbar=appbar,
+            controls=elementy,
             scroll=ft.ScrollMode.AUTO
         )
 
     def _migawka_formularza(self):
-        return (self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value, self.e_gl.value,
-                self.e_dp.value, self.e_dot.value, self.e_il.value, self.e_zam.value, self.e_os.value,
+        return (self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value, self.e_dot.value, self.e_il.value,
+                self.e_gl.value, self.e_zam.value, self.e_os.value, self.e_od.value, self.e_miejsce.value,
+                self.e_kwit.value, self.e_oplata.value, self.e_na_felgach.value, self.e_felgi.value,
                 self.e_dz.value, self.e_pz.value, self.e_cena.value, self.e_not.value, self.pliki.migawka())
 
     def _czy_zmieniono(self):
         return self._migawka_formularza() != self._stan_poczatkowy
 
     def zapisz(self, e):
-        for pole in (self.e_gl, self.e_il, self.e_cena):
+        for pole in (self.e_gl, self.e_il, self.e_cena, self.e_oplata):
             utils.ustaw_blad(pole)
 
         bledy = []
-
         glebokosc = None
-        if (self.e_gl.value or "").strip():
+        if not self.zestaw_id and (self.e_gl.value or "").strip():
             glebokosc = utils.parsuj_float(self.e_gl.value, None)
-            if glebokosc is None or glebokosc < 0 or glebokosc > 15:
+            if glebokosc is None or glebokosc < 0 or glebokosc > db.MAKS_BIEZNIK:
                 bledy.append((self.e_gl, "Podaj sensowną głębokość (0–15 mm)"))
 
         # Bez `or 4`: wpisane 0 albo wartość ujemna ma trafić na walidację poniżej,
@@ -827,56 +806,56 @@ class FormularzOponyView(ft.View):
         if ilosc <= 0 or ilosc > 8:
             bledy.append((self.e_il, "Podaj sensowną ilość opon (1–8)"))
 
-        cena = None
-        if (self.e_cena.value or "").strip():
-            cena = utils.parsuj_float(self.e_cena.value, None)
-            if cena is not None and cena < 0:
-                bledy.append((self.e_cena, "Cena nie może być ujemna"))
+        kwoty = {}
+        for pole, nazwa in ((self.e_cena, "cena"), (self.e_oplata, "oplata")):
+            kwoty[nazwa] = None
+            if (pole.value or "").strip():
+                kwoty[nazwa] = utils.parsuj_float(pole.value, None)
+                if kwoty[nazwa] is None or kwoty[nazwa] < 0:
+                    bledy.append((pole, "Kwota nie może być ujemna"))
 
         if bledy:
             return utils.pokaz_bledy_formularza(self._page, bledy)
 
-        bieznik_nizki = glebokosc is not None and glebokosc < 1.6
-
-        dot = (self.e_dot.value or "").strip()
         przebieg_zakupu = (db.dystans_na_km(utils.parsuj_int(self.e_pz.value, None), calkowity=True,
                                             km_przy_otwarciu=self.pz_km)
                            if (self.e_pz.value or "").strip() else None)
+        # Pole wyboru nie umie „nie wiadomo”: nieruszone przy pustej kolumnie zostaje puste.
+        na_felgach = int(bool(self.e_na_felgach.value))
+        if self.na_felgach_pocz is None and not self.e_na_felgach.value:
+            na_felgach = None
+        wartosci = (self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value, (self.e_dot.value or "").strip(),
+                    ilosc, self.e_dz.value, przebieg_zakupu, kwoty["cena"], self.e_not.value,
+                    (self.e_miejsce.value or "").strip() or None, (self.e_kwit.value or "").strip() or None,
+                    kwoty["oplata"], na_felgach, (self.e_felgi.value or "").strip() or None)
         nowy_id = self.zestaw_id
 
         with self.pliki.zapis(), db.polacz_baze() as conn:
             cur = conn.cursor()
             if self.zestaw_id:
-                cur.execute(
-                    "UPDATE zestawy_opon SET sezon=?, rozmiar=?, marka_model=?, glebokosc_bieznika=?, "
-                    "data_pomiaru=?, numer_dot=?, ilosc=?, data_zakupu=?, przebieg_zakupu=?, cena=?, notatki=? WHERE id=?",
-                    (self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value, glebokosc,
-                    self.e_dp.value, dot, ilosc, self.e_dz.value, przebieg_zakupu, cena, self.e_not.value,
-                    self.zestaw_id)
-                )
+                cur.execute(f"UPDATE zestawy_opon SET {', '.join(f'{p}=?' for p in self.POLA)} WHERE id=?",
+                            wartosci + (self.zestaw_id,))
             else:
-                cur.execute(
-                    "INSERT INTO zestawy_opon (auto_id, sezon, rozmiar, marka_model, glebokosc_bieznika, "
-                    "data_pomiaru, numer_dot, ilosc, zamontowane, data_zakupu, przebieg_zakupu, cena, notatki) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (self.state.auto_id, self.e_sezon.value, self.e_rozmiar.value, self.e_marka.value,
-                    glebokosc, self.e_dp.value, dot, ilosc, 0, self.e_dz.value, przebieg_zakupu, cena, self.e_not.value)
-                )
+                cur.execute(f"INSERT INTO zestawy_opon (auto_id, zamontowane, {', '.join(self.POLA)}) "
+                            f"VALUES (?,0,{','.join('?' * len(self.POLA))})", (self.state.auto_id,) + wartosci)
                 nowy_id = cur.lastrowid
             self.pliki.zapisz_w(conn, nowy_id, self.state.auto_id)
 
-        if self.e_zam.value and nowy_id:
-            db.oznacz_zamontowany_zestaw(self.state.auto_id, nowy_id, self.e_os.value)
-        elif self.zestaw_id and not self.e_zam.value:
-            with db.polacz_baze() as conn:
-                conn.execute("UPDATE zestawy_opon SET zamontowane=0 WHERE id=?", (self.zestaw_id,))
+        if not self.zestaw_id and nowy_id:
+            if glebokosc is not None:
+                db.zapisz_pomiar(self.state.auto_id, nowy_id, {
+                    "data": datetime.now().strftime("%d.%m.%Y"), **{k: glebokosc for k in db.POZYCJE_KOL}})
+            if self.e_zam.value:
+                db.oznacz_zamontowany_zestaw(self.state.auto_id, nowy_id, self.e_os.value,
+                                             data=(self.e_od.value or "").strip() or None)
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "zestaw opon")
-        utils.przejdz(self._page, "/magazyn")
-        if bieznik_nizki:
+        utils.przejdz(self._page, f"/magazyn/opony/{nowy_id}" if self.zestaw_id else "/magazyn")
+        if glebokosc is not None and glebokosc < db.BIEZNIK_MINIMUM_PRAWNE:
             utils.pokaz_komunikat(
                 self._page,
-                "Zapisano zestaw opon! Uwaga: głębokość bieżnika poniżej ustawowego minimum (1.6 mm).",
+                f"Zapisano zestaw opon! Uwaga: bieżnik poniżej minimum prawnego "
+                f"({db.tekst_bieznika(db.BIEZNIK_MINIMUM_PRAWNE)}).",
                 utils.KOLOR_STATUS["warning"]
             )
         else:

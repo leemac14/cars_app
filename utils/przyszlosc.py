@@ -11,7 +11,7 @@ from state import MIESIACE_NAZWY
 
 from .stale import FS, KOLOR_STATUS, RADIUS, SPACING, formatuj_liczba, ikona_z_mapy
 from .format import (
-    MIESIACE_DOPELNIACZ, _odleglosc_w_czasie, formatuj_date_pl, formatuj_dni, opis_odliczania,
+    MIESIACE_DOPELNIACZ, _odleglosc_w_czasie, formatuj_date_pl, formatuj_dni, formatuj_dystans, opis_odliczania,
     podpis_odliczania, symbol_waluty, tytul_odliczania,
 )
 from .typografia import etykieta, podpis
@@ -134,6 +134,11 @@ def opis_pozycji_osi(pozycja, j=None):
             czesci.append(f"najpóźniej {kiedy_osi(pozycja.get('dni'))}")
     elif rodzaj == "budzet":
         czesci = _opis_budzetu(pozycja["budzet"])
+    elif rodzaj == "opony_bieznik":
+        czesci = [kiedy_osi(pozycja.get("dni"), prognoza=True),
+                  f"ok. {formatuj_dystans(pozycja.get('zostalo_km'), 0, j)} na komplecie", "prognoza z pomiarów"]
+    elif rodzaj == "opony_wiek":
+        czesci = [kiedy_osi(pozycja.get("dni")), "zalecana wymiana opon"]
     else:
         czesci = [kiedy_osi(pozycja.get("dni"))]
         if pozycja.get("platnosc"):

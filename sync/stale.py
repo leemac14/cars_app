@@ -96,7 +96,10 @@ KONFIGURACJA_SYNC = [
     {"tabela": "ceny_czesci", "kolumny": ["nazwa", "data", "cena_jednostkowa", "jednostka", "ilosc", "sklep"], "fk": {}},
     {"tabela": "wizyta_czesci_magazynu", "kolumny": ["ilosc_uzyta", "koszt"], "fk": {"wizyta_id": "wizyty", "magazyn_id": "magazyn_czesci"}},
     {"tabela": "historia_czesci_magazynu", "kolumny": ["ilosc_uzyta", "koszt"], "fk": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"}},
-    {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu"], "fk": {}},
+    # Przechowalnia i felgi (wersja 58) dołożone, kiedy komplety leżały już w chmurze.
+    {"tabela": "zestawy_opon", "kolumny": ["sezon", "rozmiar", "marka_model", "glebokosc_bieznika", "data_pomiaru", "numer_dot", "ilosc", "zamontowane", "data_zakupu", "przebieg_zakupu", "cena", "notatki", "os_montazu",
+                                           "miejsce", "numer_kwitu", "oplata_przechowania", "na_felgach", "felgi"], "fk": {},
+     "dopisane": ["miejsce", "numer_kwitu", "oplata_przechowania", "na_felgach", "felgi"]},
     {"tabela": "inne_koszty", "kolumny": ["data", "kategoria", "nazwa", "kwota", "tagi", "notatka", "notatka_autor", "notatka_data", "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji"], "fk": {}},
     # Dolewki płynów (wersja 53): zużycie oleju ma być jedną liczbą dla obu osób. Po
     # magazynie i innych kosztach — rodzice muszą mieć `zdalne_id` przed dolewką.
@@ -161,6 +164,13 @@ KONFIGURACJA_SYNC = [
     # osobie, że plik jest na innym telefonie.
     {"tabela": "dokumenty_pojazdu", "kolumny": ["rodzaj", "nazwa", "numer", "data_wystawienia", "data_waznosci",
                                                 "notatki", "liczba_plikow", "dodane_przez"], "fk": {}},
+    # Opony (wersja 58): pomiary bieżnika i okresy montażu kompletów — prognoza zużycia i kilometry
+    # na komplecie mają być jedne dla obu osób. Po kompletach, serwisie i innych kosztach.
+    {"tabela": "pomiary_bieznika", "kolumny": ["data", "przebieg", "lp", "pp", "lt", "pt", "uwagi", "dodane_przez"],
+     "fk": {"zestaw_id": "zestawy_opon"}},
+    {"tabela": "montaze_opon", "kolumny": ["os_montazu", "data", "przebieg", "data_zdjecia", "przebieg_zdjecia",
+                                           "dodane_przez"],
+     "fk": {"zestaw_id": "zestawy_opon", "historia_id": "historia", "koszt_id": "inne_koszty"}},
 ]
 
 
@@ -215,6 +225,8 @@ ETYKIETY_TABEL_SYNC = {
     "wizyta_czesci_magazynu": "Zużycie części",
     "historia_czesci_magazynu": "Zużycie części przy wpisie",
     "zestawy_opon": "Zestaw opon",
+    "pomiary_bieznika": "Pomiar bieżnika",
+    "montaze_opon": "Sezon opon",
     "inne_koszty": "Inny koszt",
     "warsztaty": "Warsztat",
     "wydatki_cykliczne": "Wydatek cykliczny",

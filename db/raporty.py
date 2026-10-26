@@ -33,6 +33,7 @@ from .energia import formatuj_zuzycie_tekst
 from .analiza import _wpisy_okresu, opis_porownania_miesiaca, podsumowanie_miesiaca
 from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, opis_gwarancji, zakres_gwarancji
+from .opony import STATUS_BIEZNIKA_KRYTYCZNY, STATUS_BIEZNIKA_UWAGA, dane_opon, tekst_bieznika, tekst_wieku
 from .nazwy import klucz_nazwy
 from .rejestry import WARSZTAT_BEZ_NAZWY
 from .pojazd import pobierz_dane_pojazdu
@@ -522,7 +523,35 @@ def _rysuj_gwarancje_napraw(pdf, gwarancje):
     pdf.ln(5)
 
 
-def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja, terminy, gwarancje=None):
+def _rysuj_opony(pdf, opony):
+    """Sekcja „Opony”: komplet, bieżnik ostatniego pomiaru i wiek (kolor jak w aplikacji: czerwony
+    poniżej minimum prawnego, pomarańczowy poniżej zalecanego), pod spodem kilometry i felgi."""
+    pdf.set_font(pdf.czcionka, "B", 13)
+    pdf.cell(0, 9, pdf.t("Opony"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 180, pdf.get_y())
+    pdf.ln(3)
+
+    szerokosc = pdf.w - pdf.l_margin - pdf.r_margin
+    kolory = {STATUS_BIEZNIKA_KRYTYCZNY: (200, 40, 40), STATUS_BIEZNIKA_UWAGA: (210, 130, 20)}
+    for nazwa, opis, szczegoly, status in opony:
+        pdf.set_font(pdf.czcionka, "B", 10)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 6, _przytnij_do_szerokosci(pdf, nazwa, szerokosc), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font(pdf.czcionka, "", 10)
+        pdf.set_text_color(*kolory.get(status, (40, 150, 70) if status else (110, 110, 110)))
+        pdf.cell(0, 6, _przytnij_do_szerokosci(pdf, opis, szerokosc), new_x="LMARGIN", new_y="NEXT")
+        if szczegoly:
+            pdf.set_font(pdf.czcionka, "", 8.5)
+            pdf.set_text_color(110, 110, 110)
+            pdf.cell(0, 5, _przytnij_do_szerokosci(pdf, szczegoly, szerokosc), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(5)
+
+
+def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja, terminy, gwarancje=None,
+                                     opony=None):
     """Strona tytułowa 'Cyfrowego paszportu pojazdu': zdjęcie, nazwa, specyfikacja
     w dwóch kolumnach, ważne terminy kolorowane jak w reszcie aplikacji i trwające
     gwarancje napraw. Używane wyłącznie przez generuj_pdf_raportu(tryb_paszportu=True)."""
@@ -611,6 +640,8 @@ def _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikac
 
     if gwarancje:
         _rysuj_gwarancje_napraw(pdf, gwarancje)
+    if opony:
+        _rysuj_opony(pdf, opony)
 
     pdf.add_page()
 
@@ -661,12 +692,13 @@ def _rysuj_galerie_karoserii(pdf, zdjecia_karoserii):
 def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=None,
                          tryb_paszportu=False, zdjecie_glowne=None, specyfikacja=None,
                          terminy=None, punkty_przebiegu=None, zdjecia_karoserii=None,
-                         gwarancje=None):
+                         gwarancje=None, opony=None):
     """PDF raportu; zwraca bajty. kategorie_dane: {klucz: (naglowki, wiersze)} jak z
     pobierz_dane_eksportu(); podsumowanie — opcjonalnie z oblicz_podsumowanie_okresu().
     tryb_paszportu=True (generuj_pdf_paszportu) — strona tytułowa (zdjęcie,
     specyfikacja, terminy), wykres przebiegu i galeria karoserii; pozostałe parametry
-    tylko w tym trybie. `gwarancje` — (część, „gwarancja jeszcze…”, szczegóły, status).
+    tylko w tym trybie. `gwarancje` — (część, „gwarancja jeszcze…”, szczegóły, status), `opony` —
+    (komplet, bieżnik i wiek, szczegóły, status bieżnika).
     RuntimeError bez fpdf2."""
     if FPDF is None:
         raise RuntimeError("Biblioteka 'fpdf2' nie jest zainstalowana — eksport do PDF jest niedostępny. Zainstaluj: pip install fpdf2")
@@ -676,7 +708,7 @@ def generuj_pdf_raportu(auto_nazwa, kategorie_dane, okres_opis, podsumowanie=Non
 
     if tryb_paszportu:
         _rysuj_strone_tytulowa_paszportu(pdf, auto_nazwa, zdjecie_glowne, specyfikacja or [], terminy or [],
-                                         gwarancje or [])
+                                         gwarancje or [], opony or [])
     else:
         pdf.set_font(pdf.czcionka, "B", 18)
         pdf.cell(0, 12, pdf.t(f"Raport pojazdu: {auto_nazwa}"), **NOWA_LINIA)
@@ -845,7 +877,32 @@ def pobierz_dane_paszportu(auto_id):
         "punkty_przebiegu": pobierz_historie_przebiegu(auto_id),
         "zdjecia_karoserii": zdjecia_karoserii,
         "gwarancje": _gwarancje_do_paszportu(auto_id, j),
+        "opony": _opony_do_paszportu(auto_id, j),
     }
+
+
+def _opony_do_paszportu(auto_id, j):
+    """Komplety opon dla kupującego: (komplet, bieżnik z dniem pomiaru i wiek, kilometry i felgi,
+    status bieżnika)."""
+    wynik = []
+    for k in dane_opon(auto_id)["komplety"]:
+        nazwa = " · ".join(x for x in (k["sezon"] or "Opony", k["marka_model"], k["rozmiar"]) if x)
+        pomiar = k["ostatni_pomiar"]
+        opis = [f"bieżnik {tekst_bieznika(k['bieznik'])}" + (f" ({pomiar['data']})" if pomiar["data"] else "")
+                if pomiar else "bieżnik niezmierzony"]
+        if k["wiek"]:
+            opis.append(f"{tekst_wieku(k['wiek'])} od produkcji")
+        opis.append(("na aucie" if k["os"] == "Wszystkie" else f"na aucie ({k['os'].lower()})")
+                    if k["zamontowany"] else "w magazynie")
+        szczegoly = []
+        if k["km"]:
+            szczegoly.append(f"{formatuj_liczba_eksport(dystans_z_km(k['km'], j), 0)} {j} na komplecie")
+        if k["na_felgach"]:
+            szczegoly.append("na felgach" + (f" ({k['felgi']})" if k["felgi"] else ""))
+        if k["numer_dot"]:
+            szczegoly.append(f"DOT {k['numer_dot']}")
+        wynik.append((nazwa, " · ".join(opis), " · ".join(szczegoly), k["status_bieznika"]))
+    return wynik
 
 
 def _gwarancje_do_paszportu(auto_id, j):
@@ -1360,6 +1417,7 @@ __all__ = [
     "SZEROKOSC_LOGO_STOPKI",
     "_CZCIONKI_KANDYDACI",
     "_gwarancje_do_paszportu",
+    "_opony_do_paszportu",
     "_kafle_pigulki",
     "_narysuj_pigulke",
     "_narysuj_wykres_liniowy",
@@ -1367,6 +1425,7 @@ __all__ = [
     "_przytnij_do_szerokosci",
     "_rysuj_galerie_karoserii",
     "_rysuj_gwarancje_napraw",
+    "_rysuj_opony",
     "_rysuj_strone_tytulowa_paszportu",
     "_wiersz_tabeli",
     "_wysokosc_wiersza",

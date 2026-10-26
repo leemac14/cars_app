@@ -54,6 +54,8 @@ class AppState:
         # Ustawia go start (wersja sprzed aktualizacji) albo pierwsze wejście.
         self.nowosci_od = None
         self.magazyn_zakladka = 0  # 0 = Opony, 1 = Części i płyny
+        # Dzień i licznik zmiany opon dla formularza pomiaru zdjętych (utils.okno_zmiany_opon), zużywane raz.
+        self.pomiar_wstepny = None
         self.do_zrobienia_podzakladka = 0  # 0 = Do zrobienia, 1 = Checklisty
         self.dolewki_plyn = None  # płyn wybrany na ekranie dolewek (klucz db.RODZAJE_PLYNOW)
         self.kosz_zakladka = None  # 0 = Wpisy, 1 = Pojazdy; None — ta z zawartością

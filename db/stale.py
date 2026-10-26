@@ -340,7 +340,7 @@ TABELE_DAWNEGO_ZALACZNIKA = ("tankowania", "wizyty", "historia", "inne_koszty", 
 TABELE_Z_DATA_ISO = (
     "tankowania", "inne_koszty", "wizyty", "historia",
     "odczyty_przebiegu", "rozliczenia", "zdjecia_karoserii", "zadania",
-    "szkice_wpisow", "ceny_czesci", "przejazdy", "dolewki",
+    "szkice_wpisow", "ceny_czesci", "przejazdy", "dolewki", "pomiary_bieznika", "montaze_opon",
 )
 
 

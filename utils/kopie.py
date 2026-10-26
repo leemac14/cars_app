@@ -152,6 +152,7 @@ NAZWY_WPISOW_W_PODGLADZIE = {
     "przejazdy": ("przejazd w ewidencji", "przejazdy w ewidencji", "przejazdów w ewidencji"),
     "dolewki": ("dolewka płynu", "dolewki płynów", "dolewek płynów"),
     "dokumenty_pojazdu": ("dokument pojazdu", "dokumenty pojazdu", "dokumentów pojazdu"),
+    "pomiary_bieznika": ("pomiar bieżnika", "pomiary bieżnika", "pomiarów bieżnika"),
 }
 
 

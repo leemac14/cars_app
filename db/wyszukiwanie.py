@@ -558,7 +558,7 @@ def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
             opis = str(r["rozmiar"] or "")
             if r["marka_model"]:
                 opis += f" • {r['marka_model']}" if opis else str(r["marka_model"])
-            dodaj("Opony", f"Zestaw: {r['sezon']}", r["cena"], opis, r["data_zakupu"], "/magazyn")
+            dodaj("Opony", f"Zestaw: {r['sezon']}", r["cena"], opis, r["data_zakupu"], f"/magazyn/opony/{r['id']}")
 
         c.execute("SELECT id, tytul, szacowany_koszt, termin, priorytet FROM do_zrobienia WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
@@ -737,13 +737,15 @@ def _wszystkie_wpisy(auto_id):
                                kwota=r["cena"], kategoria=r["kategoria"],
                                jednostka=r["jednostka"], notatka=r["notatki"], sklep=r["sklep"]))
 
-        c.execute("SELECT id, sezon, rozmiar, marka_model, numer_dot, cena, data_zakupu, notatki "
-                  "FROM zestawy_opon WHERE auto_id=?", (auto_id,))
+        c.execute("SELECT id, sezon, rozmiar, marka_model, numer_dot, cena, data_zakupu, notatki, miejsce, numer_kwitu, "
+                  "felgi FROM zestawy_opon WHERE auto_id=?", (auto_id,))
         for r in c.fetchall():
             opis = str(r["rozmiar"] or "") + (f" • {r['marka_model']}" if r["marka_model"] else "")
-            wpisy.append(_wpis("Opony", f"Zestaw: {r['sezon']}", opis, r["data_zakupu"], "/magazyn",
+            # Przechowalnia i felgi też: „gdzie leżą zimówki” to pytanie z nazwą warsztatu.
+            dodatkowy = " ".join(str(x) for x in (r["numer_dot"], r["miejsce"], r["numer_kwitu"], r["felgi"]) if x)
+            wpisy.append(_wpis("Opony", f"Zestaw: {r['sezon']}", opis, r["data_zakupu"], f"/magazyn/opony/{r['id']}",
                                kwota=r["cena"], sezon=r["sezon"], notatka=r["notatki"],
-                               tekst_dodatkowy=r["numer_dot"],
+                               tekst_dodatkowy=dodatkowy or None,
                                nazwa=f"{r['rozmiar'] or ''} {r['marka_model'] or ''}"))
 
         c.execute("SELECT id, nazwa, telefon, adres, notatki FROM warsztaty WHERE auto_id=?",

@@ -90,6 +90,8 @@ POZA_SYNC_SWIADOMIE = {
     ("ceny_czesci", "data_iso"),
     ("przejazdy", "data_iso"),
     ("dolewki", "data_iso"),
+    ("pomiary_bieznika", "data_iso"),
+    ("montaze_opon", "data_iso"),
     # Kolejność szablonów w menu „+” to nawyk TEGO telefonu; licznik zmieniany przy
     # każdym dotknięciu robiłby z niego wysyłkę i konflikt między dwoma telefonami.
     ("szablony_wpisow", "uzycia"),

@@ -231,6 +231,11 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
         c.execute("INSERT INTO zestawy_opon (auto_id, sezon, rozmiar, ilosc, zamontowane, os_montazu, zdalne_id) VALUES (?,?,?,?,?,?,?)",
                   (auto, "Zimowe", "205/55 R16", 4, 1, "Wszystkie", "opony-1"))
         zid["opony"] = c.lastrowid
+        # Pomiar bieżnika każdego koła (wersja 58) — kosz i plik pojazdu przemapowują komplet.
+        c.execute("INSERT INTO pomiary_bieznika (auto_id, zestaw_id, data, przebieg, lp, pp, lt, pt, uwagi, "
+                  "dodane_przez, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                  (auto, zid["opony"], "02.02.2026", 100600, 6.8, 6.6, 7.1, 7.0, "Przed trasą", "Kamil", "pomiar-1"))
+        zid["pomiar"] = c.lastrowid
 
         c.execute("INSERT INTO zdjecia_karoserii (auto_id, data, strefa, zalacznik, opis) VALUES (?,?,?,?,?)",
                   (auto, "2026-01-05", "Przód",
@@ -306,6 +311,12 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
         # Odwołania pozycji do wpisu, kosztu i wizyty — kosz i plik pojazdu przemapowują je jak resztę.
         c.execute("UPDATE do_zrobienia SET historia_id=?, koszt_id=?, wizyta_id=? WHERE id=?",
                   (zid["historia"], zid["inny_koszt"], zid["wizyta"], zid["do_zrobienia"]))
+        # Okres montażu kompletu z odwołaniem do wpisu i kosztu zmiany (wersja 58) — jak wyżej.
+        c.execute("INSERT INTO montaze_opon (auto_id, zestaw_id, os_montazu, data, przebieg, historia_id, koszt_id, "
+                  "dodane_przez, zdalne_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (auto, zid["opony"], "Wszystkie", "10.01.2026", 100000, zid["historia"], zid["inny_koszt"],
+                   "Kamil", "montaz-1"))
+        zid["montaz"] = c.lastrowid
 
         c.execute("INSERT INTO wizyta_czesci_magazynu (wizyta_id, magazyn_id, ilosc_uzyta, koszt, zdalne_id) VALUES (?,?,?,?,?)",
                   (zid["wizyta"], zid["magazyn"], 1.0, 19.5, "wcm-1"))
@@ -637,6 +648,7 @@ ARGUMENTY_IDENTYFIKATOROW = {
     "przejazd_id": "przejazd",
     "dokument_id": "dokument",
     "dolewka_id": "dolewka",
+    "pomiar_id": "pomiar",
 }
 
 _KLASY_WIDOKOW = None

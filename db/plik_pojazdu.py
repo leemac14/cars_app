@@ -67,8 +67,9 @@ SEKCJE_PLIKU_POJAZDU = [
      "tabele": ("tankowania",), "dla_kupujacego": True},
     {"id": "licznik", "tytul": "Odczyty licznika", "opis": "Historia przebiegu",
      "tabele": ("odczyty_przebiegu",), "dla_kupujacego": True},
-    {"id": "opony", "tytul": "Opony", "opis": "Komplety z bieżnikiem i montażem",
-     "tabele": ("zestawy_opon",), "dla_kupujacego": True},
+    {"id": "opony", "tytul": "Opony", "opis": "Komplety z pomiarami bieżnika i sezonami na aucie",
+     "tabele": ("zestawy_opon", "pomiary_bieznika", "montaze_opon"), "liczone": ("zestawy_opon", "pomiary_bieznika"),
+     "dla_kupujacego": True},
     {"id": "karoseria", "tytul": "Karoseria", "opis": "Zdjęcia nadwozia z opisem",
      "tabele": ("zdjecia_karoserii",), "dla_kupujacego": True},
     {"id": "czesci", "tytul": "Części i ich ceny", "opis": "Magazyn, części zużyte przy naprawach, historia cen",
@@ -117,7 +118,8 @@ SEKCJE_PLIKU_POJAZDU = [
 # Odwołania, bez których wiersz dalej ma sens (reszta bez rodzica wypada).
 _KLUCZE_OPCJONALNE = {("do_zrobienia", "zadanie_id"), ("do_zrobienia", "historia_id"),
                       ("do_zrobienia", "koszt_id"), ("do_zrobienia", "wizyta_id"), ("historia", "wizyta_id"),
-                      ("dolewki", "magazyn_id"), ("dolewki", "koszt_id")}
+                      ("dolewki", "magazyn_id"), ("dolewki", "koszt_id"),
+                      ("montaze_opon", "historia_id"), ("montaze_opon", "koszt_id")}
 # Wiersz, który JEST plikiem i bez niego nie istnieje (kolumna NOT NULL).
 _WIERSZE_Z_PLIKIEM_WYMAGANYM = {"zalaczniki", "zdjecia_karoserii"}
 

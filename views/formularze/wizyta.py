@@ -596,6 +596,7 @@ class FormularzWizytyView(ft.View):
 
         zdalne_id_historii_do_nagrobka = []
         zdalne_id_czesci_do_nagrobka = []
+        wpis_opon = None  # nowa wizyta z wymianą opon i rodzajem opon zakłada ten komplet (niżej)
 
         with self.pliki.zapis(), db.polacz_baze() as conn:
             cur = conn.cursor()
@@ -644,6 +645,8 @@ class FormularzWizytyView(ft.View):
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
                     cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, rodzaj, osoba_wizyty))
+                    if kat and wpis_opon is None:
+                        wpis_opon = (cur.lastrowid, kat)
  
             db.rozlicz_czesci_z_magazynu(wizyta_id, nowe_uzyte, conn=conn)
             self.pliki.zapisz_w(conn, wizyta_id, self.state.auto_id)
@@ -657,9 +660,13 @@ class FormularzWizytyView(ft.View):
             db.zarejestruj_nagrobek("wizyta_czesci_magazynu", zid)
 
         db.przelicz_wszystkie_zadania(self.state.auto_id)
+        zmiana_opon = db.zamontuj_po_wymianie(self.state.auto_id, wpis_opon[1], self.e_d.value, prz,
+                                              wpis_opon[0]) if wpis_opon else None
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "wizyta")
         utils.przejdz(self._page, utils.trasa_po_zapisie_szkicu(self.state.auto_id, "/wizyty") if self.szkic else "/wizyty")
         dopisek = utils.dopisek_kolejki(self.state.auto_id) if self.szkic else ""
+        if zmiana_opon and zmiana_opon.get("ok"):
+            dopisek = f" Założono opony {zmiana_opon['na'].lower()} z magazynu.{dopisek}"
         if koszt_czesci > 0:
             utils.pokaz_komunikat(self._page, f"Zapisano wizytę! Doliczono części z magazynu: {utils.formatuj_liczba(koszt_czesci)} {utils.symbol_waluty()}.{dopisek}")
         else:

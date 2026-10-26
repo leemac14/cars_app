@@ -15,6 +15,7 @@ from .formularze import pole_daty, pole_wyboru, styl_dropdown, styl_pola
 from .pojazd import dialog_odczytu_przebiegu
 from .komponenty import znacznik_wykonania
 from .kopie import zrob_kopie_teraz
+from .opony import kandydat_zmiany, okno_zmiany_opon
 
 
 def opis_dzwonka(liczba, nowych):
@@ -54,6 +55,18 @@ def ikona_wpisu_cyklicznego(typ, czy_koszt):
     if typ in IKONY_UMOW_RAT:
         return IKONY_UMOW_RAT[typ]
     return ft.Icons.AUTORENEW if czy_koszt else ft.Icons.NOTIFICATIONS_ACTIVE
+
+
+def zmien_opony_z_przypomnienia(page: ft.Page, state, wydatek_id, po_zapisie=None):
+    """„Zmieniono” przy przypomnieniu o sezonowej zmianie: okno zmiany z dniem, licznikiem i kosztem
+    (kwota przypomnienia) dla kompletu z drugiego sezonu. False — nie ma czego założyć (termin przesunie
+    zwykłe odhaczenie)."""
+    kandydat = kandydat_zmiany(state.auto_id)
+    if not kandydat:
+        return False
+    wpis = next((w for w in db.pobierz_przypomnienia_o_oponach(state.auto_id) if w[0] == wydatek_id), None)
+    return okno_zmiany_opon(page, state, kandydat, przypomnienie_id=wydatek_id,
+                            koszt=wpis[2] if wpis and wpis[2] else None, po_zapisie=po_zapisie) is not None
 
 
 def komunikat_zmiany_opon(opony):
@@ -193,8 +206,15 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
             przejdz(page, trasa)
         return handler
 
+    def po_zmianie(wynik):
+        # Zmiana opon z okna: lista panelu (obejrzenie) i ekran pod spodem — jak po „Zapłacone”.
+        odswiez()
+        przejdz(page, page.route)
+
     def zaplac_cykliczny(wydatek_id, czy_koszt=True, kafelek=None, typ=None):
         def handler(e):
+            if typ == db.TYP_CYKLICZNY_OPONY and zmien_opony_z_przypomnienia(page, state, wydatek_id, po_zmianie):
+                return
             wynik = db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
 
             def po_cofnieciu():
@@ -518,6 +538,8 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
                         ikona = ft.Icons.HEALTH_AND_SAFETY
                     elif p["typ"] == "plyn":
                         ikona = IKONY_PLYNOW.get(p.get("plyn"), ft.Icons.WATER_DROP)
+                    elif p["typ"] == "opony":
+                        ikona = ft.Icons.TIRE_REPAIR
                     pozycje.append(ft.ListTile(
                         leading=ft.Icon(ikona, color=kolor),
                         title=tytul_pozycji(p),
@@ -623,7 +645,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
                         ft.PopupMenuItem(
                             content=ft.Row([ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18),
                                             ft.Text(etykieta_wykonania_cyklicznego(typ, czy_koszt))]),
-                            on_click=lambda e, wid=w_id, ck=czy_koszt: zaplac(wid, ck)
+                            on_click=lambda e, wid=w_id, ck=czy_koszt, t=typ: zaplac(wid, ck, t)
                         ),
                         ft.PopupMenuItem(
                             content=ft.Row([ft.Icon(ft.Icons.EDIT, size=18), ft.Text("Edytuj")]),
@@ -674,7 +696,10 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
             except Exception:
                 pass
 
-    def zaplac(wydatek_id, czy_koszt=True):
+    def zaplac(wydatek_id, czy_koszt=True, typ=None):
+        if typ == db.TYP_CYKLICZNY_OPONY and zmien_opony_z_przypomnienia(page, state, wydatek_id,
+                                                                         lambda wynik: odswiez()):
+            return
         wynik = db.oznacz_zaplacony_wydatek_cykliczny(wydatek_id, state.auto_id)
         pokaz_komunikat_wykonania(page, wynik, czy_koszt, po_cofnieciu=odswiez)
         odswiez()
@@ -856,5 +881,6 @@ __all__ = [
     "pokaz_komunikat_wykonania",
     "pokaz_panel_wydatkow_cyklicznych",
     "przycisk_dzwonka",
+    "zmien_opony_z_przypomnienia",
     "znacznik_nowego",
 ]

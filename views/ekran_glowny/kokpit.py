@@ -803,23 +803,38 @@ class MiksinKokpitu:
             elif stan["docelowy_sezon"]:
                 stopka = f"Następne: {stan['docelowy_sezon'].lower()}"
 
-            bieznik = stan["bieznik"]
-            stan_opon = None
+            # Komplet na aucie z db/opony.py: bieżnik ostatniego pomiaru z progiem sezonu (zimowe od
+            # 4 mm), wiek z DOT i prognoza — kafel podnosi się najgorszym z nich.
+            komplet = (opony.get("zamontowane") or [None])[0]
+            bieznik = komplet["bieznik"] if komplet else stan["bieznik"]
+            stan_opon = utils.stan_kompletu(komplet) if komplet else None
             if bieznik is not None:
-                # 1,6 mm to minimum prawne, 3 mm — próg, przy którym opona
-                # przestaje sensownie odprowadzać wodę.
-                kolor_bieznika = (utils.KOLOR_STATUS["critical"] if bieznik < 1.6
-                                  else utils.KOLOR_STATUS["warning"] if bieznik < 3 else utils.KOLOR_STATUS["ok"])
-                stan_opon = utils.stan_z_koloru(kolor_bieznika)
+                status = (komplet["status_bieznika"] if komplet
+                          else db.status_bieznika(bieznik, sezon))
+                kolor_bieznika = utils.kolor_bieznika(status)
                 wiersz_bieznika = ft.Row([
                     ft.Icon(ft.Icons.STRAIGHTEN, size=13, color=kolor_bieznika),
-                    ft.Text(f"bieżnik {utils.formatuj_liczba(bieznik, 1)} mm", size=utils.FS["caption"],
+                    ft.Text(f"bieżnik {db.tekst_bieznika(bieznik)}", size=utils.FS["caption"],
                             color=kolor_bieznika, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
                 ], spacing=4)
             else:
                 wiersz_bieznika = ft.Text("bieżnik niezmierzony", size=utils.FS["caption"],
                                           color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2,
                                           overflow=ft.TextOverflow.ELLIPSIS)
+            # Wiek i ile sezonów zostało do progu wymiany — jedna linijka, kolor wieku, gdy ostrzega.
+            wiersz_stanu = None
+            if komplet:
+                prognoza = komplet["prognoza"]
+                czesci = [db.tekst_wieku(komplet["wiek"])]
+                if prognoza and prognoza["zostalo_km"]:
+                    czesci.append(db.tekst_sezonow(prognoza["sezonow"]) or
+                                  f"ok. {utils.formatuj_dystans(db.zaokraglij_km_prognozy(prognoza['zostalo_km']), 0)} do "
+                                  f"{db.tekst_bieznika(prognoza['cel_mm'])}")
+                czesci = [c for c in czesci if c]
+                if czesci:
+                    wiersz_stanu = ft.Text(" · ".join(czesci), size=utils.FS["caption"],
+                                           color=utils.kolor_wieku(komplet["wiek"]) or ft.Colors.ON_SURFACE_VARIANT,
+                                           max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
 
             tresc = [
                 ft.Row([
@@ -833,6 +848,8 @@ class MiksinKokpitu:
                 ], spacing=6),
                 wiersz_bieznika,
             ]
+            if wiersz_stanu is not None:
+                tresc.append(wiersz_stanu)
             if stopka:
                 tresc.append(ft.Text(stopka, size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT,
                                      max_lines=2, overflow=ft.TextOverflow.ELLIPSIS))
@@ -841,7 +858,7 @@ class MiksinKokpitu:
                 width=SZER_KAFLA + 40, padding=15,
                 **utils.powierzchnia(self._page, "kafel", stan=stan_opon),
                 ink=True, on_click=idz_do_opon,
-                tooltip="Zamontowany zestaw i najbliższa sezonowa zmiana",
+                tooltip="Zamontowany zestaw, jego bieżnik, wiek i najbliższa sezonowa zmiana",
                 content=ft.Column(tresc, spacing=4),
             )
 

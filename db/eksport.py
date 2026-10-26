@@ -21,6 +21,7 @@ from .koszty import rozbicie_kosztu
 from .awarie import ETYKIETY_RODZAJU_SERWISU, rodzaj_serwisu
 from .ewidencja import miejsca_km
 from .do_zrobienia import pobierz_pozycje_do_zrobienia
+from .opony import POZYCJE_KOL, dane_opon, pobierz_pomiary, tekst_wieku
 
 
 # ==================== EKSPORT DANYCH (CSV / PDF) ====================
@@ -37,6 +38,8 @@ KATEGORIE_EKSPORTU = {
     "wydatki_cykliczne": "Wydatki cykliczne i przypomnienia",
     "magazyn_czesci": "Magazyn części i płynów",
     "zestawy_opon": "Zestawy opon",
+    "pomiary_bieznika": "Pomiary bieżnika opon",
+    "montaze_opon": "Sezony opon na aucie",
     "do_zrobienia": "Lista do zrobienia",
     "warsztaty": "Baza warsztatów",
     "odczyty_przebiegu": "Odczyty licznika",
@@ -87,7 +90,8 @@ def _rodzaj_naprawy(rodzaj):
 def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
     """Dane pojazdu do eksportu wg kategorii z KATEGORIE_EKSPORTU, opcjonalnie w
     zakresie [od_data, do_data] (date albo None). Zakres tnie tylko tankowania,
-    historię, wizyty, inne koszty, odczyty przebiegu, przejazdy i dolewki; stany aktualne
+    historię, wizyty, inne koszty, odczyty przebiegu, przejazdy, dolewki, pomiary bieżnika i sezony opon
+    (po dniu założenia); stany aktualne
     (magazyn, opony, Do zrobienia, zadania, cykliczne, warsztaty, tagi) idą zawsze w
     całości."""
     wynik = {}
@@ -202,15 +206,48 @@ def pobierz_dane_eksportu(auto_id, kategorie, od_data=None, do_data=None):
             )
 
         if "zestawy_opon" in kategorie:
-            c.execute(
-                "SELECT sezon, rozmiar, marka_model, glebokosc_bieznika, ilosc, zamontowane, os_montazu, cena "
-                "FROM zestawy_opon WHERE auto_id=? ORDER BY sezon", (auto_id,)
-            )
+            # Bieżnik z ostatniego pomiaru, wiek z DOT i kilometry z okresów montażu (db/opony.py).
+            komplety = sorted(dane_opon(auto_id)["komplety"], key=lambda k: (k["sezon"], k["id"]))
             wiersze = []
-            for sezon, rozmiar, marka, gl, il, zam, os_m, cena in c.fetchall():
-                stan = f"Na aucie ({os_m})" if zam else "W magazynie"
-                wiersze.append([sezon or "", rozmiar or "", marka or "", formatuj_liczba_eksport(gl, 1), il or 4, stan, formatuj_liczba_eksport(cena)])
-            wynik["zestawy_opon"] = (["Sezon", "Rozmiar", "Marka/model", "Bieżnik (mm)", "Ilość", "Stan", "Cena"], wiersze)
+            for k in komplety:
+                stan = f"Na aucie ({k['os']})" if k["zamontowany"] else "W magazynie"
+                felgi = ("Tak" if k["na_felgach"] else "Nie") if k["na_felgach"] is not None else ""
+                wiersze.append([k["sezon"], k["rozmiar"] or "", k["marka_model"] or "",
+                                formatuj_liczba_eksport(k["bieznik"], 1), k["ilosc"] or 4, stan,
+                                formatuj_liczba_eksport(k["cena"]), k["numer_dot"] or "", tekst_wieku(k["wiek"]) or "",
+                                licznik(k["km"]) if k["km"] else "", k["miejsce"] or "", k["numer_kwitu"] or "",
+                                formatuj_liczba_eksport(k["oplata_przechowania"]), felgi, k["felgi"] or ""])
+            wynik["zestawy_opon"] = (["Sezon", "Rozmiar", "Marka/model", "Bieżnik (mm)", "Ilość", "Stan", "Cena", "DOT",
+                                      "Wiek", f"Na komplecie ({j})", "Gdzie leży", "Nr kwitu", "Opłata za sezon",
+                                      "Na felgach", "Felgi"], wiersze)
+
+        if "pomiary_bieznika" in kategorie or "montaze_opon" in kategorie:
+            nazwy = {r[0]: " ".join(x for x in (r[1], r[2]) if x) for r in c.execute(
+                "SELECT id, sezon, marka_model FROM zestawy_opon WHERE auto_id=?", (auto_id,)).fetchall()}
+
+        if "pomiary_bieznika" in kategorie:
+            warunek, parametry = warunek_zakresu_dat("data_iso", od_data, do_data)
+            w_zakresie = {r[0] for r in c.execute(f"SELECT id FROM pomiary_bieznika WHERE auto_id=?{warunek}",
+                                                  (auto_id, *parametry)).fetchall()}
+            wiersze = [[p["data"], nazwy.get(p["zestaw_id"], ""), licznik(p["przebieg"]) if p["przebieg"] else "",
+                        *[formatuj_liczba_eksport(p[kolo], 1) for kolo in POZYCJE_KOL],
+                        formatuj_liczba_eksport(p["min"], 1), p["uwagi"] or ""]
+                       for p in pobierz_pomiary(auto_id) if p["id"] in w_zakresie]
+            wynik["pomiary_bieznika"] = (["Data", "Komplet", f"Licznik ({j})", "LP (mm)", "PP (mm)", "LT (mm)", "PT (mm)",
+                                          "Najpłytsze (mm)", "Uwagi"], wiersze)
+
+        if "montaze_opon" in kategorie:
+            warunek, parametry = warunek_zakresu_dat("data_iso", od_data, do_data)
+            w_zakresie = {r[0] for r in c.execute(f"SELECT id FROM montaze_opon WHERE auto_id=?{warunek}",
+                                                  (auto_id, *parametry)).fetchall()}
+            okresy = sorted((m for k in dane_opon(auto_id)["komplety"] for m in k["montaze"] if m["id"] in w_zakresie),
+                            key=lambda m: (m["data_iso"] or "", m["id"]))
+            wiersze = [[nazwy.get(m["zestaw_id"], ""), m["os_montazu"], m["data"],
+                        licznik(m["przebieg"]) if m["przebieg"] else "", m["data_zdjecia"] or "",
+                        licznik(m["przebieg_zdjecia"]) if m["przebieg_zdjecia"] else "",
+                        licznik(m["km"]) if m["km"] is not None else ""] for m in okresy]
+            wynik["montaze_opon"] = (["Komplet", "Oś", "Założony", f"Licznik ({j})", "Zdjęty", f"Licznik przy zdjęciu ({j})",
+                                      f"Przejechane ({j})"], wiersze)
 
         if "do_zrobienia" in kategorie:
             # Wykonanie z wpisem serwisowym albo kosztem bierze datę i kwotę z niego (jak lista).

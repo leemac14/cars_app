@@ -5,6 +5,7 @@ from .stale import OSIE_MONTAZU
 from .polaczenie import polacz_baze
 from .ceny_czesci import zachowaj_zakup_pozycji
 from .kosz_wpisow import POZA_KOSZEM_WPISOW, usun_do_kosza
+from .opony import flagi_montazu, zapisz_okresy_montazu
 
 
 def aktualizuj_wiele_zdjec_karoserii(ids_list, strefa=None, typ_porownania=None, opis=None):
@@ -36,13 +37,15 @@ def aktualizuj_wiele_zdjec_karoserii(ids_list, strefa=None, typ_porownania=None,
     return len(ids_list)
 
 
-def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
+def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie", data=None, przebieg=None):
     """Montuje zestaw opon na osi. 'Wszystkie' wyklucza pozostałe; zestaw na jednej osi
-    koliduje tylko z tą samą osią albo 'Wszystkie' (asymetryczne komplety przód/tył)."""
+    koliduje tylko z tą samą osią albo 'Wszystkie' (asymetryczne komplety przód/tył). Z `data`
+    (od kiedy na aucie) zapisuje też okresy montażu; bez niej dopyta o nią zakładka Opony."""
     if os_montazu not in OSIE_MONTAZU:
         os_montazu = "Wszystkie"
 
     with polacz_baze() as conn:
+        przed = flagi_montazu(conn, auto_id)
         if os_montazu == "Wszystkie":
             conn.execute("UPDATE zestawy_opon SET zamontowane=0, os_montazu='Wszystkie' WHERE auto_id=?", (auto_id,))
         else:
@@ -51,6 +54,8 @@ def oznacz_zamontowany_zestaw(auto_id, zestaw_id, os_montazu="Wszystkie"):
                 (auto_id, os_montazu)
             )
         conn.execute("UPDATE zestawy_opon SET zamontowane=1, os_montazu=? WHERE id=?", (os_montazu, zestaw_id))
+        if data:
+            zapisz_okresy_montazu(conn, auto_id, przed, flagi_montazu(conn, auto_id), data, przebieg)
 
 
 def usun_z_cofnieciem(tabela, rekord_id):

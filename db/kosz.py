@@ -65,7 +65,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
     "historia_czesci_magazynu", "pakiety_serwisowe_wlasne",
     "trasy_szablony", "checklisty", "checklisty_pozycje", "budzety",
     "rozliczenia", "ceny_czesci", "przejazdy", "dokumenty_pojazdu", "dolewki",
-    "szablony_wpisow", "do_zrobienia_zdarzenia",
+    "szablony_wpisow", "do_zrobienia_zdarzenia", "pomiary_bieznika", "montaze_opon",
 ]
 
 
@@ -75,7 +75,7 @@ KOSZ_TABELE_SYNCHRONIZOWANE = [
 KOSZ_TABELE_LICZONE = [
     "tankowania", "historia", "wizyty", "inne_koszty", "zestawy_opon",
     "magazyn_czesci", "zdjecia_karoserii", "odczyty_przebiegu", "do_zrobienia",
-    "szkice_wpisow", "przejazdy", "dokumenty_pojazdu", "dolewki",
+    "szkice_wpisow", "przejazdy", "dokumenty_pojazdu", "dolewki", "pomiary_bieznika",
 ]
 
 

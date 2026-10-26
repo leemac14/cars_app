@@ -34,6 +34,7 @@ from .szablony import *
 from .dolewki import *
 from .awarie import *
 from .do_zrobienia import *
+from .opony import *
 from .gwarancje import *
 from .raty import *
 from .ewidencja import *
@@ -46,6 +47,7 @@ from .tagi import *
 from .rejestry import *
 from .wizyty import *
 from .usuwanie import *
+from .zmiana_opon import *
 from .rozliczenia import *
 from .kosz import *
 from .nawigacja import *
@@ -92,6 +94,7 @@ from . import (
     dolewki,
     awarie,
     do_zrobienia,
+    opony,
     gwarancje,
     raty,
     ewidencja,
@@ -104,6 +107,7 @@ from . import (
     rejestry,
     wizyty,
     usuwanie,
+    zmiana_opon,
     rozliczenia,
     kosz,
     nawigacja,

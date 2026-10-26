@@ -37,6 +37,7 @@ from .raty import KATEGORIA_RATY, OKRES_RATY_DNI, czy_rata, etykieta_umowy, opis
 from .powiadomienia import DNI_W_MIESIACU_INTERWALU
 from .pojazd import pobierz_dane_pojazdu
 from .magazyn import pobierz_stan_opon
+from .opony import terminy_opon
 from .analiza import stan_budzetow
 from .rejestry import pobierz_wydatki_cykliczne
 from .odliczania import STATUS_INFORMACJI, odliczania_pojazdu
@@ -73,8 +74,8 @@ ZAPAS_ZMIANY_OPON_DNI = 45
 # Kolejność pozycji z tego samego dnia: najpierw papiery i pieniądze, na końcu
 # to, co tylko informuje.
 KOLEJNOSC_RODZAJOW = {
-    "dokument": 0, "skarbiec": 0, "rata": 1, "cykliczny": 2, "opony": 3, "podzespol": 4,
-    "gwarancja_naprawy": 5, "gwarancja_km": 6, "budzet": 7, "przebieg": 8,
+    "dokument": 0, "skarbiec": 0, "rata": 1, "cykliczny": 2, "opony": 3, "opony_wiek": 3, "opony_bieznik": 3,
+    "podzespol": 4, "gwarancja_naprawy": 5, "gwarancja_km": 6, "budzet": 7, "przebieg": 8,
 }
 
 
@@ -375,6 +376,19 @@ def _podpowiedz_opon(stan_opon, ma_przypomnienie, dzis, koniec):
     return wynik
 
 
+def _opony(auto_id, prog_dni, dzis, koniec):
+    """Koniec bieżnika z prognozy zużycia (szacunek) i 10 lat od produkcji opon (db/opony.py)."""
+    wynik = []
+    for t in terminy_opon(auto_id, dzis, koniec):
+        dni = (t["data"] - dzis).days
+        wynik.append(_pozycja(
+            klucz=t["klucz"], rodzaj=t["rodzaj"], ikona="opony", tytul=t["tytul"], data=t["data"], dni=dni,
+            prognoza=t["prognoza"], status="blisko" if dni <= prog_dni else "ok", trasa=t["trasa"],
+            sezon=t["sezon"], zostalo_km=t["zostalo_km"], prog_dni=prog_dni,
+        ))
+    return wynik
+
+
 def _raty(umowy, prog_dni, dzis, koniec):
     """(pozycje, id umów z harmonogramem): każda niezapłacona płatność w oknie
     z jej kwotą. Zaległe stoją na górze; pierwsza niezapłacona (ta, o której
@@ -609,6 +623,7 @@ def os_przyszlosci(auto_id, dni=None, dzis=None) -> dict[str, Any]:
     pozycje += _cykliczne(wpisy, z_harmonogramem, stan_opon["sezon"] if stan_opon else None,
                           prog_dni, dzis, koniec)
     pozycje += _podpowiedz_opon(stan_opon, any(w[6] == TYP_CYKLICZNY_OPONY for w in wpisy), dzis, koniec)
+    pozycje += _opony(auto_id, prog_dni, dzis, koniec)
     pozycje += _budzety(auto_id, dzis, koniec)
     pozycje.sort(key=_klucz_kolejnosci)
 

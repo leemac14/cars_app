@@ -40,7 +40,13 @@ DNI_ZAPASU_KALENDARZA = 30
 # rozjeżdża kalendarza z aplikacją.
 TOLERANCJA_SERII_DNI = 3
 
-RODZAJE_KALENDARZA = ("dokument", "skarbiec", "rata", "cykliczny", "opony", "podzespol", "gwarancja_naprawy")
+RODZAJE_KALENDARZA = ("dokument", "skarbiec", "rata", "cykliczny", "opony", "podzespol", "gwarancja_naprawy",
+                      "opony_wiek", "opony_bieznik")
+# Prognoza z kilometrów, która mimo to jedzie do kalendarza (koniec bieżnika — wybór Limaka): data
+# płynie z tempem jazdy, więc „terminy się zmieniły” dopiero przy przesunięciu o ponad tyle dni.
+RODZAJE_PROGNOZY_KALENDARZA = ("opony_bieznik",)
+_PRZEDROSTKI_PROGNOZY = ("opony:bieznik:",)
+TOLERANCJA_PROGNOZY_DNI = 30
 
 # Grupy liczone w krótszym oknie (płatności i serie) — po przedrostku klucza osi.
 PRZEDROSTKI_PLATNOSCI = ("cykliczny:", "rata:")
@@ -84,7 +90,7 @@ def terminy_kalendarza(auto_id, dzis=None) -> list[dict[str, Any]]:
         if p["zalegla"] or p["zakladana"] or p["sugestia"] or p["rodzaj"] not in RODZAJE_KALENDARZA:
             continue
         data, najpozniej = p["data"], p["najpozniej"]
-        if p["prognoza"] and not najpozniej:
+        if p["prognoza"] and not najpozniej and p["rodzaj"] not in RODZAJE_PROGNOZY_KALENDARZA:
             # Data z kilometrów jedzie z tempem jazdy, a wpis w kalendarzu stoi — zostaje
             # granica z licznika czasu (podzespół, gwarancja naprawy) albo nic.
             data = _granica(p["zrodlo"]) if p["zrodlo"] else None
@@ -261,6 +267,8 @@ def _zmienione_grupy(wyslane, obecne, wyslano):
         elif okres:
             przesuniecie = (data - dawna).days % okres
             zmienione += int(min(przesuniecie, okres - przesuniecie) > TOLERANCJA_SERII_DNI)
+        elif str(grupa).startswith(_PRZEDROSTKI_PROGNOZY):
+            zmienione += int(abs((data - dawna).days) > TOLERANCJA_PROGNOZY_DNI)
         else:
             zmienione += int(data != dawna)
     return zmienione
@@ -297,6 +305,8 @@ __all__ = [
     "PRODID_KALENDARZA",
     "PRZEDROSTKI_PLATNOSCI",
     "RODZAJE_KALENDARZA",
+    "RODZAJE_PROGNOZY_KALENDARZA",
+    "TOLERANCJA_PROGNOZY_DNI",
     "TOLERANCJA_SERII_DNI",
     "alarmy_terminu",
     "generuj_ics",

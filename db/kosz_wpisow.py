@@ -38,7 +38,7 @@ KOSZ_TABELE_POTOMNE = [
     "historia", "wizyta_czesci_magazynu", "historia_czesci_magazynu",
     "checklisty_pozycje", "do_zrobienia", "do_zrobienia_zdarzenia",
     "budzety", "rozliczenia", "szkice_wpisow", "ceny_czesci", "przejazdy",
-    "dolewki", "dokumenty_pojazdu", "zalaczniki",
+    "dolewki", "pomiary_bieznika", "montaze_opon", "dokumenty_pojazdu", "zalaczniki",
 ]
 
 
@@ -62,6 +62,8 @@ KOSZ_KLUCZE_OBCE = {
     "historia_czesci_magazynu": {"historia_id": "historia", "magazyn_id": "magazyn_czesci"},
     "checklisty_pozycje": {"checklista_id": "checklisty"},
     "dolewki": {"magazyn_id": "magazyn_czesci", "koszt_id": "inne_koszty"},
+    "pomiary_bieznika": {"zestaw_id": "zestawy_opon"},
+    "montaze_opon": {"zestaw_id": "zestawy_opon", "historia_id": "historia", "koszt_id": "inne_koszty"},
 }
 
 

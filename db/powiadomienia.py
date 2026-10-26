@@ -26,6 +26,7 @@ from .kopie import stan_kopii_zapasowej
 from .ewidencja import nazwa_miesiaca, przypomnienie_ewidencji, tekst_km_przejazdu
 from .dokumenty import terminy_skarbca
 from .dolewki import sygnaly_plynow
+from .opony import sygnaly_opon
 from .zdrowie_danych import przeglad_danych_nalezny
 
 
@@ -343,6 +344,8 @@ def _policz_powiadomienia(auto_id, prog_km, prog_dni, pomin_wyciszone):
     # więc przed przypomnieniami o danych. Sprzedane auto już nie przypomina.
     if not (w and w["status"] == STATUS_POJAZDU_SPRZEDANY):
         wyniki.extend(sygnaly_plynow(auto_id, dzis))
+        # Bieżnik zamontowanych opon poniżej progu sezonu i opony po 10 latach od produkcji.
+        wyniki.extend(sygnaly_opon(auto_id))
 
     # Stan licznika na końcu: przy tym samym statusie prawdziwe terminy stoją
     # nad nim (sortowanie niżej jest stabilne), więc kafel „Termin” pokaże go

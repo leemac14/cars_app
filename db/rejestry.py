@@ -16,7 +16,7 @@ from .ustawienia import pobierz_moje_imie
 from .synchronizacja import (
     ROLA_PODGLAD, ROLA_WSPOLAUTOR, czy_moge_zmieniac_wpis, rola_pojazdu, zarejestruj_nagrobek,
 )
-from .magazyn import przelacz_zestaw_sezonowy
+from .opony import przelacz_komplet_sezonowy
 from .raty import czy_rata, zaplac_rate
 from .nazwy import klucz_nazwy, normalizuj_nazwe
 
@@ -289,9 +289,9 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
         nowa_data = (dzis + timedelta(days=int(okres_dni or 30))).strftime("%d.%m.%Y")
         conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, wydatek_id))
 
-    # Zmiana opon POZA transakcją powyżej — przelacz_zestaw_sezonowy otwiera
+    # Zmiana opon POZA transakcją powyżej — przelacz_komplet_sezonowy otwiera
     # własne połączenie do tego samego pliku (jak zarejestruj_nagrobek).
-    opony = przelacz_zestaw_sezonowy(auto_id) if typ == TYP_CYKLICZNY_OPONY else None
+    opony = przelacz_komplet_sezonowy(auto_id) if typ == TYP_CYKLICZNY_OPONY else None
     return {
         "typ": typ, "nazwa": str(nazwa or ""), "czy_koszt": bool(czy_koszt),
         "nastepna_data": nowa_data, "opony": opony,
@@ -322,7 +322,7 @@ def przesun_przypomnienie_o_oponach(auto_id, utworz_gdy_brak=False):
 def wykonaj_sezonowa_zmiane_opon(auto_id, docelowy_sezon=None):
     """Zmiana opon WPROST z magazynu: przestawia komplet i przesuwa termin następnej
     zmiany. Zwraca to co przelacz_zestaw_sezonowy plus `termin_przesuniety`."""
-    wynik = przelacz_zestaw_sezonowy(auto_id, docelowy_sezon)
+    wynik = przelacz_komplet_sezonowy(auto_id, docelowy_sezon)
     wynik["termin_przesuniety"] = przesun_przypomnienie_o_oponach(auto_id) if wynik.get("ok") else False
     return wynik
 

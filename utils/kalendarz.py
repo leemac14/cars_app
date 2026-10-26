@@ -33,6 +33,8 @@ def tytul_wpisu_kalendarza(termin):
     rodzaj, tytul = p["rodzaj"], tytul_pozycji_osi(p)
     if rodzaj == "opony":
         return "Zmiana opon"
+    if rodzaj == "opony_bieznik":
+        return f"{tytul} (prognoza)"
     if rodzaj in ("dokument", "skarbiec"):
         return f"{tytul} — koniec ważności"
     if rodzaj == "podzespol":
@@ -68,6 +70,12 @@ def opis_wpisu_kalendarza(termin, pojazd, dzis):
     elif rodzaj == "gwarancja_naprawy":
         linie.append("Ostatni dzień gwarancji naprawy — limit kilometrów może skończyć się wcześniej."
                      if najpozniej else "Ostatni dzień gwarancji naprawy.")
+    elif rodzaj == "opony_bieznik":
+        linie.append("Prognoza z tempa zużycia bieżnika i średniego przebiegu — przed zakupem opon zmierz "
+                     "bieżnik; data przesuwa się razem z jazdą.")
+    elif rodzaj == "opony_wiek":
+        linie.append(f"Producenci zalecają wymianę opon najpóźniej {db.WIEK_WYMIANY_OPON} lat od produkcji "
+                     "(data z kodu DOT), niezależnie od bieżnika.")
     elif rodzaj == "opony":
         zmiany = ", ".join(f"na {str(w['sezon'] or '').lower()} {w['data']:%d.%m.%Y}"
                            for w in termin["wystapienia"][:4])

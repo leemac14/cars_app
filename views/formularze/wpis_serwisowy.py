@@ -214,12 +214,17 @@ class FormularzWpisView(ft.View):
             db.zarejestruj_nagrobek("historia_czesci_magazynu", zid)
 
         db.aktualizuj_najnowszy_wpis(self.z_id)
+        # Nowa wymiana opon z rodzajem opon zakłada komplet tej pory roku z magazynu (db/zmiana_opon.py).
+        zmiana_opon = db.zamontuj_po_wymianie(self.state.auto_id, kat, self.e_d.value, prz, historia_id) \
+            if kat and not self.h_id else None
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "wpis serwisowy")
         utils.przejdz(self._page, self.trasa_powrotu)
+        dopisek = (f" Założono opony {zmiana_opon['na'].lower()} z magazynu."
+                   if zmiana_opon and zmiana_opon.get("ok") else "")
         if koszt_czesci > 0:
-            utils.pokaz_komunikat(self._page, f"Zapisano wpis! Doliczono części z magazynu: {utils.formatuj_liczba(koszt_czesci)} {utils.symbol_waluty()}.")
+            utils.pokaz_komunikat(self._page, f"Zapisano wpis! Doliczono części z magazynu: {utils.formatuj_liczba(koszt_czesci)} {utils.symbol_waluty()}.{dopisek}")
         else:
-            utils.pokaz_komunikat(self._page, "Zapisano wpis!")
+            utils.pokaz_komunikat(self._page, f"Zapisano wpis!{dopisek}")
 
 
 __all__ = [

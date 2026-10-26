@@ -28,6 +28,23 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.26", "pozycje": [
+        {"tytul": "Bieżnik każdego koła i prognoza", "ikona": "SQUARE_FOOT", "ekran": "opony",
+         "opis": "Pomiar bieżnika zapisujesz osobno dla każdego koła. Z kolejnych pomiarów i kilometrów "
+                 "przejechanych na danym komplecie wychodzi tempo zużycia i to, ile sezonów zostało do wymiany."},
+        {"tytul": "Zmiana opon z licznikiem i kosztem", "ikona": "SWAP_HORIZ", "ekran": "opony",
+         "opis": "Zmiana opon pyta o dzień, stan licznika, koszt i warsztat, trafia do Serwisu i daje się cofnąć, "
+                 "a każdy komplet liczy swoje sezony. Wizyta z wymianą opon sama przestawia komplet na aucie."},
+        {"tytul": "Wiek opon i ostrzeżenia", "ikona": "HOURGLASS_BOTTOM", "ekran": "opony",
+         "opis": "Z kodu DOT aplikacja liczy wiek opon. Dzwonek i kondycja auta ostrzegają przed za płytkim "
+                 "bieżnikiem — zimowe i całoroczne już od 4 mm — i przed oponami po dziesięciu latach."},
+        {"tytul": "Przechowalnia i felgi", "ikona": "WAREHOUSE", "ekran": "opony",
+         "opis": "Przy komplecie zapiszesz, gdzie leży, numer kwitu i opłatę za sezon oraz czy opony są "
+                 "na felgach. Okno zmiany przypomni, skąd je odebrać."},
+        {"tytul": "Opony w terminach i w paszporcie", "ikona": "EVENT_NOTE", "ekran": "co-przede-mna",
+         "opis": "Prognozowany koniec bieżnika i dziesięć lat od produkcji opon stoją w „Co przede mną” "
+                 "i jadą do kalendarza telefonu, a paszport pojazdu i eksport pokazują stan kompletów."},
+    ]},
     {"wersja": "2026.10.25", "pozycje": [
         {"tytul": "Wykonane z dniem, licznikiem i kosztem", "ikona": "TASK_ALT", "ekran": "do-zrobienia",
          "opis": "Odhaczenie pozycji pyta, kiedy naprawdę ją zrobiłeś, przy jakim stanie licznika i za ile. "

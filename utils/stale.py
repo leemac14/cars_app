@@ -352,6 +352,8 @@ IKONY_EKSPORTU = {
     "wydatki_cykliczne": ft.Icons.AUTORENEW,
     "magazyn_czesci": ft.Icons.INVENTORY_2,
     "zestawy_opon": ft.Icons.TIRE_REPAIR,
+    "pomiary_bieznika": ft.Icons.SQUARE_FOOT,
+    "montaze_opon": ft.Icons.EVENT_REPEAT,
     "do_zrobienia": ft.Icons.CHECKLIST,
     "warsztaty": ft.Icons.BUSINESS,
     "odczyty_przebiegu": ft.Icons.STRAIGHTEN,

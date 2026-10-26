@@ -10,12 +10,13 @@ from .stale import (ENERGIA_PALIWO, ENERGIA_PRAD, PRIORYTETY_DO_ZROBIENIA, STATU
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
 from .ustawienia import OKNO_1000KM_DOMYSLNE
-from .pomocnicze import _liczba_lub_none, formatuj_liczba_eksport, liczba_z_odmiana, opis_terminu_dni
+from .pomocnicze import _liczba_lub_none, liczba_z_odmiana, opis_terminu_dni
 from .energia import ETYKIETY_RODZAJU, czy_pojazd_dwuzrodlowy, domyslny_rodzaj_energii, etykiety_energii, rodzaje_energii_pojazdu
 from .przebieg import pobierz_aktualny_przebieg, pobierz_historie_przebiegu, podsumowanie_historii_przebiegu
 from .jednostki import tekst_dystansu
 from .koszty import KATEGORIE_BUDZETU, pobierz_koszty_miesieczne, pobierz_koszty_miesieczne_wg_kategorii, siatka_miesiecy
 from .powiadomienia import pobierz_powiadomienia
+from .opony import powody_kondycji_opon
 
 
 # ============================================================================
@@ -31,9 +32,11 @@ KARY_KONDYCJI = {
     # Podzespoły z interwałem serwisowym (olej, filtry, rozrząd)
     "podzespol_przeterminowany": 10,
     "podzespol_pilny": 4,
-    # Bieżnik zamontowanego kompletu opon
+    # Zamontowany komplet opon: bieżnik (próg zalecany zależy od sezonu — db/opony.py) i wiek z DOT
     "bieznik_krytyczny": 25,   # poniżej 1,6 mm — minimum prawne
-    "bieznik_niski": 8,        # poniżej 3 mm — zalecana wymiana
+    "bieznik_niski": 8,        # poniżej 3 mm (letnie) albo 4 mm (zimowe, całoroczne) — zalecana wymiana
+    "opony_wiek_kontrola": 3,  # od 5 lat od produkcji — kontrola co roku
+    "opony_wiek_wymiana": 15,  # od 10 lat — wymiana niezależnie od bieżnika
     # Terminy z teczki auta; o wadze decyduje WAGA_DOKUMENTU
     "dokument_krytyczny_przeterminowany": 30,
     "dokument_krytyczny_pilny": 6,
@@ -141,36 +144,10 @@ def _policz_rozbicie_kondycji(auto_id):
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        c.execute(
-            "SELECT sezon, rozmiar, glebokosc_bieznika FROM zestawy_opon "
-            "WHERE auto_id=? AND zamontowane=1",
-            (auto_id,)
-        )
-        for r in c.fetchall():
-            gl = r["glebokosc_bieznika"]
-            if gl is None or str(gl).strip() == "":
-                continue
-            try:
-                g = float(gl)
-            except (TypeError, ValueError):
-                continue
-
-            if g < 1.6:
-                punkty = KARY_KONDYCJI["bieznik_krytyczny"]
-                etykieta = "bieżnik poniżej minimum prawnego (1,6 mm)"
-                waga = "krytyczna"
-            elif g < 3.0:
-                punkty = KARY_KONDYCJI["bieznik_niski"]
-                etykieta = "bieżnik poniżej 3 mm — zalecana wymiana"
-                waga = "ostrzezenie"
-            else:
-                continue
-
-            nazwa_opon = f"Opony {r['sezon']}" if r["sezon"] else "Zamontowane opony"
-            dodaj("opony", punkty, f"{nazwa_opon} — {etykieta}",
-                  szczegol=f"{formatuj_liczba_eksport(g, 1)} mm"
-                           + (f" • {r['rozmiar']}" if r["rozmiar"] else ""),
-                  trasa="/magazyn", waga=waga)
+        # Ostatni pomiar zamontowanego kompletu (najpłytsze koło) i wiek z kodu DOT.
+        for p in powody_kondycji_opon(auto_id):
+            dodaj("opony", KARY_KONDYCJI[p["klucz"]], p["opis"], szczegol=p["szczegol"], trasa=p["trasa"],
+                  waga=p["waga"])
 
         # ---- Dokumenty i terminy ----
         # Auto z przeterminowanym OC potrafiło mieć 100/100, bo kondycja patrzyła

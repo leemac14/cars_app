@@ -35,7 +35,8 @@ OPISY_ROL = {
 # Tabele z podpisem autora (`dodane_przez`) — tylko w nich pytanie „czyj to wpis” ma
 # sens (reszta to wspólne słowniki pojazdu). Rozliczenie i przejazd też: współautor cofa
 # i poprawia tylko swoje (kierowca to osobne pole).
-TABELE_Z_AUTOREM = ("tankowania", "wizyty", "historia", "inne_koszty", "rozliczenia", "przejazdy", "dolewki")
+TABELE_Z_AUTOREM = ("tankowania", "wizyty", "historia", "inne_koszty", "rozliczenia", "przejazdy", "dolewki",
+                    "pomiary_bieznika")
 
 
 def rola_pojazdu(auto_id):
