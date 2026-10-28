@@ -1,18 +1,24 @@
-"""Wizyty serwisowe i ich powiązanie z listą Do zrobienia."""
+"""Wizyty serwisowe, ich lista z podsumowaniem i powiązanie z listą Do zrobienia."""
 
 import sqlite3
-from date import na_iso
+from date import na_iso, parsuj_date
 from datetime import datetime
 from typing import Any
 
 from .polaczenie import polacz_baze
+from .pomocnicze import _na_liczbe
 from .ustawienia import pobierz_moje_imie
 from .synchronizacja import usun_nagrobek, zarejestruj_nagrobek
-from .zalaczniki import odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki
-from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow
+from .zalaczniki import (
+    odloz_zalaczniki_rekordow, przywroc_odlozone_zalaczniki, skasuj_odlozone_zalaczniki, zalaczniki_pojazdu,
+)
+from .magazyn import _przywroc_powiazania_czesci_wpisow, _zdejmij_powiazania_czesci_wpisow, pobierz_zuzycie_rekordow
 from .przebieg import pobierz_aktualny_przebieg, przelicz_wszystkie_zadania
 from .kosz_wpisow import usun_do_kosza
+from .koszty import rozbicie_kosztu
 from .awarie import domyslny_rodzaj_serwisu
+from .gwarancje import _kontekst as _kontekst_gwarancji, klucz_gwarancji, stan_gwarancji
+from .rejestry import WARSZTAT_BEZ_NAZWY
 from .nazwy import klucz_nazwy
 from .do_zrobienia import ZDARZENIE_WIZYTA, ZDARZENIE_ZWROT, usun_zdarzenia_do_zrobienia, zanotuj_zdarzenie_do_zrobienia
 
@@ -297,7 +303,104 @@ def usun_wizyty_z_cofnieciem(ids_list):
     return usun_do_kosza("wizyty", ids_list)
 
 
+# ==================== LISTA „WIZYTY W WARSZTACIE” ====================
+
+def _kolejne_wymiany(c, auto_id):
+    """{historia_id: data następnej wymiany tego podzespołu} — kolejność jak w gwarancjach
+    (data, licznik, id)."""
+    c.execute("SELECT h.id, h.zadanie_id, h.data, h.data_iso, h.przebieg FROM historia h "
+              "JOIN zadania z ON z.id = h.zadanie_id WHERE z.auto_id=?", (auto_id,))
+    wpisy = sorted(c.fetchall(), key=lambda w: (w[1], w[3] or "", int(w[4] or 0), w[0]))
+    return {a[0]: b[2] for a, b in zip(wpisy, wpisy[1:]) if a[1] == b[1]}
+
+
+def lista_wizyt(auto_id, dzis=None) -> list[dict[str, Any]]:
+    """Wizyty pojazdu dla listy „Wizyty w warsztacie”: kolumny wizyty, `warsztat` (None bez
+    wybranego), `koszt`, `pozycje` [{id, zadanie_id, nazwa, cena, gwarancja, wlasna_gwarancja}]
+    od nazwy, `zuzycie` z magazynu, `pliki`, `rozbicie` i `gwarancja` — stan wspólnej (z
+    `wymieniona`, gdy wszystkie jej pozycje wymieniono później) albo None."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT id, data, przebieg, wykonawca, koszt_calkowity, koszt_robocizny, notatki, tagi, rodzaj, "
+                  "gwarancja_data, gwarancja_przebieg, dodane_przez, zmodyfikowane_przez, data_modyfikacji "
+                  "FROM wizyty WHERE auto_id=?", (auto_id,))
+        wizyty = [dict(w) for w in c.fetchall()]
+        c.execute("SELECT h.id, h.wizyta_id, h.zadanie_id, h.cena, h.gwarancja_data, h.gwarancja_przebieg, z.nazwa "
+                  "FROM historia h JOIN wizyty w ON w.id = h.wizyta_id JOIN zadania z ON z.id = h.zadanie_id "
+                  "WHERE w.auto_id=?", (auto_id,))
+        pozycje = [dict(p) for p in c.fetchall()]
+        nastepne = _kolejne_wymiany(c, auto_id) if pozycje else {}
+
+    kontekst = {}
+
+    def stan(rekord, wizyta):
+        if klucz_gwarancji(rekord["gwarancja_data"], rekord["gwarancja_przebieg"]) == (None, None):
+            return None
+        if not kontekst:
+            kontekst.update(_kontekst_gwarancji(auto_id, wizyty + pozycje, dzis, None, None, None, None))
+        return stan_gwarancji(rekord["gwarancja_data"], rekord["gwarancja_przebieg"],
+                              data_wymiany=wizyta["data"], przebieg_wymiany=wizyta["przebieg"], **kontekst)
+
+    zuzycie = pobierz_zuzycie_rekordow("wizyty", [w["id"] for w in wizyty])
+    pliki = zalaczniki_pojazdu(auto_id, "wizyty")
+    pozycje_wizyt = {}
+    for p in sorted(pozycje, key=lambda p: (str(p["nazwa"] or "").lower(), p["id"])):
+        pozycje_wizyt.setdefault(p["wizyta_id"], []).append(p)
+    bez_nazwy = klucz_nazwy(WARSZTAT_BEZ_NAZWY)
+
+    wynik = []
+    for w in wizyty:
+        wspolna = klucz_gwarancji(w["gwarancja_data"], w["gwarancja_przebieg"])
+        poz = []
+        for p in pozycje_wizyt.get(w["id"], []):
+            gwarancja = stan(p, w)
+            if gwarancja is not None and nastepne.get(p["id"]):
+                gwarancja["wymieniona"] = nastepne[p["id"]]
+            poz.append({"id": p["id"], "zadanie_id": p["zadanie_id"], "nazwa": str(p["nazwa"] or "Pozycja"),
+                        "cena": round(_na_liczbe(p["cena"]) or 0.0, 2), "gwarancja": gwarancja,
+                        "wlasna_gwarancja": klucz_gwarancji(p["gwarancja_data"], p["gwarancja_przebieg"]) != wspolna})
+        gwarancja = stan(w, w)
+        objete = [p for p in poz if not p["wlasna_gwarancja"]]
+        if gwarancja is not None and objete and all(nastepne.get(p["id"]) for p in objete):
+            gwarancja["wymieniona"] = max((nastepne[p["id"]] for p in objete), key=parsuj_date)
+        zuz = zuzycie.get(w["id"])
+        warsztat = " ".join(str(w["wykonawca"] or "").split())
+        wynik.append({
+            **{k: w[k] for k in ("id", "data", "przebieg", "wykonawca", "notatki", "tagi", "rodzaj",
+                                 "dodane_przez", "zmodyfikowane_przez", "data_modyfikacji")},
+            "warsztat": warsztat if warsztat and klucz_nazwy(warsztat) != bez_nazwy else None,
+            "koszt": round(_na_liczbe(w["koszt_calkowity"]) or 0.0, 2),
+            "pozycje": poz, "zuzycie": zuz, "pliki": pliki.get(w["id"], []),
+            "rozbicie": rozbicie_kosztu(w["koszt_calkowity"], w["koszt_robocizny"], (zuz or {}).get("koszt")),
+            "gwarancja": gwarancja,
+        })
+    return wynik
+
+
+def podsumowanie_wizyt(wizyty, dzis=None) -> dict[str, Any]:
+    """Liczby nad listą (elementy `lista_wizyt`, zwykle po filtrach): liczba, suma, średnia
+    z płatnych wizyt i `ostatnia` {id, data, dni, warsztat} — najpóźniejsza czytelna data,
+    przy równej wyższe id — albo None."""
+    dzis = dzis or datetime.now().date()
+    kwoty = [float(w.get("koszt") or 0.0) for w in wizyty]
+    platne = [k for k in kwoty if k > 0]
+    datowane = [(parsuj_date(w.get("data")), w.get("id") or 0, w) for w in wizyty]
+    datowane = [d for d in datowane if d[0].year > 1]
+    ostatnia = None
+    if datowane:
+        dzien, _id, w = max(datowane, key=lambda d: (d[0], d[1]))
+        ostatnia = {"id": w.get("id"), "data": w.get("data"), "dni": (dzis - dzien).days,
+                    "warsztat": w.get("warsztat")}
+    return {"liczba": len(wizyty), "suma": round(sum(kwoty), 2),
+            "srednia": round(sum(platne) / len(platne), 2) if platne else 0.0, "ostatnia": ostatnia}
+
+
 __all__ = [
+    "lista_wizyt",
+    "podsumowanie_wizyt",
     "pobierz_pozycje_wizyty",
     "usun_wizyty_z_cofnieciem",
     "utworz_wizyte_z_do_zrobienia",

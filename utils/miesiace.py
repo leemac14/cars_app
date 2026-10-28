@@ -48,10 +48,13 @@ def nazwa_miesiaca(klucz):
     return f"{MIESIACE_NAZWY[mies - 1]} {rok}"
 
 
-def _podsumowanie(ile, suma, pokaz_kwoty):
+ODMIANA_WPISOW = ("wpis", "wpisy", "wpisów")
+
+
+def _podsumowanie(ile, suma, pokaz_kwoty, odmiana=ODMIANA_WPISOW):
     """„4 wpisy · 1 240 zł”. Przewijanie zamienia się wtedy w przegląd miesięcy —
-    widać, który był drogi, bez wchodzenia w statystyki."""
-    czesci = [f"{ile} {_odmiana_liczby(ile, 'wpis', 'wpisy', 'wpisów')}"]
+    widać, który był drogi, bez wchodzenia w statystyki. `odmiana` — trzy formy nazwy."""
+    czesci = [f"{ile} {_odmiana_liczby(ile, *odmiana)}"]
     if pokaz_kwoty and suma:
         czesci.append(f"{formatuj_liczba(suma, 0)} {symbol_waluty()}")
     return " • ".join(czesci)
@@ -123,11 +126,13 @@ class GrupyMiesiecy:
     """
 
     def __init__(self, page, lista, wysokosc_pozycji=175, pokaz_kwoty=True, widok=None,
-                 ogon=OGON_PRZEWIJANIA, klucz=None, porcja=PORCJA_WPISOW, po_rozlozeniu=None):
+                 ogon=OGON_PRZEWIJANIA, klucz=None, porcja=PORCJA_WPISOW, po_rozlozeniu=None,
+                 odmiana=ODMIANA_WPISOW):
         self._page = page
         self.lista = lista
         self.wysokosc_pozycji = wysokosc_pozycji
         self.pokaz_kwoty = pokaz_kwoty
+        self.odmiana = odmiana
         self.ogon = ogon
         # Rozwinięcie listy pamięta stan aplikacji pod `klucz` (przebudowa po akcji na
         # wpisie ma go nie zwijać); `po_rozlozeniu(grupy)` woła się po każdym ułożeniu.
@@ -270,7 +275,7 @@ class GrupyMiesiecy:
         for klucz in kolejnosc:
             wpisy = grupy[klucz]
             suma = sum(float(p.get("kwota") or 0) for p in wpisy)
-            self._opisy[klucz] = _podsumowanie(len(wpisy), suma, self.pokaz_kwoty)
+            self._opisy[klucz] = _podsumowanie(len(wpisy), suma, self.pokaz_kwoty, self.odmiana)
 
         # Separator także przy jednym miesiącu: przyklejony pasek pokazuje się
         # dopiero, gdy lista dojedzie do góry ekranu — wcześniej mówi separator.
@@ -356,6 +361,7 @@ class GrupyMiesiecy:
 __all__ = [
     "GrupyMiesiecy",
     "MARGINES_PASKA",
+    "ODMIANA_WPISOW",
     "OGON_PRZEWIJANIA",
     "PORCJA_WPISOW",
     "PrzewijanaTresc",

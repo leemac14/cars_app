@@ -1,5 +1,5 @@
 """Karta warsztatu: telefon, adres, „Zadzwoń” i „Pokaż na mapie” — dla ekranu
-„Warsztaty” i panelu z karty wizyty (jedna definicja). Dane:
+„Warsztaty” i arkusza wizyty (jedna definicja). Dane:
 db.pobierz_karty_warsztatow, zapis: db.zapisz_warsztat."""
 
 import flet as ft
@@ -7,7 +7,7 @@ import flet as ft
 import db
 import log
 
-from .stale import FS, RADIUS, SPACING
+from .stale import FS, SPACING
 from .format import formatuj_telefon
 from .typografia import podpis, wartosc
 from .zgodnosc import ustaw_blad
@@ -166,7 +166,7 @@ def karta_warsztatu_po_nazwie(auto_id, nazwa):
 
 
 def pokaz_karte_warsztatu(page: ft.Page, state, nazwa):
-    """Panel z kartą warsztatu — otwierany z wiersza warsztatu na karcie wizyty."""
+    """Panel z kartą warsztatu — otwierany z arkusza wizyty („Karta warsztatu”)."""
     karta = karta_warsztatu_po_nazwie(state.auto_id, nazwa)
     bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
 
@@ -194,36 +194,6 @@ def pokaz_karte_warsztatu(page: ft.Page, state, nazwa):
     return bs
 
 
-def wiersz_warsztatu_wizyty(page: ft.Page, state, nazwa, kontakt=None):
-    """Wiersz warsztatu na karcie wizyty. Nazwa otwiera kartę warsztatu, a przy
-    znanym telefonie i adresie stoją od razu dwa małe przyciski — z listy wizyt
-    dzwoni się tam, gdzie auto było ostatnio, bez przechodzenia dalej.
-    `kontakt` to (telefon, adres) z rejestru albo None."""
-    telefon, adres = kontakt or (None, None)
-    wiersz = [ft.Container(
-        content=ft.Row([
-            ft.Icon(ft.Icons.CAR_REPAIR, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-            ft.Text(nazwa, size=FS["label"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
-                    max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
-        ], spacing=SPACING["xs"]),
-        on_click=lambda e: pokaz_karte_warsztatu(page, state, nazwa),
-        # Bez podpowiedzi (tooltip): na telefonie zajęłaby długie przytrzymanie,
-        # którym karta wizyty włącza zaznaczanie grupowe.
-        ink=True, border_radius=RADIUS["xs"], padding=ft.Padding(0, 2, 6, 2), expand=True,
-    )]
-    if telefon:
-        wiersz.append(ft.IconButton(
-            ft.Icons.PHONE, icon_size=16, icon_color=ft.Colors.PRIMARY, tooltip="Zadzwoń",
-            on_click=lambda e: zadzwon(page, telefon), style=ft.ButtonStyle(padding=0),
-        ))
-    if adres:
-        wiersz.append(ft.IconButton(
-            ft.Icons.MAP, icon_size=16, icon_color=ft.Colors.PRIMARY, tooltip="Pokaż na mapie",
-            on_click=lambda e: pokaz_na_mapie(page, adres), style=ft.ButtonStyle(padding=0),
-        ))
-    return ft.Row(wiersz, spacing=2, vertical_alignment=ft.CrossAxisAlignment.CENTER)
-
-
 __all__ = [
     "karta_warsztatu_po_nazwie",
     "opis_wizyt_warsztatu",
@@ -231,5 +201,4 @@ __all__ = [
     "pokaz_karte_warsztatu",
     "przyciski_kontaktu",
     "tresc_karty_warsztatu",
-    "wiersz_warsztatu_wizyty",
 ]

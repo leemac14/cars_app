@@ -506,8 +506,10 @@ def test_karty_wizyt_i_filtr_bez_podzialu(baza, bez_nawigacji):
 
     widok = zbuduj(WizytyZbiorczeView, stan)
     napisy = teksty(widok)
-    assert "Robocizna 300,00 PLN · części 510,00 PLN (w tym własne 60,00 PLN)" in napisy
-    assert napisy.count("Bez podziału na robociznę i części") == 1, "wizyta za zero nie czeka na rozbicie"
+    # Rachunek z podziałem — pasek z legendą kwot; wizyta bez podziału nie mówi tego na karcie
+    # (do jej odszukania jest filtr „Podział”).
+    assert {"Robocizna 300,00 PLN", "Części 450,00 PLN", "Z magazynu 60,00 PLN"} <= set(napisy)
+    assert "Bez podziału na robociznę i części" not in napisy
     assert len(widok.wszystkie_karty) == 3
 
     stan.filtry["wizyty_podzial"] = utils.PODZIAL_NIE

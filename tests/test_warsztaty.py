@@ -318,20 +318,19 @@ def test_podglad_nie_dostaje_fab_ani_dodawania(baza):
     assert "Dodaj kartę" not in napisy and "Zadzwoń" in napisy
 
 
-def test_karta_wizyty_ma_wiersz_warsztatu(pojazd):
+def test_karta_wizyty_ma_warsztat_w_tytule(pojazd):
     from views.history_view import WizytyZbiorczeView
 
     strona = pomoce.zbuduj_strone()
     widok = WizytyZbiorczeView(strona.page, pomoce.stan_aplikacji(pojazd["auto_id"], "Testowy"))
-    kontrolki = _kontrolki(widok)
+    tytuly = sorted(utils.tytul_wizyty(k["wizyta"]) for k in widok.wszystkie_karty)
+    telefony = [k for k in _kontrolki(widok) if isinstance(k, ft.IconButton) and k.tooltip == "Zadzwoń"]
 
-    wiersze = [k for k in kontrolki if isinstance(k, ft.Container) and k.on_click
-               and isinstance(k.content, ft.Row) and isinstance(k.content.controls[0], ft.Icon)
-               and k.content.controls[0].icon == ft.Icons.CAR_REPAIR]
-    telefony = [k for k in kontrolki if isinstance(k, ft.IconButton) and k.tooltip == "Zadzwoń"]
-    # Janek i Serwis ASO — „Warsztat” (wizyta bez wykonawcy) wiersza nie dostaje;
+    # Nazwa warsztatu jest tytułem karty, wizyta bez wykonawcy („Warsztat”) to „Wizyta”;
     # słuchawka tylko przy warsztacie z telefonem w karcie.
-    assert len(wiersze) == 2 and len(telefony) == 1
+    assert tytuly == ["Serwis ASO", "Warsztat u Janka", utils.TYTUL_WIZYTY_BEZ_WARSZTATU]
+    assert set(tytuly) <= set(_napisy(widok))
+    assert len(telefony) == 1
 
 
 def test_panel_karty_z_wiersza_wizyty(pojazd, cicho):

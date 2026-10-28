@@ -68,7 +68,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                 opcje_sort = [
                     ("Data", "data", lambda x: (parsuj_date(x[1]), x[0])),
                     ("Przebieg", "przebieg", lambda x: int(x[2] or 0)),
-                    ("Cena", "cena", lambda x: float((x[5] if x[4] else x[3]) or 0))
+                    # Kwota z karty: cena pozycji, a pozycja wizyty bez ceny — koszt całej wizyty.
+                    ("Cena", "cena", lambda x: float((x[5] if x[4] and float(x[3] or 0) <= 0 else x[3]) or 0))
                 ]
 
                 sort_ui = utils.przycisk_sortowania(self._page, self.state, "historia", opcje_sort)
@@ -143,7 +144,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                                  "tekst": "Zmień gwarancję tej pozycji" if h_id in gwarancje else "Gwarancja tej pozycji",
                                  "akcja": lambda: utils.dialog_gwarancji_wpisu(
                                      self._page, h_id, lambda: utils.przejdz(self._page, f"/historia/{z_id}"))},
-                                {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty zbiorcze”", "czyta": True,
+                                {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty w warsztacie”", "czyta": True,
                                  "akcja": lambda: utils.przejdz(self._page, "/wizyty")},
                             ], "historia", h_id,
                         ))
@@ -175,13 +176,17 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                      zmodyfikowane_przez, data_modyfikacji, notatka, notatka_autor, notatka_data,
                      _robocizna, _podzial, etykieta_rodzaju) = w
                     jest_zbiorcza = w_id is not None
-                    # Dla wpisów z wizyty zbiorczej pokazujemy koszt CAŁEJ wizyty (obejmuje
-                    # też inne podzespoły) - dopisek zapobiega myleniu go z kosztem tej pozycji.
-                    if jest_zbiorcza:
-                        k_str = f"{utils.formatuj_liczba(float(w_koszt or 0))} {utils.symbol_waluty()} (cała wizyta)"
+                    # Pozycja wizyty z własną ceną mówi, ile kosztowała ta wymiana; bez niej — koszt
+                    # CAŁEJ wizyty z dopiskiem, żeby nie mylił się z kosztem tej pozycji.
+                    z_cena_pozycji = jest_zbiorcza and float(cena or 0) > 0
+                    koszt_wizyty = f"{utils.formatuj_liczba(float(w_koszt or 0))} {utils.symbol_waluty()}"
+                    if jest_zbiorcza and not z_cena_pozycji:
+                        k_str = f"{koszt_wizyty} (cała wizyta)"
                     else:
                         k_str = f"{utils.formatuj_liczba(float(cena or 0))} {utils.symbol_waluty()}"
                     sub_tekst = f"Przebieg: {utils.formatuj_dystans(int(prz or 0), 0, j)}  |  {'Wizyta zbiorcza' if jest_zbiorcza else 'Pojedynczy wpis'}"
+                    if z_cena_pozycji:
+                        sub_tekst += f" za {koszt_wizyty}"
                     if czy_opony and kategoria: sub_tekst += f"\nOpony: {kategoria}"
                     opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wpisow.get(h_id))
 
@@ -307,6 +312,206 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
         utils.potwierdz(self._page, "Usuwanie wpisów", f"Czy na pewno usunąć {db.liczba_z_odmiana(ile, 'element', 'elementy', 'elementów')} z historii?", wykonaj)
 
 class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
+    """Ekran „Wizyty w warsztacie”: podsumowanie, filtry, wyszukiwarka i karty wizyt
+    w miesiącach (db.lista_wizyt); dotknięcie karty otwiera arkusz szczegółów z akcjami."""
+
+    def __init__(self, page: ft.Page, state):
+        self._page = page
+        self.state = state
+        self.wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
+        self.moge_zmieniac = utils.wolno_zmieniac(self.state.auto_id)
+
+        appbar = utils.zbuduj_pasek_z_powrotem(
+            page, "Wizyty w warsztacie", "/",
+            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(
+                page, self.state.auto_id, "/wizyty"))] if self.wspolny_id else None
+        )
+        fab = (utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/wizyty/nowa"),
+                                   tooltip="Nowa wizyta") if self.moge_zmieniac else None)
+
+        self.tryb_zaznaczania = False
+        self.zaznaczone_id = set()
+        self.oryginalny_appbar = appbar
+        self.karty_ref = {}
+        self.wszystkie_karty = []
+        self.przewijana_tresc = utils.PrzewijanaTresc()
+        self.przewijana_tresc.controls = [utils.zbuduj_etapami(
+            page, utils.szkielet_ekranu(page, kafle=2, karty=4, linie=3), self._tresc, widok=self,
+        )]
+        super().__init__(
+            route="/wizyty", padding=0, appbar=appbar, floating_action_button=fab,
+            controls=[self.przewijana_tresc.kontrolka],
+        )
+
+    # ================= TREŚĆ =================
+
+    def _tresc(self):
+        wizyty = db.lista_wizyt(self.state.auto_id)
+        if not wizyty:
+            return ft.Column([self._pusto()], spacing=15)
+
+        opcje_sort = [
+            ("Data", "data", lambda w: (parsuj_date(w["data"]), w["id"])),
+            ("Przebieg", "przebieg", lambda w: int(w["przebieg"] or 0)),
+            ("Koszt", "koszt", lambda w: float(w["koszt"] or 0)),
+        ]
+        # Wartości filtrów „Podział” i „Rodzaj” — po nich najłatwiej znaleźć stare wizyty do uzupełnienia.
+        for w in wizyty:
+            w["podzial"] = utils.etykieta_podzialu(w["rozbicie"])
+            w["etykieta_rodzaju"] = db.etykieta_rodzaju_serwisu(w["rodzaj"])
+        spis_filtrow = [
+            ("rok", "wizyty_rok", "data"),
+            ("miesiac", "wizyty_mc", "data"),
+            ("kategoria", "wizyty_wyk", "wykonawca", "Warsztat"),
+            ("tag", "wizyty_tag", "tagi"),
+        ]
+        if any(w["podzial"] for w in wizyty):
+            spis_filtrow.append(("kategoria", "wizyty_podzial", "podzial", "Podział"))
+        if any(db.rodzaj_serwisu(w["rodzaj"]) for w in wizyty):
+            spis_filtrow.append(("kategoria", "wizyty_rodzaj", "etykieta_rodzaju", "Rodzaj"))
+        # Autor tylko przy pojeździe współdzielonym — jak na osi czasu i pozostałych listach.
+        if self.wspolny_id:
+            spis_filtrow.append(("autor", "wizyty_autor", "dodane_przez"))
+        sort_ui = utils.przycisk_sortowania(self._page, self.state, "wizyty", opcje_sort)
+        chipy_filtrow, po_filtrach = utils.pasek_filtrow(self._page, self.state, wizyty, spis_filtrow)
+        utils.posortuj_liste(po_filtrach, self.state, "wizyty", opcje_sort)
+
+        self.podsumowanie = utils.PodsumowanieWizyt(self._page, db.podsumowanie_wizyt(po_filtrach))
+        self.pole_wyszukiwarki = ft.TextField(
+            hint_text="Szukaj (podzespół, warsztat)", prefix_icon=ft.Icons.SEARCH,
+            on_change=utils.z_opoznieniem(self._page, self._filtruj), **utils.styl_pola()
+        )
+        elementy = [
+            self.podsumowanie.kontrolka,
+            ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8),
+            utils.na_cala_szerokosc(self.pole_wyszukiwarki),
+        ]
+        self.lista_kart = utils.lista_kart()
+        # Pod listą: odstęp kolumny (15), miejsce pod FAB-em (80) i dolny margines ekranu (15).
+        self.miesiace = utils.GrupyMiesiecy(
+            self._page, self.lista_kart, wysokosc_pozycji=200, widok=self, klucz="wizyty", ogon=110,
+            odmiana=("wizyta", "wizyty", "wizyt"),
+        )
+        if po_filtrach:
+            self._buduj_karty(po_filtrach)
+            self.miesiace.ustaw(self.wszystkie_karty, grupuj=utils.czy_po_dacie(self.state, "wizyty"))
+            elementy.append(self.lista_kart)
+        else:
+            elementy.append(ft.Row([ft.Text("Brak wizyt dla wybranych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)],
+                                   alignment=ft.MainAxisAlignment.CENTER))
+        elementy.append(utils.dol_bezpieczny(80))
+        return ft.Column(elementy, spacing=15)
+
+    def _buduj_karty(self, wizyty):
+        mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
+        j = utils.jednostka_dystansu()  # raz na całą listę
+        # Telefon i adres z rejestru — raz na listę, po kluczu nazwy (wizyta trzyma warsztat jako tekst).
+        kontakty = {db.klucz_nazwy(n): (t, a) for _i, n, t, a, _nt in db.pobierz_warsztaty(self.state.auto_id)}
+        for w in wizyty:
+            kontakt = kontakty.get(db.klucz_nazwy(w["warsztat"])) if w["warsztat"] else None
+            karta, kontener = utils.karta_wizyty(
+                self._page, w, j, kontakt, self.state.auto_id, mapa_tagow, bool(self.wspolny_id),
+                on_notatka=lambda wid=w["id"]: self._notatka(wid),
+            )
+            self.karty_ref[w["id"]] = kontener
+            self.podepnij_zdarzenia_grupowe(kontener, w["id"], lambda wiz=w, kon=kontakt: self._szczegoly(wiz, kon))
+            karta = utils.gesty_karty(
+                self._page, karta, widok=self,
+                usun=(lambda wid=w["id"]: self._usun([wid])) if self.moge_zmieniac else None,
+                notatka=(lambda wid=w["id"]: self._notatka(wid)) if self.moge_zmieniac else None,
+            )
+            self.wszystkie_karty.append({"karta": karta, "szukaj": utils.tekst_do_szukania(w),
+                                         "data": w["data"], "kwota": w["koszt"], "wizyta": w})
+
+    def _filtruj(self, e):
+        """Wyszukiwarka: karty, nagłówki miesięcy i podsumowanie liczą tylko to, co widać."""
+        zapytanie = (e.control.value or "").lower().strip()
+        widoczne = [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]]
+        self.miesiace.ustaw(widoczne, grupuj=utils.czy_po_dacie(self.state, "wizyty"))
+        self.podsumowanie.ustaw(db.podsumowanie_wizyt([k["wizyta"] for k in widoczne]))
+        self.update()
+
+    def _pusto(self):
+        opis = ("Zapisz tu przegląd albo naprawę: warsztat, koszt z robocizną i częściami, wymienione "
+                "podzespoły, gwarancję i zdjęcie rachunku.")
+        if not self.moge_zmieniac:
+            return ft.Container(padding=30, content=ft.Column([
+                utils.rysunek_pustego_stanu(ft.Icons.HOME_REPAIR_SERVICE),
+                ft.Text("Nie ma jeszcze wizyt", size=utils.FS["heading"], weight="bold"),
+                ft.Text(opis, size=utils.FS["body"], color=ft.Colors.ON_SURFACE_VARIANT,
+                        text_align=ft.TextAlign.CENTER),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10))
+        return utils.ekran_braku_danych(
+            ikona=ft.Icons.HOME_REPAIR_SERVICE, tytul="Nie ma jeszcze wizyt", opis=opis,
+            tekst_przycisku="Dodaj pierwszą wizytę", on_click=lambda e: utils.przejdz(self._page, "/wizyty/nowa"),
+        )
+
+    # ================= AKCJE =================
+
+    def _szczegoly(self, wizyta, kontakt):
+        """Arkusz wizyty: szczegóły nad akcjami (utils.szczegoly_wizyty)."""
+        wid = wizyta["id"]
+        odswiez = lambda: utils.przejdz(self._page, "/wizyty")
+        pozycje = [
+            {"ikona": ft.Icons.EDIT, "tekst": "Edytuj wizytę",
+             "akcja": lambda: utils.przejdz(self._page, f"/wizyty/edytuj/{wid}")},
+            {"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj wizytę", "akcja": lambda: self._duplikuj(wid)},
+            *utils.akcje_kontaktu_wizyty(self._page, self.state, wizyta, kontakt),
+            *utils.pozycje_menu_zalacznikow(self._page, "wizyty", wid, wizyta["pliki"], "Wizyta", odswiez),
+            utils.pozycja_menu_notatki(self._page, "wizyty", wid, wizyta["notatki"], odswiez, "Notatka do wizyty"),
+        ]
+        # Droga powrotna do „Zamień na wizytę” z listy Do zrobienia: część bywa zamówiona
+        # przy okazji wizyty, a montowana dopiero później.
+        if wizyta["pozycje"]:
+            pozycje.append({"ikona": ft.Icons.ASSIGNMENT_RETURN, "tekst": "Zwróć pozycję na listę Do zrobienia",
+                            "akcja": lambda: self._zwroc_pozycje_na_liste(wid)})
+        pozycje.append({
+            "ikona": ft.Icons.DELETE, "tekst": "Usuń wizytę", "kolor": utils.KOLOR_STATUS["destructive"],
+            "akcja": lambda: utils.potwierdz(
+                self._page, "Usunąć wizytę?",
+                "Wizyta trafi do kosza razem z pozycjami i plikami, a części z magazynu wrócą na półkę.",
+                lambda: self._usun([wid])),
+        })
+        pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "wizyty", wid)
+        utils.pokaz_menu_kontekstowe(
+            self._page, utils.tytul_wizyty(wizyta), pozycje,
+            tresc=utils.szczegoly_wizyty(self._page, wizyta, utils.jednostka_dystansu(), self.state.auto_id,
+                                         bool(self.wspolny_id)),
+        )
+
+    def _notatka(self, wizyta_id):
+        utils.szybka_notatka(self._page, "wizyty", wizyta_id, lambda: utils.przejdz(self._page, "/wizyty"),
+                             "Notatka do wizyty")
+
+    def _duplikuj(self, wizyta_id):
+        self.state.duplikuj_zrodlo_wizyta = wizyta_id
+        utils.przejdz(self._page, "/wizyty/nowa")
+
+    def _usun(self, ids):
+        """Wizyty do kosza wpisów; podzespoły przeliczają się po usunięciu i po „Cofnij”."""
+        wynik = db.usun_wizyty_z_cofnieciem(ids)
+        if wynik:
+            oryginalne_cofnij = wynik["cofnij"]
+
+            def nowe_cofnij():
+                oryginalne_cofnij()
+                db.przelicz_wszystkie_zadania(self.state.auto_id)
+            wynik["cofnij"] = nowe_cofnij
+        db.przelicz_wszystkie_zadania(self.state.auto_id)
+        utils.przejdz(self._page, "/wizyty")
+        ile = db.liczba_z_odmiana(len(ids), "wizytę", "wizyty", "wizyt") if len(ids) > 1 else "wizytę"
+        utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {ile} w warsztacie.", wynik)
+
+    def potwierdz_grupowe_usuwanie(self, e):
+        ids = list(self.zaznaczone_id)
+
+        def wykonaj():
+            self.zakoncz_zaznaczanie()
+            self._usun(ids)
+        utils.potwierdz(self._page, "Usuwanie wizyt",
+                        f"Czy na pewno usunąć {db.liczba_z_odmiana(len(ids), 'wybraną wizytę', 'wybrane wizyty', 'wybranych wizyt')}?",
+                        wykonaj)
+
     def _zwroc_pozycje_na_liste(self, wizyta_id):
         """Zdejmuje wybrane pozycje z wizyty i odkłada je z powrotem na listę
         Do zrobienia. Koszt każdej wraca jako szacowany i jest odejmowany od
@@ -378,271 +583,3 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             actions_alignment=ft.MainAxisAlignment.END,
         )
         utils.otworz_dialog(self._page, dlg)
-
-    def __init__(self, page: ft.Page, state):
-        self._page = page
-        self.state = state
-        wspolny_id, _ = sync.czy_udostepniony(self.state.auto_id)
-
-        appbar = utils.zbuduj_pasek_z_powrotem(
-            page, "Wizyty zbiorcze", "/",
-            akcje_dodatkowe=[utils.przycisk_synchronizacji(page, utils.funkcja_szybkiej_synchronizacji(page, self.state.auto_id, "/wizyty"))] if wspolny_id else None
-        )
-        fab = utils.fab_animowany(ft.Icons.ADD, lambda e: utils.przejdz(self._page, "/wizyty/nowa"))
-
-        # --- ZMIENNE DLA GRUPOWEGO USUWANIA ---
-        self.tryb_zaznaczania = False
-        self.zaznaczone_id = set()
-        self.oryginalny_appbar = appbar
-        self.karty_ref = {}
-        self.przewijana_tresc = utils.PrzewijanaTresc()
-        # --------------------------------------
-
-        elementy = []
-        opcje_sort = [
-            ("Data", "data", lambda x: (parsuj_date(x[1]), x[0])),
-            ("Przebieg", "przebieg", lambda x: int(x[2] or 0)),
-            ("Koszt", "koszt", lambda x: float(x[4] or 0))
-        ]
-
-        with db.polacz_baze() as conn:
-            c = conn.cursor()
-            c.execute("""
-                SELECT w.id, w.data, w.przebieg, w.wykonawca, w.koszt_calkowity, NULL, w.tagi,
-                       GROUP_CONCAT(z.nazwa, ', ') as czesci, w.dodane_przez,
-                       w.zmodyfikowane_przez, w.data_modyfikacji, w.notatki, w.koszt_robocizny, w.rodzaj
-                FROM wizyty w
-                LEFT JOIN historia h ON h.wizyta_id = w.id
-                LEFT JOIN zadania z ON h.zadanie_id = z.id
-                WHERE w.auto_id = ?
-                GROUP BY w.id
-            """, (self.state.auto_id,))
-            wizyty_lista = c.fetchall()
-
-        # Zużyte części z magazynu osobnym zapytaniem — celowo NIE w tym samym
-        # JOIN-ie co historia/zadania (patrz db.pobierz_zuzycie_rekordow). Razem
-        # z nazwami idzie koszt, który jest już wliczony w koszt wizyty.
-        zuzycie_wizyt = db.pobierz_zuzycie_rekordow("wizyty", [w[0] for w in wizyty_lista])
-        # Robocizna i części każdej wizyty; ostatnia kolumna krotki to wartość
-        # filtra „Podział” — po nim najłatwiej znaleźć stare wizyty do rozbicia.
-        rozbicia = {w[0]: db.rozbicie_kosztu(w[4], w[12], (zuzycie_wizyt.get(w[0]) or {}).get("koszt"))
-                    for w in wizyty_lista}
-        # Pole 5 — lista plików wizyty (db.zalaczniki_pojazdu), jednym zapytaniem.
-        pliki_wizyt = db.zalaczniki_pojazdu(self.state.auto_id, "wizyty")
-        # Rodzaj naprawy: chip na karcie, a etykieta jako ostatnia kolumna — filtr „Rodzaj”.
-        rodzaje = {w[0]: w[13] for w in wizyty_lista}
-        wizyty_lista = [tuple(w[:5]) + (pliki_wizyt.get(w[0], []),) + tuple(w[6:13])
-                        + (utils.etykieta_podzialu(rozbicia[w[0]]), db.etykieta_rodzaju_serwisu(w[13]))
-                        for w in wizyty_lista]
-
-        sort_ui = utils.przycisk_sortowania(self._page, self.state, "wizyty", opcje_sort)
-        spis_filtrow = [
-            ("rok", "wizyty_rok", 1),
-            ("miesiac", "wizyty_mc", 1),
-            ("kategoria", "wizyty_wyk", 3, "Warsztat"),
-            ("tag", "wizyty_tag", 6),
-        ]
-        if any(w[13] for w in wizyty_lista):
-            spis_filtrow.append(("kategoria", "wizyty_podzial", 13, "Podział"))
-        if any(db.rodzaj_serwisu(r) for r in rodzaje.values()):
-            spis_filtrow.append(("kategoria", "wizyty_rodzaj", 14, "Rodzaj"))
-        # Kolumna 8 zapytania to w.dodane_przez — filtr autorstwa pokazujemy
-        # tylko przy pojeździe współdzielonym, tak jak na osi czasu i listach
-        # tankowań oraz innych kosztów.
-        if wspolny_id:
-            spis_filtrow.append(("autor", "wizyty_autor", 8))
-
-        chipy_filtrow, wizyty_po_filtrach = utils.pasek_filtrow(
-            self._page, self.state, wizyty_lista, spis_filtrow)
-
-        elementy.append(ft.Row(controls=[sort_ui] + chipy_filtrow, scroll=ft.ScrollMode.ADAPTIVE, spacing=8))
-
-        wizyty_lista = wizyty_po_filtrach
-        utils.posortuj_liste(wizyty_lista, self.state, "wizyty", opcje_sort)
-
-        # --- 1. DODAJ TEN BLOK KODU (WYSZUKIWARKA) ---
-        def filtruj_wizyty(e):
-            zapytanie = e.control.value.lower().strip()
-            self.miesiace.ustaw(
-                [k for k in self.wszystkie_karty if zapytanie in k["szukaj"]],
-                grupuj=utils.czy_po_dacie(self.state, "wizyty"),
-            )
-            self.update()
-
-        self.pole_wyszukiwarki = ft.TextField(
-            hint_text="Szukaj (część, warsztat, data)",
-            prefix_icon=ft.Icons.SEARCH,
-            on_change=utils.z_opoznieniem(self._page, filtruj_wizyty),
-            **utils.styl_pola()
-        )
-        elementy.append(utils.na_cala_szerokosc(self.pole_wyszukiwarki))
-
-        self.lista_kart = utils.lista_kart()
-        self.wszystkie_karty = []
-        self.miesiace = utils.GrupyMiesiecy(
-            self._page, self.lista_kart, wysokosc_pozycji=215, widok=self, klucz="wizyty",
-            ogon=15,  # pod listą wizyt jest już tylko dolny margines ekranu
-        )
-        # ---------------------------------------------
-
-        def otworz_menu_wiz(wid, pliki=None, notatka=None):
-            def usun_wizyte():
-                def wykonaj():
-                    wynik = db.usun_wizyty_z_cofnieciem([wid])
-                    if wynik:
-                        oryginalne_cofnij = wynik["cofnij"]
-                        def nowe_cofnij():
-                            oryginalne_cofnij()
-                            db.przelicz_wszystkie_zadania(self.state.auto_id)
-                        wynik["cofnij"] = nowe_cofnij
-
-                    db.przelicz_wszystkie_zadania(self.state.auto_id)
-                    utils.przejdz(self._page, "/wizyty")
-                    utils.pokaz_komunikat_cofnij(self._page, "Usunięto wizytę w warsztacie.", wynik)
-                utils.potwierdz(self._page, "Usunąć?", "Czy na pewno usunąć tę wizytę zbiorczą?", wykonaj)
-
-            pozycje = utils.pozycje_menu_zalacznikow(self._page, "wizyty", wid, pliki, "Wizyta",
-                                                     lambda: utils.przejdz(self._page, "/wizyty"))
-            pozycje.append(utils.pozycja_menu_notatki(
-                self._page, "wizyty", wid, notatka,
-                lambda: utils.przejdz(self._page, "/wizyty"), "Notatka do wizyty"
-            ))
-            pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wizytę", "akcja": lambda: utils.przejdz(self._page, f"/wizyty/edytuj/{wid}")})
-            pozycje.append({
-                "ikona": ft.Icons.CONTENT_COPY,
-                "tekst": "Duplikuj wizytę",
-                "akcja": lambda: (
-                    setattr(self.state, "duplikuj_zrodlo_wizyta", wid),
-                    utils.przejdz(self._page, "/wizyty/nowa"),
-                ),
-            })
-            # Droga powrotna do "Zamień na wizytę" z listy Do zrobienia: część
-            # bywa zamówiona przy okazji wizyty, ale montowana dopiero później.
-            if db.pobierz_pozycje_wizyty(wid):
-                pozycje.append({
-                    "ikona": ft.Icons.ASSIGNMENT_RETURN,
-                    "tekst": "Zwróć pozycję na listę Do zrobienia",
-                    "akcja": lambda: self._zwroc_pozycje_na_liste(wid),
-                })
-            pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wizytę", "akcja": usun_wizyte, "kolor": utils.KOLOR_STATUS["destructive"]})
-
-            pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "wizyty", wid)
-            utils.pokaz_menu_kontekstowe(self._page, "Opcje wizyty", pozycje)
-
-        if not wizyty_lista:
-            elementy.append(ft.Row([ft.Text("Brak wizyt dla wybranych filtrów.", color=ft.Colors.ON_SURFACE_VARIANT)], alignment=ft.MainAxisAlignment.CENTER))
-        else:
-            mapa_tagow = db.mapa_kolorow_tagow(self.state.auto_id)
-            j = utils.jednostka_dystansu()  # raz na całą listę
-            # Telefon i adres warsztatu z rejestru — raz na listę, po kluczu nazwy,
-            # bo wizyta trzyma warsztat jako tekst. „Warsztat” to wizyta bez
-            # wybranego wykonawcy, więc wiersza nie dostaje.
-            kontakty = {db.klucz_nazwy(n): (t, a) for _i, n, t, a, _nt in db.pobierz_warsztaty(self.state.auto_id)}
-            bez_nazwy = db.klucz_nazwy(db.WARSZTAT_BEZ_NAZWY)
-            for w in wizyty_lista:
-                (w_id, data, prz, wyk, kosz, pliki, tagi, czesci, dodane_przez,
-                 zmodyfikowane_przez, data_modyfikacji, notatka_wizyty, _robocizna, _podzial, etykieta_rodzaju) = w
-                czesci = czesci or "Brak podpiętych części"
-                opis_magazynu = utils.opis_zuzycia_z_magazynu(zuzycie_wizyt.get(w_id))
-
-                tresc_karty = [
-                    ft.Row([
-                        ft.Text(str(data), weight="bold", size=16, expand=True),
-                        ft.Row([
-                            utils.wskaznik_zalacznikow(self._page, pliki, "Wizyta"),
-                            ft.Text(f"{utils.formatuj_liczba(float(kosz or 0))} {utils.symbol_waluty()}", color=utils.KOLOR_STATUS["cost"], weight="bold")
-                        ], spacing=6)
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    ft.Row([
-                        ft.Icon(ft.Icons.SPEED, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(utils.formatuj_dystans(int(prz or 0), 0, j), size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
-                        *[c for c in (utils.chip_rodzaju_serwisu(rodzaje.get(w_id)),) if c],
-                    ], spacing=4),
-                    ft.Text(f"Części: {czesci}", size=13, color=ft.Colors.PRIMARY),
-                ]
-                klucz_wyk = db.klucz_nazwy(wyk or "")
-                if klucz_wyk and klucz_wyk != bez_nazwy:
-                    tresc_karty.insert(2, utils.wiersz_warsztatu_wizyty(
-                        self._page, self.state, wyk, kontakty.get(klucz_wyk)))
-                dopisek_rozbicia = utils.dopisek_rozbicia(rozbicia[w_id])
-                if dopisek_rozbicia:
-                    tresc_karty.append(dopisek_rozbicia)
-                if opis_magazynu:
-                    tresc_karty.append(ft.Text(opis_magazynu, size=13, color=ft.Colors.TEAL_700))
-                if tagi:
-                    tresc_karty.append(utils.wizualizacja_tagow(tagi, self.state.auto_id, mapa_tagow))
-                # Wizyta ma pole „Notatki i uwagi” od zawsze, tylko nigdy nie było
-                # widać go na liście — pokazujemy je tym samym komponentem, co
-                # notatki pozostałych wpisów (tabela wizyty nie ma podpisu).
-                tresc_karty.append(utils.podglad_notatki(
-                    self._page, notatka_wizyty, tytul="Notatka do wizyty",
-                    on_edytuj=lambda rid=w_id: utils.szybka_notatka(
-                        self._page, "wizyty", rid,
-                        lambda: utils.przejdz(self._page, "/wizyty"), "Notatka do wizyty"
-                    )
-                ))
-                if wspolny_id and (dodane_przez or zmodyfikowane_przez):
-                    tresc_karty.append(utils.znacznik_atrybucji(dodane_przez, zmodyfikowane_przez, data_modyfikacji))
-
-                karta, kontener = utils.karta_listy(
-                    ft.Column(tresc_karty, spacing=4),
-                    kolor_paska=ft.Colors.RED_700,  # paleta: tożsamość — pasek karty mówi, jaki to wpis
-                    page=self._page,
-                )
-
-                self.karty_ref[w_id] = kontener
-
-                def _on_click(e, wid=w_id, zal=pliki, nt=notatka_wizyty):
-                    if self.tryb_zaznaczania:
-                        self.zaznacz_odznacz(wid, self.karty_ref[wid])
-                    else:
-                        otworz_menu_wiz(wid, zal, nt)
-
-                def _on_long_press(e, wid=w_id):
-                    if not self.tryb_zaznaczania:
-                        self.tryb_zaznaczania = True
-                        self.zaznacz_odznacz(wid, self.karty_ref[wid])
-
-                kontener.on_click = _on_click
-                kontener.on_long_press = _on_long_press
-
-                magazyn_szukaj = opis_magazynu
-                tekst_szukaj = (f"{data} {wyk} {czesci} {kosz} {tagi} {utils.opis_rozbicia_kosztu(rozbicia[w_id])} "
-                                f"{magazyn_szukaj} {notatka_wizyty or ''} "
-                                f"{etykieta_rodzaju if db.rodzaj_serwisu(rodzaje.get(w_id)) else ''}").lower()
-                self.wszystkie_karty.append({
-                    "karta": karta, "szukaj": tekst_szukaj,
-                    "data": data, "kwota": float(kosz or 0),
-                })
-
-            self.miesiace.ustaw(
-                self.wszystkie_karty,
-                grupuj=utils.czy_po_dacie(self.state, "wizyty"),
-            )
-            elementy.append(self.lista_kart)
-
-        self.przewijana_tresc.controls = elementy
-        super().__init__(
-            route="/wizyty",
-            padding=0,
-            appbar=appbar,
-            floating_action_button=fab,
-            controls=[self.przewijana_tresc.kontrolka],
-        )
-
-    def potwierdz_grupowe_usuwanie(self, e):
-        ile = len(self.zaznaczone_id)
-        def wykonaj():
-            wynik = db.usun_wizyty_z_cofnieciem(list(self.zaznaczone_id))
-            if wynik:
-                oryginalne_cofnij = wynik["cofnij"]
-                def nowe_cofnij():
-                    oryginalne_cofnij()
-                    db.przelicz_wszystkie_zadania(self.state.auto_id)
-                wynik["cofnij"] = nowe_cofnij
-
-            db.przelicz_wszystkie_zadania(self.state.auto_id)
-            self.zakoncz_zaznaczanie()
-            utils.przejdz(self._page, "/wizyty")
-            utils.pokaz_komunikat_cofnij(self._page, f"Usunięto {db.liczba_z_odmiana(ile, 'wizytę', 'wizyty', 'wizyt')} w warsztacie.", wynik)
-        utils.potwierdz(self._page, "Usuwanie", f"Czy na pewno usunąć {ile} wybranych wizyt?", wykonaj)

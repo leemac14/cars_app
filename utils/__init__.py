@@ -35,6 +35,7 @@ from .komponenty import *
 from .warsztaty import *
 from .ceny_czesci import *
 from .awarie import *
+from .wizyty import *
 from .dolewki import *
 from .opony import *
 from .szkice import *
@@ -83,6 +84,7 @@ from . import (
     warsztaty,
     ceny_czesci,
     awarie,
+    wizyty,
     dolewki,
     opony,
     szkice,

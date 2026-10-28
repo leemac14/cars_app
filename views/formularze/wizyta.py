@@ -2,9 +2,14 @@
 
 import db
 import flet as ft
+import log
 import utils
 from date import na_iso
 from datetime import datetime
+
+
+# Pole szukania nad podzespołami — od tylu pozycji; krótszą listę widać od razu.
+PROG_SZUKANIA_PODZESPOLOW = 8
 
 
 class FormularzWizytyView(ft.View):
@@ -18,6 +23,7 @@ class FormularzWizytyView(ft.View):
         self.p_km = db.pobierz_aktualny_przebieg(self.state.auto_id) or None
         tagi_val = ""
         kat_val = "Letnie"
+        ceny_zrodla = {}  # zadanie_id -> cena pozycji z edytowanej wizyty albo źródła duplikatu
         koszt_zrodla, robocizna_zrodla = None, None
         rodzaj_zrodla = None
         # Gwarancja wspólna wizyty siedzi w `wizyty` i przechodzi na pozycje,
@@ -48,11 +54,13 @@ class FormularzWizytyView(ft.View):
                     koszt_zrodla, robocizna_zrodla = float(w[3] or 0.0), w[6]
                     tagi_val = str(w[5] or "")
                     rodzaj_zrodla = db.rodzaj_serwisu(w[9])
-                c.execute("SELECT zadanie_id, kategoria, gwarancja_data, gwarancja_przebieg FROM historia WHERE wizyta_id=? ORDER BY id", (zrodlo_id,))
+                c.execute("SELECT zadanie_id, kategoria, gwarancja_data, gwarancja_przebieg, cena FROM historia WHERE wizyta_id=? ORDER BY id", (zrodlo_id,))
                 dane_h = c.fetchall()
                 podpiete = {r[0] for r in dane_h}
                 for r in dane_h:
                     if r[1]: kat_val = str(r[1])
+                    if r[4]:
+                        ceny_zrodla.setdefault(r[0], float(r[4]))
                 gwarancje_pozycji = [db.klucz_gwarancji(r[2], r[3]) for r in dane_h]
                 if w:
                     gwarancja_zrodla = db.klucz_gwarancji(w[7], w[8])
@@ -121,6 +129,11 @@ class FormularzWizytyView(ft.View):
         self.pliki = utils.PolaZalacznikow(page, "wizyty", w_id, szkic=self.szkic)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.blad_czesci = ft.Text("", color=utils.KOLOR_STATUS["error"], size=13)
+        # Wizyta bez podzespołu (diagnostyka, przegląd) zapisuje się drugim „Zapisz”.
+        self._bez_pozycji_potwierdzone = False
+        self.ceny_pozycji = {}    # zadanie_id -> pole „Cena tej pozycji”
+        self.wiersze_czesci = {}  # zadanie_id -> wiersz: checkbox + pole ceny (widoczne po zaznaczeniu)
+        self._ceny_poczatkowe = {}
 
         self.chk_czesci = []
         self.zadania_opon_ids = set()
@@ -130,7 +143,8 @@ class FormularzWizytyView(ft.View):
                 self.rodzaj.podpowiedz(db.domyslny_rodzaj_serwisu([chk.data for chk in self.chk_czesci if chk.value]))
             czy_zaznaczono_opony = any(chk.value for chk in self.chk_czesci if chk.data in self.zadania_opon_ids)
             self.e_kat_wizyty.visible = czy_zaznaczono_opony
-            self.e_kat_wizyty.update()
+            self._po_zmianie_zaznaczenia()
+            self._przerysuj(self.sekcja_czesci, "odświeżenie podzespołów wizyty")
 
         self._odswiez_widocznosc_opon = odswiez_widocznosc_opon
 
@@ -140,6 +154,7 @@ class FormularzWizytyView(ft.View):
             for z_i, z_n, z_opon in c.fetchall():
                 chk = ft.Checkbox(label=str(z_n), value=(z_i in podpiete), data=z_i, on_change=odswiez_widocznosc_opon)
                 self.chk_czesci.append(chk)
+                self._dodaj_pole_ceny(chk, ceny_zrodla.get(z_i))
                 if z_opon:
                     self.zadania_opon_ids.add(z_i)
 
@@ -158,7 +173,7 @@ class FormularzWizytyView(ft.View):
         self._stan_poczatkowy = self._migawka_formularza()
         # Formularz ze szkicu wraca do kolejki — i przy anulowaniu, i po zapisie.
         self.powrot = "/do-wpisania" if self.szkic else "/wizyty"
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta zbiorcza", self.powrot, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja wizyty" if w_id else "Nowa wizyta", self.powrot, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
         
         k1 = utils.karta_formularza(
             [self.rodzaj.kontrolka, self.e_d, self.e_p, self.k_wykonawca, *self.koszt.kontrolki(), self.e_n, ft.Text("Przypisane tagi:", size=13, weight="bold"), self.k_tagi],
@@ -166,8 +181,9 @@ class FormularzWizytyView(ft.View):
         )
         k1b = utils.karta_formularza([self.pliki.kontrolka], "Pliki (paragon, faktura, zdjęcie części)", ft.Icons.ATTACH_FILE,
                                      domyslnie_otwarte=bool(self.pliki.pozycje))
-        self.kolumna_czesci = ft.Column(self.chk_czesci, spacing=2)
-        k2 = utils.karta_formularza([self.btn_pakiety, self.kolumna_czesci, self.blad_czesci, self.e_kat_wizyty], "Zaznacz wymienione podzespoły", ft.Icons.CHECKLIST)
+        self.sekcja_czesci = self._zbuduj_sekcje_czesci()
+        k2 = utils.karta_formularza([self.sekcja_czesci], "Wymienione podzespoły", ft.Icons.CHECKLIST,
+                                    domyslnie_otwarte=True, page=page)
         k_gwarancja = utils.karta_formularza(
             self.gwarancja.kontrolki(), "Gwarancja na naprawę", ft.Icons.GPP_GOOD,
             domyslnie_otwarte=bool(gwarancja["koniec"] or gwarancja["limit_km"]), page=page,
@@ -516,6 +532,8 @@ class FormularzWizytyView(ft.View):
             elif nazwa_norm in poprzednie_norm:
                 chk.value = False
 
+        # Zaznaczone wskakują na górę listy (panel pakietów jest już zamknięty, nic nie ucieka spod palca).
+        self._uloz_czesci()
         # WAŻNE: jedna aktualizacja kolumny zamiast chk.update() w pętli (pojedyncze
         # gubiły zmiany). Przerysowanie po zamknięciu panelu w strażniku — wyjątek z
         # niezamontowanej kontrolki nie może przerwać akcji.
@@ -536,11 +554,101 @@ class FormularzWizytyView(ft.View):
         else:
             utils.pokaz_komunikat(self._page, "Żadna pozycja z pakietu nie pasuje do Twoich podzespołów — dodaj je najpierw w sekcji Serwis.", utils.KOLOR_STATUS["warning"])
 
+    # ================= PODZESPOŁY: SZUKANIE I CENY POZYCJI =================
+
+    def _dodaj_pole_ceny(self, chk, cena):
+        """Pole „Cena tej pozycji” pod podzespołem — widoczne, gdy jest zaznaczony."""
+        pole = ft.TextField(
+            label="Cena tej pozycji", suffix=utils.symbol_waluty(),
+            value=utils.liczba_do_pola(cena) if cena else "", keyboard_type=ft.KeyboardType.NUMBER,
+            width=190, on_change=lambda e: self._odswiez_sume_pozycji(), **utils.styl_pola(page=self._page),
+        )
+        self.ceny_pozycji[chk.data] = pole
+        self._ceny_poczatkowe[chk.data] = pole.value
+        self.wiersze_czesci[chk.data] = ft.Column([
+            chk, ft.Container(pole, padding=ft.Padding(40, 0, 0, 6), visible=bool(chk.value)),
+        ], spacing=0, tight=True)
+
+    def _zbuduj_sekcje_czesci(self):
+        """Pakiety, licznik, szukajka (od PROG_SZUKANIA_PODZESPOLOW pozycji), wiersze, suma cen,
+        błąd i rodzaj opon — jedna kolumna odświeżana jednym update()."""
+        self.licznik_czesci = utils.podpis("")
+        self.suma_pozycji = utils.podpis("", visible=False)
+        self.szukaj_czesci = ft.TextField(hint_text="Szukaj podzespołu", prefix_icon=ft.Icons.SEARCH,
+                                          on_change=lambda e: self._szukaj_czesci(), **utils.styl_pola(page=self._page))
+        self.kolumna_czesci = ft.Column(spacing=2)
+        self._uloz_czesci()
+        self._po_zmianie_zaznaczenia()
+        elementy = [self.btn_pakiety, self.licznik_czesci]
+        if len(self.chk_czesci) >= PROG_SZUKANIA_PODZESPOLOW:
+            elementy.append(utils.na_cala_szerokosc(self.szukaj_czesci))
+        elementy += [self.kolumna_czesci, self.suma_pozycji, self.blad_czesci, self.e_kat_wizyty]
+        return ft.Column(elementy, spacing=utils.SPACING["sm"])
+
+    def _uloz_czesci(self):
+        """Zaznaczone na górze i zawsze widoczne, reszta po nazwie i według szukanego słowa.
+        Przy samym zaznaczaniu kolejność stoi — wiersz nie ucieka spod palca."""
+        fraza = utils.bez_ogonkow((self.szukaj_czesci.value or "").strip()).lower()
+        zaznaczone = [c for c in self.chk_czesci if c.value]
+        reszta = [c for c in self.chk_czesci if not c.value]
+        for chk in self.chk_czesci:
+            self.wiersze_czesci[chk.data].visible = bool(
+                chk.value or not fraza or fraza in utils.bez_ogonkow(str(chk.label)).lower())
+        self.kolumna_czesci.controls = [self.wiersze_czesci[c.data] for c in zaznaczone + reszta]
+
+    @staticmethod
+    def _przerysuj(kontrolka, opis):
+        """update() formularza zbudowanego bez strony (testy) nie przerywa akcji."""
+        try:
+            kontrolka.update()
+        except RuntimeError:
+            log.polkniety(opis)
+
+    def _szukaj_czesci(self):
+        self._uloz_czesci()
+        self._przerysuj(self.kolumna_czesci, "szukanie podzespołu wizyty")
+
+    def _po_zmianie_zaznaczenia(self):
+        """Pole ceny przy zaznaczonych, licznik i suma cen; zmiana zaznaczenia zdejmuje
+        potwierdzenie zapisu bez podzespołów."""
+        for chk in self.chk_czesci:
+            self.wiersze_czesci[chk.data].controls[1].visible = bool(chk.value)
+        ile = sum(1 for c in self.chk_czesci if c.value)
+        self.licznik_czesci.value = (f"Zaznaczone: {ile} z {len(self.chk_czesci)}" if self.chk_czesci
+                                     else "Pojazd nie ma jeszcze podzespołów — dodasz je w zakładce Serwis.")
+        self._bez_pozycji_potwierdzone = False
+        if ile:
+            self.blad_czesci.value = ""
+        self._odswiez_sume_pozycji(aktualizuj=False)
+
+    def _odswiez_sume_pozycji(self, aktualizuj=True):
+        suma = sum(utils.parsuj_float(self.ceny_pozycji[c.data].value, 0.0) or 0.0
+                   for c in self.chk_czesci if c.value)
+        self.suma_pozycji.value = f"Ceny pozycji razem: {utils.formatuj_liczba(suma)} {utils.symbol_waluty()}"
+        self.suma_pozycji.visible = suma > 0
+        if aktualizuj:
+            self._przerysuj(self.suma_pozycji, "suma cen pozycji wizyty")
+
+    def _ceny_pozycji(self, wybrane):
+        """({zadanie_id: cena albo None przy pustym polu}, błędy pól) zaznaczonych pozycji."""
+        ceny, bledy = {}, []
+        for zid in wybrane:
+            pole = self.ceny_pozycji[zid]
+            utils.ustaw_blad(pole)
+            tekst = (pole.value or "").strip()
+            cena = utils.parsuj_float(tekst, None) if tekst else None
+            if tekst and (cena is None or cena < 0):
+                bledy.append((pole, "Błędna kwota"))
+                continue
+            ceny[zid] = round(cena, 2) if cena is not None else None
+        return ceny, bledy
+
     def _migawka_formularza(self):
         return (
             self.e_d.value, self.e_p.value, self.get_wykonawca(), self.koszt.migawka(), self.e_n.value,
             self.get_tagi(), self.e_kat_wizyty.value,
-            tuple(chk.value for chk in self.chk_czesci),
+            tuple((chk.value, (self.ceny_pozycji[chk.data].value or "").strip() if chk.value else "")
+                  for chk in self.chk_czesci),
             self.zuzycie.migawka(), self.gwarancja.migawka(), self.pliki.migawka(), self.rodzaj.migawka(),
         )
 
@@ -565,22 +673,39 @@ class FormularzWizytyView(ft.View):
         bledy += bledy_kosztu + bledy_gwarancji
         
         wybrane = [chk.data for chk in self.chk_czesci if chk.value]
-        self.blad_czesci.value = "Zaznacz co najmniej jedną część!" if not wybrane else ""
+        ceny, bledy_cen = self._ceny_pozycji(wybrane)
+        bledy += bledy_cen
 
         # Zużycie przychodzi już wycenione — ten sam koszt trafia do powiązania
         # i do kosztu całkowitego wizyty.
         nowe_uzyte, blad_magazynu = self.zuzycie.sprawdz()
         koszt_czesci = db.suma_kosztu_zuzycia(nowe_uzyte)
         koszt_razem = round(kos + koszt_czesci, 2)
+        # Cena pozycji to część rachunku wizyty — razem nie mogą go przekroczyć.
+        suma_cen = round(sum(c or 0.0 for c in ceny.values()), 2)
+        if not bledy_cen and suma_cen > koszt_razem + 0.005:
+            pierwsza = next(zid for zid in wybrane if ceny.get(zid))
+            waluta = utils.symbol_waluty()
+            bledy.append((self.ceny_pozycji[pierwsza],
+                          f"Pozycje razem {utils.formatuj_liczba(suma_cen)} {waluta} — więcej niż koszt wizyty "
+                          f"({utils.formatuj_liczba(koszt_razem)} {waluta})"))
 
-        if bledy or self.blad_czesci.value or blad_magazynu:
+        # Wizyta bez podzespołu (diagnostyka, przegląd) przechodzi drugim „Zapisz”.
+        bez_pozycji = not wybrane and not self._bez_pozycji_potwierdzone
+        self.blad_czesci.color = utils.KOLOR_STATUS["warning"]
+        self.blad_czesci.value = ("Nie zaznaczono podzespołu — wizyta nie przestawi licznika żadnej wymiany."
+                                  if bez_pozycji else "")
+
+        if bledy or blad_magazynu or bez_pozycji:
             self._page.update()
             if bledy:
                 utils.pokaz_bledy_formularza(self._page, bledy)
             elif blad_magazynu:
                 utils.pokaz_komunikat(self._page, "Sprawdź ilości wykorzystanych części z magazynu.", utils.KOLOR_STATUS["error"])
-            elif self.blad_czesci.value:
-                utils.pokaz_komunikat(self._page, "Zaznacz co najmniej jedną część z listy!", utils.KOLOR_STATUS["error"])
+            else:
+                self._bez_pozycji_potwierdzone = True
+                utils.pokaz_komunikat(self._page, "Nie zaznaczono żadnego podzespołu. Dotknij „Zapisz” ponownie, "
+                                                  "aby zapisać wizytę bez nich.", utils.KOLOR_STATUS["warning"])
             return
 
         if utils.sprawdz_podejrzany_przebieg(self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.w_id, tabela="wizyty", nowa_data_str=self.e_d.value):
@@ -622,6 +747,9 @@ class FormularzWizytyView(ft.View):
                             gwarancja_poz = nowa_gwarancja
                         cur.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, wykonawca=?, kategoria=?, gwarancja_data=?, gwarancja_przebieg=?, rodzaj=? WHERE id=?",
                                     (self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *gwarancja_poz, rodzaj, h_id))
+                        # Cenę ruszamy tylko po zmianie pola — zapisana (np. z Do zrobienia) zostaje co do grosza.
+                        if (self.ceny_pozycji[zid].value or "").strip() != self._ceny_poczatkowe[zid]:
+                            cur.execute("UPDATE historia SET cena=? WHERE id=?", (ceny.get(zid) or 0.0, h_id))
                         zostaja.add(zid)
                         continue
                     if zdalne_id:
@@ -631,7 +759,7 @@ class FormularzWizytyView(ft.View):
                     if zid in zostaja:
                         continue
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)", (self.w_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, rodzaj, osoba_wizyty))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (self.w_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, ceny.get(zid) or 0.0, wyk, kat, *nowa_gwarancja, rodzaj, osoba_wizyty))
                 wizyta_id = self.w_id
                 zdalne_id_czesci_do_nagrobka = db.przywroc_czesci_wizyty(wizyta_id, conn=conn)
             else:
@@ -644,7 +772,7 @@ class FormularzWizytyView(ft.View):
                     db.zamknij_szkic(self.szkic["id"], conn=conn)
                 for zid in wybrane: 
                     kat = self.e_kat_wizyty.value if zid in self.zadania_opon_ids else None
-                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, wyk, kat, *nowa_gwarancja, rodzaj, osoba_wizyty))
+                    cur.execute("INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (wizyta_id, zid, self.e_d.value, na_iso(self.e_d.value), prz, ceny.get(zid) or 0.0, wyk, kat, *nowa_gwarancja, rodzaj, osoba_wizyty))
                     if kat and wpis_opon is None:
                         wpis_opon = (cur.lastrowid, kat)
  
@@ -675,4 +803,5 @@ class FormularzWizytyView(ft.View):
 
 __all__ = [
     "FormularzWizytyView",
+    "PROG_SZUKANIA_PODZESPOLOW",
 ]

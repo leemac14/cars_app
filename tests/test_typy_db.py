@@ -58,6 +58,7 @@ WYWOLANIA = {
     # Prawdziwa kopia w folderze domyślnym (katalog testu) — inaczej lista
     # byłaby pusta i sprawdzałaby tylko to, że pusta lista jest listą.
     "lista_kopii": lambda k: (db.wykonaj_kopie(wymus=True)["folder"],),
+    "lista_wizyt": lambda k: (k["id"]["auto_id"],),
     "miesiace_ewidencji": lambda k: (k["id"]["auto_id"],),
     "miesiace_z_danymi": lambda k: (k["id"]["auto_id"],),
     "napraw_sciezki_zalacznikow": lambda k: (),

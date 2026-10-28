@@ -18,13 +18,22 @@ class ZaznaczanieGrupowe:
         for nazwa in [n for n in list(vars(self)) if n.startswith(("lista_kart", "wszystkie_karty"))]:
             delattr(self, nazwa)
 
+    def _oddaj_tlo(self, element_id, kontener):
+        """Tło karty sprzed zaznaczenia — karta listy ma własne, nieprzezroczyste (pod nim
+        leży cień), więc odznaczenie je oddaje zamiast zerować. Zapis innej karty (inna
+        zakładka) się nie liczy."""
+        kontener_tla, tlo = getattr(self, "_tla_kart", {}).pop(element_id, (None, None))
+        kontener.bgcolor = tlo if kontener_tla is kontener else None
+
     def zakoncz_zaznaczanie(self, e=None):
         self.tryb_zaznaczania = False
         self.zaznaczone_id.clear()
         self.appbar = self.oryginalny_appbar
-        for kontener in self.karty_ref.values():
-            kontener.bgcolor = None
+        for element_id, kontener in self.karty_ref.items():
+            if element_id in getattr(self, "_tla_kart", {}):
+                self._oddaj_tlo(element_id, kontener)
             kontener.border = None
+        self._tla_kart = {}
         self.update()
 
     def wolno_zmieniac_zaznaczone(self):
@@ -50,10 +59,13 @@ class ZaznaczanieGrupowe:
     def zaznacz_odznacz(self, element_id, kontener):
         if element_id in self.zaznaczone_id:
             self.zaznaczone_id.remove(element_id)
-            kontener.bgcolor = None
+            self._oddaj_tlo(element_id, kontener)
             kontener.border = None
         else:
             self.zaznaczone_id.add(element_id)
+            if not hasattr(self, "_tla_kart"):
+                self._tla_kart = {}
+            self._tla_kart[element_id] = (kontener, kontener.bgcolor)
             kontener.bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.PRIMARY)
             kontener.border = ft.Border.all(2, ft.Colors.PRIMARY)
 

@@ -713,14 +713,14 @@ def test_menu_pozycji_wizyty_ma_gwarancje_a_podglad_nie(baza, monkeypatch):
 
     widok_historii = zbuduj(HistoriaView, stan, d["klocki"])
     widok_historii.karty_ref[h_id].on_click(None)
-    assert [p["tekst"] for p in menu[-1]] == ["Dodaj notatkę", "Gwarancja tej pozycji", "Edytuj w „Wizyty zbiorcze”"]
+    assert [p["tekst"] for p in menu[-1]] == ["Dodaj notatkę", "Gwarancja tej pozycji", "Edytuj w „Wizyty w warsztacie”"]
 
     with db.polacz_baze() as conn:
         conn.execute("UPDATE samochody SET wspolny_pojazd_id='wspolny-1' WHERE id=?", (d["auto_id"],))
     db.ustaw_role_pojazdu(d["auto_id"], db.ROLA_PODGLAD)
     widok_historii = zbuduj(HistoriaView, stan, d["klocki"])
     widok_historii.karty_ref[h_id].on_click(None)
-    assert [p["tekst"] for p in menu[-1]] == ["Edytuj w „Wizyty zbiorcze”"]
+    assert [p["tekst"] for p in menu[-1]] == ["Edytuj w „Wizyty w warsztacie”"]
 
 
 def test_skroty_w_milach(baza, bez_nawigacji):

@@ -28,6 +28,19 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.29", "pozycje": [
+        {"tytul": "Nowe karty wizyt w warsztacie", "ikona": "HOME_REPAIR_SERVICE", "ekran": "wizyty",
+         "opis": "Karta wizyty zaczyna się od nazwy warsztatu, wymienione podzespoły stoją na niej jako plakietki, "
+                 "a kolorowy pasek pokazuje, ile poszło na robociznę, a ile na części. Widać też, jak długo trwa gwarancja."},
+        {"tytul": "Podsumowanie i szczegóły wizyty", "ikona": "RECEIPT_LONG", "ekran": "wizyty",
+         "opis": "Nad listą stoi liczba wizyt, ich suma, średni koszt i to, kiedy auto było ostatnio w warsztacie. "
+                 "Dotknięcie karty pokazuje całą wizytę — stamtąd zadzwonisz do warsztatu, edytujesz albo duplikujesz."},
+        {"tytul": "Przesuń kartę wizyty", "ikona": "SWIPE_LEFT", "ekran": "wizyty",
+         "opis": "Jak na innych listach: przesunięcie w lewo usuwa wizytę (z „Cofnij”), w prawo dopisuje notatkę."},
+        {"tytul": "Ceny pozycji i wizyta bez części", "ikona": "SELL", "ekran": "wizyty",
+         "opis": "W formularzu wizyty wpiszesz cenę każdego podzespołu, a jego historia pokaże, ile kosztowała ta "
+                 "wymiana. Diagnostykę zapiszesz bez zaznaczania części, a długą listę podzespołów przeszukasz."},
+    ]},
     {"wersja": "2026.10.26", "pozycje": [
         {"tytul": "Bieżnik każdego koła i prognoza", "ikona": "SQUARE_FOOT", "ekran": "opony",
          "opis": "Pomiar bieżnika zapisujesz osobno dla każdego koła. Z kolejnych pomiarów i kilometrów "
