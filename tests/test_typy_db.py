@@ -126,6 +126,7 @@ WYWOLANIA = {
     # Podwyżka liczona od zakupu z 12.01.2025 (15 zł) do bieżącej ceny pozycji
     # (19,50 zł) — próg zero, żeby wynik nie był pustą listą.
     "podwyzki_cen_czesci": lambda k: (k["id"]["auto_id"], 0),
+    "podzespoly_dla_pozycji": lambda k: (k["id"]["auto_id"], "Wymienić olej i filtr"),
     "pola_historii_pojazdu": lambda k: (db.pobierz_dane_pojazdu(k["id"]["auto_id"]),),
     "poprzednie_zakupy": lambda k: (db.historia_cen_czesci(k["id"]["auto_id"], "Filtr oleju"), k["id"]["magazyn"]),
     "porownaj_czesci_wlasne": lambda k: (k["id"]["auto_id"],),

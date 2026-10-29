@@ -28,6 +28,23 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.29.2", "pozycje": [
+        {"tytul": "Z listy Do zrobienia prosto do Serwisu", "ikona": "BUILD", "ekran": "do-zrobienia",
+         "opis": "Przy „Wykonano” wybierasz, gdzie zapisać pozycję: jako wymianę części z Serwisu, nowy podzespół "
+                 "albo Inny koszt. Aplikacja sama podpowiada część pasującą do nazwy pozycji."},
+        {"tytul": "Pełny formularz wymiany z pozycji", "ikona": "OPEN_IN_NEW", "ekran": "do-zrobienia",
+         "opis": "„Dopisz do serwisu” otwiera formularz wymiany wypełniony z pozycji — z warsztatem, częściami "
+                 "z magazynu, gwarancją i fakturą. Po zapisie pozycja trafia do Wykonanych."},
+        {"tytul": "Pozycja jako nowy podzespół", "ikona": "HANDYMAN", "ekran": "do-zrobienia",
+         "opis": "„Przekształć w podzespół Serwisu” zakłada część z nazwą z tytułu pozycji — od razu z wymianą "
+                 "albo z pozycją, która czeka na liście, aż ją zrobisz."},
+        {"tytul": "Wykonane też przejdą do Serwisu", "ikona": "TASK_ALT", "ekran": "wykonane",
+         "opis": "Pozycję zapisaną wcześniej jako Inny koszt przeniesiesz do Serwisu jako wymianę. Dawny koszt "
+                 "trafia do kosza, więc nic się nie dubluje."},
+        {"tytul": "Planowanie z karty podzespołu", "ikona": "PLAYLIST_ADD", "ekran": "serwis",
+         "opis": "„Zaplanuj w Do zrobienia” w menu podzespołu dodaje pozycję z terminem z interwału, a karta pokazuje, "
+                 "że coś na nią czeka. W historii wymian widać, które przyszły z listy."},
+    ]},
     {"wersja": "2026.10.29", "pozycje": [
         {"tytul": "Nowe karty wizyt w warsztacie", "ikona": "HOME_REPAIR_SERVICE", "ekran": "wizyty",
          "opis": "Karta wizyty zaczyna się od nazwy warsztatu, wymienione podzespoły stoją na niej jako plakietki, "

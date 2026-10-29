@@ -1,4 +1,5 @@
 import flet as ft
+import sqlite3
 from datetime import datetime
 import db
 import log
@@ -494,7 +495,8 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         podtytul_bits = []
         if p["opis"]:
             podtytul_bits.append(str(p["opis"]))
-        if p["zadanie_nazwa"]:
+        # Planowana z Serwisu („Wymiana: Olej silnikowy”) ma podzespół już w tytule.
+        if p["zadanie_nazwa"] and db.klucz_nazwy(p["zadanie_nazwa"]) not in db.klucz_nazwy(p["tytul"]):
             podtytul_bits.append(f"Podzespół: {p['zadanie_nazwa']}")
 
         stopka_bits = []
@@ -572,7 +574,19 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         self._okno_wykonania([db.pozycja_do_zrobienia(p_id)])
 
     def _okno_wykonania(self, pozycje):
-        utils.okno_wykonania(self._page, self.state.auto_id, pozycje, po_zapisie=self._po_wykonaniu)
+        utils.okno_wykonania(self._page, self.state.auto_id, pozycje, po_zapisie=self._po_wykonaniu, state=self.state)
+
+    def _do_serwisu(self, p):
+        """Część z Serwisu → pełny formularz wymiany wypełniony z pozycji; „Nowy podzespół…” →
+        formularz podzespołu z nazwą z tytułu."""
+        def po_wyborze(cel):
+            if cel == utils.CEL_NOWY:
+                utils.przejdz(self._page, f"/zadanie/nowy/do-zrobienia/{p['id']}")
+            else:
+                utils.przejdz(self._page, f"/wpis/nowy/{cel[2:]}/do-zrobienia/{p['id']}")
+
+        utils.pokaz_wybor_podzespolu(self._page, self.state.auto_id, p, po_wyborze,
+                                     "Przenieś do serwisu" if p["wykonane"] else "Dopisz do serwisu")
 
     def _po_wykonaniu(self, wynik, poprawka=False):
         # Ekran i tak buduje się od nowa (przejdz) — wystarczy zapomnieć zaznaczenie.
@@ -643,10 +657,18 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
 
         edytuj = {"ikona": ft.Icons.EDIT, "tekst": "Edytuj", "akcja": lambda: utils.przejdz(self._page, f"/do-zrobienia/edytuj/{p_id}")}
         usun = {"ikona": ft.Icons.DELETE, "tekst": "Usuń pozycję", "akcja": usun_pozycje, "kolor": utils.KOLOR_STATUS["destructive"]}
+        do_serwisu = {"ikona": ft.Icons.BUILD, "tekst": "Przenieś do serwisu" if p["wykonane"] else "Dopisz do serwisu",
+                      "akcja": lambda: self._do_serwisu(p)}
         if not p["wykonane"]:
-            return [
+            akcje = [
                 {"ikona": ft.Icons.CHECK_CIRCLE, "tekst": "Oznacz jako wykonane", "akcja": lambda: self._okno_wykonania([p]),
                  "kolor": utils.KOLOR_STATUS["ok"]},
+                do_serwisu,
+            ]
+            if not p["zadanie_id"]:
+                akcje.append({"ikona": ft.Icons.HANDYMAN, "tekst": "Przekształć w podzespół Serwisu",
+                              "akcja": lambda: utils.przejdz(self._page, f"/zadanie/nowy/do-zrobienia/{p_id}")})
+            return akcje + [
                 {"ikona": ft.Icons.EVENT_REPEAT, "tekst": "Przesuń termin",
                  "akcja": lambda: utils.okno_przesuniecia_terminu(self._page, p, po_zmianie=lambda: self._odswiez("Przesunięto termin."))},
                 {"ikona": ft.Icons.BUILD_CIRCLE, "tekst": "Utwórz wizytę w warsztacie", "akcja": poprosz_o_wizyte, "kolor": ft.Colors.PRIMARY},
@@ -662,6 +684,8 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         elif p["historia_id"]:
             akcje.append({"ikona": ft.Icons.BUILD, "tekst": "Otwórz wpis serwisowy",
                           "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{p['historia_id']}")})
+        elif not p["w_wizycie"]:
+            akcje.append(do_serwisu)
         if p["koszt_id"]:
             akcje.append({"ikona": ft.Icons.RECEIPT_LONG, "tekst": "Otwórz Inny koszt",
                           "akcja": lambda: utils.przejdz(self._page, f"/inne/edytuj/{p['koszt_id']}")})
@@ -743,10 +767,12 @@ class DoZrobieniaView(ft.View, utils.ZaznaczanieGrupowe):
         super().aktualizuj_appbar_zaznaczania(dodatkowe_akcje=extra)
 
 class FormularzDoZrobieniaView(ft.View):
-    def __init__(self, page: ft.Page, state, pozycja_id=None):
+    def __init__(self, page: ft.Page, state, pozycja_id=None, zadanie_id=None):
         self._page = page
         self.state = state
         self.pozycja_id = pozycja_id
+        self.zadanie_id = None
+        self.trasa_powrotu = "/do-zrobienia"
 
         tyt_val, opis_val, priorytet_val = "", "", "Średni"
         koszt_val, termin_val, zadanie_val = "", "", ""
@@ -766,6 +792,13 @@ class FormularzDoZrobieniaView(ft.View):
             c = conn.cursor()
             c.execute("SELECT id, nazwa FROM zadania WHERE auto_id=? ORDER BY nazwa", (self.state.auto_id,))
             lista_zadan = c.fetchall()
+
+        # Planowana z karty podzespołu (/do-zrobienia/nowe/podzespol/<id>): tytuł, podzespół
+        # i terminy z interwału; zapis i „Wróć” prowadzą z powrotem do Serwisu.
+        plan = self._plan_z_podzespolu(zadanie_id) if zadanie_id and not pozycja_id else None
+        if plan:
+            tyt_val, zadanie_val, termin_val, self.km_terminu = plan
+            self.zadanie_id, self.trasa_powrotu = zadanie_id, "/"
 
         self.e_tytul = ft.TextField(label="Co trzeba zrobić?*", value=tyt_val, hint_text="np. wymienić żarówkę", **utils.styl_pola())
         self.e_opis = ft.TextField(label="Szczegóły (opcjonalnie)", value=opis_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola())
@@ -794,18 +827,35 @@ class FormularzDoZrobieniaView(ft.View):
         )
 
         self._stan_poczatkowy = self._migawka_formularza()
-        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if pozycja_id else "Nowa pozycja", "/do-zrobienia", on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
+        appbar = utils.zbuduj_pasek_z_powrotem(page, "Edycja pozycji" if pozycja_id else "Nowa pozycja", self.trasa_powrotu, on_save=self.zapisz, czy_zmieniono=self._czy_zmieniono)
 
         k1 = utils.karta_formularza([self.e_tytul, self.e_opis, self.e_priorytet], "Co i jak pilnie", ft.Icons.CHECKLIST_RTL)
         k2 = utils.karta_formularza([self.e_koszt, self.e_termin, self.e_termin_km], "Koszt i termin", ft.Icons.EVENT)
         k3 = utils.karta_formularza([self.e_zadanie], "Powiązanie z podzespołem", ft.Icons.LINK)
 
-        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz pozycję", self.zapisz, "/do-zrobienia")]
+        elementy = [k1, k2, k3, utils.przyciski_akcji(page, "Zapisz pozycję", self.zapisz, self.trasa_powrotu)]
 
+        if pozycja_id:
+            trasa = f"/do-zrobienia/edytuj/{pozycja_id}"
+        else:
+            trasa = f"/do-zrobienia/nowe/podzespol/{self.zadanie_id}" if self.zadanie_id else "/do-zrobienia/nowe"
         super().__init__(
-            route=f"/do-zrobienia/edytuj/{pozycja_id}" if pozycja_id else "/do-zrobienia/nowe",
-            padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
+            route=trasa, padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
+
+    def _plan_z_podzespolu(self, zadanie_id):
+        """(tytuł, podzespół, termin, licznik terminu) pozycji planowanej z podzespołu — terminy
+        z interwału (db.oblicz_stan_interwalu), gdy podzespół go ma i był już wymieniany."""
+        with db.polacz_baze() as conn:
+            conn.row_factory = sqlite3.Row
+            z = conn.execute("SELECT * FROM zadania WHERE id=? AND auto_id=?", (zadanie_id, self.state.auto_id)).fetchone()
+        if not z:
+            return None
+        z = dict(z)
+        stan = db.oblicz_stan_interwalu(z, db.pobierz_aktualny_przebieg(self.state.auto_id))
+        termin = stan["czas"]["data"].strftime("%d.%m.%Y") if stan["czas"] else ""
+        km = int(z["przebieg"] + z["interwal_km"]) if stan["km"] else None
+        return f"Wymiana: {z['nazwa']}", str(zadanie_id), termin, km
 
     def _migawka_formularza(self):
         return (self.e_tytul.value, self.e_opis.value, self.e_priorytet.value,
@@ -849,5 +899,5 @@ class FormularzDoZrobieniaView(ft.View):
                                          utils.KOLOR_STATUS["error"])
 
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "do zrobienia")
-        utils.przejdz(self._page, "/do-zrobienia")
-        utils.pokaz_komunikat(self._page, "Zapisano pozycję listy!")
+        utils.przejdz(self._page, self.trasa_powrotu)
+        utils.pokaz_komunikat(self._page, "Dodano do Do zrobienia." if self.zadanie_id else "Zapisano pozycję listy!")

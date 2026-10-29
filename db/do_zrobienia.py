@@ -1,7 +1,10 @@
 """Do zrobienia: wykonanie z datą, licznikiem i faktycznym kosztem (wpis serwisowy albo Inny
-koszt), dziennik zdarzeń pozycji, termin przebiegowy i przesuwanie terminu."""
+koszt), dziennik zdarzeń pozycji, termin przebiegowy i przesuwanie terminu, powiązanie
+z podzespołami Serwisu (podpowiedź z tytułu, wymiana z pełnego formularza)."""
 
 import json
+import os
+import re
 import sqlite3
 from calendar import monthrange
 from datetime import date, datetime, timedelta
@@ -10,7 +13,7 @@ from typing import Any
 from date import na_iso, parsuj_date
 from .stale import KATEGORIA_INNE_DOMYSLNA, PRIORYTETY_DO_ZROBIENIA
 from .polaczenie import polacz_baze
-from .pomocnicze import _na_liczbe
+from .pomocnicze import _na_liczbe, klucz_nazwy, normalizuj_nazwe
 from .ustawienia import pobierz_moje_imie
 from .synchronizacja import czy_moge_dodawac, zarejestruj_nagrobek
 from .notatki import przytnij_notatke
@@ -54,9 +57,24 @@ _POLA_ZMIANY = ("tytul", "opis", "priorytet", "szacowany_koszt", "zadanie_id")
 _SEZONY_OPON = ("Letnie", "Zimowe", "Całoroczne")
 _BRAK = object()
 
+# Podpowiedź podzespołu z tytułu: czasowniki i „nowe” nic o części nie mówią; przy kontroli
+# albo dolewce („sprawdzić opony”, „dolać olej”) podpowiedź nie jest pewna — wymiana
+# zresetowałaby interwał.
+_SLOWA_CZYNNOSCI = frozenset({
+    "wymienic", "wymien", "wymiana", "wymiany", "wymienione", "kupic", "kup", "zamowic", "zamow", "zalozyc",
+    "zaloz", "naprawic", "napraw", "naprawa", "zrobic", "zrob", "nowy", "nowa", "nowe", "nowych",
+})
+_SLOWA_KONTROLI = frozenset({
+    "sprawdzic", "sprawdz", "sprawdzenie", "skontrolowac", "kontrola", "zmierzyc", "zmierz", "obejrzec",
+    "dolac", "dolej", "dolewka", "uzupelnic", "uzupelnij", "zapytac", "zadzwonic", "wycenic", "wycena",
+    "umowic", "poszukac",
+})
+_BEZ_OGONKOW = str.maketrans("ąćęłńóśźż", "acelnoszz")
+
 _ZAPYTANIE = (
     "SELECT d.*, z.nazwa AS zadanie_nazwa, z.dotyczy_opon AS zadanie_opony, "
     "h.id AS h_id, h.data AS h_data, h.przebieg AS h_przebieg, h.cena AS h_cena, h.wizyta_id AS h_wizyta, "
+    "h.zadanie_id AS h_zadanie, "
     "k.id AS k_id, k.data AS k_data, k.kwota AS k_kwota, "
     "w.id AS w_id, w.data AS w_data, w.przebieg AS w_przebieg, w.wykonawca AS w_wykonawca "
     "FROM do_zrobienia d "
@@ -181,7 +199,7 @@ def _pozycja(r, aktualny_km=None):
         "koszt_wykonania": koszt_w if zrobione else None,
         "notatka_wykonania": r["notatka_wykonania"] if zrobione else None,
         "wykonane_przez": r["wykonane_przez"] if zrobione else None,
-        "historia_id": r["h_id"], "koszt_id": r["k_id"], "wizyta_id": r["w_id"],
+        "historia_id": r["h_id"], "koszt_id": r["k_id"], "wizyta_id": r["w_id"], "zadanie_wpisu": r["h_zadanie"],
         "w_wizycie": wizyta or r["h_wizyta"] is not None,
         "wizyta_data": r["w_data"], "wizyta_wykonawca": r["w_wykonawca"],
     }
@@ -311,6 +329,126 @@ def przesun_termin_do_zrobienia(pozycja_id, termin=_BRAK, termin_przebieg=_BRAK)
     return True
 
 
+# ---------------------------------------------------------------- powiązanie z Serwisem
+
+
+def _slowa(tekst):
+    """Słowa do porównań: bez emoji, wielkości liter i ogonków."""
+    return re.findall(r"[a-z0-9]+", klucz_nazwy(tekst).translate(_BEZ_OGONKOW))
+
+
+def _to_samo_slowo(a, b):
+    """To samo słowo w innej odmianie („klocki” – „klocków”, „olej” – „oleju”): wspólny
+    początek co najmniej 4 liter, bez najwyżej dwóch ostatnich liter krótszego słowa."""
+    return a == b or len(os.path.commonprefix((a, b))) >= max(4, min(len(a), len(b)) - 2)
+
+
+def _trafienie(nazwa, slowa_tytulu):
+    """(cała nazwa w tytule, ile słów nazwy w tytule, pierwsze słowo nazwy w tytule) albo None."""
+    slowa = [s for s in _slowa(nazwa) if s not in _SLOWA_CZYNNOSCI and len(s) >= 3]
+    trafione = [s for s in slowa if any(_to_samo_slowo(s, t) for t in slowa_tytulu)]
+    if not trafione:
+        return None
+    return len(trafione) == len(slowa), len(trafione), slowa[0] in trafione
+
+
+def podzespoly_dla_pozycji(auto_id, tytul, zadanie_id=None) -> list[dict[str, Any]]:
+    """Podzespoły pojazdu do wyboru przy pozycji: powiązany, pasujące do tytułu (najlepsze
+    pierwsze), reszta po nazwie. `pewne` (najwyżej jeden, bez powiązanego) — jedyne najlepsze
+    trafienie pierwszym słowem nazwy albo dwoma słowami, bez kontroli i dolewki w tytule."""
+    if not auto_id:
+        return []
+    with polacz_baze() as conn:
+        wiersze = conn.execute("SELECT id, nazwa, dotyczy_opon FROM zadania WHERE auto_id=?", (auto_id,)).fetchall()
+    wszystkie = _slowa(tytul)
+    slowa_tytulu = [s for s in wszystkie if s not in _SLOWA_CZYNNOSCI and len(s) >= 3]
+    lista = []
+    for z_id, nazwa, opony in wiersze:
+        trafienie = _trafienie(nazwa, slowa_tytulu) if slowa_tytulu else None
+        klucz = (z_id != zadanie_id, trafienie is None, tuple(-x for x in trafienie or ()), klucz_nazwy(nazwa), z_id)
+        lista.append((klucz, trafienie, {"id": z_id, "nazwa": str(nazwa or ""), "dotyczy_opon": bool(opony),
+                                         "pasuje": trafienie is not None, "pewne": False}))
+    lista.sort(key=lambda x: x[0])
+    trafienia = [t for _, t, _ in lista if t]
+    if (not zadanie_id and trafienia and (trafienia[0][1] >= 2 or trafienia[0][2])
+            and trafienia.count(trafienia[0]) == 1 and not any(s in _SLOWA_KONTROLI for s in wszystkie)):
+        next(z for _, t, z in lista if t)["pewne"] = True
+    return [z for _, _, z in lista]
+
+
+def nazwa_podzespolu_z_tytulu(tytul):
+    """Nazwa nowego podzespołu z tytułu pozycji — bez czasownika na początku, z wielkiej litery
+    („Wymienić klocki przód” → „Klocki przód”); emoji na początku zostaje."""
+    slowa = normalizuj_nazwe(tytul).split()
+    przod = []
+    while len(slowa) > 1 and not _slowa(slowa[0]):
+        przod.append(slowa.pop(0))
+    while len(slowa) > 1 and (_slowa(slowa[0]) or [""])[0] in _SLOWA_CZYNNOSCI:
+        slowa.pop(0)
+    nazwa = " ".join(slowa).strip(" .,;:-")
+    return " ".join(przod + [nazwa[:1].upper() + nazwa[1:]]).strip()
+
+
+def dotyczy_opon_z_tytulu(tytul):
+    """Czy podzespół z tego tytułu dotyczy opon (jak przy wizycie z listy)."""
+    tekst = str(tytul or "").lower()
+    return "opon" in tekst or "kół" in tekst
+
+
+def _zapewnij_podzespol(c, auto_id, nazwa):
+    """(id, czy_nowy) — podzespół o tej nazwie (po klucz_nazwy) albo nowo założony."""
+    klucz = klucz_nazwy(nazwa)
+    for z_id, istniejaca in c.execute("SELECT id, nazwa FROM zadania WHERE auto_id=?", (auto_id,)).fetchall():
+        if klucz_nazwy(istniejaca) == klucz:
+            return z_id, False
+    return c.execute("INSERT INTO zadania (auto_id, nazwa, dotyczy_opon) VALUES (?,?,?)",
+                     (auto_id, nazwa, 1 if dotyczy_opon_z_tytulu(nazwa) else 0)).lastrowid, True
+
+
+def powiaz_pozycje_z_podzespolem(pozycja_id, zadanie_id):
+    """Aktywna pozycja dostaje podzespół (wymiana zapisze się pod nim przy „Wykonano”), zmiana
+    idzie do dziennika. True, gdy się zmieniło."""
+    pozycja, zadanie_id = pozycja_do_zrobienia(pozycja_id), _calkowita(zadanie_id)
+    if (not pozycja or pozycja["wykonane"] or not zadanie_id or pozycja["zadanie_id"] == zadanie_id
+            or not czy_moge_dodawac(pozycja["auto_id"])):
+        return False
+    ja = pobierz_moje_imie() or None
+    with polacz_baze() as conn:
+        nowa = conn.execute("SELECT nazwa FROM zadania WHERE id=? AND auto_id=?",
+                            (zadanie_id, pozycja["auto_id"])).fetchone()
+        if not nowa:
+            return False
+        conn.execute("UPDATE do_zrobienia SET zadanie_id=? WHERE id=?", (zadanie_id, pozycja_id))
+        zanotuj_zdarzenie_do_zrobienia(conn, pozycja_id, ZDARZENIE_ZMIANA,
+                                       {"pola": ["zadanie_id"], "zadanie": [pozycja["zadanie_nazwa"], nowa[0]]}, ja)
+    return True
+
+
+def pozycje_do_zrobienia_podzespolow(auto_id) -> dict[int, list[dict[str, Any]]]:
+    """Aktywne pozycje powiązane z podzespołami: {zadanie_id: [{id, tytul, termin, termin_przebieg}]}."""
+    if not auto_id:
+        return {}
+    with polacz_baze() as conn:
+        wiersze = conn.execute("SELECT id, zadanie_id, tytul, termin, termin_przebieg FROM do_zrobienia "
+                               "WHERE auto_id=? AND wykonane=0 AND zadanie_id IS NOT NULL ORDER BY id",
+                               (auto_id,)).fetchall()
+    wynik = {}
+    for p_id, z_id, tytul, termin, km in wiersze:
+        wynik.setdefault(z_id, []).append({"id": p_id, "tytul": str(tytul or ""), "termin": termin or "",
+                                           "termin_przebieg": km})
+    return wynik
+
+
+def pozycje_do_zrobienia_wpisow(zadanie_id) -> dict[int, str]:
+    """Wpisy historii podzespołu zapisane z pozycji Do zrobienia: {historia_id: tytuł pozycji}."""
+    if not zadanie_id:
+        return {}
+    with polacz_baze() as conn:
+        wiersze = conn.execute("SELECT d.historia_id, d.tytul FROM do_zrobienia d JOIN historia h ON h.id = d.historia_id "
+                               "WHERE h.zadanie_id=? ORDER BY d.id", (zadanie_id,)).fetchall()
+    return {h_id: str(tytul or "") for h_id, tytul in wiersze}
+
+
 # ---------------------------------------------------------------- wykonanie
 
 
@@ -327,8 +465,10 @@ def _sezon_opon(c, auto_id):
 def oznacz_wykonane_do_zrobienia(pozycja_ids, dane) -> dict[str, Any] | None:
     """Odhacza pozycje (albo poprawia wykonanie odhaczonej): `dane` — data, przebieg (km), koszt,
     notatka, powiazany. Z `powiazany` pozycja z podzespołem dopisuje wpis serwisowy (interwał
-    liczy się od nowa), bez podzespołu — przy koszcie Inny koszt. Kilka pozycji naraz: koszt
-    każdej to jej szacunek. Wynik {liczba, serwis, koszty, do_kosza} albo None."""
+    liczy się od nowa), bez podzespołu — przy koszcie Inny koszt. Jednej pozycji okno podaje
+    podzespół: `zadanie_id` (None — Inne koszty) albo `nowy_podzespol` (nazwa). Kilka pozycji
+    naraz: koszt każdej to jej szacunek. Wynik {liczba, serwis, koszty, do_kosza, podzespol,
+    nowy_podzespol} albo None."""
     ids = [i for i in (pozycja_ids or []) if i]
     data = _tekst(dane.get("data")) or _dzis()
     if not ids or parsuj_date(data) == datetime.min.date():
@@ -348,17 +488,26 @@ def oznacz_wykonane_do_zrobienia(pozycja_ids, dane) -> dict[str, Any] | None:
     przebieg = _calkowita(dane.get("przebieg"))
     notatka = przytnij_notatke(dane.get("notatka")) or None
     powiazany = bool(dane.get("powiazany", True))
+    # Podzespół wybrany w oknie (tylko jedna pozycja); _BRAK — ten, który pozycja ma.
+    wybor = _calkowita(dane.get("zadanie_id")) if jeden and "zadanie_id" in dane else _BRAK
+    nowa_nazwa = normalizuj_nazwe(dane.get("nowy_podzespol")) if jeden and powiazany else ""
+    if wybor not in (_BRAK, None) and not nowa_nazwa:
+        with polacz_baze() as conn:
+            if not conn.execute("SELECT 1 FROM zadania WHERE id=? AND auto_id=?", (wybor, auto_id)).fetchone():
+                return None  # podzespół zniknął (drugi telefon) — nie zapisujemy w ciemno do Innych kosztów
     ja = pobierz_moje_imie() or None
     podpis = datetime.now().strftime("%d.%m.%Y %H:%M")
     # Wpis serwisowy bez licznika liczyłby interwał od zera — wtedy licznik z historii.
     przebieg_serwisu = przebieg or szacuj_przebieg_w_dniu(auto_id, data) or pobierz_aktualny_przebieg(auto_id) or 0
     do_kosza = {"historia": [], "inne_koszty": []}
-    wynik = {"liczba": 0, "serwis": 0, "koszty": 0, "do_kosza": 0}
+    wynik = {"liczba": 0, "serwis": 0, "koszty": 0, "do_kosza": 0, "podzespol": None, "nowy_podzespol": False}
 
     with polacz_baze() as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         sezon = _sezon_opon(c, auto_id)
+        if nowa_nazwa:
+            wybor, wynik["nowy_podzespol"] = _zapewnij_podzespol(c, auto_id, nowa_nazwa)
         for r in wiersze:
             poprawka = bool(r["wykonane"])
             if poprawka and (r["w_id"] is not None or r["h_wizyta"] is not None):
@@ -366,25 +515,32 @@ def oznacz_wykonane_do_zrobienia(pozycja_ids, dane) -> dict[str, Any] | None:
             koszt = _kwota(dane.get("koszt")) if jeden else _kwota(r["szacowany_koszt"])
             hid = r["h_id"]
             kid = r["k_id"]
-            if powiazany and r["zadanie_id"]:
+            zadanie_id = r["zadanie_id"] if wybor is _BRAK else wybor
+            if powiazany and zadanie_id:
+                opony = r["zadanie_opony"] if zadanie_id == r["zadanie_id"] else bool(c.execute(
+                    "SELECT dotyczy_opon FROM zadania WHERE id=?", (zadanie_id,)).fetchone()[0])
                 if hid:
+                    if r["h_zadanie"] != zadanie_id:  # inny podzespół — wpis przechodzi pod niego z plikami i częściami
+                        c.execute("UPDATE historia SET zadanie_id=?, kategoria=? WHERE id=?",
+                                  (zadanie_id, sezon if opony else None, hid))
                     c.execute("UPDATE historia SET data=?, data_iso=?, przebieg=?, cena=?, zmodyfikowane_przez=?, "
                               "data_modyfikacji=? WHERE id=?",
                               (data, na_iso(data), przebieg_serwisu, koszt or 0.0, ja, podpis, hid))
                 else:
-                    rodzaj = domyslny_rodzaj_serwisu([r["zadanie_id"]], conn=conn)
+                    rodzaj = domyslny_rodzaj_serwisu([zadanie_id], conn=conn)
                     hid = c.execute(
                         "INSERT INTO historia (wizyta_id, zadanie_id, data, data_iso, przebieg, cena, wykonawca, "
                         "kategoria, rodzaj, dodane_przez, notatka, notatka_autor, notatka_data) "
                         "VALUES (NULL,?,?,?,?,?,'',?,?,?,?,?,?)",
-                        (r["zadanie_id"], data, na_iso(data), przebieg_serwisu, koszt or 0.0,
-                         sezon if r["zadanie_opony"] else None, rodzaj, ja, notatka,
+                        (zadanie_id, data, na_iso(data), przebieg_serwisu, koszt or 0.0,
+                         sezon if opony else None, rodzaj, ja, notatka,
                          ja if notatka else None, podpis if notatka else None)).lastrowid
                 wynik["serwis"] += 1
+                wynik["podzespol"] = _nazwa_zadania(c, zadanie_id)
             elif hid:
                 do_kosza["historia"].append(hid)
                 hid = None
-            if powiazany and not r["zadanie_id"] and koszt:
+            if powiazany and not zadanie_id and koszt:
                 if kid:
                     c.execute("UPDATE inne_koszty SET data=?, data_iso=?, nazwa=?, kwota=?, zmodyfikowane_przez=?, "
                               "data_modyfikacji=? WHERE id=?", (data, na_iso(data), r["tytul"], koszt, ja, podpis, kid))
@@ -399,13 +555,14 @@ def oznacz_wykonane_do_zrobienia(pozycja_ids, dane) -> dict[str, Any] | None:
                 do_kosza["inne_koszty"].append(kid)
                 kid = None
             c.execute("UPDATE do_zrobienia SET wykonane=1, data_wykonania=?, przebieg_wykonania=?, koszt_wykonania=?, "
-                      "notatka_wykonania=?, wykonane_przez=?, historia_id=?, koszt_id=? WHERE id=?",
+                      "notatka_wykonania=?, wykonane_przez=?, historia_id=?, koszt_id=?, zadanie_id=? WHERE id=?",
                       (data, przebieg, koszt, notatka, (r["wykonane_przez"] if poprawka else None) or ja,
-                       hid, kid, r["id"]))
+                       hid, kid, zadanie_id, r["id"]))
             zanotuj_zdarzenie_do_zrobienia(
                 conn, r["id"], ZDARZENIE_POPRAWKA if poprawka else ZDARZENIE_WYKONANO,
                 {"data": data, "przebieg": przebieg, "koszt": koszt, "notatka": notatka,
-                 "serwis": bool(hid), "inny_koszt": bool(kid)}, ja)
+                 "serwis": bool(hid), "inny_koszt": bool(kid),
+                 "podzespol": _nazwa_zadania(c, zadanie_id) if hid else None}, ja)
             wynik["liczba"] += 1
 
     # Powiązanie zdjęte wyżej, więc kosz nie zapamięta odwołania z pozycji.
@@ -415,6 +572,41 @@ def oznacz_wykonane_do_zrobienia(pozycja_ids, dane) -> dict[str, Any] | None:
     if wynik["serwis"] or do_kosza["historia"]:
         przelicz_wszystkie_zadania(auto_id)
     return wynik if wynik["liczba"] else None
+
+
+def wymiana_z_do_zrobienia(pozycja_id, historia_id) -> dict[str, Any] | None:
+    """Wymiana zapisana pełnym formularzem z pozycji (aktywnej albo wykonanej): pozycja idzie do
+    Wykonanych z odnośnikiem do wpisu i jego podzespołem; wcześniejszy wpis albo Inny koszt
+    jej wykonania — do kosza wpisów. Wynik {poprawka, do_kosza, podzespol} albo None."""
+    pozycja = pozycja_do_zrobienia(pozycja_id)
+    if not pozycja or not historia_id or pozycja["w_wizycie"] or not czy_moge_dodawac(pozycja["auto_id"]):
+        return None
+    poprawka = pozycja["wykonane"]
+    stare = [("inne_koszty", pozycja["koszt_id"])] if pozycja["koszt_id"] else []
+    if pozycja["historia_id"] and pozycja["historia_id"] != historia_id:
+        stare.append(("historia", pozycja["historia_id"]))
+    ja = pobierz_moje_imie() or None
+    with polacz_baze() as conn:
+        conn.row_factory = sqlite3.Row
+        h = conn.execute("SELECT h.zadanie_id, h.data, h.przebieg, h.cena, h.notatka, z.nazwa FROM historia h "
+                         "JOIN zadania z ON z.id = h.zadanie_id WHERE h.id=? AND z.auto_id=? AND h.wizyta_id IS NULL",
+                         (historia_id, pozycja["auto_id"])).fetchone()
+        if h is None:
+            return None
+        notatka = h["notatka"] or (pozycja["notatka_wykonania"] if poprawka else None)
+        przebieg, koszt = _calkowita(h["przebieg"]), _kwota(h["cena"])
+        # Odwołania zdjęte PRZED koszem — inaczej przywrócony koszt przykleiłby się do pozycji.
+        conn.execute("UPDATE do_zrobienia SET wykonane=1, data_wykonania=?, przebieg_wykonania=?, koszt_wykonania=?, "
+                     "notatka_wykonania=?, wykonane_przez=?, historia_id=?, koszt_id=NULL, zadanie_id=? WHERE id=?",
+                     (h["data"], przebieg, koszt, notatka, (pozycja["wykonane_przez"] if poprawka else None) or ja,
+                      historia_id, h["zadanie_id"], pozycja_id))
+        zanotuj_zdarzenie_do_zrobienia(conn, pozycja_id, ZDARZENIE_POPRAWKA if poprawka else ZDARZENIE_WYKONANO,
+                                       {"data": h["data"], "przebieg": przebieg, "koszt": koszt, "notatka": notatka,
+                                        "serwis": True, "inny_koszt": False, "podzespol": h["nazwa"]}, ja)
+    usuniete = sum(1 for tabela, rekord_id in stare if usun_do_kosza(tabela, [rekord_id]))
+    if any(tabela == "historia" for tabela, _ in stare):
+        przelicz_wszystkie_zadania(pozycja["auto_id"])
+    return {"poprawka": poprawka, "do_kosza": usuniete, "podzespol": h["nazwa"]}
 
 
 def cofnij_wykonanie_do_zrobienia(pozycja_id) -> dict[str, Any] | None:
@@ -472,14 +664,21 @@ __all__ = [
     "ZDARZENIE_ZMIANA",
     "ZDARZENIE_ZWROT",
     "cofnij_wykonanie_do_zrobienia",
+    "dotyczy_opon_z_tytulu",
+    "nazwa_podzespolu_z_tytulu",
     "oznacz_wykonane_do_zrobienia",
     "pobierz_pozycje_do_zrobienia",
     "pobierz_zdarzenia_do_zrobienia",
+    "podzespoly_dla_pozycji",
+    "powiaz_pozycje_z_podzespolem",
     "pozycja_do_zrobienia",
+    "pozycje_do_zrobienia_podzespolow",
+    "pozycje_do_zrobienia_wpisow",
     "przesun_termin_do_zrobienia",
     "stan_terminu_przebiegowego",
     "termin_po_przesunieciu",
     "usun_zdarzenia_do_zrobienia",
+    "wymiana_z_do_zrobienia",
     "zanotuj_zdarzenie_do_zrobienia",
     "zapisz_pozycje_do_zrobienia",
 ]

@@ -1,5 +1,6 @@
-"""Do zrobienia na ekranie: okno „Wykonano”, przesuwanie terminu, termin przebiegowy na
-karcie, szczegóły pozycji i opis wpisów jej dziennika."""
+"""Do zrobienia na ekranie: okno „Wykonano” (z wyborem części Serwisu), przesuwanie terminu,
+termin przebiegowy na karcie, szczegóły pozycji, opis wpisów jej dziennika i powiązanie
+z Serwisem (wybór podzespołu, pola pełnego formularza wymiany, znacznik na karcie)."""
 
 from datetime import datetime
 
@@ -8,9 +9,10 @@ import flet as ft
 import db
 
 from .stale import FS, KOLOR_STATUS, SPACING, formatuj_liczba
-from .format import formatuj_dystans, jednostka_dystansu, kolor_i_tekst_terminu, parsuj_float, symbol_waluty
-from .typografia import etykieta, podpis, pole
-from .dialogi import otworz_dialog, pokaz_komunikat, pokaz_menu_kontekstowe, zamknij_dialog
+from .format import (formatuj_dystans, jednostka_dystansu, kolor_i_tekst_terminu, parsuj_float, parsuj_int,
+                     symbol_waluty)
+from .typografia import etykieta, podpis, pole, wartosc
+from .dialogi import otworz_dialog, pokaz_komunikat, pokaz_menu_kontekstowe, przejdz, zamknij_dialog
 from .zgodnosc import ustaw_blad
 from .sync_ui import zablokowane
 from .formularze import na_cala_szerokosc, pole_daty, pole_wyboru, sprawdz_podejrzany_przebieg, styl_pola
@@ -31,6 +33,10 @@ IKONY_ZDARZEN_DO_ZROBIENIA = {
 }
 
 KOLORY_PRIORYTETU = {"Wysoki": "critical", "Średni": "warning", "Niski": "info"}
+
+# Gdzie okno „Wykonano” zapisze jedną pozycję; podzespół Serwisu to "z:<id>".
+CEL_NOWY, CEL_INNE, CEL_BRAK = "nowy", "inne", "brak"
+_NAPISY_CELU = {CEL_NOWY: "Serwis: nowy podzespół", CEL_INNE: "Inne koszty", CEL_BRAK: "Nigdzie — tylko odhacz"}
 
 _NAZWY_POL = {"tytul": "nazwa", "opis": "szczegóły", "priorytet": "priorytet", "szacowany_koszt": "szacunek",
               "zadanie_id": "podzespół"}
@@ -104,9 +110,11 @@ def opis_zdarzenia_do_zrobienia(zdarzenie, j=None):
     """Treść wpisu dziennika z jego `dane` — w walucie i jednostce dystansu czytającego."""
     rodzaj, d = zdarzenie.get("rodzaj"), zdarzenie.get("dane") or {}
     if rodzaj in (db.ZDARZENIE_WYKONANO, db.ZDARZENIE_POPRAWKA):
+        serwis = (f"wpis w serwisie: {d['podzespol']}" if d.get("podzespol") else "wpis w serwisie") \
+            if d.get("serwis") else None
         czesci = [d.get("data"), formatuj_dystans(d["przebieg"], 0, j) if d.get("przebieg") else None,
                   _kwota(d["koszt"]) if d.get("koszt") else None,
-                  "wpis w serwisie" if d.get("serwis") else None, "w Innych kosztach" if d.get("inny_koszt") else None]
+                  serwis, "w Innych kosztach" if d.get("inny_koszt") else None]
         tekst = " · ".join(c for c in czesci if c)
         return f"{tekst} — „{d['notatka']}”" if d.get("notatka") else tekst
     if rodzaj == db.ZDARZENIE_TERMIN:
@@ -197,7 +205,8 @@ def szczegoly_pozycji_do_zrobienia(pozycja, wspolny=False, j=None):
         if pozycja["wizyta_id"]:
             powiazania.append((ft.Icons.HOME_REPAIR_SERVICE, f"W wizycie z {pozycja['wizyta_data']}"))
         elif pozycja["historia_id"]:
-            powiazania.append((ft.Icons.BUILD, "Dopisane do serwisu"))
+            powiazania.append((ft.Icons.BUILD, f"Dopisane do serwisu: {pozycja['zadanie_nazwa']}"
+                               if pozycja["zadanie_nazwa"] else "Dopisane do serwisu"))
         if pozycja["koszt_id"]:
             powiazania.append((ft.Icons.RECEIPT_LONG, "W Innych kosztach"))
         if wspolny and pozycja["wykonane_przez"]:
@@ -219,6 +228,130 @@ def historia_pozycji_do_zrobienia(pozycja, zdarzenia, j=None):
         [wiersz_zdarzenia_do_zrobienia(z, j) for z in zdarzenia]
 
 
+# ---------------------------------------------------------------- powiązanie z Serwisem
+
+
+def pozycja_z_trasy(segmenty):
+    """Id pozycji z trasy formularza otwartego z Do zrobienia („…/do-zrobienia/12”) albo None."""
+    if "do-zrobienia" in segmenty[1:]:
+        i = segmenty.index("do-zrobienia", 1)
+        if i + 1 < len(segmenty):
+            return parsuj_int(segmenty[i + 1], None)
+    return None
+
+
+def wykonanie_z_okna(state, pozycja_id):
+    """Dzień, licznik, koszt, notatka i nazwa podzespołu wpisane w oknie „Wykonano” przed
+    przejściem do pełnego formularza — zużywane raz; {} dla innej pozycji albo auta."""
+    wstepne = getattr(state, "wykonanie_do_zrobienia", None)
+    state.wykonanie_do_zrobienia = None
+    if not wstepne or wstepne.get("pozycja_id") != pozycja_id or wstepne.get("auto_id") != getattr(state, "auto_id", None):
+        return {}
+    return dict(wstepne)
+
+
+def pola_wymiany_z_pozycji(state, pozycja):
+    """Pola wymiany zapisywanej z pozycji: wpisane w oknie „Wykonano”, inaczej wykonanie pozycji
+    albo dziś z licznikiem z historii i szacunkiem; `z_okna` — przyszły z okna."""
+    wstepne = wykonanie_z_okna(state, pozycja["id"])
+    zrobione = pozycja["wykonane"]
+    data = wstepne.get("data") or (pozycja["data_wykonania"] if zrobione else None) or datetime.now().strftime("%d.%m.%Y")
+    km = wstepne.get("przebieg") or (pozycja["przebieg_wykonania"] if zrobione else None) or \
+        db.szacuj_przebieg_w_dniu(pozycja["auto_id"], data) or db.pobierz_aktualny_przebieg(pozycja["auto_id"]) or None
+    koszt = wstepne["koszt"] if wstepne.get("koszt") is not None else \
+        (pozycja["koszt_wykonania"] if zrobione else pozycja["szacowany_koszt"])
+    notatka = wstepne.get("notatka") or (pozycja["notatka_wykonania"] if zrobione else pozycja["opis"]) or ""
+    return {"data": data, "przebieg": km, "koszt": koszt, "notatka": db.przytnij_notatke(notatka) or "",
+            "nazwa": wstepne.get("nazwa") or db.nazwa_podzespolu_z_tytulu(pozycja["tytul"]), "z_okna": bool(wstepne)}
+
+
+def _powiazany_podzespol(pozycja):
+    """Podzespół, pod którym pozycja jest albo będzie: wpisu jej wykonania, inaczej własny."""
+    if pozycja["wykonane"]:
+        return pozycja["zadanie_wpisu"] if pozycja["historia_id"] else None
+    return pozycja["zadanie_id"]
+
+
+def pokaz_wybor_podzespolu(page: ft.Page, auto_id, pozycja, po_wyborze, tytul="Dopisz do serwisu",
+                           z_kosztami=False, wybrany=None):
+    """Arkusz z podzespołami pojazdu (powiązany i pasujące do tytułu na górze) i „Nowy podzespół…”;
+    `z_kosztami` dokłada Inne koszty i „tylko odhacz”. `po_wyborze(cel)`: "z:<id>" albo CEL_*."""
+    podzespoly = db.podzespoly_dla_pozycji(auto_id, pozycja["tytul"], zadanie_id=_powiazany_podzespol(pozycja))
+    na_gorze = [z for z in podzespoly if z["pasuje"] or z["id"] == _powiazany_podzespol(pozycja)]
+
+    def pozycja_menu(cel, ikona, tekst):
+        biezacy = cel == wybrany
+        return {"ikona": ft.Icons.CHECK if biezacy else ikona, "tekst": tekst, "akcja": lambda: po_wyborze(cel),
+                "kolor": ft.Colors.PRIMARY if biezacy else None}
+
+    akcje = [pozycja_menu(f"z:{z['id']}", ft.Icons.BUILD, z["nazwa"]) for z in na_gorze]
+    akcje.append(pozycja_menu(CEL_NOWY, ft.Icons.ADD_CIRCLE_OUTLINE, "Nowy podzespół…"))
+    if z_kosztami:
+        akcje += [pozycja_menu(CEL_INNE, ft.Icons.RECEIPT_LONG, _NAPISY_CELU[CEL_INNE]),
+                  pozycja_menu(CEL_BRAK, ft.Icons.TASK_ALT, _NAPISY_CELU[CEL_BRAK])]
+    akcje += [pozycja_menu(f"z:{z['id']}", ft.Icons.BUILD, z["nazwa"]) for z in podzespoly if z not in na_gorze]
+    opis = ("Na górze części pasujące do tytułu pozycji." if any(z["pasuje"] for z in podzespoly)
+            else "Wybierz część z Serwisu albo załóż nowy podzespół.")
+    pokaz_menu_kontekstowe(page, tytul, akcje, tresc=[podpis(opis, max_lines=2)])
+
+
+def wiersz_do_zrobienia_podzespolu(pozycje, j=None):
+    """Wiersz karty podzespołu w Serwisie: czeka na niego pozycja w Do zrobienia (termin, gdy jest)."""
+    if not pozycje:
+        return None
+    if len(pozycje) > 1:
+        tekst = f"Zaplanowane w Do zrobienia: {db.liczba_z_odmiana(len(pozycje), 'pozycja', 'pozycje', 'pozycji')}"
+    else:
+        p = pozycje[0]
+        kiedy = p["termin"] or (_przy(p["termin_przebieg"], j) if p["termin_przebieg"] else "")
+        tekst = "Zaplanowane w Do zrobienia" + (f" · {kiedy}" if kiedy else "")
+    return ft.Row([ft.Icon(ft.Icons.PENDING_ACTIONS, size=16, color=KOLOR_STATUS["info"]),
+                   podpis(tekst, max_lines=2, expand=True)], spacing=SPACING["sm"])
+
+
+def wiersz_z_listy_do_zrobienia(tytul):
+    """Ślad na karcie wpisu w historii podzespołu: wymiana zapisana z pozycji Do zrobienia."""
+    return ft.Row([ft.Icon(ft.Icons.CHECKLIST_RTL, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                   podpis(f"Z listy Do zrobienia: „{tytul}”", max_lines=2, expand=True)], spacing=SPACING["xs"])
+
+
+def wiersz_pozycji_w_formularzu(pozycja, podzespol=False):
+    """Dopisek nad formularzem otwartym z pozycji: skąd przyszła i co się z nią stanie po zapisie
+    (`podzespol` — formularz nowego podzespołu, gdzie wymiana jest do wyboru)."""
+    if pozycja["wykonane"]:
+        tekst = f"Wykonana pozycja „{pozycja['tytul']}” przejdzie do Serwisu" + \
+            (" — jej Inny koszt trafi do kosza." if pozycja["koszt_id"] else ".")
+    elif podzespol:
+        tekst = (f"Z listy Do zrobienia: „{pozycja['tytul']}”. Z wymianą pozycja trafi do Wykonanych, "
+                 "bez niej poczeka na liście przy nowym podzespole.")
+    else:
+        tekst = f"Z listy Do zrobienia: „{pozycja['tytul']}”. Po zapisie pozycja trafi do Wykonanych."
+    return ft.Row([ft.Icon(ft.Icons.CHECKLIST_RTL, size=18, color=KOLOR_STATUS["info"]),
+                   podpis(tekst, max_lines=3, expand=True)], spacing=SPACING["sm"],
+                  vertical_alignment=ft.CrossAxisAlignment.START)
+
+
+def _cel_poczatkowy(pozycja, podzespoly):
+    """(cel na start, czy to podpowiedź z tytułu): podzespół pozycji albo jej wpisu, pewna
+    podpowiedź; przy poprawce to, co wykonanie już ma; inaczej Inne koszty (jak dotąd)."""
+    powiazany = _powiazany_podzespol(pozycja)
+    if powiazany:
+        return f"z:{powiazany}", False
+    if pozycja["wykonane"]:
+        return (CEL_INNE if pozycja["koszt_id"] else CEL_BRAK), False
+    pewny = next((z for z in podzespoly if z["pewne"]), None)
+    return (f"z:{pewny['id']}", True) if pewny else (CEL_INNE, False)
+
+
+def _opis_celu(cel, podpowiedz=False):
+    if cel.startswith("z:"):
+        return ("Podpowiedź z tytułu pozycji. " if podpowiedz else "") + \
+            "Wymiana liczy interwał podzespołu od tego dnia i licznika."
+    return {CEL_NOWY: "W Serwisie powstanie podzespół, a ta wymiana będzie w nim pierwsza.",
+            CEL_INNE: "Z kwotą powstanie Inny koszt w kategorii Ogólne.",
+            CEL_BRAK: "Bez wpisu w Serwisie i w kosztach."}[cel]
+
+
 # ---------------------------------------------------------------- okna
 
 
@@ -230,7 +363,10 @@ def komunikat_wykonania(wynik, poprawka=False):
     else:
         tekst = "Oznaczono jako wykonane."
     if (wynik or {}).get("serwis"):
-        tekst += " Wpis jest w historii serwisowej."
+        nazwa = wynik.get("podzespol") if wynik.get("liczba") == 1 else None
+        tekst += f" Wpis jest w historii serwisowej ({nazwa})." if nazwa else " Wpis jest w historii serwisowej."
+    if (wynik or {}).get("nowy_podzespol"):
+        tekst += " Podzespół założony w Serwisie."
     if (wynik or {}).get("koszty"):
         tekst += " Koszt dopisano do Innych kosztów."
     if (wynik or {}).get("do_kosza"):
@@ -238,11 +374,11 @@ def komunikat_wykonania(wynik, poprawka=False):
     return tekst
 
 
-def okno_wykonania(page: ft.Page, auto_id, pozycje, po_zapisie=None):
+def okno_wykonania(page: ft.Page, auto_id, pozycje, po_zapisie=None, state=None):
     """Okno „Wykonano” dla jednej albo kilku pozycji (słowniki z db.pobierz_pozycje_do_zrobienia):
-    data (dziś), licznik z historii licznika na ten dzień, faktyczny koszt (jedna pozycja),
-    notatka, dopisanie do serwisu albo Innych kosztów. Wykonana pozycja — poprawka.
-    `po_zapisie(wynik, poprawka)` po udanym zapisie."""
+    data (dziś), licznik z historii licznika na ten dzień, faktyczny koszt i „Zapisz w” (część
+    Serwisu, nowy podzespół, Inne koszty, nigdzie — jedna pozycja), notatka. Wykonana pozycja —
+    poprawka. Ze `state` — przycisk „Pełny formularz wymiany”. `po_zapisie(wynik, poprawka)`."""
     pozycje = [p for p in pozycje or [] if p]
     if not pozycje or zablokowane(page, auto_id):
         return None
@@ -278,25 +414,67 @@ def okno_wykonania(page: ft.Page, auto_id, pozycje, po_zapisie=None):
                              **styl_pola())
     pola.append(na_cala_szerokosc(e_notatka))
 
-    z_podzespolem = any(p["zadanie_id"] for p in pozycje)
-    if jedna and jedna["zadanie_id"]:
-        tekst_chk = f"Dopisz do serwisu: {jedna['zadanie_nazwa'] or 'podzespół'}"
-        wartosc_chk = bool(jedna["historia_id"]) if poprawka else True
-    elif jedna:
-        tekst_chk = "Dopisz koszt do Innych kosztów"
-        wartosc_chk = bool(jedna["koszt_id"]) if poprawka else True
+    chk = e_nowa = None
+    if jedna:
+        # „Zapisz w”: napis zamiast listy rozwijanej — długa nazwa podzespołu zawija się,
+        # a wybór idzie z arkusza (pokaz_wybor_podzespolu).
+        podzespoly = db.podzespoly_dla_pozycji(auto_id, jedna["tytul"], zadanie_id=_powiazany_podzespol(jedna))
+        nazwy = {f"z:{z['id']}": z["nazwa"] for z in podzespoly}
+        stan["cel"], stan["podpowiedz"] = _cel_poczatkowy(jedna, podzespoly)
+        t_celu, t_opisu = wartosc("", max_lines=3), podpis("", max_lines=3)
+        e_nowa = ft.TextField(label="Nazwa podzespołu", value=db.nazwa_podzespolu_z_tytulu(jedna["tytul"]),
+                              **styl_pola())
+        w_nowej = na_cala_szerokosc(e_nowa)
+        b_pelny = ft.TextButton(content="Pełny formularz wymiany", icon=ft.Icons.OPEN_IN_NEW,
+                                on_click=lambda e: pelny_formularz())
+
+        def pokaz_cel():
+            cel = stan["cel"]
+            t_celu.value = f"Serwis: {nazwy.get(cel, 'podzespół')}" if cel.startswith("z:") else _NAPISY_CELU[cel]
+            t_opisu.value = _opis_celu(cel, stan["podpowiedz"])
+            w_nowej.visible = cel == CEL_NOWY
+            # Wpis, który już jest, poprawia się w Serwisie („Otwórz wpis serwisowy”).
+            b_pelny.visible = state is not None and (cel.startswith("z:") or cel == CEL_NOWY) and not (
+                poprawka and jedna["historia_id"])
+
+        def wybierz(cel):
+            stan["cel"], stan["podpowiedz"] = cel, False
+            pokaz_cel()
+            page.update()
+
+        pokaz_cel()
+        pola += [
+            ft.Row([ft.Column([etykieta("Zapisz w"), t_celu], spacing=2, expand=True),
+                    ft.TextButton(content="Zmień", on_click=lambda e: pokaz_wybor_podzespolu(
+                        page, auto_id, jedna, wybierz, "Zapisz w", z_kosztami=True, wybrany=stan["cel"]))],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            t_opisu, w_nowej, b_pelny,
+        ]
     else:
-        tekst_chk = "Dopisz do serwisu i Innych kosztów (koszt to szacunek)"
-        wartosc_chk = True
-    chk = ft.Checkbox(label=tekst_chk, value=wartosc_chk)
-    pola.append(pole_wyboru(chk))
-    if z_podzespolem:
-        pola.append(podpis("Wpis serwisowy liczy interwał podzespołu od tego dnia i licznika.", max_lines=3))
+        chk = ft.Checkbox(label="Dopisz do serwisu i Innych kosztów (koszt to szacunek)", value=True)
+        pola.append(pole_wyboru(chk))
+        if any(p["zadanie_id"] for p in pozycje):
+            pola.append(podpis("Wpis serwisowy liczy interwał podzespołu od tego dnia i licznika.", max_lines=3))
+
+    def pelny_formularz():
+        """Do pełnego formularza wymiany (albo nowego podzespołu) z tym, co już wpisane w oknie."""
+        km = db.dystans_na_km(e_przebieg.value, calkowity=True, km_przy_otwarciu=km_pocz) \
+            if (e_przebieg.value or "").strip() else None
+        koszt = parsuj_float(e_koszt.value, None) if (e_koszt.value or "").strip() else None
+        state.wykonanie_do_zrobienia = {
+            "pozycja_id": jedna["id"], "auto_id": auto_id, "data": (e_data.value or "").strip() or None,
+            "przebieg": km if km and km > 0 else None, "koszt": koszt if koszt is not None and koszt >= 0 else None,
+            "notatka": (e_notatka.value or "").strip(), "nazwa": (e_nowa.value or "").strip()}
+        zamknij_dialog(page, dlg)
+        cel = stan["cel"]
+        przejdz(page, f"/wpis/nowy/{cel[2:]}/do-zrobienia/{jedna['id']}" if cel.startswith("z:")
+                else f"/zadanie/nowy/do-zrobienia/{jedna['id']}")
 
     def zapisz(e):
-        for kontrolka in (e_data, e_przebieg, e_koszt):
+        for kontrolka in (e_data, e_przebieg, e_koszt, e_nowa):
             if kontrolka:
                 ustaw_blad(kontrolka)
+        cel = stan.get("cel")
         data = (e_data.value or "").strip()
         bledy = [] if data else [(e_data, "Wybierz dzień wykonania")]
         km = None
@@ -304,7 +482,10 @@ def okno_wykonania(page: ft.Page, auto_id, pozycje, po_zapisie=None):
             km = db.dystans_na_km(e_przebieg.value, calkowity=True, km_przy_otwarciu=km_pocz)
             if not km or km <= 0:
                 bledy.append((e_przebieg, "Podaj poprawny stan licznika"))
-        serwis = bool(chk.value) and z_podzespolem
+        if jedna:
+            serwis = cel.startswith("z:") or cel == CEL_NOWY
+        else:
+            serwis = bool(chk.value) and any(p["zadanie_id"] for p in pozycje)
         if serwis and not km and not bledy:
             bledy.append((e_przebieg, "Wpis serwisowy potrzebuje stanu licznika"))
         koszt = None
@@ -312,6 +493,9 @@ def okno_wykonania(page: ft.Page, auto_id, pozycje, po_zapisie=None):
             koszt = parsuj_float(e_koszt.value, None)
             if koszt is None or koszt < 0:
                 bledy.append((e_koszt, "Podaj poprawny koszt"))
+        nazwa_nowego = (e_nowa.value or "").strip() if cel == CEL_NOWY else ""
+        if cel == CEL_NOWY and not nazwa_nowego:
+            bledy.append((e_nowa, "Podaj nazwę podzespołu"))
         if bledy:
             for kontrolka, komunikat in bledy:
                 ustaw_blad(kontrolka, komunikat)
@@ -321,8 +505,15 @@ def okno_wykonania(page: ft.Page, auto_id, pozycje, po_zapisie=None):
                                                   wyklucz_id=jedna["historia_id"] if poprawka else None,
                                                   tabela="historia", nowa_data_str=data):
             return
-        wynik = db.oznacz_wykonane_do_zrobienia([p["id"] for p in pozycje], {
-            "data": data, "przebieg": km, "koszt": koszt, "notatka": e_notatka.value, "powiazany": bool(chk.value)})
+        dane = {"data": data, "przebieg": km, "koszt": koszt, "notatka": e_notatka.value,
+                "powiazany": cel != CEL_BRAK if jedna else bool(chk.value)}
+        if jedna and cel.startswith("z:"):
+            dane["zadanie_id"] = int(cel[2:])
+        elif cel == CEL_INNE:
+            dane["zadanie_id"] = None
+        elif cel == CEL_NOWY:
+            dane["nowy_podzespol"] = nazwa_nowego
+        wynik = db.oznacz_wykonane_do_zrobienia([p["id"] for p in pozycje], dane)
         zamknij_dialog(page, dlg)
         if not wynik:
             pokaz_komunikat(page, "Nie zapisano wykonania: pozycji już nie ma albo nie masz do niej uprawnień.",
@@ -391,6 +582,9 @@ def okno_przesuniecia_terminu(page: ft.Page, pozycja, po_zmianie=None):
 
 
 __all__ = [
+    "CEL_BRAK",
+    "CEL_INNE",
+    "CEL_NOWY",
     "IKONY_ZDARZEN_DO_ZROBIENIA",
     "KOLORY_PRIORYTETU",
     "chip_priorytetu",
@@ -402,8 +596,15 @@ __all__ = [
     "okno_wykonania",
     "opis_terminu_przebiegowego",
     "opis_zdarzenia_do_zrobienia",
+    "pokaz_wybor_podzespolu",
+    "pola_wymiany_z_pozycji",
+    "pozycja_z_trasy",
     "szczegoly_pozycji_do_zrobienia",
     "tekst_wykonania",
     "termin_przebiegowy_karty",
+    "wiersz_do_zrobienia_podzespolu",
+    "wiersz_pozycji_w_formularzu",
+    "wiersz_z_listy_do_zrobienia",
     "wiersz_zdarzenia_do_zrobienia",
+    "wykonanie_z_okna",
 ]

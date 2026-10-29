@@ -694,9 +694,13 @@ def main(page: ft.Page):
         elif segmenty[0] == "wpis":
             if len(segmenty) >= 3 and segmenty[1] == "nowy":
                 z_id = utils.parsuj_int(segmenty[2], None)
-                if z_id:
+                # Wymiana z pozycji Do zrobienia (/wpis/nowy/<z>/do-zrobienia/<p>) ma pod spodem listę.
+                pozycja_id = utils.pozycja_z_trasy(segmenty)
+                if pozycja_id:
+                    page.views.append(DoZrobieniaView(page, app_state))
+                elif z_id:
                     page.views.append(HistoriaView(page, app_state, z_id))
-                page.views.append(FormularzWpisView(page, app_state, None, z_id))
+                page.views.append(FormularzWpisView(page, app_state, None, z_id, pozycja_id=pozycja_id))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 h_id = utils.parsuj_int(segmenty[2], None)
                 z_id_nadrzedny = None
@@ -712,7 +716,10 @@ def main(page: ft.Page):
         elif segmenty[0] == "interwal" and len(segmenty) >= 2:
             page.views.append(FormularzInterwalView(page, app_state, utils.parsuj_int(segmenty[1], None)))
         elif segmenty[0] == "zadanie" and len(segmenty) >= 2 and segmenty[1] == "nowy":
-            page.views.append(FormularzZadanieView(page, app_state, None))
+            pozycja_id = utils.pozycja_z_trasy(segmenty)  # /zadanie/nowy/do-zrobienia/<p>
+            if pozycja_id:
+                page.views.append(DoZrobieniaView(page, app_state))
+            page.views.append(FormularzZadanieView(page, app_state, None, pozycja_id=pozycja_id))
         elif segmenty[0] == "zadanie" and len(segmenty) >= 3 and segmenty[1] == "edytuj":
             page.views.append(FormularzZadanieView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "magazyn":
@@ -901,9 +908,13 @@ def main(page: ft.Page):
             # Z dziennika życia auta: wykonane zadanie otwiera podzakładkę Wykonane.
             if len(segmenty) >= 2 and segmenty[1] == "wykonane":
                 app_state.do_zrobienia_podzakladka = 2
-            page.views.append(DoZrobieniaView(page, app_state))
+            # Pozycja planowana z karty podzespołu (/do-zrobienia/nowe/podzespol/<id>) wraca do Serwisu.
+            zadanie_id = utils.parsuj_int(segmenty[3], None) \
+                if len(segmenty) >= 4 and segmenty[1] == "nowe" and segmenty[2] == "podzespol" else None
+            if not zadanie_id:
+                page.views.append(DoZrobieniaView(page, app_state))
             if len(segmenty) >= 2 and segmenty[1] == "nowe":
-                page.views.append(FormularzDoZrobieniaView(page, app_state, None))
+                page.views.append(FormularzDoZrobieniaView(page, app_state, None, zadanie_id=zadanie_id))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 page.views.append(FormularzDoZrobieniaView(page, app_state, utils.parsuj_int(segmenty[2], None)))
 

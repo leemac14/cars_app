@@ -8,11 +8,16 @@ from datetime import datetime
 
 
 class FormularzWpisView(ft.View):
-    def __init__(self, page: ft.Page, state, h_id=None, z_id_param=None):
+    def __init__(self, page: ft.Page, state, h_id=None, z_id_param=None, pozycja_id=None):
         self._page = page
         self.state = state
         self.h_id = h_id
         self.z_id = z_id_param
+        # Wymiana z pozycji Do zrobienia (/wpis/nowy/<z>/do-zrobienia/<p>): pola z pozycji albo
+        # z okna „Wykonano”, po zapisie pozycja idzie do Wykonanych (db.wymiana_z_do_zrobienia).
+        self.pozycja = db.pozycja_do_zrobienia(pozycja_id) if pozycja_id and not h_id else None
+        if self.pozycja and (self.pozycja["w_wizycie"] or self.pozycja["auto_id"] != state.auto_id):
+            self.pozycja = None
 
         if h_id:
             with db.polacz_baze() as conn:
@@ -32,6 +37,8 @@ class FormularzWpisView(ft.View):
                     nazwa = str(w[0])
                     czy_opony = bool(w[1])
         self.trasa_powrotu = f"/historia/{self.z_id}" if self.z_id else "/"
+        if self.pozycja:
+            self.trasa_powrotu = "/do-zrobienia/wykonane" if self.pozycja["wykonane"] else "/do-zrobienia"
 
         d_val, w_val, kat_val = datetime.now().strftime("%d.%m.%Y"), "", "Letnie"
         # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
@@ -67,6 +74,10 @@ class FormularzWpisView(ft.View):
                         # ręcznie), więc limit jedzie za polem: poprawka licznika
                         # przesunie go o tyle samo.
                         gwarancja = db.przesun_gwarancje(w[7], w[8], w[0], w[1], d_val, w[1])
+        elif self.pozycja:
+            wstepne = utils.pola_wymiany_z_pozycji(state, self.pozycja)
+            d_val, self.p_km, koszt_zrodla, notatka_val = (wstepne["data"], wstepne["przebieg"], wstepne["koszt"],
+                                                           wstepne["notatka"])
 
         # Magazyn części — ta sama karta, co przy wizycie zbiorczej. Koszt zużytych
         # części dolicza się do kosztu wpisu, więc w polach kosztu stoi sama usługa:
@@ -110,7 +121,8 @@ class FormularzWpisView(ft.View):
         )
         # Duplikat zaczyna bez plików — faktura jest z tamtej wymiany.
         self.pliki = utils.PolaZalacznikow(page, "historia", h_id)
-        self.notatka_bazowa = (notatka_val or "").strip()
+        # Nowy wpis z pozycji nie ma jeszcze notatki — wpisana z pozycji ma się zapisać.
+        self.notatka_bazowa = "" if self.pozycja else (notatka_val or "").strip()
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 
         self._stan_poczatkowy = self._migawka_formularza()
@@ -126,14 +138,19 @@ class FormularzWpisView(ft.View):
                                     domyslnie_otwarte=bool(notatka_val))
 
         elementy = [k1, k_gwarancja, k2, k3]
+        if self.pozycja:
+            elementy.insert(0, utils.wiersz_pozycji_w_formularzu(self.pozycja))
         karta_magazynu = self.zuzycie.karta()
         if karta_magazynu:
             elementy.append(karta_magazynu)
         elementy.append(utils.przyciski_akcji(page, "Zapisz wpis", self.zapisz, self.trasa_powrotu))
 
+        if h_id:
+            trasa = f"/wpis/edytuj/{h_id}"
+        else:
+            trasa = f"/wpis/nowy/{self.z_id}" + (f"/do-zrobienia/{self.pozycja['id']}" if self.pozycja else "")
         super().__init__(
-            route=f"/wpis/edytuj/{h_id}" if h_id else f"/wpis/nowy/{self.z_id}",
-            padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
+            route=trasa, padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
 
     def _migawka_formularza(self):
@@ -217,10 +234,18 @@ class FormularzWpisView(ft.View):
         # Nowa wymiana opon z rodzajem opon zakłada komplet tej pory roku z magazynu (db/zmiana_opon.py).
         zmiana_opon = db.zamontuj_po_wymianie(self.state.auto_id, kat, self.e_d.value, prz, historia_id) \
             if kat and not self.h_id else None
+        z_pozycji = db.wymiana_z_do_zrobienia(self.pozycja["id"], historia_id) \
+            if self.pozycja and not self.h_id else None
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "wpis serwisowy")
         utils.przejdz(self._page, self.trasa_powrotu)
         dopisek = (f" Założono opony {zmiana_opon['na'].lower()} z magazynu."
                    if zmiana_opon and zmiana_opon.get("ok") else "")
+        if self.pozycja and not self.h_id:
+            if not z_pozycji:
+                dopisek += " Pozycji z listy już nie było — wymiana zostaje w Serwisie."
+            else:
+                dopisek += " Pozycja jest w Wykonanych." + (" Dawny Inny koszt trafił do kosza."
+                                                            if z_pozycji["do_kosza"] else "")
         if koszt_czesci > 0:
             utils.pokaz_komunikat(self._page, f"Zapisano wpis! Doliczono części z magazynu: {utils.formatuj_liczba(koszt_czesci)} {utils.symbol_waluty()}.{dopisek}")
         else:

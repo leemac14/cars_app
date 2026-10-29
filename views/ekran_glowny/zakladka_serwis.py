@@ -57,6 +57,8 @@ class MiksinZakladkiSerwis:
         }
         # Dolewki od ostatniej wymiany pod podzespołem, którego wymiany wyznaczają okresy płynu.
         dolewki_podzespolow = db.zuzycie_przy_zadaniach(self.state.auto_id)
+        # Co czeka na podzespół w Do zrobienia — znacznik na karcie i pozycja w menu.
+        planowane = db.pozycje_do_zrobienia_podzespolow(self.state.auto_id)
 
         # --- Wyraźne oddzielenie skrótów od właściwej listy podzespołów ---
         self.elementy.append(ft.Divider(height=20))
@@ -152,9 +154,15 @@ class MiksinZakladkiSerwis:
                 # BottomSheetu, żeby menu dało się przepuścić przez
                 # utils.odsiej_akcje. Historia wymian to jedyna pozycja, która
                 # niczego nie zmienia — przy podglądzie zostaje tylko ona.
+                ile_planowanych = len(planowane.get(zid, []))
                 pozycje = utils.odsiej_akcje(self.state.auto_id, [
                     {"ikona": ft.Icons.ADD_CIRCLE, "tekst": "Dodaj Wymianę", "kolor": ft.Colors.GREEN,
                      "akcja": lambda: utils.przejdz(self._page, f"/wpis/nowy/{zid}")},
+                    {"ikona": ft.Icons.PLAYLIST_ADD, "tekst": "Zaplanuj w Do zrobienia",
+                     "akcja": lambda: utils.przejdz(self._page, f"/do-zrobienia/nowe/podzespol/{zid}")},
+                    {"ikona": ft.Icons.PENDING_ACTIONS, "tekst": f"Zaplanowane w Do zrobienia ({ile_planowanych})",
+                     "czyta": True, "akcja": lambda: utils.przejdz(self._page, "/do-zrobienia")}
+                    if ile_planowanych else None,
                     {"ikona": ft.Icons.HISTORY, "tekst": "Historia wymian", "czyta": True,
                      "akcja": lambda: utils.przejdz(self._page, f"/historia/{zid}")},
                     {"ikona": ft.Icons.TIMER, "tekst": "Ustaw interwał przypomnień",
@@ -217,6 +225,11 @@ class MiksinZakladkiSerwis:
                     if zid in gwarancje_podzespolow:
                         tekst_gwarancji = utils.tekst_gwarancji(gwarancje_podzespolow[zid], j, szczegoly=False)
                         tresc_karty.append(utils.wiersz_gwarancji(gwarancje_podzespolow[zid], j, szczegoly=False))
+                    tekst_planu = ""
+                    wiersz_planu = utils.wiersz_do_zrobienia_podzespolu(planowane.get(zid), j)
+                    if wiersz_planu is not None:
+                        tresc_karty.append(wiersz_planu)
+                        tekst_planu = wiersz_planu.controls[1].value
                     karta_z, kontener = utils.karta_listy(
                         ft.Column(tresc_karty),
                         kolor_paska=kol,
@@ -225,7 +238,7 @@ class MiksinZakladkiSerwis:
 
                     self.karty_ref[zid] = kontener
                     self.podepnij_zdarzenia_grupowe(kontener, zid, lambda zid=zid, zn=zn: pokaz_menu(zid, zn), "zadania")
-                    tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status} {tekst_gwarancji} {tekst_dolewek}".lower()
+                    tekst_szukaj = f"{zn} {data_w} {prz_w} {final_status} {tekst_gwarancji} {tekst_dolewek} {tekst_planu}".lower()
                     self.wszystkie_karty_serwis.append({"karta": karta_z, "szukaj": tekst_szukaj})
                     self.lista_kart_serwis.controls.append(karta_z)
 

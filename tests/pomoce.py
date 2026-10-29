@@ -620,6 +620,29 @@ def kontrolki(korzen, typ=None):
     return wynik
 
 
+def zbieraj_ekran(monkeypatch):
+    """Okna, komunikaty i przejścia zbierane zamiast pokazywane (strona testowa ich nie pokaże):
+    SimpleNamespace(okna, komunikaty, trasy); wysyłka w tle wyłączona."""
+    import sys
+    from types import SimpleNamespace
+
+    import flet as ft
+
+    zebrane = SimpleNamespace(okna=[], komunikaty=[], trasy=[])
+    monkeypatch.setattr(ft.Page, "show_dialog", lambda self, okno: zebrane.okna.append(okno))
+    monkeypatch.setattr(ft.Page, "pop_dialog", lambda self: None)
+    podmiany = {"pokaz_komunikat": lambda page, tekst, *a, **k: zebrane.komunikaty.append(tekst),
+                "pokaz_komunikat_cofnij": lambda page, tekst, *a, **k: zebrane.komunikaty.append(tekst),
+                "przejdz": lambda page, trasa: zebrane.trasy.append(trasa),
+                "wypchnij_w_tle": lambda *a, **k: None}
+    for nazwa_modulu, modul in list(sys.modules.items()):
+        if modul is not None and nazwa_modulu.split(".")[0] in ("utils", "views"):
+            for nazwa, wartosc in podmiany.items():
+                if hasattr(modul, nazwa):
+                    monkeypatch.setattr(modul, nazwa, wartosc)
+    return zebrane
+
+
 # ============================================================================
 #  WIDOKI
 # ============================================================================

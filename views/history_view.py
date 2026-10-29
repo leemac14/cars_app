@@ -53,6 +53,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
             # Gwarancje napraw po identyfikatorze wpisu — także te, które minęły,
             # i te, po których część wymieniono jeszcze raz (db.gwarancje_wpisow).
             gwarancje = db.gwarancje_wpisow(z_id)
+            # Wpisy zapisane z pozycji Do zrobienia — ślad na karcie i droga do Wykonanych.
+            z_listy = db.pozycje_do_zrobienia_wpisow(z_id)
             # Pole 7 — lista plików wpisu (db.zalaczniki_pojazdu), jednym zapytaniem.
             pliki_wpisow = db.zalaczniki_pojazdu(self.state.auto_id, "historia")
             # Rodzaj naprawy (pozycja wizyty ma rodzaj wizyty): chip na karcie i ostatnia
@@ -133,6 +135,9 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     # Wpisu z wizyty zbiorczej nie edytujemy stąd (dane w wizycie), ale
                     # NOTATKĘ i gwarancję (wyjątek dla podzespołu) tak — należą do
                     # jednej pozycji; obie przechodzą przez sito roli.
+                    do_listy = {"ikona": ft.Icons.CHECKLIST_RTL, "tekst": "Pokaż w Do zrobienia", "czyta": True,
+                                "akcja": lambda: utils.przejdz(self._page, "/do-zrobienia/wykonane")} \
+                        if h_id in z_listy else None
                     if w_id:
                         utils.pokaz_menu_kontekstowe(self._page, "Wpis z wizyty zbiorczej", utils.odsiej_akcje(
                             self.state.auto_id, [
@@ -146,6 +151,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                                      self._page, h_id, lambda: utils.przejdz(self._page, f"/historia/{z_id}"))},
                                 {"ikona": ft.Icons.OPEN_IN_NEW, "tekst": "Edytuj w „Wizyty w warsztacie”", "czyta": True,
                                  "akcja": lambda: utils.przejdz(self._page, "/wizyty")},
+                                do_listy,
                             ], "historia", h_id,
                         ))
                         return
@@ -164,6 +170,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     ))
                     pozycje.append({"ikona": ft.Icons.EDIT, "tekst": "Edytuj wpis", "akcja": lambda: utils.przejdz(self._page, f"/wpis/edytuj/{h_id}")})
                     pozycje.append({"ikona": ft.Icons.CONTENT_COPY, "tekst": "Duplikuj", "akcja": lambda: (setattr(self.state, "duplikuj_zrodlo_wpis", h_id), utils.przejdz(self._page, f"/wpis/nowy/{z_id}"))})
+                    pozycje.append(do_listy)
                     pozycje.append({"ikona": ft.Icons.DELETE, "tekst": "Usuń wpis", "akcja": usun_wpis, "kolor": utils.KOLOR_STATUS["destructive"]})
 
                     pozycje = utils.odsiej_akcje(self.state.auto_id, pozycje, "historia", h_id)
@@ -215,6 +222,8 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     if h_id in gwarancje:
                         tekst_gwarancji = utils.tekst_gwarancji(gwarancje[h_id], j)
                         tresc_h.append(utils.wiersz_gwarancji(gwarancje[h_id], j))
+                    if h_id in z_listy:
+                        tresc_h.append(utils.wiersz_z_listy_do_zrobienia(z_listy[h_id]))
                     tresc_h.append(utils.podglad_notatki(
                         self._page, notatka, notatka_autor, notatka_data, "Notatka do wpisu",
                         on_edytuj=lambda rid=h_id: utils.szybka_notatka(
@@ -252,7 +261,7 @@ class HistoriaView(ft.View, utils.ZaznaczanieGrupowe):
                     kontener.on_long_press = _on_long_press
 
                     tekst_szukaj = (f"{data} {sub_tekst} {k_str} {utils.opis_rozbicia_kosztu(rozbicia.get(h_id))} "
-                                    f"{opis_magazynu} {tekst_gwarancji} {notatka or ''} "
+                                    f"{opis_magazynu} {tekst_gwarancji} {notatka or ''} {z_listy.get(h_id, '')} "
                                     f"{etykieta_rodzaju if db.rodzaj_serwisu(rodzaje.get(h_id)) else ''}").lower()
                     # Wpisu z wizyty zbiorczej nie usuwa się stąd (całą wizytę) — zostaje mu notatka.
                     karta = utils.gesty_karty(

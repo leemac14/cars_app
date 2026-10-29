@@ -27,6 +27,9 @@ class AppState:
         # Szablon z menu „+” (db/szablony.py), który wypełni NAJBLIŻSZY nowy koszt albo
         # tankowanie — zużywany jednorazowo, jak źródło duplikatu.
         self.szablon_wpisu = None
+        # Dzień, licznik, koszt i notatka z okna „Wykonano”, które wypełnią pełny formularz
+        # wymiany albo nowego podzespołu otwarty z tego okna — zużywane raz.
+        self.wykonanie_do_zrobienia = None
         # Fraza, z którą otworzy się wyszukiwarka (tag z wykresu tagów) — zużywana raz.
         self.fraza_wyszukiwania = None
         self.wybrane_zadanie_nazwa = ""
