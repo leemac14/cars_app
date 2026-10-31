@@ -694,13 +694,17 @@ def main(page: ft.Page):
         elif segmenty[0] == "wpis":
             if len(segmenty) >= 3 and segmenty[1] == "nowy":
                 z_id = utils.parsuj_int(segmenty[2], None)
-                # Wymiana z pozycji Do zrobienia (/wpis/nowy/<z>/do-zrobienia/<p>) ma pod spodem listę.
+                # Wymiana z pozycji Do zrobienia (/wpis/nowy/<z>/do-zrobienia/<p>) ma pod spodem listę,
+                # ze szkicu (/wpis/nowy/<z>/szkic/<s>) — kolejkę „Do wpisania”.
                 pozycja_id = utils.pozycja_z_trasy(segmenty)
+                szkic_id = utils.szkic_z_trasy(segmenty)
                 if pozycja_id:
                     page.views.append(DoZrobieniaView(page, app_state))
+                elif szkic_id:
+                    page.views.append(DoWpisaniaView(page, app_state))
                 elif z_id:
                     page.views.append(HistoriaView(page, app_state, z_id))
-                page.views.append(FormularzWpisView(page, app_state, None, z_id, pozycja_id=pozycja_id))
+                page.views.append(FormularzWpisView(page, app_state, None, z_id, pozycja_id=pozycja_id, szkic_id=szkic_id))
             elif len(segmenty) >= 3 and segmenty[1] == "edytuj":
                 h_id = utils.parsuj_int(segmenty[2], None)
                 z_id_nadrzedny = None
@@ -717,9 +721,12 @@ def main(page: ft.Page):
             page.views.append(FormularzInterwalView(page, app_state, utils.parsuj_int(segmenty[1], None)))
         elif segmenty[0] == "zadanie" and len(segmenty) >= 2 and segmenty[1] == "nowy":
             pozycja_id = utils.pozycja_z_trasy(segmenty)  # /zadanie/nowy/do-zrobienia/<p>
+            szkic_id = utils.szkic_z_trasy(segmenty)  # /zadanie/nowy/szkic/<s>
             if pozycja_id:
                 page.views.append(DoZrobieniaView(page, app_state))
-            page.views.append(FormularzZadanieView(page, app_state, None, pozycja_id=pozycja_id))
+            elif szkic_id:
+                page.views.append(DoWpisaniaView(page, app_state))
+            page.views.append(FormularzZadanieView(page, app_state, None, pozycja_id=pozycja_id, szkic_id=szkic_id))
         elif segmenty[0] == "zadanie" and len(segmenty) >= 3 and segmenty[1] == "edytuj":
             page.views.append(FormularzZadanieView(page, app_state, utils.parsuj_int(segmenty[2], None)))
         elif segmenty[0] == "magazyn":

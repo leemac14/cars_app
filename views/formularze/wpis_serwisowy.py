@@ -8,7 +8,7 @@ from datetime import datetime
 
 
 class FormularzWpisView(ft.View):
-    def __init__(self, page: ft.Page, state, h_id=None, z_id_param=None, pozycja_id=None):
+    def __init__(self, page: ft.Page, state, h_id=None, z_id_param=None, pozycja_id=None, szkic_id=None):
         self._page = page
         self.state = state
         self.h_id = h_id
@@ -18,6 +18,8 @@ class FormularzWpisView(ft.View):
         self.pozycja = db.pozycja_do_zrobienia(pozycja_id) if pozycja_id and not h_id else None
         if self.pozycja and (self.pozycja["w_wizycie"] or self.pozycja["auto_id"] != state.auto_id):
             self.pozycja = None
+        # Szkic z kolejki „do wpisania” (/wpis/nowy/<z>/szkic/<s>) — paragon albo zdjęcie części.
+        self.szkic = None if self.pozycja else utils.szkic_do_formularza(state, szkic_id, h_id)
 
         if h_id:
             with db.polacz_baze() as conn:
@@ -39,6 +41,8 @@ class FormularzWpisView(ft.View):
         self.trasa_powrotu = f"/historia/{self.z_id}" if self.z_id else "/"
         if self.pozycja:
             self.trasa_powrotu = "/do-zrobienia/wykonane" if self.pozycja["wykonane"] else "/do-zrobienia"
+        elif self.szkic:
+            self.trasa_powrotu = "/do-wpisania"
 
         d_val, w_val, kat_val = datetime.now().strftime("%d.%m.%Y"), "", "Letnie"
         # Licznik w km, jak w bazie; pole pokazuje go w jednostce z Ustawień.
@@ -78,6 +82,10 @@ class FormularzWpisView(ft.View):
             wstepne = utils.pola_wymiany_z_pozycji(state, self.pozycja)
             d_val, self.p_km, koszt_zrodla, notatka_val = (wstepne["data"], wstepne["przebieg"], wstepne["koszt"],
                                                            wstepne["notatka"])
+        elif self.szkic:
+            d_val, notatka_val = self.szkic["data"], self.szkic["opis"] or ""
+            if self.szkic["przebieg"]:
+                self.p_km = self.szkic["przebieg"]
 
         # Magazyn części — ta sama karta, co przy wizycie zbiorczej. Koszt zużytych
         # części dolicza się do kosztu wpisu, więc w polach kosztu stoi sama usługa:
@@ -120,9 +128,9 @@ class FormularzWpisView(ft.View):
             **utils.styl_dropdown()
         )
         # Duplikat zaczyna bez plików — faktura jest z tamtej wymiany.
-        self.pliki = utils.PolaZalacznikow(page, "historia", h_id)
-        # Nowy wpis z pozycji nie ma jeszcze notatki — wpisana z pozycji ma się zapisać.
-        self.notatka_bazowa = "" if self.pozycja else (notatka_val or "").strip()
+        self.pliki = utils.PolaZalacznikow(page, "historia", h_id, szkic=self.szkic, auto_id=state.auto_id)
+        # Nowy wpis z pozycji albo szkicu nie ma jeszcze notatki — wpisana stamtąd ma się zapisać.
+        self.notatka_bazowa = "" if self.pozycja or self.szkic else (notatka_val or "").strip()
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 
         self._stan_poczatkowy = self._migawka_formularza()
@@ -140,6 +148,8 @@ class FormularzWpisView(ft.View):
         elementy = [k1, k_gwarancja, k2, k3]
         if self.pozycja:
             elementy.insert(0, utils.wiersz_pozycji_w_formularzu(self.pozycja))
+        if self.szkic:
+            elementy.insert(0, utils.pasek_szkicu(page, self.szkic))
         karta_magazynu = self.zuzycie.karta()
         if karta_magazynu:
             elementy.append(karta_magazynu)
@@ -148,7 +158,8 @@ class FormularzWpisView(ft.View):
         if h_id:
             trasa = f"/wpis/edytuj/{h_id}"
         else:
-            trasa = f"/wpis/nowy/{self.z_id}" + (f"/do-zrobienia/{self.pozycja['id']}" if self.pozycja else "")
+            trasa = (f"/wpis/nowy/{self.z_id}" + (f"/do-zrobienia/{self.pozycja['id']}" if self.pozycja else "")
+                     + (f"/szkic/{self.szkic['id']}" if self.szkic else ""))
         super().__init__(
             route=trasa, padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
@@ -218,6 +229,9 @@ class FormularzWpisView(ft.View):
                 kursor = conn.cursor()
                 kursor.execute("INSERT INTO historia (zadanie_id, data, data_iso, przebieg, cena, koszt_robocizny, wykonawca, kategoria, gwarancja_data, gwarancja_przebieg, rodzaj, dodane_przez) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (self.z_id, self.e_d.value, na_iso(self.e_d.value), prz, koszt_razem, robocizna, wyk, kat, gw_koniec, gw_limit, rodzaj, db.pobierz_moje_imie()))
                 historia_id = kursor.lastrowid
+                # Wpis i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
+                if self.szkic:
+                    db.zamknij_szkic(self.szkic["id"], conn=conn)
 
             db.rozlicz_czesci_z_magazynu_wpisu(historia_id, nowe_uzyte, conn=conn)
             self.pliki.zapisz_w(conn, historia_id, self.state.auto_id)
@@ -237,9 +251,12 @@ class FormularzWpisView(ft.View):
         z_pozycji = db.wymiana_z_do_zrobienia(self.pozycja["id"], historia_id) \
             if self.pozycja and not self.h_id else None
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "wpis serwisowy")
-        utils.przejdz(self._page, self.trasa_powrotu)
+        utils.przejdz(self._page, utils.trasa_po_zapisie_szkicu(self.state.auto_id, f"/historia/{self.z_id}")
+                      if self.szkic else self.trasa_powrotu)
         dopisek = (f" Założono opony {zmiana_opon['na'].lower()} z magazynu."
                    if zmiana_opon and zmiana_opon.get("ok") else "")
+        if self.szkic:
+            dopisek += utils.dopisek_kolejki(self.state.auto_id)
         if self.pozycja and not self.h_id:
             if not z_pozycji:
                 dopisek += " Pozycji z listy już nie było — wymiana zostaje w Serwisie."

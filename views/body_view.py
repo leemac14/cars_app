@@ -397,9 +397,9 @@ class FormularzZdjecieKaroseriiView(ft.View):
         # Dodawanie nowych -> masowy wybór wielu zdjęć naraz; każde stanie się
         # osobnym wpisem w galerii ze wspólnymi metadanymi z formularza poniżej.
         if wpis_id:
-            self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val)
+            self.k_zalacznik, self.get_zalacznik = utils.komponent_zalacznika(page, self.zalacznik_val, auto_id=state.auto_id)
         else:
-            self.k_zalacznik, self.get_wiele_zdjec = utils.komponent_wielu_nowych_zdjec(page)
+            self.k_zalacznik, self.get_wiele_zdjec = utils.komponent_wielu_nowych_zdjec(page, auto_id=state.auto_id)
 
         self.e_d = utils.pole_daty(page, "Data zrobienia zdjęcia", d_val)
         self.e_p = ft.TextField(label=f"Przebieg ({utils.jednostka_dystansu()})", value=db.wartosc_pola_dystansu(self.p_km), keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola())
@@ -476,6 +476,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
                     (self.e_d.value, na_iso(self.e_d.value), self.e_strefa.value, nowy_zalacznik, self.e_opis.value, prz, self.e_typ.value, self.wpis_id)
                 )
             db.zatwierdz_zalacznik(self.zalacznik_val, przygotowany)
+            if przygotowany:
+                db.zamknij_szkice_po_kopii([wynik_komponentu])  # zdjęcie z „Do wpisania” ma już kopię
 
             utils.przejdz(self._page, "/karoseria")
             utils.pokaz_komunikat(self._page, "Zapisano wpis w galerii!")
@@ -486,12 +488,13 @@ class FormularzZdjecieKaroseriiView(ft.View):
         if not sciezki_zrodlowe:
             return utils.pokaz_komunikat(self._page, "Wybierz co najmniej jedno zdjęcie!", utils.KOLOR_STATUS["error"])
 
-        przygotowane = []
+        przygotowane, uzyte = [], []
         try:
             for sciezka in sciezki_zrodlowe:
                 nowy = db.przygotuj_nowy_zalacznik(sciezka)
                 if nowy:
                     przygotowane.append(nowy)
+                    uzyte.append(sciezka)
 
             if not przygotowane:
                 return utils.pokaz_komunikat(self._page, "Nie udało się wczytać żadnego z wybranych zdjęć.", utils.KOLOR_STATUS["error"])
@@ -507,6 +510,8 @@ class FormularzZdjecieKaroseriiView(ft.View):
                 db.anuluj_nowy_zalacznik(zalacznik)
             return utils.pokaz_komunikat(self._page, f"Błąd zapisu galerii: {ex}", utils.KOLOR_STATUS["error"])
 
+        # Zdjęcia z „Do wpisania” mają już kopie w galerii — szkice znikają z kolejki.
+        db.zamknij_szkice_po_kopii(uzyte)
         utils.przejdz(self._page, "/karoseria")
         ile_wybranych, ile_zapisanych = len(sciezki_zrodlowe), len(przygotowane)
         if ile_zapisanych < ile_wybranych:

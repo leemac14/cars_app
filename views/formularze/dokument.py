@@ -54,7 +54,8 @@ class FormularzDokumentuView(ft.View):
         self.t_karta = utils.podpis("")
         self.e_notatki = ft.TextField(label="Notatki", value=(dokument or {}).get("notatki") or "", multiline=True,
                                       min_lines=2, max_lines=4, **utils.styl_pola(page=page))
-        self.pliki = utils.PolaZalacznikow(page, "dokumenty_pojazdu", self.dokument_id, dokument=True)
+        self.pliki = utils.PolaZalacznikow(page, "dokumenty_pojazdu", self.dokument_id, dokument=True,
+                                            auto_id=state.auto_id)
         self._nowy = dokument is None
         if self._nowy:
             self._podpowiedz_z_karty(rodzaj)

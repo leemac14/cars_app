@@ -126,7 +126,7 @@ class FormularzWizytyView(ft.View):
         self.koszt = utils.KosztNaprawy(page, self.zuzycie, koszt_zrodla, robocizna_zrodla, doliczone)
         self.e_n = ft.TextField(label="Notatki i uwagi", value=not_val, multiline=True, min_lines=2, max_lines=4, **utils.styl_pola(page=page))
         # Paragon, faktura, zdjęcie wymienionej części; duplikat zaczyna bez plików.
-        self.pliki = utils.PolaZalacznikow(page, "wizyty", w_id, szkic=self.szkic)
+        self.pliki = utils.PolaZalacznikow(page, "wizyty", w_id, szkic=self.szkic, auto_id=state.auto_id)
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         self.blad_czesci = ft.Text("", color=utils.KOLOR_STATUS["error"], size=13)
         # Wizyta bez podzespołu (diagnostyka, przegląd) zapisuje się drugim „Zapisz”.

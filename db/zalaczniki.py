@@ -178,9 +178,10 @@ def zapisz_zalacznik(sciezka_zrodlowa):
 
     # Do bazy idzie postać względna (wzgledna_sciezka_zalacznika) — bezwzględna
     # z tego urządzenia nie istniałaby na innym po przeniesieniu kopii.
-    # Jeśli to PDF, kopiujemy 1:1, bez zmiany rozszerzenia
-    if rozszerzenie == ".pdf":
-        nazwa = f"{uuid.uuid4().hex}.pdf"
+    # Jeśli to PDF, kopiujemy 1:1, bez zmiany rozszerzenia. Tak samo plik już z folderu
+    # załączników (zdjęcie z „Do wpisania”) — przeszedł tę funkcję, druga kompresja go psuje.
+    if rozszerzenie == ".pdf" or os.path.dirname(os.path.abspath(sciezka_zrodlowa)) == os.path.abspath(folder):
+        nazwa = f"{uuid.uuid4().hex}{rozszerzenie or '.jpg'}"
         docelowa = os.path.join(folder, nazwa)
         shutil.copyfile(sciezka_zrodlowa, docelowa)
         return wzgledna_sciezka_zalacznika(docelowa)

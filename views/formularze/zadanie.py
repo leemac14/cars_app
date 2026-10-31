@@ -8,7 +8,7 @@ from datetime import datetime
 
 
 class FormularzZadanieView(ft.View):
-    def __init__(self, page: ft.Page, state, z_id=None, pozycja_id=None):
+    def __init__(self, page: ft.Page, state, z_id=None, pozycja_id=None, szkic_id=None):
         self._page = page
         self.state = state
         self.z_id = z_id
@@ -18,9 +18,15 @@ class FormularzZadanieView(ft.View):
         if self.pozycja and (self.pozycja["w_wizycie"] or self.pozycja["auto_id"] != state.auto_id):
             self.pozycja = None
         wstepne = utils.pola_wymiany_z_pozycji(state, self.pozycja) if self.pozycja else {}
+        # „Serwis” → „Nowy podzespół…” z kolejki „do wpisania”: pierwsza wymiana ze zdjęcia.
+        self.szkic = None if self.pozycja else utils.szkic_do_formularza(state, szkic_id, z_id)
         self.trasa_powrotu = "/"
         if self.pozycja:
             self.trasa_powrotu = "/do-zrobienia/wykonane" if self.pozycja["wykonane"] else "/do-zrobienia"
+        elif self.szkic:
+            self.trasa_powrotu = "/do-wpisania"
+            wstepne = {"nazwa": db.nazwa_podzespolu_z_tytulu(self.szkic["opis"]) if self.szkic["opis"] else "",
+                       "data": self.szkic["data"], "przebieg": self.szkic["przebieg"]}
 
         stara_nazwa = wstepne.get("nazwa", "")
         dotyczy_opon_val = db.dotyczy_opon_z_tytulu(self.pozycja["tytul"]) if self.pozycja else False
@@ -40,7 +46,7 @@ class FormularzZadanieView(ft.View):
         )
 
         # Pozycja wykonana wchodzi zawsze z wymianą; z okna „Wykonano” — wymiana zaznaczona.
-        wymiana_od_razu = bool(self.pozycja) and (self.pozycja["wykonane"] or wstepne["z_okna"])
+        wymiana_od_razu = bool(self.szkic) or (bool(self.pozycja) and (self.pozycja["wykonane"] or wstepne["z_okna"]))
         self.c_dodaj_wymiane = ft.Checkbox(
             label="Wpisz od razu wymianę — pozycja trafi do Wykonanych" if self.pozycja else "Dodaj od razu pierwszą wymianę",
             value=wymiana_od_razu)
@@ -60,7 +66,7 @@ class FormularzZadanieView(ft.View):
         self.k_wykonawca, self.get_wykonawca = utils.komponent_wyboru_warsztatu(page, state, "")
 
         # Pliki pierwszej wymiany (paragon, faktura, zdjęcie części).
-        self.pliki = utils.PolaZalacznikow(page, "historia")
+        self.pliki = utils.PolaZalacznikow(page, "historia", szkic=self.szkic, auto_id=state.auto_id)
         # Nowy podzespół nie ma jeszcze interwału, więc rodzaj bez podpowiedzi.
         self.rodzaj = utils.PoleRodzajuSerwisu(page)
         self.k_notatka = utils.pole_notatki(wstepne.get("notatka", ""), page)
@@ -84,11 +90,14 @@ class FormularzZadanieView(ft.View):
         elementy = [k1, self.karta_wymiany, utils.przyciski_akcji(page, "Zapisz podzespół", self.zapisz, self.trasa_powrotu)]
         if self.pozycja:
             elementy.insert(0, utils.wiersz_pozycji_w_formularzu(self.pozycja, podzespol=True))
+        if self.szkic:
+            elementy.insert(0, utils.pasek_szkicu(page, self.szkic))
 
         if z_id:
             trasa = f"/zadanie/edytuj/{z_id}"
         else:
-            trasa = f"/zadanie/nowy/do-zrobienia/{self.pozycja['id']}" if self.pozycja else "/zadanie/nowy"
+            trasa = (f"/zadanie/nowy/do-zrobienia/{self.pozycja['id']}" if self.pozycja
+                     else f"/zadanie/nowy/szkic/{self.szkic['id']}" if self.szkic else "/zadanie/nowy")
         super().__init__(
             route=trasa, padding=15, spacing=15, appbar=appbar, controls=elementy, scroll=ft.ScrollMode.AUTO
         )
@@ -151,6 +160,9 @@ class FormularzZadanieView(ft.View):
                     )
                     historia_id = c.lastrowid
                     self.pliki.zapisz_w(conn, historia_id, self.state.auto_id)
+                    # Wymiana i koniec szkicu razem albo wcale — zdjęcie ma już nowy wpis.
+                    if self.szkic:
+                        db.zamknij_szkic(self.szkic["id"], conn=conn)
         if historia_id:
             utils.zapisz_notatke_z_formularza("historia", historia_id, self.k_notatka.value, "")
             db.aktualizuj_najnowszy_wpis(nowe_z_id)
@@ -165,6 +177,10 @@ class FormularzZadanieView(ft.View):
                 db.powiaz_pozycje_z_podzespolem(self.pozycja["id"], nowe_z_id)
                 komunikat = "Zapisano podzespół. Pozycja czeka na liście, powiązana z nim."
         utils.wypchnij_w_tle(self._page, self.state.auto_id, "podzespół")
+        if self.szkic:
+            utils.przejdz(self._page, utils.trasa_po_zapisie_szkicu(self.state.auto_id, "/"))
+            utils.pokaz_komunikat(self._page, komunikat + utils.dopisek_kolejki(self.state.auto_id))
+            return
         utils.przejdz(self._page, self.trasa_powrotu)
         utils.pokaz_komunikat(self._page, komunikat)
 

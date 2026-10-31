@@ -8,9 +8,10 @@ transakcji. Kokpit pokazuje baner „3 paragony do wpisania”, szuflada — odz
 dzwonek — przypomnienie, gdy najstarszy leży trzy dni.
 
 Tu: warstwa danych (zdjęcie z bajtów i z galerii z datą EXIF, kolejność, podsumowanie,
-zamknięcie kontra usunięcie z cofnięciem, przeniesienie), trzy formularze ze szkicu,
-baner, odznaka, dzwonek, ekran kolejki, ekran aparatu (z podstawionym aparatem)
-i trasy. Kosz, schemat i migracje sprawdzają test_kosz / test_schemat / test_migracje
+zamknięcie kontra usunięcie z cofnięciem, przeniesienie), formularze ze szkicu (też
+„Serwis”: wymiana pod podzespołem i nowy podzespół), „Z zapisanych zdjęć” (formularz,
+arkusz, menu wpisu, karoseria z kopią), baner, odznaka, dzwonek, ekran kolejki, ekran
+aparatu (z podstawionym aparatem) i trasy. Kosz, schemat i migracje sprawdzają test_kosz / test_schemat / test_migracje
 (szkic jest w `pomoce.utworz_pojazd`).
 """
 
@@ -401,6 +402,184 @@ def test_szkic_obcego_pojazdu_albo_edycja_nie_wypelnia_formularza(baza):
     assert widok.szkic is None and widok.route == "/tankowanie/nowe" and widok.pliki.pozycje == []
 
 
+def test_serwis_ze_szkicu_idzie_pod_wybrany_podzespol(baza, monkeypatch):
+    auto_id = _auto()
+    with db.polacz_baze() as conn:
+        olej = conn.execute("INSERT INTO zadania (auto_id, nazwa) VALUES (?,?)", (auto_id, "Olej silnikowy")).lastrowid
+        conn.execute("INSERT INTO zadania (auto_id, nazwa) VALUES (?,?)", (auto_id, "Akumulator"))
+    szkic_id = _szkic_z_pliku(auto_id, 1, rodzaj="serwis", przebieg=120500, opis="Olej Castrol")
+    szkic = db.pobierz_szkic(szkic_id)
+
+    # „Serwis” w kolejce: pasujący podzespół na górze, potem „Nowy podzespół…” i reszta.
+    menu = []
+    monkeypatch.setattr(utils.szkice, "pokaz_menu_kontekstowe", lambda page, tytul, akcje, tresc=None: menu.append(akcje))
+    strona = pomoce.zbuduj_strone()
+    trasy = []
+    strona.page.on_route_change = lambda e: trasy.append(strona.page.route)
+    utils.wpisz_szkic_do_serwisu(strona.page, auto_id, szkic)
+    assert [a["tekst"] for a in menu[0]] == ["Olej silnikowy", "Nowy podzespół…", "Akumulator"]
+    menu[0][0]["akcja"]()
+    assert trasy[-1] == f"/wpis/nowy/{olej}/szkic/{szkic_id}"
+
+    from views.formularze import FormularzWpisView
+    widok = FormularzWpisView(strona.page, pomoce.stan_aplikacji(auto_id, "Szkicowy"), None, olej, szkic_id=szkic_id)
+    assert widok.route == f"/wpis/nowy/{olej}/szkic/{szkic_id}" and widok.trasa_powrotu == "/do-wpisania"
+    assert (widok.e_d.value, widok.e_p.value, widok.k_notatka.value) == (szkic["data"], "120500", "Olej Castrol")
+    assert [p["sciezka"] for p in widok.pliki.pozycje] == [szkic["zalacznik"]]
+    widok.koszt.e_czesci.value = "260"  # nowy wpis zaczyna z podziałem na robociznę i części
+    widok.zapisz(None)
+
+    wpis = _wiersz("SELECT id, przebieg, data, cena, notatka FROM historia WHERE zadanie_id=?", (olej,))
+    assert wpis[1:] == (120500, szkic["data"], 260.0, "Olej Castrol")
+    assert pomoce.pliki_wpisu("historia", wpis[0]) == [(szkic["zalacznik"], "paragon", None)]
+    assert db.pobierz_szkic(szkic_id) is None
+    assert trasy[-1] == f"/historia/{olej}", "pusta kolejka — powrót do podzespołu"
+
+
+def test_nowy_podzespol_ze_szkicu_ma_pierwsza_wymiane_ze_zdjeciem(baza):
+    auto_id = _auto()
+    szkic_id = _szkic_z_pliku(auto_id, 0, przebieg=99000, opis="Wymienić klocki przód")
+    drugi = _szkic_z_pliku(auto_id, 2)
+    szkic = db.pobierz_szkic(szkic_id)
+
+    from views.formularze import FormularzZadanieView
+    widok, trasy = _formularz(FormularzZadanieView, auto_id, szkic_id)
+    assert widok.route == f"/zadanie/nowy/szkic/{szkic_id}"
+    assert (widok.e_n.value, widok.e_d.value, widok.e_p.value) == ("Klocki przód", szkic["data"], "99000")
+    assert widok.c_dodaj_wymiane.value and widok.karta_wymiany.visible
+    assert [p["sciezka"] for p in widok.pliki.pozycje] == [szkic["zalacznik"]]
+    widok.e_c.value = "180"
+    widok.zapisz(None)
+
+    zadanie = _wiersz("SELECT id FROM zadania WHERE auto_id=? AND nazwa=?", (auto_id, "Klocki przód"))
+    wpis = _wiersz("SELECT id, przebieg, data, cena FROM historia WHERE zadanie_id=?", (zadanie[0],))
+    assert wpis[1:] == (99000, szkic["data"], 180.0)
+    assert [p[0] for p in pomoce.pliki_wpisu("historia", wpis[0])] == [szkic["zalacznik"]]
+    assert db.pobierz_szkic(szkic_id) is None and db.pobierz_szkic(drugi) is not None
+    assert trasy[-1] == "/do-wpisania"
+
+
+# ======================================================= „Z zapisanych zdjęć”
+
+def test_zapisane_zdjecie_przechodzi_do_wpisu_dopiero_przy_zapisie(baza):
+    auto_id = _auto()
+    pierwszy = _szkic_z_pliku(auto_id, 3, opis="Myjnia")
+    drugi = _szkic_z_pliku(auto_id, 1)
+    obcy = db.dodaj_szkic_z_bajtow(_auto("Obcy"), _jpeg())
+    szkic = db.pobierz_szkic(pierwszy)
+
+    from views.formularze import FormularzInneView
+    widok, _ = _formularz(FormularzInneView, auto_id, None)
+    pliki = widok.pliki
+    assert pliki._przycisk_zapisanych.visible and pliki._przycisk_zapisanych.content == "Z zapisanych zdjęć (2)"
+    pliki.dodaj_szkice([szkic])
+    assert pliki._przycisk_zapisanych.content == "Z zapisanych zdjęć (1)"
+    pliki._usun(0)
+    assert pliki._usuniete_bez_wiersza == [], "zdjęcie z kolejki wraca do niej — jego plik zostaje"
+    pliki.dodaj_szkice([szkic, szkic])
+    assert [p["sciezka"] for p in pliki.pozycje] == [szkic["zalacznik"]]
+    assert db.pobierz_szkic(pierwszy) is not None, "do zapisu szkic czeka w kolejce"
+
+    widok.e_o.value, widok.e_kw.value = "Myjnia", "40"
+    widok.zapisz(None)
+
+    koszt = _wiersz("SELECT id FROM inne_koszty WHERE auto_id=?", (auto_id,))
+    assert pomoce.pliki_wpisu("inne_koszty", koszt[0]) == [(szkic["zalacznik"], "paragon", "Myjnia")]
+    assert os.path.exists(db.sciezka_pliku_zalacznika(szkic["zalacznik"])), "bez kopii — ten sam plik"
+    assert db.pobierz_szkic(pierwszy) is None
+    assert db.pobierz_szkic(drugi) is not None and db.pobierz_szkic(obcy) is not None
+
+
+def test_arkusz_zapisanych_zdjec_pomija_szkic_formularza_i_oddaje_zaznaczone(baza, monkeypatch):
+    auto_id = _auto()
+    wlasny = _szkic_z_pliku(auto_id, 2)
+    starszy, nowszy = _szkic_z_pliku(auto_id, 4), _szkic_z_pliku(auto_id, 0)
+    arkusze = []
+    monkeypatch.setattr(utils.zalaczniki, "otworz_dno", lambda page, bs: arkusze.append(bs))
+    monkeypatch.setattr(utils.zalaczniki, "zamknij_dno", lambda page, bs: None)
+
+    from views.formularze import FormularzTankowanieView
+    widok, _ = _formularz(FormularzTankowanieView, auto_id, wlasny)
+    widok.pliki._z_zapisanych()
+    kafle = pomoce.kontrolki(arkusze[-1], ft.ResponsiveRow)[0].controls
+    obrazy = [k.semantics_label for k in pomoce.kontrolki(arkusze[-1], ft.Image)]
+    assert obrazy == [f"Zdjęcie z {db.pobierz_szkic(i)['data']}" for i in (nowszy, starszy)], \
+        "najnowsze pierwsze, bez szkicu, z którego jest formularz"
+
+    przycisk = pomoce.kontrolki(arkusze[-1], ft.Button)[0]
+    assert przycisk.disabled
+    kafle[1].on_click(None)
+    assert przycisk.content == "Dodaj (1)" and not przycisk.disabled
+    przycisk.on_click(None)
+    assert [p.get("szkic_id") for p in widok.pliki.pozycje] == [None, starszy]
+    assert "Myjnia" not in pomoce.napisy(arkusze[-1])
+
+
+def test_menu_wpisu_dopisuje_zapisane_zdjecia_bez_kopii(baza):
+    auto_id = _auto()
+    with db.polacz_baze() as conn:
+        tid = conn.execute("INSERT INTO tankowania (auto_id, data, data_iso, przebieg, litry, kwota, do_pelna) "
+                           "VALUES (?,?,?,?,?,?,?)", (auto_id, "01.10.2026", "2026-10-01", 1000, 40, 260, 1)).lastrowid
+    szkic_id = _szkic_z_pliku(auto_id, 0, opis="Orlen")
+    obcy = db.dodaj_szkic_z_bajtow(_auto("Obcy"), _jpeg())
+    szkic = db.pobierz_szkic(szkic_id)
+
+    strona = pomoce.zbuduj_strone()
+    menu = utils.pozycje_menu_zalacznikow(strona.page, "tankowania", tid, [], "Tankowanie", lambda: None)
+    assert "Dodaj z zapisanych zdjęć (1)" in [p["tekst"] for p in menu]
+    assert db.dolacz_szkice_do_wpisu("tankowania", tid, [obcy, szkic_id]) == 1, "obcy szkic zostaje w swojej kolejce"
+    assert pomoce.pliki_wpisu("tankowania", tid) == [(szkic["zalacznik"], "paragon", "Orlen")]
+    assert db.pobierz_szkic(szkic_id) is None and db.pobierz_szkic(obcy) is not None
+
+
+def test_karoseria_i_zdjecie_auta_dostaja_kopie_a_szkic_znika_z_oryginalem(baza, monkeypatch):
+    auto_id = _auto()
+    pierwszy, drugi = _szkic_z_pliku(auto_id, 1), _szkic_z_pliku(auto_id, 0)
+    szkic = db.pobierz_szkic(pierwszy)
+    oryginal = db.sciezka_pliku_zalacznika(szkic["zalacznik"])
+    with open(oryginal, "rb") as plik:
+        bajty = plik.read()
+    monkeypatch.setattr(utils.zalaczniki, "pokaz_zapisane_zdjecia",
+                        lambda page, auto_id, po_wyborze, **_: po_wyborze(db.szkice_ze_zdjeciem(auto_id)[:1]))
+    strona = pomoce.zbuduj_strone()
+    strona.page.on_route_change = lambda e: None
+
+    # Jedno zdjęcie (zdjęcie pojazdu, edycja karoserii): wynik jak plik z dysku.
+    _, pobierz = utils.komponent_zalacznika(strona.page, None, auto_id=auto_id)
+    przycisk = next(b for b in pomoce.kontrolki(_, ft.TextButton) if str(b.content).startswith("Z zapisanych"))
+    przycisk.on_click(None)
+    assert pobierz() == utils.abs_zalacznik(szkic["zalacznik"])
+
+    widok = pomoce.klasy_widokow()["FormularzZdjecieKaroseriiView"](strona.page, pomoce.stan_aplikacji(auto_id))
+    kafel = next(k for k in pomoce.kontrolki(widok.k_zalacznik) if k.tooltip == "Zdjęcia z kolejki „Do wpisania”")
+    kafel.on_click(None)
+    assert widok.get_wiele_zdjec() == [utils.abs_zalacznik(szkic["zalacznik"])]
+    widok.zapisz(None)
+
+    wpis = _wiersz("SELECT zalacznik FROM zdjecia_karoserii WHERE auto_id=?", (auto_id,))
+    assert wpis[0] != szkic["zalacznik"]
+    with open(db.sciezka_pliku_zalacznika(wpis[0]), "rb") as plik:
+        assert plik.read() == bajty, "kopia 1:1 — bez drugiej kompresji"
+    assert db.pobierz_szkic(pierwszy) is None and not os.path.exists(oryginal)
+    assert db.pobierz_szkic(drugi) is not None
+    assert db.zamknij_szkice_po_kopii(["/sdcard/DCIM/obcy.jpg"]) == 0, "plik spoza kolejki nic nie zamyka"
+
+
+def test_kazdy_formularz_ze_zdjeciami_zna_kolejke_auta():
+    """Nowy formularz z plikami bez `auto_id=` nie dostałby „Z zapisanych zdjęć”."""
+    import ast
+    import pathlib
+
+    komponenty = {"PolaZalacznikow", "komponent_zalacznika", "komponent_wielu_nowych_zdjec"}
+    bez_auta = []
+    for plik in sorted(pathlib.Path(__file__).resolve().parent.parent.joinpath("views").rglob("*.py")):
+        for wezel in ast.walk(ast.parse(plik.read_text(encoding="utf-8"))):
+            if (isinstance(wezel, ast.Call) and getattr(wezel.func, "attr", None) in komponenty
+                    and "auto_id" not in {k.arg for k in wezel.keywords}):
+                bez_auta.append(f"{plik.name}:{wezel.lineno}")
+    assert bez_auta == [], "dopisz auto_id=state.auto_id (kolejka „Do wpisania”): " + ", ".join(bez_auta)
+
+
 # ======================================================= trasy i ekrany
 
 def test_trasy_szkicu_i_rola(baza, monkeypatch):
@@ -410,8 +589,13 @@ def test_trasy_szkicu_i_rola(baza, monkeypatch):
 
     assert utils.trasa_uzupelnienia("tankowanie", 5) == "/tankowanie/nowe/szkic/5"
     assert utils.trasa_uzupelnienia("wizyta", 5) == "/wizyty/nowa/szkic/5"
+    assert utils.trasa_uzupelnienia("serwis", 5, 3) == "/wpis/nowy/3/szkic/5"
+    assert utils.trasa_uzupelnienia("serwis", 5) == "/zadanie/nowy/szkic/5"
     assert utils.szkic_z_trasy(["inne", "nowy", "szkic", "9"]) == 9
+    assert utils.szkic_z_trasy(["wpis", "nowy", "3", "szkic", "9"]) == 9
+    assert utils.szkic_z_trasy(["wpis", "nowy", "3", "do-zrobienia", "9"]) is None
     assert utils.szkic_z_trasy(["inne", "nowy"]) is None
+    assert main._cel_trasy(["wpis", "nowy", "3", "szkic", "9"]) == (True, True, None, None)
     # Aparat i kolejka zakładają szkice — rola „podgląd” dostaje komunikat, nie ekran.
     assert main._cel_trasy(["paragon"]) == (True, True, None, None)
     assert main._cel_trasy(["do-wpisania"]) == (True, True, None, None)
@@ -509,7 +693,8 @@ def test_drugie_dotkniecie_rodzaju_zdejmuje_wybor(baza):
     strona = pomoce.zbuduj_strone()
     pola = utils.PolaSzkicu(strona.page, auto_id)
 
-    assert "Ładowanie" in _teksty(pola.przelacznik), "elektryk nie tankuje"
+    etykiety = [c.label.value for c in pomoce.kontrolki(pola.przelacznik, ft.Chip)]
+    assert etykiety == ["Ładowanie", "Koszt", "Wizyta", "Serwis"], "elektryk nie tankuje"
     pola._zmien_rodzaj("koszt")
     assert pola.rodzaj == "koszt"
     pola._zmien_rodzaj("koszt")

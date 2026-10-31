@@ -700,7 +700,7 @@ class FormularzOponyView(ft.View):
         def tekst(pole):
             return str(w.get(pole) or "")
 
-        self.pliki = utils.PolaZalacznikow(page, "zestawy_opon", zestaw_id)
+        self.pliki = utils.PolaZalacznikow(page, "zestawy_opon", zestaw_id, auto_id=state.auto_id)
         # Ikona idzie do leading_icon, a NIE do tekstu: ft.Icons to wyliczenie,
         # więc f"{IKONY_SEZONU[s]} {s}" renderowało się jako „74139 Letnie”.
         self.e_sezon = ft.Dropdown(
@@ -895,7 +895,7 @@ class FormularzCzesciView(ft.View):
                     cena_jedn_val = utils.liczba_do_pola(w[8])
                     sklep_val, link_val = str(w[9] or ""), str(w[10] or "")
 
-        self.pliki = utils.PolaZalacznikow(page, "magazyn_czesci", czesc_id)
+        self.pliki = utils.PolaZalacznikow(page, "magazyn_czesci", czesc_id, auto_id=state.auto_id)
         self.e_nazwa = ft.TextField(label="Nazwa*", value=nazwa_val, hint_text="np. Olej 5W-30, żarówka H7", **utils.styl_pola())
         self.e_kat = ft.Dropdown(
             label="Kategoria",

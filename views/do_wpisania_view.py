@@ -64,6 +64,10 @@ class DoWpisaniaView(ft.View):
         utils.wybierz_z_galerii(self._page, self.state, po_dodaniu=self._odswiez)
 
     def _wpisz(self, szkic, rodzaj):
+        if rodzaj == "serwis":
+            # Wymiana należy do podzespołu — najpierw wybór części (albo nowy podzespół).
+            utils.wpisz_szkic_do_serwisu(self._page, self.state.auto_id, szkic)
+            return
         utils.przejdz(self._page, utils.trasa_uzupelnienia(rodzaj, szkic["id"]))
 
     def _usun(self, szkic):
@@ -153,7 +157,7 @@ class DoWpisaniaView(ft.View):
 
     def _przyciski(self, szkic):
         """Przycisk rodzaju wybranego po migawce jest pełny, pozostałe — tekstowe.
-        Bez wybranego rodzaju wszystkie trzy są równorzędne."""
+        Bez wybranego rodzaju wszystkie są równorzędne."""
         auto_id = self.state.auto_id
         przyciski = []
         for rodzaj in db.RODZAJE_SZKICU:

@@ -78,7 +78,7 @@ class FormularzInneView(ft.View):
         self.e_o = ft.TextField(label="Opis / Nazwa usługi", value=op_val, **utils.styl_pola(page=page))
         self.e_kw = ft.TextField(label=f"Kwota całkowita ({utils.symbol_waluty()})", value=kw_val, keyboard_type=ft.KeyboardType.NUMBER, **utils.styl_pola(page=page))
         # Duplikat zaczyna bez plików — paragon jest z tamtego dnia.
-        self.pliki = utils.PolaZalacznikow(page, "inne_koszty", i_id, szkic=self.szkic)
+        self.pliki = utils.PolaZalacznikow(page, "inne_koszty", i_id, szkic=self.szkic, auto_id=state.auto_id)
         self.notatka_bazowa = (notatka_val or "").strip()
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 

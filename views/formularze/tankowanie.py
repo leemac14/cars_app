@@ -305,7 +305,7 @@ class FormularzTankowanieView(ft.View):
         )
         self.k_tagi, self.get_tagi = utils.komponent_tagow(page, state, tagi_val)
         # Duplikat zaczyna bez plików — paragon jest z tamtego dnia.
-        self.pliki = utils.PolaZalacznikow(page, "tankowania", t_id, szkic=self.szkic)
+        self.pliki = utils.PolaZalacznikow(page, "tankowania", t_id, szkic=self.szkic, auto_id=state.auto_id)
         self.notatka_bazowa = (notatka_val or "").strip()
         self.k_notatka = utils.pole_notatki(notatka_val, page)
 

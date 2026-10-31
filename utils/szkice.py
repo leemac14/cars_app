@@ -1,8 +1,8 @@
 """Kolejka „do wpisania” po stronie interfejsu: migawka, galeria, baner, pola.
 
 Dane i zapis — db/szkice.py. Ekrany — views/migawka_view.py (aparat)
-i views/do_wpisania_view.py (kolejka). Formularze tankowania, kosztu i wizyty
-przyjmują `szkic_id` i stawiają na górze `pasek_szkicu`."""
+i views/do_wpisania_view.py (kolejka). Formularze tankowania, kosztu, wizyty, wymiany
+i podzespołu przyjmują `szkic_id` i stawiają na górze `pasek_szkicu`."""
 
 import asyncio
 
@@ -14,11 +14,11 @@ import log
 from .stale import FS, KOLOR_STATUS, RADIUS, SPACING
 from .format import formatuj_dni, formatuj_dystans, jednostka_dystansu, parsuj_int
 from .typografia import podpis, wartosc
-from .wyglad import powierzchnia
-from .dialogi import otworz_dialog, pokaz_komunikat, przejdz, zamknij_dialog
+from .wyglad import pasek_zawijany, powierzchnia
+from .dialogi import otworz_dialog, pokaz_komunikat, pokaz_menu_kontekstowe, przejdz, zamknij_dialog
 from .formularze import styl_pola
+from .haptyka import wibracja
 from .zalaczniki import abs_zalacznik, pokaz_podglad_zalacznika
-from .komponenty import segmented_control
 
 
 # Dokąd prowadzi szkic danego rodzaju — formularz dostaje id szkicu w trasie,
@@ -33,21 +33,27 @@ IKONY_RODZAJU_SZKICU = {
     "tankowanie": ft.Icons.LOCAL_GAS_STATION,
     "koszt": ft.Icons.RECEIPT_LONG,
     "wizyta": ft.Icons.HOME_REPAIR_SERVICE,
+    "serwis": ft.Icons.BUILD,
 }
 
 # Tylko zdjęcia: jedno zdjęcie = jeden paragon = jeden szkic.
 ROZSZERZENIA_ZDJEC_SZKICU = ["jpg", "jpeg", "png", "webp"]
 
 
-def trasa_uzupelnienia(rodzaj, szkic_id):
-    """„/tankowanie/nowe/szkic/12” — formularz rodzaju z podpiętym szkicem."""
+def trasa_uzupelnienia(rodzaj, szkic_id, zadanie_id=None):
+    """„/tankowanie/nowe/szkic/12” — formularz rodzaju z podpiętym szkicem. Serwis idzie
+    pod podzespół („/wpis/nowy/3/szkic/12”), bez niego — nowy podzespół z wymianą."""
+    if rodzaj == "serwis":
+        return f"/wpis/nowy/{zadanie_id}/szkic/{szkic_id}" if zadanie_id else f"/zadanie/nowy/szkic/{szkic_id}"
     return f"{TRASY_FORMULARZY_SZKICU.get(rodzaj, TRASY_FORMULARZY_SZKICU['koszt'])}/szkic/{szkic_id}"
 
 
 def szkic_z_trasy(segmenty):
-    """Id szkicu z trasy formularza („…/nowe/szkic/12”) albo None."""
-    if len(segmenty) >= 4 and segmenty[2] == "szkic":
-        return parsuj_int(segmenty[3], None)
+    """Id szkicu z trasy formularza („…/nowe/szkic/12”, „/wpis/nowy/3/szkic/12”) albo None."""
+    if "szkic" in segmenty[2:]:
+        i = segmenty.index("szkic", 2)
+        if i + 1 < len(segmenty):
+            return parsuj_int(segmenty[i + 1], None)
     return None
 
 
@@ -79,12 +85,30 @@ def dopisek_kolejki(auto_id):
     return f" Do wpisania: {db.liczba_z_odmiana(ile, 'paragon', 'paragony', 'paragonów')}."
 
 
+def wpisz_szkic_do_serwisu(page: ft.Page, auto_id, szkic):
+    """„Serwis” z kolejki: arkusz podzespołów (pasujące do opisu szkicu na górze)
+    i „Nowy podzespół…” — jak „Dopisz do serwisu” w Do zrobienia."""
+    podzespoly = db.podzespoly_dla_pozycji(auto_id, szkic.get("opis") or "")
+    pasujace = [z for z in podzespoly if z["pasuje"]]
+
+    def pozycja(zadanie_id, ikona, tekst):
+        return {"ikona": ikona, "tekst": tekst,
+                "akcja": lambda: przejdz(page, trasa_uzupelnienia("serwis", szkic["id"], zadanie_id))}
+
+    akcje = [pozycja(z["id"], ft.Icons.BUILD, z["nazwa"]) for z in pasujace]
+    akcje.append(pozycja(None, ft.Icons.ADD_CIRCLE_OUTLINE, "Nowy podzespół…"))
+    akcje += [pozycja(z["id"], ft.Icons.BUILD, z["nazwa"]) for z in podzespoly if not z["pasuje"]]
+    opis = ("Na górze części pasujące do opisu zdjęcia." if pasujace
+            else "Wybierz część z Serwisu albo załóż nowy podzespół.")
+    pokaz_menu_kontekstowe(page, "Do którego podzespołu?", akcje, tresc=[podpis(opis, max_lines=2)])
+
+
 def etykieta_rodzaju_szkicu(rodzaj, auto_id=None, krotka=False):
     """Nazwa rodzaju na przycisku. Elektryk nie tankuje, tylko ładuje."""
     if rodzaj == "tankowanie":
         return "Ładowanie" if auto_id and db.czy_pojazd_elektryczny(auto_id) else "Tankowanie"
     if krotka:
-        return {"koszt": "Koszt", "wizyta": "Wizyta"}.get(rodzaj, "")
+        return {"koszt": "Koszt", "wizyta": "Wizyta", "serwis": "Serwis"}.get(rodzaj, "")
     return db.RODZAJE_SZKICU.get(rodzaj, "")
 
 
@@ -274,9 +298,16 @@ class PolaSzkicu:
         )
 
     def _zbuduj_przelacznik(self):
-        opcje = [(etykieta_rodzaju_szkicu(r, self.auto_id, krotka=True), r, IKONY_RODZAJU_SZKICU[r])
+        # Chipy, nie segmenty: cztery rodzaje w jednym rzędzie nie mieszczą się w oknie na telefonie.
+        chipy = [ft.Chip(label=ft.Text(etykieta_rodzaju_szkicu(r, self.auto_id, krotka=True)),
+                         leading=ft.Icon(IKONY_RODZAJU_SZKICU[r], size=18), selected=r == self.rodzaj,
+                         show_checkmark=False, on_select=lambda e, r=r: self._dotknij_rodzaj(r))
                  for r in db.RODZAJE_SZKICU]
-        return segmented_control(self._page, opcje, self.rodzaj, self._zmien_rodzaj)
+        return pasek_zawijany(chipy, spacing=SPACING["sm"], run_spacing=SPACING["xs"])
+
+    def _dotknij_rodzaj(self, rodzaj):
+        wibracja(self._page, "wybor")
+        self._zmien_rodzaj(rodzaj)
 
     def _zmien_rodzaj(self, rodzaj):
         # Drugie dotknięcie wybranego rodzaju zdejmuje wybór — pole jest opcjonalne.
@@ -344,5 +375,6 @@ __all__ = [
     "trasa_po_zapisie_szkicu",
     "trasa_uzupelnienia",
     "wiek_szkicu",
+    "wpisz_szkic_do_serwisu",
     "wybierz_z_galerii",
 ]

@@ -43,10 +43,11 @@ def abs_zalacznik(sciezka_wzgledna):
     return os.path.abspath(db.sciezka_pliku_zalacznika(sciezka_wzgledna))
 
 
-def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
+def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None, auto_id=None):
     """Jeden plik (zdjęcie pojazdu, zdjęcie karoserii): podgląd, wybór, usunięcie. Zwraca
-    (kontrolka, pobierz_wynik) — wynik dla db.przygotuj_nowy_zalacznik."""
-    stan = {"nowa_sciezka": None, "usuniete": False}
+    (kontrolka, pobierz_wynik) — wynik dla db.przygotuj_nowy_zalacznik. `auto_id` dokłada
+    „Z zapisanych zdjęć”; po zapisie formularz woła db.zamknij_szkice_po_kopii."""
+    stan = {"nowa_sciezka": None, "usuniete": False, "szkic_id": None}
 
     def zawartosc_podgladu(sciezka):
         if sciezka:
@@ -73,6 +74,8 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
         ramka_podgladu.content = zawartosc_podgladu(sciezka_podgladu)
         tekst_nazwy.value = etykieta
         btn_usun.visible = pokazuj_usun
+        wolne = ile_zapisanych - (1 if stan["szkic_id"] else 0)
+        btn_zapisane.visible, btn_zapisane.content = wolne > 0, f"Z zapisanych zdjęć ({wolne})"
         try:
             page.update()
         except Exception:
@@ -85,9 +88,17 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
         if not sciezki:
             pokaz_komunikat(page, "Brak dostępu do ścieżki (Uprawnienia telefonu).", KOLOR_STATUS["error"])
             return
-        stan["nowa_sciezka"] = sciezki[0]
-        stan["usuniete"] = False
+        stan.update(nowa_sciezka=sciezki[0], usuniete=False, szkic_id=None)
         odswiez(sciezki[0], os.path.basename(sciezki[0]), True)
+
+    def _po_wyborze_zapisanego(szkice):
+        s = szkice[0]
+        stan.update(nowa_sciezka=abs_zalacznik(s["zalacznik"]), usuniete=False, szkic_id=s["id"])
+        odswiez(stan["nowa_sciezka"], f"Zapisane zdjęcie z {s['data']}", True)
+
+    def z_zapisanych(e):
+        pokaz_zapisane_zdjecia(page, auto_id, _po_wyborze_zapisanego, pominiete={stan["szkic_id"]}, wiele=False,
+                               opis="Formularz dostanie kopię zdjęcia, a po zapisie zniknie ono z „Do wpisania”.")
 
     async def wybierz(e):
         try:
@@ -100,16 +111,18 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
             pokaz_komunikat(page, f"Błąd wczytywania pliku: {ex}", KOLOR_STATUS["error"])
 
     def usun(e):
-        stan["nowa_sciezka"] = None
-        stan["usuniete"] = True
+        stan.update(nowa_sciezka=None, usuniete=True, szkic_id=None)
         odswiez(None, "Brak załącznika", False)
 
     btn_usun.on_click = usun
 
     wiersz = ft.Row([ramka_podgladu, tekst_nazwy, btn_usun], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10)
     btn_wybierz = ft.TextButton("Dodaj / zmień załącznik (zdjęcie, PDF)", icon=ft.Icons.ATTACH_FILE, on_click=wybierz)
+    ile_zapisanych = len(db.szkice_ze_zdjeciem(auto_id)) if auto_id else 0
+    btn_zapisane = ft.TextButton(f"Z zapisanych zdjęć ({ile_zapisanych})", icon=ft.Icons.PHOTO_LIBRARY,
+                                 on_click=z_zapisanych, visible=bool(ile_zapisanych))
 
-    kontener = ft.Column([wiersz, btn_wybierz], spacing=8)
+    kontener = ft.Column([wiersz, btn_wybierz, btn_zapisane], spacing=8)
 
     def pobierz_wynik():
         if stan["usuniete"]:
@@ -125,17 +138,35 @@ def komponent_zalacznika(page: ft.Page, sciezka_zapisana=None):
 KOLUMNY_MINIATUR = {"xs": 4, "sm": 3, "md": 2}
 
 
-def komponent_wielu_nowych_zdjec(page: ft.Page):
+def komponent_wielu_nowych_zdjec(page: ft.Page, auto_id=None):
     """MASOWE dodawanie nowych zdjęć (karoseria), w kilku turach — nowe dopisują się do siatki
     miniatur, kafel „Dodaj” stoi na jej początku. Zwraca (kontrolka, pobierz_wynik) — ścieżki
-    źródłowe; kopiowanie dopiero przy zapisie formularza."""
-    stan = {"pliki": []}
+    źródłowe; kopiowanie dopiero przy zapisie formularza. `auto_id` dokłada kafel „Zapisane”
+    (kolejka „Do wpisania”); po zapisie formularz woła db.zamknij_szkice_po_kopii."""
+    stan = {"pliki": [], "szkice": {}}
+    zapisane = db.szkice_ze_zdjeciem(auto_id) if auto_id else []
     siatka = ft.ResponsiveRow(spacing=SPACING["sm"], run_spacing=SPACING["sm"])
     licznik = podpis("Nie wybrano jeszcze żadnego zdjęcia.")
 
     def usun(sciezka):
         stan["pliki"] = [s for s in stan["pliki"] if s != sciezka]
+        stan["szkice"].pop(sciezka, None)
         odswiez()
+
+    def wolne_zapisane():
+        return [s for s in zapisane if s["id"] not in stan["szkice"].values()]
+
+    def dodaj_zapisane(szkice):
+        for s in szkice:
+            sciezka = abs_zalacznik(s["zalacznik"])
+            if sciezka not in stan["pliki"]:
+                stan["pliki"].append(sciezka)
+            stan["szkice"][sciezka] = s["id"]
+        odswiez()
+
+    def z_zapisanych(e):
+        pokaz_zapisane_zdjecia(page, auto_id, dodaj_zapisane, pominiete=set(stan["szkice"].values()),
+                               opis="Galeria dostanie kopie zdjęć, a po zapisie znikną one z „Do wpisania”.")
 
     def miniatura(sciezka):
         return ft.Container(
@@ -164,8 +195,22 @@ def komponent_wielu_nowych_zdjec(page: ft.Page):
             ], spacing=2, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
         )
 
+    def kafel_zapisane(ile):
+        return ft.Container(
+            col=KOLUMNY_MINIATUR, aspect_ratio=1, border_radius=RADIUS["md"], ink=True, on_click=z_zapisanych,
+            border=ft.Border.all(1.5, ft.Colors.with_opacity(0.45, ft.Colors.PRIMARY)),
+            bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.PRIMARY), alignment=ft.Alignment.CENTER,
+            tooltip="Zdjęcia z kolejki „Do wpisania”",
+            content=ft.Column([
+                ft.Icon(ft.Icons.PHOTO_LIBRARY, size=26, color=ft.Colors.PRIMARY),
+                ft.Text(f"Zapisane ({ile})", size=FS["label"], weight="bold", color=ft.Colors.PRIMARY),
+            ], spacing=2, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
     def odswiez(z_aktualizacja=True):
-        siatka.controls = [kafel_dodaj()] + [miniatura(s) for s in stan["pliki"]]
+        wolne = len(wolne_zapisane())
+        siatka.controls = ([kafel_dodaj()] + ([kafel_zapisane(wolne)] if wolne else [])
+                           + [miniatura(s) for s in stan["pliki"]])
         n = len(stan["pliki"])
         licznik.value = ("Nie wybrano jeszcze żadnego zdjęcia." if n == 0
                          else f"Wybrane: {db.liczba_z_odmiana(n, 'zdjęcie', 'zdjęcia', 'zdjęć')}")
@@ -333,6 +378,75 @@ def pokaz_zalaczniki(page: ft.Page, zalaczniki, tytul="Załączniki"):
     otworz_dno(page, bs)
 
 
+def pokaz_zapisane_zdjecia(page: ft.Page, auto_id, po_wyborze, pominiete=(), wiele=True, opis=None):
+    """Arkusz „Zapisane zdjęcia” — kolejka „Do wpisania” pojazdu, najnowsze pierwsze. Dotknięcie
+    zaznacza (`wiele=False` — od razu wybiera), przytrzymanie powiększa; `po_wyborze(szkice)`."""
+    szkice = list(reversed(db.szkice_ze_zdjeciem(auto_id, pominiete))) if auto_id else []
+    if not szkice:
+        pokaz_komunikat(page, "W „Do wpisania” nie ma zdjęć do wybrania.")
+        return
+    wybrane = []
+    bs = ft.BottomSheet(ft.Container(padding=ft.Padding(16, 16, 16, 8), bgcolor=ft.Colors.SURFACE))
+    siatka = ft.ResponsiveRow(spacing=SPACING["sm"], run_spacing=SPACING["sm"])
+    przycisk = ft.Button("Dodaj", icon=ft.Icons.CHECK, disabled=True)
+
+    def zakoncz(lista):
+        zamknij_dno(page, bs)
+        po_wyborze(lista)
+
+    def dotknij(s):
+        if not wiele:
+            return zakoncz([s])
+        if s["id"] in wybrane:
+            wybrane.remove(s["id"])
+        else:
+            wybrane.append(s["id"])
+        odswiez()
+
+    def kafel(s):
+        zaznaczony = s["id"] in wybrane
+        warstwy = [ft.Container(left=0, top=0, right=0, bottom=0, content=ft.Image(
+            src=abs_zalacznik(s["zalacznik"]), fit=ft.BoxFit.COVER, cache_width=320, gapless_playback=True,
+            semantics_label=f"Zdjęcie z {s['data']}"))]
+        if zaznaczony:
+            warstwy.append(ft.Container(right=6, top=6, content=ft.Icon(ft.Icons.CHECK_CIRCLE, size=24,
+                                                                        color=ft.Colors.PRIMARY)))
+        return ft.Container(
+            col=KOLUMNY_MINIATUR, border_radius=RADIUS["md"], ink=True, on_click=lambda e: dotknij(s),
+            on_long_press=lambda e: pokaz_podglad_zalacznika(page, s["zalacznik"], "Zapisane zdjęcie"),
+            content=ft.Column([
+                ft.Container(aspect_ratio=1, border_radius=RADIUS["md"], clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                             bgcolor=powierzchnia(page, "blok")["bgcolor"],
+                             border=ft.Border.all(3, ft.Colors.PRIMARY) if zaznaczony else None,
+                             content=ft.Stack(warstwy)),
+                podpis(s["data"]),
+            ], spacing=4, tight=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+        )
+
+    def odswiez(z_aktualizacja=True):
+        siatka.controls = [kafel(s) for s in szkice]
+        przycisk.disabled = not wybrane
+        przycisk.content = f"Dodaj ({len(wybrane)})" if wybrane else "Dodaj"
+        if z_aktualizacja:
+            try:
+                bs.content.content.update()
+            except RuntimeError:
+                log.polkniety("odświeżenie wyboru zapisanych zdjęć")
+
+    przycisk.on_click = lambda e: zakoncz([s for s in szkice if s["id"] in wybrane])
+    akcje = [ft.TextButton("Anuluj", on_click=lambda e: zamknij_dno(page, bs))] + ([przycisk] if wiele else [])
+    odswiez(z_aktualizacja=False)
+    bs.content.content = ft.Column([
+        ft.Text("Zapisane zdjęcia", weight="bold", size=FS["heading"], color=ft.Colors.PRIMARY),
+        podpis(opis or "Zdjęcia z kolejki „Do wpisania”.", max_lines=3),
+        podpis("Dotknij, żeby " + ("zaznaczyć" if wiele else "wybrać") + " · przytrzymaj, żeby powiększyć.",
+               max_lines=2),
+        siatka,
+        ft.Row(akcje, alignment=ft.MainAxisAlignment.END),
+    ], tight=True, spacing=SPACING["sm"])
+    otworz_dno(page, bs)
+
+
 def wskaznik_zalacznikow(page: ft.Page, zalaczniki, tytul="Załącznik"):
     """Plakietka na karcie listy: ikona i liczba plików; dotknięcie otwiera podgląd."""
     pliki = [z for z in zalaczniki or [] if z.get("sciezka")]
@@ -388,6 +502,24 @@ def pozycje_menu_zalacznikow(page: ft.Page, tabela, rekord_id, zalaczniki, tytul
         pozycje.append({"ikona": ft.Icons.ATTACH_FILE, "tekst": "Pokaż plik" if ile == 1 else f"Pokaż pliki ({ile})",
                         "czyta": True, "akcja": lambda: pokaz_zalaczniki(page, zalaczniki, tytul)})
     pozycje.append({"ikona": ft.Icons.ADD_A_PHOTO, "tekst": "Dodaj plik (zdjęcie, PDF)", "akcja": dodaj})
+
+    # Zdjęcia z kolejki „Do wpisania” auta tego wpisu — dopisują się od razu, bez kopii.
+    auto_id = db.auto_id_rekordu(tabela, rekord_id)
+    ile = len(db.szkice_ze_zdjeciem(auto_id)) if auto_id else 0
+
+    def po_wyborze(szkice):
+        dodane = db.dolacz_szkice_do_wpisu(tabela, rekord_id, [s["id"] for s in szkice])
+        if not dodane:
+            pokaz_komunikat(page, "Nie udało się dodać zdjęć.", KOLOR_STATUS["error"])
+            return
+        pokaz_komunikat(page, f"Dodano {db.liczba_z_odmiana(dodane, 'zdjęcie', 'zdjęcia', 'zdjęć')} z „Do wpisania”.")
+        po_zapisie()
+
+    if ile:
+        pozycje.append({"ikona": ft.Icons.PHOTO_LIBRARY, "tekst": f"Dodaj z zapisanych zdjęć ({ile})",
+                        "akcja": lambda: pokaz_zapisane_zdjecia(
+                            page, auto_id, po_wyborze,
+                            opis="Wybrane zdjęcia od razu dopiszą się do wpisu i znikną z „Do wpisania”.")})
     return pozycje
 
 
@@ -395,9 +527,10 @@ class PolaZalacznikow:
     """Pliki wpisu w formularzu: miniatura, rodzaj (paragon, faktura…), opis, kolejność.
     Kopie robi dopiero `zapis()`; pliki usuniętych pozycji znikają po udanym zapisie.
     Formularz: `kontrolka`, `migawka()`, `with pola.zapis(): … pola.zapisz_w(conn, id, auto_id)`.
-    `dokument=True` — strony dokumentu ze skarbca, bez wyboru rodzaju."""
+    `dokument=True` — strony dokumentu ze skarbca, bez wyboru rodzaju. `auto_id` — przycisk
+    „Z zapisanych zdjęć”: zdjęcie przechodzi bez kopii, a szkic zamyka `zapisz_w`."""
 
-    def __init__(self, page: ft.Page, tabela, rekord_id=None, szkic=None, dokument=False):
+    def __init__(self, page: ft.Page, tabela, rekord_id=None, szkic=None, dokument=False, auto_id=None):
         self._page = page
         self.tabela = tabela
         self.dokument = dokument
@@ -414,8 +547,14 @@ class PolaZalacznikow:
         self._lista = ft.Column(spacing=SPACING["sm"])
         tekst = ("Dodaj strony (zdjęcia, PDF — można kilka naraz)" if dokument
                  else "Dodaj pliki (zdjęcia, PDF — można kilka naraz)")
+        # Kolejka „Do wpisania” auta — bez szkicu, z którego formularz powstał.
+        self.auto_id = auto_id
+        self._wlasny_szkic = szkic.get("id") if szkic else None
+        self._zapisane = db.szkice_ze_zdjeciem(auto_id, {self._wlasny_szkic}) if auto_id else []
+        self._przycisk_zapisanych = ft.TextButton(icon=ft.Icons.PHOTO_LIBRARY, on_click=self._z_zapisanych)
         self.kontrolka = ft.Column([
             self._lista, ft.TextButton(tekst, icon=ft.Icons.ATTACH_FILE, on_click=self._wybierz),
+            self._przycisk_zapisanych,
         ], spacing=SPACING["sm"])
         self._odswiez(aktualizuj=False)
 
@@ -430,6 +569,9 @@ class PolaZalacznikow:
         else:
             self._lista.controls = [podpis("Brak plików — dodaj zdjęcia stron albo PDF." if self.dokument
                                            else "Brak plików — paragon, faktura albo zdjęcie wymienionej części.")]
+        wolne = len([s for s in self._zapisane if s["id"] not in self._szkice_w_pozycjach()])
+        self._przycisk_zapisanych.visible = bool(wolne)
+        self._przycisk_zapisanych.content = f"Z zapisanych zdjęć ({wolne})"
         if aktualizuj:
             try:
                 self.kontrolka.update()
@@ -488,8 +630,30 @@ class PolaZalacznikow:
 
     def _usun(self, i):
         p = self.pozycje.pop(i)
-        if p["id"] is None and not p["nowy"]:
+        # Zdjęcie z kolejki wraca do niej nietknięte; zdjęcie szkicu formularza znika po zapisie.
+        if p["id"] is None and not p["nowy"] and not p.get("szkic_id"):
             self._usuniete_bez_wiersza.append(p["sciezka"])
+        self._odswiez()
+
+    def _szkice_w_pozycjach(self):
+        return {p["szkic_id"] for p in self.pozycje if p.get("szkic_id")}
+
+    def _z_zapisanych(self, e=None):
+        pokaz_zapisane_zdjecia(self._page, self.auto_id, self.dodaj_szkice,
+                               pominiete={self._wlasny_szkic, *self._szkice_w_pozycjach()},
+                               opis="Zdjęcie przejdzie do tego wpisu i po zapisie zniknie z „Do wpisania”.")
+
+    def dodaj_szkice(self, szkice):
+        """Zdjęcia z kolejki „Do wpisania” — bez kopii; szkic zamyka dopiero zapis wpisu."""
+        juz = self._szkice_w_pozycjach() | {self._wlasny_szkic}
+        for s in szkice:
+            if s["id"] in juz or not s.get("zalacznik"):
+                continue
+            typ = (db.TYP_PLIKU_DOKUMENTU if self.dokument
+                   else db.typ_dla_pliku(s["zalacznik"], [p["typ"] for p in self.pozycje]))
+            self.pozycje.append({"id": None, "sciezka": s["zalacznik"], "nowy": False, "typ": typ,
+                                 "opis": s.get("opis") or "", "szkic_id": s["id"]})
+            juz.add(s["id"])
         self._odswiez()
 
     def dodaj_pliki(self, sciezki):
@@ -552,7 +716,11 @@ class PolaZalacznikow:
         """Pliki wpisu w transakcji formularza — wewnątrz `zapis()`."""
         pozycje = []
         for p in self.pozycje:
-            sciezka = self._kopie.get(id(p)) if p["nowy"] else p["sciezka"]
+            if p.get("szkic_id"):
+                # Szkic zamyka się w tej transakcji; zniknął w międzyczasie (kosz) — zdjęcia już nie ma.
+                sciezka = db.przejmij_szkic(conn, p["szkic_id"], auto_id)
+            else:
+                sciezka = self._kopie.get(id(p)) if p["nowy"] else p["sciezka"]
             if sciezka:
                 pozycje.append({"id": p["id"], "sciezka": sciezka, "typ": p["typ"], "opis": p["opis"]})
         self._do_skasowania = (db.zapisz_zalaczniki_rekordu(conn, self.tabela, rekord_id, auto_id, pozycje)
@@ -572,6 +740,7 @@ __all__ = [
     "miniatura_zalacznika",
     "pokaz_podglad_zalacznika",
     "pokaz_zalaczniki",
+    "pokaz_zapisane_zdjecia",
     "pozycje_menu_zalacznikow",
     "szybkie_dodanie_zalacznikow",
     "udostepnij_pliki",

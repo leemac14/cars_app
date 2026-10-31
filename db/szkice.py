@@ -16,9 +16,12 @@ from datetime import date, datetime
 import log
 from date import na_iso
 
+from .stale import TABELE_Z_WIELOMA_ZALACZNIKAMI
 from .pamiec import z_pamieci
 from .polaczenie import polacz_baze
-from .zalaczniki import _upewnij_folder_odroczonych, usun_plik_zalacznika, zapisz_zalacznik
+from .zalaczniki import (TYP_PLIKU_DOKUMENTU, _auto_rekordu, _plik_w_uzyciu, _policz_pliki_dokumentu,
+                         _upewnij_folder_odroczonych, sciezka_pliku_zalacznika, typ_dla_pliku,
+                         usun_plik_zalacznika, wzgledna_sciezka_zalacznika, zapisz_zalacznik)
 
 try:
     from PIL import Image
@@ -33,6 +36,7 @@ RODZAJE_SZKICU = {
     "tankowanie": "Tankowanie",
     "koszt": "Inny koszt",
     "wizyta": "Wizyta w warsztacie",
+    "serwis": "Serwis",
 }
 
 # Po tylu dniach najstarszego szkicu przypomina dzwonek.
@@ -232,6 +236,72 @@ def zamknij_szkic(szkic_id, conn=None):
         polaczenie.execute("DELETE FROM szkice_wpisow WHERE id=?", (szkic_id,))
 
 
+# ---------------------------------------------------------------- „Z zapisanych zdjęć”
+
+def szkice_ze_zdjeciem(auto_id, pominiete=()):
+    """Szkice pojazdu ze zdjęciem na dysku — do wyboru w formularzu; `pominiete` to id
+    szkiców, które formularz już niesie."""
+    return [s for s in pobierz_szkice(auto_id) if s["id"] not in pominiete and s.get("zalacznik")
+            and os.path.exists(sciezka_pliku_zalacznika(s["zalacznik"]))]
+
+
+def przejmij_szkic(conn, szkic_id, auto_id=None) -> str | None:
+    """Zdjęcie szkicu przechodzi na wpis w transakcji wołającego: szkic znika z kolejki,
+    wynik to ścieżka zdjęcia (bez kopii). None — szkicu już nie ma albo jest innego auta."""
+    wiersz = conn.execute("SELECT zalacznik, auto_id FROM szkice_wpisow WHERE id=?", (szkic_id,)).fetchone()
+    if not wiersz or not wiersz[0] or (auto_id is not None and wiersz[1] != auto_id):
+        return None
+    conn.execute("DELETE FROM szkice_wpisow WHERE id=?", (szkic_id,))
+    return wiersz[0]
+
+
+def dolacz_szkice_do_wpisu(tabela, rekord_id, szkic_ids) -> int:
+    """Menu wpisu: zdjęcia szkiców jego auta dopisują się na koniec plików (bez kopii),
+    a szkice znikają z kolejki — razem albo wcale. Zwraca liczbę dodanych zdjęć."""
+    if tabela not in TABELE_Z_WIELOMA_ZALACZNIKAMI or not rekord_id or not szkic_ids:
+        return 0
+    dodane = 0
+    with polacz_baze() as conn:
+        auto_id = _auto_rekordu(conn, tabela, rekord_id)
+        if auto_id is None:
+            return 0
+        wiersze = conn.execute("SELECT typ, kolejnosc FROM zalaczniki WHERE tabela=? AND rekord_id=?",
+                               (tabela, rekord_id)).fetchall()
+        typy = [w[0] for w in wiersze]
+        nastepna = max((w[1] for w in wiersze), default=-1) + 1
+        for szkic_id in szkic_ids:
+            opis = conn.execute("SELECT opis FROM szkice_wpisow WHERE id=?", (szkic_id,)).fetchone()
+            sciezka = przejmij_szkic(conn, szkic_id, auto_id)
+            if not sciezka:
+                continue
+            typ = TYP_PLIKU_DOKUMENTU if tabela == "dokumenty_pojazdu" else typ_dla_pliku(sciezka, typy)
+            typy.append(typ)
+            conn.execute("INSERT INTO zalaczniki (auto_id, tabela, rekord_id, sciezka, typ, opis, kolejnosc) "
+                         "VALUES (?,?,?,?,?,?,?)",
+                         (auto_id, tabela, rekord_id, sciezka, typ, opis[0] if opis else None, nastepna + dodane))
+            dodane += 1
+        if dodane:
+            _policz_pliki_dokumentu(conn, tabela, rekord_id)
+    return dodane
+
+
+def zamknij_szkice_po_kopii(sciezki) -> int:
+    """Wpis z jednym plikiem (karoseria, zdjęcie pojazdu) dostał KOPIĘ zdjęcia z kolejki:
+    po udanym zapisie szkic znika razem z oryginałem. Plik spoza kolejki nic nie robi."""
+    szukane = {wzgledna_sciezka_zalacznika(s) for s in sciezki or [] if s}
+    if not szukane:
+        return 0
+    with polacz_baze() as conn:
+        szkice = [(i, z) for i, z in conn.execute("SELECT id, zalacznik FROM szkice_wpisow").fetchall()
+                  if z and wzgledna_sciezka_zalacznika(z) in szukane]
+        for szkic_id, _ in szkice:
+            conn.execute("DELETE FROM szkice_wpisow WHERE id=?", (szkic_id,))
+        do_skasowania = [z for _, z in szkice if not _plik_w_uzyciu(conn, z)]
+    for sciezka in do_skasowania:
+        usun_plik_zalacznika(sciezka)
+    return len(szkice)
+
+
 __all__ = [
     "DNI_PRZYPOMNIENIA_SZKICU",
     "MAKS_DLUGOSC_OPISU_SZKICU",
@@ -241,10 +311,14 @@ __all__ = [
     "dodaj_szkic",
     "dodaj_szkic_z_bajtow",
     "dodaj_szkice_z_plikow",
+    "dolacz_szkice_do_wpisu",
     "opisz_szkic",
     "pobierz_szkic",
     "pobierz_szkice",
     "podsumowanie_szkicow",
+    "przejmij_szkic",
     "przenies_szkic",
+    "szkice_ze_zdjeciem",
     "zamknij_szkic",
+    "zamknij_szkice_po_kopii",
 ]

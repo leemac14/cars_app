@@ -28,6 +28,14 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.10.31", "pozycje": [
+        {"tytul": "Paragon prosto do Serwisu", "ikona": "BUILD", "ekran": "do-wpisania",
+         "opis": "W „Do wpisania” doszedł rodzaj „Serwis”: wybierasz część (pasujące do opisu zdjęcia są na "
+                 "górze) albo nowy podzespół, a wymiana dostaje datę, licznik i zdjęcie."},
+        {"tytul": "Zapisane zdjęcia w każdym formularzu", "ikona": "PHOTO_LIBRARY", "ekran": "do-wpisania",
+         "opis": "Przy plikach wpisu, w Karoserii i przy zdjęciu auta jest „Z zapisanych zdjęć” — zdjęcie z kolejki "
+                 "„Do wpisania” trafia do wpisu i po zapisie znika z kolejki. To samo w menu wpisu na listach."},
+    ]},
     {"wersja": "2026.10.29.2", "pozycje": [
         {"tytul": "Z listy Do zrobienia prosto do Serwisu", "ikona": "BUILD", "ekran": "do-zrobienia",
          "opis": "Przy „Wykonano” wybierasz, gdzie zapisać pozycję: jako wymianę części z Serwisu, nowy podzespół "
