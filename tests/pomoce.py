@@ -18,6 +18,10 @@ from date import na_iso
 # zmienia się w trakcie round-tripu (wpis powstaje i znika).
 TABELE_POMIJANE_W_POROWNANIU = {"sqlite_sequence", "kosz_pojazdy"}
 
+# Terminy w `utworz_pojazd` liczone od dziś: data na sztywno po kilku tygodniach wpada
+# w okno „pilne” (30 dni) albo mija. 45 dni — poza pilnymi, w „Co przede mną”.
+DNI_DO_UBEZPIECZENIA = 45
+
 
 def nazwy_tabel(pomijane=()):
     with db.polacz_baze() as conn:
@@ -251,7 +255,8 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
         zid["warsztat"] = c.lastrowid
 
         c.execute("INSERT INTO wydatki_cykliczne (auto_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ, zdalne_id) VALUES (?,?,?,?,?,?,?,?)",
-                  (auto, "Ubezpieczenie", 1200.0, 365, "2026-12-01", 1, db.TYP_CYKLICZNY_WYDATEK, "cykl-1"))
+                  (auto, "Ubezpieczenie", 1200.0, 365, (date.today() + timedelta(days=DNI_DO_UBEZPIECZENIA)).isoformat(),
+                   1, db.TYP_CYKLICZNY_WYDATEK, "cykl-1"))
         zid["cykliczny"] = c.lastrowid
 
         c.execute("INSERT INTO pakiety_serwisowe_wlasne (auto_id, nazwa, pozycje, zdalne_id) VALUES (?,?,?,?)",
@@ -371,7 +376,7 @@ def utworz_pojazd(nazwa="Testowy", z_zalacznikami=True, wspolny=False, sciezki_w
 
         # Tabela spoza kosza — świadomie, żeby testy widziały różnicę.
         c.execute("INSERT INTO wyciszone_powiadomienia (auto_id, klucz, do_dnia, tytul) VALUES (?,?,?,?)",
-                  (auto, "oc", "2026-12-31", "Polisa OC"))
+                  (auto, "oc", (date.today() + timedelta(days=60)).isoformat(), "Polisa OC"))
 
         # Aplikacja dopisuje `data_iso` przy każdym zapisie daty — wpisy
         # wstawione tu SQL-em dostają ją tak, jak dostałyby w aplikacji.

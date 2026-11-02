@@ -250,6 +250,19 @@ def test_podpisy_osi_x_nie_nachodza_na_ostatni():
     assert utils.indeksy_podpisow(1) == [0]
 
 
+def test_rok_do_roku_w_styczniu_rysuje_miesiac_kropka(baza):
+    """W styczniu rok w toku ma jeden miesiąc — wykres ma być (kropka), a nie „Brak danych”."""
+    rok = date.today().year - 1
+    dane = db.koszty_rok_do_roku(bogate_auto(), rok=rok, dzis=date(rok, 1, 20))
+    assert len([w for w in dane["biezacy"] if w is not None]) == 1
+
+    wykres = utils.wykres_rok_do_roku(pomoce.zbuduj_strone().page, dane)
+
+    assert wykres is not None
+    (punkt,) = wykres.controls[0].content.data_series[-1].points
+    assert isinstance(punkt.point, fc.ChartCirclePoint), "samotny punkt bez kropki byłby niewidoczny"
+
+
 @pytest.mark.parametrize("klucz", ["skumulowany", "koszt1000", "rok_do_roku", "spalanie", "ceny"])
 def test_dymki_i_podpisy_osi_na_kreskach(baza, klucz):
     wykresy = kontrolki(ekran(bogate_auto(), klucz), fc.LineChart)

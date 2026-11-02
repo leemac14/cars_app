@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 import flet as ft
 import pytest
 
+import audyty
 import db
 import pomoce
 import probki_baz
@@ -1099,6 +1100,7 @@ def test_okno_zamkniecia_miesiaca(baza, okna):
     (dlg,) = otwarte
     (pole,) = _wszystkie(dlg, ft.TextField)
     assert pole.value == "121118"
+    assert audyty.znajdz_uciete_napisy(dlg) == [], "etykieta pola mieści się w oknie na telefonie"
     assert "Podpowiedź: odczyt z 20.03 (121 078 km) + przejazdy po nim (40 km)." in teksty(dlg)
     dlg.actions[-1].on_click(None)
 

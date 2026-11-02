@@ -184,7 +184,8 @@ def test_sprzedane_i_podpowiedzi_nie_ida(baza):
     assert grupy(a) == [f"cykliczny:{przypomnienie}"], "przypomnienie już idzie"
     (termin,) = db.terminy_kalendarza(a)
     assert utils.tytul_wpisu_kalendarza(termin) == "Zmiana opon"
-    assert "Kolejne zmiany: na zimowe " in utils.opis_wpisu_kalendarza(termin, {"nazwa": "X"}, date.today())
+    opis = utils.opis_wpisu_kalendarza(termin, {"nazwa": "X"}, date.today())
+    assert "Kolejne zmiany: " in opis and "na zimowe " in opis, "która zmiana pierwsza — zależy od pory roku"
 
 
 # ============================================================================

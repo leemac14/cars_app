@@ -413,7 +413,8 @@ class EwidencjaPrzebieguView(ft.View):
         „ewidencja”. Podpowiedź: ostatni odczyt plus przejazdy po nim."""
         stan = db.stan_na_koniec_miesiaca(self.state.auto_id, self.rok, self.miesiac)
         koniec = stan["koniec"].strftime("%d.%m.%Y")
-        pole = ft.TextField(label=f"Stan licznika na {koniec} ({self.j})",
+        # Rok jest w tytule okna — pełna data w etykiecie nie mieściła się w oknie na telefonie.
+        pole = ft.TextField(label=f"Licznik na {stan['koniec'].strftime('%d.%m')} ({self.j})",
                             value=db.wartosc_pola_dystansu(stan["podpowiedz"], self.j) if stan["podpowiedz"] else "",
                             keyboard_type=ft.KeyboardType.NUMBER, autofocus=True, **utils.styl_pola())
         linie = [utils.podpis("Zapisze się w historii licznika jako odczyt z ostatniego dnia miesiąca — to stan "

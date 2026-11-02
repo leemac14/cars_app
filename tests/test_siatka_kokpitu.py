@@ -42,6 +42,8 @@ def kokpit_z_kompletem_kafelkow(scenariusz="pojazd_z_danymi"):
     więc trzy domyślne nie powiedziałyby o siatce niczego."""
     stan, _ = pomoce.przygotuj_scenariusz(scenariusz)
     stan.zakladka = 0
+    # Dane scenariusza są z ustalonych dni — świeży koszt trzyma „Wydatki 6 mies.” z treścią.
+    pomoce.wstaw("inne_koszty", auto_id=stan.auto_id, data=pomoce.dzien(5), kategoria="Inne", kwota=50.0)
     # Ten plik pilnuje SIATKI, więc chce kompletu kafelków — chowanie pustych
     # ma własny zestaw testów (test_puste_kafelki.py).
     db.zapisz_chowanie_pustych_kafelkow(False)

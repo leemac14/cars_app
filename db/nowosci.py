@@ -28,6 +28,14 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.11.2", "pozycje": [
+        {"tytul": "Porównanie lat działa też w styczniu", "ikona": "STACKED_LINE_CHART", "ekran": "statystyki",
+         "opis": "Na początku roku wykres „rok do roku” pokazywał „Brak danych”, choć wpisy były. Teraz styczeń "
+                 "stoi na wykresie jako punkt obok krzywej poprzedniego roku."},
+        {"tytul": "Okno „Zamknij miesiąc” mieści się na telefonie", "ikona": "EVENT_AVAILABLE", "ekran": "ewidencja",
+         "opis": "Opis pola na stan licznika był za długi i łamał się w oknie. Teraz jest krótszy, a miesiąc "
+                 "i rok widać w tytule okna."},
+    ]},
     {"wersja": "2026.10.31", "pozycje": [
         {"tytul": "Paragon prosto do Serwisu", "ikona": "BUILD", "ekran": "do-wpisania",
          "opis": "W „Do wpisania” doszedł rodzaj „Serwis”: wybierasz część (pasujące do opisu zdjęcia są na "

@@ -1233,7 +1233,8 @@ def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
     poprzedni = list(dane.get("poprzedni") or [])
     znane_b = [w for w in biezacy if w is not None]
     znane_p = [w for w in poprzedni if w is not None]
-    if len(znane_b) < 2 or len(znane_p) < 2:
+    # W styczniu rok w toku ma jeden miesiąc — rysuje się kropką, nie znika cały wykres.
+    if not znane_b or not znane_p or len(znane_b) + len(znane_p) < 3:
         return None
 
     skala = skala_osi(0, max(znane_b + znane_p) * 1.05, ile=4, od_zera=True)
@@ -1241,13 +1242,19 @@ def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
     rozjazd = dane.get("miesiac_rozjazdu")
     jedn = _jednostka_rdr(dane)
 
-    def punkty(seria, rok, z_rozjazdem=False):
+    def punkty(seria, rok, z_rozjazdem=False, kolor=ft.Colors.PRIMARY):
         wynik = []
+        samotny = sum(1 for w in seria if w is not None) == 1
         for i, w in enumerate(seria):
             if w is None:
                 continue
             tekst = f"{MIESIACE_NAZWY[i][:3]} {rok}: {formatuj_liczba(w, 0)}{jedn}"
-            if z_rozjazdem and rozjazd == i + 1:
+            if samotny and not (z_rozjazdem and rozjazd == i + 1):
+                wynik.append(fc.LineChartDataPoint(
+                    i, w * m, point=fc.ChartCirclePoint(color=kolor, radius=4),
+                    tooltip=tekst_dymka(tekst),
+                ))
+            elif z_rozjazdem and rozjazd == i + 1:
                 wynik.append(fc.LineChartDataPoint(
                     i, w * m,
                     point=fc.ChartCirclePoint(color=KOLOR_STATUS["accent"], radius=5, stroke_width=2,
@@ -1276,7 +1283,8 @@ def wykres_rok_do_roku(page: ft.Page, dane, wysokosc=210):
         ))
 
     serie.append(fc.LineChartData(
-        points=punkty(poprzedni, dane["rok_poprzedni"]), stroke_width=2, color=ft.Colors.ON_SURFACE_VARIANT,
+        points=punkty(poprzedni, dane["rok_poprzedni"], kolor=ft.Colors.ON_SURFACE_VARIANT),
+        stroke_width=2, color=ft.Colors.ON_SURFACE_VARIANT,
         dash_pattern=[6, 4], curved=False, rounded_stroke_cap=True,
     ))
     serie.append(fc.LineChartData(

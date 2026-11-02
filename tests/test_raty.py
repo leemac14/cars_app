@@ -752,7 +752,8 @@ def test_formularz_przestawia_zwykly_wydatek_w_miejscu(baza, zapis_formularza):
     f = formularz(ids["auto_id"], ids["cykliczny"])
 
     assert f.przestawiany and f.wydatek_id == ids["cykliczny"]
-    assert (f.e_nazwa.value, f.e_rata.value, f.e_data.value) == ("Ubezpieczenie", "1200", "01.12.2026")
+    assert (f.e_nazwa.value, f.e_rata.value, f.e_data.value) == ("Ubezpieczenie", "1200",
+                                                                pomoce.dzien(-pomoce.DNI_DO_UBEZPIECZENIA))
     assert any("Przestawiasz wydatek cykliczny „Ubezpieczenie”" in t for t in teksty(f))
     wypelnij(f, e_liczba="12")
     f.zapisz(None)
