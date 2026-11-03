@@ -149,7 +149,7 @@ class DolewkiView(ft.View):
 
     def _opis_liczenia(self):
         jednostka = db.slowo_dystansu("skrot", self.j)
-        return (f"Zużycie to litry dolane od wymiany podzielone przez {db.slowo_dystansu('dopelniacz_pelny', self.j)} "
+        return (f"Zużycie to litry dolane od wymiany podzielone przez {db.slowo_dystansu('mianownik', self.j).lower()} "
                 f"od wymiany do OSTATNIEJ dolewki, razy 1000 — tego, co przejechane po niej, nikt jeszcze nie zmierzył. Dolewaj "
                 f"zawsze do tego samego poziomu (np. do kreski max), wtedy liczba jest dokładna. Wynik pokazuje się "
                 f"od {utils.formatuj_dystans(db.MIN_KM_POMIARU, 0, self.j)} pomiaru; zamknięty okres bez dolewek to zero. "

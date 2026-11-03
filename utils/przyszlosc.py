@@ -37,14 +37,6 @@ SKROTY_MIESIECY = ("sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz"
 # się w jednej linii także wtedy, gdy dzień się nie powtarza.
 SZEROKOSC_DNIA = 40
 
-# Okresy wpisów cyklicznych, które mają swoje słowo („co miesiąc” czyta się
-# szybciej niż „co 30 dni”); reszta — liczbą dni.
-OKRESY_SLOWAMI = {
-    1: "codziennie", 7: "co tydzień", 14: "co dwa tygodnie", 30: "co miesiąc", 31: "co miesiąc",
-    91: "co kwartał", 92: "co kwartał", 182: "co pół roku", 183: "co pół roku",
-    365: "co rok", 366: "co rok",
-}
-
 # Statusy, które coś mówią — reszta stoi w kolorze akcentu.
 STATUSY_Z_KOLOREM = ("po_terminie", "blisko", "info")
 
@@ -89,8 +81,7 @@ def kiedy_osi(dni, prognoza=False):
 
 
 def co_ile_osi(okres_dni):
-    okres = int(okres_dni or 0)
-    return OKRESY_SLOWAMI.get(okres) or f"co {formatuj_dni(okres)}"
+    return db.opis_okresu_dni(okres_dni)
 
 
 def kwota_osi(pozycja):
@@ -382,7 +373,6 @@ def karta_podsumowania_osi(page, os_dane):
 __all__ = [
     "BEZ_KWOT_OSI",
     "IKONY_OSI",
-    "OKRESY_SLOWAMI",
     "SEZONY_PRZYMIOTNIKIEM",
     "SKROTY_DNI_TYGODNIA",
     "SKROTY_MIESIECY",

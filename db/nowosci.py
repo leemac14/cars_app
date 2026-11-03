@@ -28,6 +28,17 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.11.3", "pozycje": [
+        {"tytul": "Jedno średnie spalanie na każdym ekranie", "ikona": "LOCAL_GAS_STATION", "ekran": "kokpit",
+         "opis": "Kokpit, Rok i Miesiąc w pigułce, wykres spalania i zasięg na baku liczą średnią z litrów "
+                 "i kilometrów odcinków, jak Analiza. Krótki odcinek nie waży już tyle, co długi."},
+        {"tytul": "Dystans i koszt przejazdu z całej historii licznika", "ikona": "ROUTE", "ekran": "statystyki",
+         "opis": "Analiza, porównanie aut i raport PDF liczą przejechany dystans ze wszystkich odczytów licznika, "
+                 "tak jak Rok w pigułce. Koszt paliwa na kilometr wychodzi z tych samych tankowań, co spalanie."},
+        {"tytul": "Spójniejsze napisy", "ikona": "SPELLCHECK", "ekran": "co-przede-mna",
+         "opis": "Wydatki cykliczne mówią wszędzie „co kwartał” czy „co rok” zamiast liczby dni, a liczby mają "
+                 "właściwą odmianę. Ustawienia prowadzą do kosza przez menu boczne."},
+    ]},
     {"wersja": "2026.11.2", "pozycje": [
         {"tytul": "Porównanie lat działa też w styczniu", "ikona": "STACKED_LINE_CHART", "ekran": "statystyki",
          "opis": "Na początku roku wykres „rok do roku” pokazywał „Brak danych”, choć wpisy były. Teraz styczeń "

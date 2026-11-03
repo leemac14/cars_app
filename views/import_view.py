@@ -213,7 +213,8 @@ class ImportCSVView(ft.View):
             return
         preset = self._preset()
         if preset is None:
-            self.t_plik.value = f"{self.nazwa_pliku} — {len(self.wiersze)} wierszy, {len(self.naglowki)} kolumn"
+            self.t_plik.value = (f"{self.nazwa_pliku} — {db.liczba_z_odmiana(len(self.wiersze), 'wiersz', 'wiersze', 'wierszy')}, "
+                                f"{db.liczba_z_odmiana(len(self.naglowki), 'kolumna', 'kolumny', 'kolumn')}")
             return
         opis = f"{self.nazwa_pliku} — plik z {preset['etykieta']}"
         nazwa_auta = (self.rozbior or {}).get("nazwa_pojazdu")

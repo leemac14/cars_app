@@ -329,7 +329,7 @@ class FormularzAutoView(ft.View):
             lata = miesiace // 12
             if lata == 1:
                 return " · co rok"
-            return f" · co {lata} lata" if lata <= 4 else f" · co {lata} lat"
+            return f" · co {db.liczba_z_odmiana(lata, 'rok', 'lata', 'lat')}"
 
         def chip_podzespolu(nazwa, miesiace):
             klucz = db.klucz_nazwy(nazwa)

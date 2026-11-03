@@ -283,6 +283,25 @@ def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
     return [wg_daty[d] for d in sorted(wg_daty.keys())]
 
 
+def przejechane_km(auto_id, od=None, do=None, punkty=None) -> int:
+    """Kilometry w [od, do] (końce opcjonalne) z historii licznika ze wszystkich źródeł — od
+    ostatniego stanu sprzed okresu (bez niego od najniższego w okresie) do najwyższego w okresie.
+    Ta sama miara w Roku w pigułce, Analizie, porównaniu i raporcie; 0, gdy nie ma z czego odjąć."""
+    punkty = pobierz_historie_przebiegu(auto_id) if punkty is None else punkty
+    przed_okresem, w_okresie = None, []
+    for data_str, prz in punkty:
+        d = parsuj_date(data_str)
+        if d == datetime.min.date():
+            continue
+        if od and d < od:
+            przed_okresem = prz
+        elif not do or d <= do:
+            w_okresie.append(prz)
+    start = przed_okresem if przed_okresem is not None else (min(w_okresie) if w_okresie else None)
+    koniec = max(w_okresie) if w_okresie else None
+    return (koniec - start) if (start is not None and koniec is not None and koniec > start) else 0
+
+
 def szacuj_przebieg_w_dniu(auto_id, data_str, punkty=None):
     """Licznik (km) w danym dniu z historii licznika: wpis z tego dnia, liniowo między
     sąsiednimi, po ostatnim — ostatni znany. None przed pierwszym wpisem i bez historii."""
@@ -612,6 +631,7 @@ __all__ = [
     "pobierz_historie_przebiegu",
     "pobierz_pelna_historie_przebiegu",
     "podsumowanie_historii_przebiegu",
+    "przejechane_km",
     "przelicz_wszystkie_zadania",
     "sprawdz_czy_koszt_duplikat",
     "sprawdz_czy_przebieg_podejrzany",

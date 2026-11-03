@@ -104,6 +104,7 @@ WYWOLANIA = {
     "pobierz_pozycje_do_zrobienia": lambda k: (k["id"]["auto_id"],),
     "pobierz_zdarzenia_do_zrobienia": lambda k: (k["id"]["do_zrobienia"],),
     "pobierz_pozycje_wizyty": lambda k: (k["id"]["wizyta"],),
+    "pobierz_odcinki_spalania": lambda k: (k["id"]["auto_id"],),
     "pobierz_przebieg_miesieczny": lambda k: (k["id"]["auto_id"],),
     "pobierz_przejazdy": lambda k: (k["id"]["auto_id"],),
     "powody_kondycji_opon": lambda k: (k["id"]["auto_id"],),

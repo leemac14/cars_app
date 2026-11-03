@@ -15,9 +15,9 @@ from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, 
 from .synchronizacja import zarejestruj_nagrobek
 from .ceny_czesci import odstep_zakupow, podwyzki_cen_czesci, tekst_ceny_zakupu
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
-from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu
+from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu, przejechane_km
 from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_rozbicie_napraw, pobierz_trend_cen_paliwa, porownaj_czesci_wlasne
-from .statystyki import koszt_na_1000km, pobierz_serie_spalania
+from .statystyki import koszt_na_1000km, pobierz_odcinki_spalania, srednie_spalanie
 from .awarie import awarie_i_eksploatacja, sygnal_awarii
 from .raty import kapital_rat_w_kosztach
 from .pojazd import pobierz_dane_pojazdu
@@ -233,12 +233,12 @@ def _przesun_o_lata(d, lat):
 
 
 def _srednia_okna(seria_dat, od, do):
-    """Średnie zużycie z odcinków, których data mieści się w oknie.
-    Zwraca (średnia, ile_odcinków) albo (None, 0), gdy odcinków za mało."""
-    wartosci = [w for d, w in seria_dat if od <= d <= do]
-    if len(wartosci) < MIN_ODCINKOW_SEZONU:
+    """Średnie zużycie (litry przez km) z odcinków (dzień, litry, km), których data mieści się
+    w oknie. Zwraca (średnia, ile_odcinków) albo (None, 0), gdy odcinków za mało."""
+    w_oknie = [o for o in seria_dat if od <= o[0] <= do]
+    if len(w_oknie) < MIN_ODCINKOW_SEZONU:
         return None, 0
-    return sum(wartosci) / len(wartosci), len(wartosci)
+    return srednie_spalanie(w_oknie), len(w_oknie)
 
 
 def _sezonowosc_zmiany(seria_dat, tlo_od, tlo_do, ost_od, ost_do):
@@ -283,24 +283,23 @@ def analizuj_trend_spalania(auto_id, rodzaj=None, ostatnie=3, tlo=6):
         return None
 
     rodzaj = rodzaj or domyslny_rodzaj_energii(auto_id)
-    seria = pobierz_serie_spalania(auto_id, limit=None, rodzaj=rodzaj)
+    seria = pobierz_odcinki_spalania(auto_id, limit=None, rodzaj=rodzaj)
     if len(seria) < ostatnie + 2:
         return None
 
-    wartosci = [w for _, w in seria]
-    ostatnie_w = wartosci[-ostatnie:]
-    wczesniejsze = wartosci[max(0, len(wartosci) - ostatnie - tlo):-ostatnie]
+    ostatnie_w = seria[-ostatnie:]
+    wczesniejsze = seria[max(0, len(seria) - ostatnie - tlo):-ostatnie]
     if not wczesniejsze:
         return None
 
-    sr_ostatnie = sum(ostatnie_w) / len(ostatnie_w)
-    sr_wczesniej = sum(wczesniejsze) / len(wczesniejsze)
-    if sr_wczesniej <= 0:
+    sr_ostatnie = srednie_spalanie(ostatnie_w)
+    sr_wczesniej = srednie_spalanie(wczesniejsze)
+    if not sr_ostatnie or not sr_wczesniej:
         return None
 
     zmiana = (sr_ostatnie - sr_wczesniej) / sr_wczesniej * 100
 
-    seria_dat = [(parsuj_date(d), w) for d, w in seria]
+    seria_dat = [(parsuj_date(d), litry, km) for d, litry, km in seria]
     poczatek_tla = max(0, len(seria) - ostatnie - tlo)
     sezon_proc, lat_sezonu = _sezonowosc_zmiany(
         seria_dat,
@@ -437,11 +436,9 @@ def pobierz_zasieg_na_baku(auto_id):
     if rodzaj not in rodzaje_energii_pojazdu(auto_id):
         return None
 
-    seria = pobierz_serie_spalania(auto_id, limit=5, rodzaj=rodzaj)
-    if not seria:
-        return None
-    spalanie = sum(w for _, w in seria) / len(seria)
-    if spalanie <= 0:
+    odcinki = pobierz_odcinki_spalania(auto_id, limit=5, rodzaj=rodzaj)
+    spalanie = srednie_spalanie(odcinki)
+    if not spalanie:
         return None
 
     zasieg_pelny = pojemnosc / spalanie * 100
@@ -462,7 +459,7 @@ def pobierz_zasieg_na_baku(auto_id):
         "pojemnosc": pojemnosc,
         "spalanie": spalanie,
         "zasieg_pelny": zasieg_pelny,
-        "odcinkow": len(seria),
+        "odcinkow": len(odcinki),
         "przejechane": None,
         "pozostalo_jednostek": None,
         "zasieg_pozostaly": None,
@@ -651,23 +648,9 @@ def _zmiana_1000km(koszt, km, koszt_poprzedni, km_poprzedni):
 
 
 def _km_w_okresie(historia_prz, od, do):
-    """Kilometry przejechane w okresie [od, do], z historii odczytów licznika.
-    Ta sama miara dla roku i miesiąca w pigułce.
-
-    Punkt startowy to ostatni odczyt SPRZED okresu, jeśli istnieje — inaczej
-    pierwszy stan licznika w okresie policzyłby się jako „przejechane od zera”."""
-    przed_okresem, w_okresie = None, []
-    for data_str, prz in historia_prz:
-        d = parsuj_date(data_str)
-        if d == datetime.min.date():
-            continue
-        if d < od:
-            przed_okresem = prz
-        elif d <= do:
-            w_okresie.append(prz)
-    start = przed_okresem if przed_okresem is not None else (min(w_okresie) if w_okresie else None)
-    koniec = max(w_okresie) if w_okresie else None
-    return (koniec - start) if (start is not None and koniec is not None and koniec > start) else 0
+    """Kilometry przejechane w okresie [od, do], z historii odczytów licznika — db.przejechane_km
+    (start od ostatniego odczytu SPRZED okresu, inaczej licznik liczyłby się „od zera”)."""
+    return przejechane_km(None, od, do, punkty=historia_prz)
 
 
 def _wpisy_okresu(conn, auto_id, od, do):
@@ -786,8 +769,8 @@ def _rachunek_okresu(auto_id, od, do, historia_prz):
 
     # Średnie zużycie okresu: odcinki zamknięte W TYM okresie.
     rodzaj_zuzycia = domyslny_rodzaj_energii(auto_id)
-    zuzycie = [w for data_str, w in pobierz_serie_spalania(auto_id, limit=None, rodzaj=rodzaj_zuzycia)
-               if od <= parsuj_date(data_str) <= do]
+    zuzycie = [o for o in pobierz_odcinki_spalania(auto_id, limit=None, rodzaj=rodzaj_zuzycia)
+               if od <= parsuj_date(o[0]) <= do]
 
     razem = kategorie["razem"]
     return {
@@ -800,7 +783,7 @@ def _rachunek_okresu(auto_id, od, do, historia_prz):
         "litry": litry,
         "kwh": kwh,
         "ulubiona_stacja": _ulubiona_stacja(tankowania),
-        "srednie_zuzycie": (sum(zuzycie) / len(zuzycie)) if zuzycie else None,
+        "srednie_zuzycie": srednie_spalanie(zuzycie),
         # W jakiej jednostce jest `srednie_zuzycie` — grafika roku pisała
         # zużycie elektryka w l/100km, bo o źródle nic nie wiedziała.
         "zuzycie_elektryczne": rodzaj_zuzycia == ENERGIA_PRAD,
@@ -1542,10 +1525,9 @@ def obserwacje_analityczne(auto_id, limit=None):
         roznica = najdrozsza["srednia_cena"] - najtansza["srednia_cena"]
         if najtansza["srednia_cena"] > 0 and roznica / najtansza["srednia_cena"] >= 0.04:
             litry_rocznie = 0.0
-            seria = pobierz_serie_spalania(auto_id, limit=5, rodzaj=rodzaj_cen)
+            spalanie = srednie_spalanie(pobierz_odcinki_spalania(auto_id, limit=5, rodzaj=rodzaj_cen))
             sredni_dzienny = oblicz_sredni_dzienny_przebieg(auto_id)
-            if seria and sredni_dzienny:
-                spalanie = sum(w for _, w in seria) / len(seria)
+            if spalanie and sredni_dzienny:
                 litry_rocznie = spalanie / 100 * sredni_dzienny * 365
             oszczednosc = roznica * litry_rocznie
             prad = rodzaj_cen == ENERGIA_PRAD

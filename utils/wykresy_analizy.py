@@ -210,15 +210,16 @@ def _dane_wydatkow(auto_id, zakres):
 def _dane_spalania(auto_id, granica):
     rodzaj = db.domyslny_rodzaj_energii(auto_id)
     prad = rodzaj == db.ENERGIA_PRAD
-    seria = db.pobierz_serie_spalania(auto_id, limit=None, rodzaj=rodzaj) if auto_id else []
-    w_zakresie = [(d, w) for d, w in seria
-                  if parsuj_date(d) != datetime.min.date() and not (granica and parsuj_date(d) < granica)]
+    odcinki = db.pobierz_odcinki_spalania(auto_id, limit=None, rodzaj=rodzaj) if auto_id else []
+    odcinki = [o for o in odcinki
+               if parsuj_date(o[0]) != datetime.min.date() and not (granica and parsuj_date(o[0]) < granica)]
+    w_zakresie = [(d, litry / km * 100) for d, litry, km in odcinki]
 
     def na_ekran(w):
         return db.przelicz_zuzycie(w, prad)[0]
 
     punkty = [(k, na_ekran(w)) for k, w in _miesieczne(w_zakresie, None) if na_ekran(w) is not None]
-    srednia = (sum(w for _, w in w_zakresie) / len(w_zakresie)) if w_zakresie else None
+    srednia = db.srednie_spalanie(odcinki)
     return {"prad": prad, "punkty": punkty, "jednostka": db.jednostka_zuzycia(prad),
             "srednia": srednia, "srednia_ekran": na_ekran(srednia) if srednia else None,
             "trend": db.analizuj_trend_spalania(auto_id, rodzaj) if auto_id else None,

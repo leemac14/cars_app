@@ -11,7 +11,7 @@ from .stale import (
 from .polaczenie import polacz_baze
 from .pomocnicze import _liczba_lub_none, oferta_w_jednej_linii, parsuj_int_bezpiecznie, zdanie_oferty_oc_ac
 from .ustawienia import pobierz_okno_kroczace, pobierz_prog_dni_dokumentu
-from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
+from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, przejechane_km
 from .koszty import DNI_W_MIESIACU, koszty_w_okresie
 from .raty import kapital_rat_w_kosztach, kapital_rat_w_okresie, podsumowanie_rat
 from .powiadomienia import TYPY_POWIADOMIEN_O_DANYCH, pobierz_powiadomienia
@@ -426,15 +426,6 @@ def pobierz_dane_do_porownania(auto_id):
 
         dane["koszt_razem"] = dane["koszt_paliwo"] + dane["koszt_serwis"] + dane["koszt_inne"]
 
-        # Dystans z samych liczników: wpis bez przebiegu (import z samym
-        # dystansem) stawał na początku listy z zerem i robił z całego
-        # licznika auta „przejechane w aplikacji”, zaniżając koszt kilometra.
-        c.execute(
-            "SELECT MIN(przebieg), MAX(przebieg), COUNT(*) FROM tankowania WHERE auto_id=? AND przebieg > 0",
-            (auto_id,)
-        )
-        prz_min, prz_max, prz_ile = c.fetchone()
-
         c.execute("SELECT COUNT(*) FROM historia h JOIN zadania z ON h.zadanie_id=z.id WHERE z.auto_id=?", (auto_id,))
         dane["liczba_wpisow_historii"] = c.fetchone()[0]
         c.execute("SELECT COUNT(*) FROM wizyty WHERE auto_id=?", (auto_id,))
@@ -453,7 +444,9 @@ def pobierz_dane_do_porownania(auto_id):
     # radaru w porównaniu pojazdów.
     dane["kondycja"] = oblicz_kondycje_pojazdu(auto_id)
 
-    dystans = max(0, int(prz_max or 0) - int(prz_min or 0)) if (prz_ile or 0) >= 2 else 0
+    # Dystans z historii licznika ze wszystkich źródeł (jak „Rok w pigułce” i średnia dzienna),
+    # nie z samych tankowań — koszty serwisu sprzed pierwszego tankowania też jadą tymi km.
+    dystans = przejechane_km(auto_id)
     dane["koszt_km"] = (dane["koszt_razem"] / dystans) if dystans > 0 else None
 
     # Spalanie to wyłącznie PALIWO — tą samą metodą odcinków „do pełna”, co

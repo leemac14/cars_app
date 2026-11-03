@@ -31,9 +31,8 @@ from .ewidencja import kafel_ewidencji
 from .zdrowie_danych import podsumowanie_zdrowia_danych
 from .powiadomienia import pobierz_powiadomienia
 from .statystyki import (
-    koszt_na_1000km, oblicz_kondycje_pojazdu, podsumowanie_do_zrobienia,
-    pobierz_serie_dziennego_przebiegu, pobierz_serie_kosztu_km, pobierz_serie_spalania,
-    pobierz_zasieg_ev,
+    koszt_na_1000km, oblicz_kondycje_pojazdu, podsumowanie_do_zrobienia, pobierz_odcinki_spalania,
+    pobierz_serie_dziennego_przebiegu, pobierz_serie_kosztu_km, pobierz_zasieg_ev, srednie_spalanie,
 )
 from .pojazd import pobierz_dane_do_porownania
 from .analiza import koszt_skumulowany, obserwacje_analityczne, pobierz_zasieg_na_baku, prognoza_kosztow, stan_budzetow
@@ -71,7 +70,9 @@ def _spalanie(auto_id):
     przy elektryku — prądowej. Litry i kWh w jednej serii dałyby liczbę bez
     znaczenia; pełne rozbicie jest w Statystykach."""
     rodzaj = domyslny_rodzaj_energii(auto_id)
-    return {"rodzaj": rodzaj, "seria": pobierz_serie_spalania(auto_id, 12, rodzaj=rodzaj)}
+    odcinki = pobierz_odcinki_spalania(auto_id, 12, rodzaj=rodzaj)
+    return {"rodzaj": rodzaj, "seria": [(d, litry / km * 100) for d, litry, km in odcinki],
+            "srednia": srednie_spalanie(odcinki)}
 
 
 def _opony(auto_id):

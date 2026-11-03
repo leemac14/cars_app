@@ -12,6 +12,7 @@ from .stale import (
     TYPY_CYKLICZNE, TYP_CYKLICZNY_OPONY, TYP_CYKLICZNY_WYDATEK,
 )
 from .polaczenie import polacz_baze
+from .pomocnicze import liczba_z_odmiana, parsuj_int_bezpiecznie
 from .ustawienia import pobierz_moje_imie
 from .synchronizacja import (
     ROLA_PODGLAD, ROLA_WSPOLAUTOR, czy_moge_zmieniac_wpis, rola_pojazdu, zarejestruj_nagrobek,
@@ -201,6 +202,21 @@ def _poprawny_typ(typ):
     zachowywać się jak zwykły wydatek, a nie wysadzać panelu."""
     typ = str(typ or "").strip() or TYP_CYKLICZNY_WYDATEK
     return typ if typ in TYPY_CYKLICZNE else TYP_CYKLICZNY_WYDATEK
+
+
+# Okres wpisu cyklicznego słowami („co miesiąc” czyta się szybciej niż „co 30 dni”) — wszędzie te
+# same słowa: panel wydatków, „Co przede mną”, kalendarz, wyszukiwarka. Klucze z formularza: 30/90/180/365.
+OKRESY_SLOWAMI = {
+    1: "codziennie", 7: "co tydzień", 14: "co dwa tygodnie", 30: "co miesiąc", 31: "co miesiąc",
+    90: "co kwartał", 91: "co kwartał", 92: "co kwartał", 180: "co pół roku", 182: "co pół roku",
+    183: "co pół roku", 365: "co rok", 366: "co rok",
+}
+
+
+def opis_okresu_dni(okres_dni) -> str:
+    """„co miesiąc”, „co kwartał”, „co 45 dni” — okres wpisu cyklicznego w zdaniu."""
+    okres = parsuj_int_bezpiecznie(okres_dni, 0)
+    return OKRESY_SLOWAMI.get(okres) or f"co {liczba_z_odmiana(okres, 'dzień', 'dni', 'dni')}"
 
 
 def pobierz_wydatki_cykliczne(auto_id) -> list[tuple[int, str, float, int, str, int, str]]:
@@ -557,6 +573,7 @@ def pakiety_dla_pojazdu(auto_id) -> list[tuple[str, list[str]]]:
 
 
 __all__ = [
+    "OKRESY_SLOWAMI",
     "WARSZTAT_BEZ_NAZWY",
     "_czy_o_oponach",
     "_poprawny_typ",
@@ -569,6 +586,7 @@ __all__ = [
     "dodaj_wydatek_cykliczny",
     "domyslne_zadania",
     "edytuj_wydatek_cykliczny",
+    "opis_okresu_dni",
     "oznacz_zaplacony_wydatek_cykliczny",
     "pakiety_dla_pojazdu",
     "pobierz_pakiety_wlasne",

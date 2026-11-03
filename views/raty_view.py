@@ -147,7 +147,7 @@ class RatyView(ft.View):
             wiersze.append(ft.Row([
                 ft.Column([
                     ft.Text(str(nazwa), size=utils.FS["body_strong"], weight="bold"),
-                    utils.podpis(f"{self._kwota(kwota)} co {okres_dni} dni"),
+                    utils.podpis(f"{self._kwota(kwota)} {db.opis_okresu_dni(okres_dni)}"),
                 ], spacing=0, expand=True),
                 ft.TextButton("Przestaw na raty", icon=ft.Icons.ACCOUNT_BALANCE,
                               on_click=lambda e, wid=w_id: utils.przejdz(self._page, f"/raty/edytuj/{wid}")),

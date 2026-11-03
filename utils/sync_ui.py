@@ -194,7 +194,8 @@ def funkcja_szybkiej_synchronizacji(page: ft.Page, auto_id, trasa_powrotu):
             elif db.czy_tylko_podglad(auto_id):
                 pokaz_komunikat(page, f"Pobrano {db.liczba_z_odmiana(pobrano, 'zmianę', 'zmiany', 'zmian')}. Ten pojazd masz w trybie tylko do odczytu.")
             else:
-                pokaz_komunikat(page, f"Wysłano {wyslano}, pobrano {pobrano} nowych rekordów.")
+                pokaz_komunikat(page, f"Wysłano {db.liczba_z_odmiana(wyslano, 'zmianę', 'zmiany', 'zmian')}, "
+                                 f"pobrano {db.liczba_z_odmiana(pobrano, 'zmianę', 'zmiany', 'zmian')}.")
         except sync.SynchronizacjaWToku:
             pokaz_komunikat(page, "Synchronizacja już trwa — chwilę to potrwa.", ft.Colors.ON_SURFACE_VARIANT)
         except Exception as ex:

@@ -173,7 +173,7 @@ class MiksinKokpitu:
             zmiana = ((ostatnia - pierwsza) / pierwsza * 100) if pierwsza > 0 else None
 
             stopka = stopka_iskry(
-                podpis_stopki or f"{len(seria)} ost. pomiarów",
+                podpis_stopki or f"{len(seria)} ost. {db.odmien(len(seria), 'pomiar', 'pomiary', 'pomiarów')}",
                 chip=utils.znacznik_trendu(zmiana, wzrost_zly=wzrost_zly,
                                            rozmiar=utils.FS["caption"]),
             )
@@ -527,9 +527,9 @@ class MiksinKokpitu:
             dane_spalania = metryka("spalanie")
             czy_prad_kokpit = dane_spalania["rodzaj"] == db.ENERGIA_PRAD
             wartosci_serii = [w for _, w in dane_spalania["seria"]]
-            # Średnia z odcinków TEGO źródła, a nie ogólna z porównania —
+            # Średnia z odcinków TEGO źródła (litry przez kilometry), a nie ogólna z porównania —
             # przy plug-inie tamta mieszała oba światy.
-            spalanie = (sum(wartosci_serii) / len(wartosci_serii)) if wartosci_serii else metryka("porownanie").get("spalanie")
+            spalanie = dane_spalania.get("srednia") if wartosci_serii else metryka("porownanie").get("spalanie")
             # Odliczamy liczbę JUŻ przeliczoną na jednostkę z Ustawień. Przy km/l
             # i mpg mniejsze zużycie znaczy WIĘKSZĄ liczbę, więc animowanie
             # l/100km jechałoby na ekranie w drugą stronę, a start od zera byłby
@@ -545,7 +545,7 @@ class MiksinKokpitu:
                 ft.Icons.EV_STATION if czy_prad_kokpit else ft.Icons.LOCAL_GAS_STATION,
                 ft.Colors.TEAL_700, etykieta, wartosc,
                 wartosci_serii, idz_do_kosztow(0),
-                wzrost_zly=True, podpis_stopki=f"{len(wartosci_serii)} ost. odcinków",
+                wzrost_zly=True, podpis_stopki=f"{len(wartosci_serii)} ost. {db.odmien(len(wartosci_serii), 'odcinek', 'odcinki', 'odcinków')}",
             )
 
         def widget_zasieg_ev():
@@ -594,7 +594,7 @@ class MiksinKokpitu:
             return kafel_z_iskra(
                 ft.Icons.TIMELAPSE, ft.Colors.BLUE_GREY_700, "Śr. dzienny", wartosc,
                 wartosci_serii, lambda e: utils.przejdz(self._page, "/przebieg"),
-                wzrost_zly=False, podpis_stopki=f"{len(wartosci_serii)} ost. odcinków",
+                wzrost_zly=False, podpis_stopki=f"{len(wartosci_serii)} ost. {db.odmien(len(wartosci_serii), 'odcinek', 'odcinki', 'odcinków')}",
             )
 
         def widget_ostatnia_aktywnosc():

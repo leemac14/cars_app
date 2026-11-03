@@ -34,11 +34,9 @@ class MiksinZakladkiStatystyki:
         tankowania.sort(key=lambda x: int(x.get('przebieg') or 0))
 
         pal = sum(float(t.get('kwota') or 0) for t in tankowania) if tankowania else 0.0
-        # Dystans z samych liczników — wpis bez przebiegu (import z samym
-        # dystansem) stał na początku posortowanej listy z zerem i robił
-        # z całego licznika auta „przejechane”, zaniżając koszt kilometra.
-        liczniki = [int(t.get('przebieg') or 0) for t in tankowania if int(t.get('przebieg') or 0) > 0]
-        dystans = (max(liczniki) - min(liczniki)) if len(liczniki) > 1 else 0
+        # Dystans z historii licznika ze wszystkich źródeł — ten sam, z którego liczy się
+        # „Średnio dziennie” obok i „Rok w pigułce” (same tankowania gubiły km sprzed pierwszego).
+        dystans = db.przejechane_km(self.state.auto_id)
 
         razem = pal + serw + inn
         koszt_km = (razem / dystans) if dystans > 0 else 0.0
@@ -256,7 +254,7 @@ class MiksinZakladkiStatystyki:
                             ft.Text("Ostatnie odcinki", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Text(utils.formatuj_spalanie(trend["srednia_ostatnia"], elektryczny=czy_prad_tr),
                                     weight="bold", size=utils.FS["title"], color=kolor_tr),
-                            ft.Text(f"{trend['odcinkow_ostatnio']} pomiary", size=utils.FS["caption"],
+                            ft.Text(db.liczba_z_odmiana(trend['odcinkow_ostatnio'], "odcinek", "odcinki", "odcinków"), size=utils.FS["caption"],
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                         ], spacing=2, expand=True),
                         ft.Icon(ft.Icons.ARROW_FORWARD, size=18, color=ft.Colors.ON_SURFACE_VARIANT),
@@ -264,7 +262,7 @@ class MiksinZakladkiStatystyki:
                             ft.Text("Wcześniej", size=utils.FS["caption"], color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Text(utils.formatuj_spalanie(trend["srednia_wczesniej"], elektryczny=czy_prad_tr),
                                     weight="bold", size=utils.FS["title"]),
-                            ft.Text(f"{trend['odcinkow_wczesniej']} pomiarów", size=utils.FS["caption"],
+                            ft.Text(db.liczba_z_odmiana(trend['odcinkow_wczesniej'], "odcinek", "odcinki", "odcinków"), size=utils.FS["caption"],
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                         ], spacing=2, expand=True, horizontal_alignment=ft.CrossAxisAlignment.END),
                     ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),

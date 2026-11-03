@@ -279,6 +279,19 @@ def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, fl
     uśredniania) dla sparkline „Śr. spalanie”: [(data końca odcinka, l/100km)]
     chronologicznie, ostatnie `limit` punktów (None — wszystkie). `rodzaj` — jedno
     źródło energii (konieczne przy plug-in); brak = wszystkie wpisy."""
+    return [(data, litry / km * 100) for data, litry, km in pobierz_odcinki_spalania(auto_id, limit, rodzaj)]
+
+
+def srednie_spalanie(odcinki) -> float | None:
+    """Średnie zużycie odcinków (na 100 km): suma litrów przez sumę kilometrów — zwykła średnia
+    wyników dawała krótkiemu odcinkowi tę samą wagę, co długiemu. `odcinki` z pobierz_odcinki_spalania."""
+    litry = sum(o[1] for o in odcinki)
+    km = sum(o[2] for o in odcinki)
+    return (litry / km * 100) if km > 0 and litry > 0 else None
+
+
+def pobierz_odcinki_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, float, float]]:
+    """Odcinki z pobierz_serie_spalania z ilością i dystansem: [(data końca, litry, km)]."""
     if not auto_id:
         return []
 
@@ -314,7 +327,7 @@ def pobierz_serie_spalania(auto_id, limit=12, rodzaj=None) -> list[tuple[str, fl
         dystans = tankowania[b][2] - tankowania[a][2]
         litry = sum(tankowania[k][3] for k in range(a + 1, b + 1))
         if dystans > 0 and litry > 0:
-            seria.append((tankowania[b][1], (litry / dystans) * 100))
+            seria.append((tankowania[b][1], litry, dystans))
 
     if limit and len(seria) > limit:
         return seria[-limit:]
@@ -585,21 +598,24 @@ def pobierz_statystyki_energii(auto_id) -> list[dict[str, Any]]:
             # Dystans i zużycie liczymy tą samą metodą, co pobierz_serie_spalania:
             # wyłącznie odcinki zamknięte dwoma tankowaniami „do pełna”.
             posortowane = sorted(
-                ((parsuj_date(r["data"]), int(r["przebieg"] or 0), float(r["litry"] or 0), bool(r["do_pelna"]))
-                 for r in wiersze),
+                ((parsuj_date(r["data"]), int(r["przebieg"] or 0), float(r["litry"] or 0), bool(r["do_pelna"]),
+                  float(r["kwota"] or 0)) for r in wiersze),
                 key=lambda t: (t[0], t[1])
             )
             pelne = [i for i, t in enumerate(posortowane) if t[3] and t[1] > 0]
-            dystans_licz, ilosc_licz = 0.0, 0.0
+            dystans_licz, ilosc_licz, koszt_licz = 0.0, 0.0, 0.0
             for a, b in zip(pelne, pelne[1:]):
                 odcinek = posortowane[b][1] - posortowane[a][1]
                 zuzyte = sum(posortowane[k][2] for k in range(a + 1, b + 1))
                 if odcinek > 0 and zuzyte > 0:
                     dystans_licz += odcinek
                     ilosc_licz += zuzyte
+                    koszt_licz += sum(posortowane[k][4] for k in range(a + 1, b + 1))
 
             zuzycie = (ilosc_licz / dystans_licz * 100) if dystans_licz > 0 else 0.0
-            koszt_km = (koszt / dystans_licz) if dystans_licz > 0 else 0.0
+            # Koszt tych samych tankowań, co litry: pierwszy pełny bak i dolewki po ostatnim
+            # paliły się na kilometrach spoza odcinków (koszt/km nie zgadzał się ze spalaniem × ceną).
+            koszt_km = (koszt_licz / dystans_licz) if dystans_licz > 0 else 0.0
 
             # Średnia cena za jednostkę — dla prądu dodatkowo w rozbiciu AC/DC,
             # bo szybkie ładowanie na trasie potrafi być kilka razy droższe.
@@ -774,6 +790,7 @@ __all__ = [
     "koszt_na_1000km",
     "oblicz_kondycje_pojazdu",
     "pobierz_ciag_do_pelna",
+    "pobierz_odcinki_spalania",
     "pobierz_przebieg_miesieczny",
     "pobierz_rozbicie_kondycji",
     "pobierz_serie_dziennego_przebiegu",
@@ -783,4 +800,5 @@ __all__ = [
     "pobierz_udzial_energii",
     "pobierz_zasieg_ev",
     "podsumowanie_do_zrobienia",
+    "srednie_spalanie",
 ]

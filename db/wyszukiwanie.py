@@ -13,6 +13,7 @@ from .jednostki import jednostka_dystansu, tekst_dystansu
 from .ustawienia import (czy_zapamietywac_wyszukiwania, pobierz_ustawienie,
                          pobierz_walute, usun_ustawienie, zapisz_ustawienie)
 from .raty import czy_rata, etykieta_umowy
+from .rejestry import opis_okresu_dni
 from .ewidencja import opis_trasy, tekst_km_przejazdu
 from .awarie import ETYKIETY_RODZAJU_SERWISU, SERWIS_PLANOWE, rodzaj_serwisu
 from .dolewki import tekst_litrow
@@ -576,7 +577,7 @@ def wyszukiwanie_po_kwocie(auto_id, dolna, gorna):
                       f"{etykieta_umowy(r['typ'])} • rata co miesiąc", r["nastepna_data"], "/raty")
                 continue
             dodaj("Wydatek cykliczny", str(r["nazwa"]), r["kwota"],
-                  f"co {int(r['okres_dni'] or 0)} dni", r["nastepna_data"], "__wydatki_cykliczne__")
+                  opis_okresu_dni(r["okres_dni"]), r["nastepna_data"], "__wydatki_cykliczne__")
 
     wyniki.sort(key=lambda w: parsuj_date(w["data"]), reverse=True)
     return wyniki
@@ -764,9 +765,9 @@ def _wszystkie_wpisy(auto_id):
                 # Rata leasingu i kredytu prowadzi do swojego harmonogramu.
                 opis, trasa = f"{etykieta_umowy(r['typ'])} • rata co miesiąc", "/raty"
             elif r["czy_koszt"]:
-                opis = f"co {int(r['okres_dni'] or 0)} dni"
+                opis = opis_okresu_dni(r["okres_dni"])
             else:
-                opis = f"Przypomnienie • co {int(r['okres_dni'] or 0)} dni"
+                opis = f"Przypomnienie • {opis_okresu_dni(r['okres_dni'])}"
             wpisy.append(_wpis("Wydatek cykliczny", r["nazwa"], opis, r["nastepna_data"],
                                trasa, kwota=r["kwota"] if r["czy_koszt"] else None))
 

@@ -597,7 +597,7 @@ class PorownanieView(ft.View):
             wiek = datetime.now().year - int(rok)
             if wiek < 0:
                 return None
-            return "1 rok" if wiek == 1 else f"{wiek} lat"
+            return db.liczba_z_odmiana(wiek, "rok", "lata", "lat")
         except (TypeError, ValueError):
             return None
 

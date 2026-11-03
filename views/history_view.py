@@ -565,7 +565,7 @@ class WizytyZbiorczeView(ft.View, utils.ZaznaczanieGrupowe):
             utils.przejdz(self._page, "/wizyty")
             ile = wynik["liczba"]
             komunikat = (f"Zwrócono „{wynik['nazwy'][0]}” na listę Do zrobienia."
-                         if ile == 1 else f"Zwrócono {ile} pozycje na listę Do zrobienia.")
+                         if ile == 1 else f"Zwrócono {db.liczba_z_odmiana(ile, 'pozycję', 'pozycje', 'pozycji')} na listę Do zrobienia.")
             if wynik["kwota"]:
                 komunikat += f" Koszt wizyty pomniejszony o {utils.formatuj_liczba(wynik['kwota'])} {utils.symbol_waluty()}."
             utils.pokaz_komunikat_cofnij(self._page, komunikat, wynik)

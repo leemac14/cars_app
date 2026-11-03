@@ -81,6 +81,8 @@ def opis_terminu_przebiegowego(pozycja, j=None):
     kolor = KOLOR_STATUS[ROLA_STATUSU_INTERWALU.get(stan["status"], "ok")]
     if stan["zostalo"] > 0:
         return lewa, f"zostało {formatuj_dystans(stan['zostalo'], 0, j)}", kolor
+    if stan["zostalo"] == 0:
+        return lewa, "termin mija teraz", kolor
     return lewa, f"po terminie o {formatuj_dystans(-stan['zostalo'], 0, j)}", kolor
 
 

@@ -32,7 +32,7 @@ class FormularzInneView(ft.View):
                 c.execute("SELECT data, kategoria, nazwa, kwota, tagi, notatka FROM inne_koszty WHERE id=?", (zrodlo_id,))
                 w = c.fetchone()
                 if w: 
-                    d_val, op_val, kw_val = str(w[0] or ""), str(w[2] or ""), str(w[3] or "")
+                    d_val, op_val, kw_val = str(w[0] or ""), str(w[2] or ""), utils.liczba_do_pola(w[3]) if w[3] else ""
                     # Do niedawna kolumna `kategoria` służyła jako pierwsza wersja
                     # tagów i nowe wpisy zapisywały w niej pusty łańcuch, a etykiety
                     # szły do `tagi`. Wpisy sprzed tej zmiany mają tam własny tekst,

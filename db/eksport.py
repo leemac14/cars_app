@@ -17,6 +17,7 @@ from .daty import warunek_zakresu_dat
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km, pobierz_walute
 from .jednostki import dystans_z_km, jednostka_dystansu, slowo_dystansu
 from .energia import domyslny_rodzaj_energii
+from .przebieg import przejechane_km
 from .koszty import rozbicie_kosztu
 from .awarie import ETYKIETY_RODZAJU_SERWISU, rodzaj_serwisu
 from .ewidencja import miejsca_km
@@ -398,13 +399,10 @@ def oblicz_podsumowanie_okresu(auto_id, od_data=None, do_data=None):
     koszt_inne = sum(float(i[1] or 0) for i in inne)
     razem = koszt_paliwo + koszt_serwis + koszt_inne
 
-    # Dystans i zużycie tylko z wpisów ze stanem licznika (wpis bez niego robił z całego
-    # licznika „przejechany dystans”). Zużycie dla JEDNEGO, podstawowego źródła energii
-    # — litry i kWh plug-ina się nie sumują.
+    # Dystans z historii licznika ze wszystkich źródeł — ta sama miara co „Rok w pigułce”. Zużycie
+    # z wpisów ze stanem licznika, dla JEDNEGO, podstawowego źródła energii (litry i kWh się nie sumują).
     z_licznikiem = sorted((t for t in tankowania if int(t[3] or 0) > 0), key=lambda t: int(t[3]))
-    dystans = 0
-    if len(z_licznikiem) >= 2:
-        dystans = max(0, int(z_licznikiem[-1][3]) - int(z_licznikiem[0][3]))
+    dystans = przejechane_km(auto_id, od_data, do_data)
     koszt_km = (razem / dystans) if dystans > 0 else None
 
     spalanie = None

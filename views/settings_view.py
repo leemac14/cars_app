@@ -376,7 +376,7 @@ class UstawieniaView(ft.View):
                 ft.Text(
                     "Usunięty wpis albo pojazd nie znika od razu — trafia do kosza razem ze "
                     "zdjęciami i plikami (pojazd z całą historią), skąd wraca jednym dotknięciem. Kosz otworzysz "
-                    "z menu ⋮ na ekranie głównym. Po upływie tego czasu pozycje kasują się "
+                    "z menu bocznego (Garaż i osoby › Kosz). Po upływie tego czasu pozycje kasują się "
                     "same przy starcie aplikacji; przy ustawieniu „Nigdy” czyścisz kosz sam.",
                     size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT
                 ),

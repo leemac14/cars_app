@@ -12,6 +12,7 @@ from .zgodnosc import ustaw_blad, ustaw_ikone
 from .wyglad import dol_bezpieczny, tlo_stanu
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, potwierdz, przejdz, zamknij_dialog, zamknij_dno
 from .formularze import pole_daty, pole_wyboru, styl_dropdown, styl_pola
+from .magazyn import liczba_do_pola
 from .pojazd import dialog_odczytu_przebiegu
 from .komponenty import znacznik_wykonania
 from .kopie import zrob_kopie_teraz
@@ -364,11 +365,10 @@ def pokaz_panel_powiadomien(page: ft.Page, state):
         strzalka = ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, size=20, color=ft.Colors.ON_SURFACE_VARIANT)
 
         for o in odlozone:
+            # Drzemka gaśnie W DNIU `do_dnia` (db._posprzataj_wygasle_wyciszenia), więc 1 = jutro.
             podtytul = f"Wróci {o['data_tekst']}"
-            if o["dni_do_powrotu"] == 0:
-                podtytul = "Wróci jutro"
-            elif o["dni_do_powrotu"] == 1:
-                podtytul = "Wróci za 1 dzień"
+            if o["dni_do_powrotu"] <= 1:
+                podtytul = "Wróci jutro" if o["dni_do_powrotu"] == 1 else "Wróci dziś"
             elif o["dni_do_powrotu"] > 1:
                 podtytul = f"Wróci za {o['dni_do_powrotu']} dni ({o['data_tekst']})"
             if not o["nadal_aktualne"]:
@@ -619,7 +619,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
             for w_id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ in wpisy:
                 kolor, tekst_daty = kolor_i_tekst_terminu(nastepna_data)
                 czy_koszt = bool(czy_koszt)
-                termin_txt = f"co {okres_dni} dni • {tekst_daty or nastepna_data}"
+                termin_txt = f"{db.opis_okresu_dni(okres_dni)} • {tekst_daty or nastepna_data}"
                 if w_id in umowy:
                     pozycje.append(wiersz_umowy(umowy[w_id], kolor, tekst_daty))
                     continue
@@ -760,7 +760,7 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
         )
 
         e_nazwa = ft.TextField(label="Nazwa (np. Rata leasingu, Sprawdź ciśnienie w oponach)", value=str(nazwa_val), **styl_pola())
-        e_kwota = ft.TextField(label=f"Kwota ({symbol_waluty()})", value=str(kwota_val) if kwota_val else "", keyboard_type=ft.KeyboardType.NUMBER, **styl_pola())
+        e_kwota = ft.TextField(label=f"Kwota ({symbol_waluty()})", value=liczba_do_pola(kwota_val) if kwota_val else "", keyboard_type=ft.KeyboardType.NUMBER, **styl_pola())
         e_tylko_przypomnienie = ft.Switch(label="Tylko przypomnienie (bez kwoty)", value=not bool(czy_koszt_val))
         e_kwota.visible = not e_tylko_przypomnienie.value
 

@@ -249,10 +249,11 @@ class FormularzWizytyView(ft.View):
     def _podpis_przycisku_pakietow(self):
         wlasne = len(db.pobierz_pakiety_wlasne(self.state.auto_id))
         gotowe = len(db.pakiety_dla_pojazdu(self.state.auto_id))
+        gotowe_opis = db.liczba_z_odmiana(gotowe, "gotowy", "gotowe", "gotowych")
         if not wlasne:
-            return f"{gotowe} gotowych — zaznacz kilka podzespołów naraz"
+            return f"{gotowe_opis} — zaznacz kilka podzespołów naraz"
         wlasne_opis = db.liczba_z_odmiana(wlasne, "własny", "własne", "własnych")
-        return f"{gotowe} gotowych + {wlasne_opis}"
+        return f"{gotowe_opis} + {wlasne_opis}"
 
     def _odswiez_przycisk_pakietow(self):
         """Podpis przycisku niesie liczbę własnych pakietów, więc po każdym
