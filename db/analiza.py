@@ -15,7 +15,8 @@ from .jednostki import dystans_z_km, jednostka_dystansu, na_jednostke_dystansu, 
 from .synchronizacja import zarejestruj_nagrobek
 from .ceny_czesci import odstep_zakupow, podwyzki_cen_czesci, tekst_ceny_zakupu
 from .energia import domyslny_rodzaj_energii, formatuj_zuzycie_tekst, rodzaje_energii_pojazdu
-from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu, przejechane_km
+from .przebieg import (oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, pobierz_historie_przebiegu,
+                       prognoza_z_tempa, przejechane_km)
 from .koszty import DNI_W_MIESIACU, KATEGORIE_BUDZETU, _wiersze_kosztow, etykieta_kategorii_innych, klucz_stacji, koszty_w_okresie, pobierz_rozbicie_napraw, pobierz_trend_cen_paliwa, porownaj_czesci_wlasne
 from .statystyki import koszt_na_1000km, pobierz_odcinki_spalania, srednie_spalanie
 from .awarie import awarie_i_eksploatacja, sygnal_awarii
@@ -500,12 +501,10 @@ def pobierz_zasieg_na_baku(auto_id):
     # Prognoza „zabraknie za X dni” — to samo tempo km/dzień, którego już
     # używają terminy podzespołów (patrz db.powiadomienia). Brak historii
     # licznika (sredni_dzienny=None) albo zerowe tempo = brak prognozy,
-    # zamiast dzielenia przez zero.
-    sredni_dzienny = oblicz_sredni_dzienny_przebieg(auto_id)
-    dni_do_pustego, data_pustego = None, None
-    if sredni_dzienny and sredni_dzienny > 0:
-        dni_do_pustego = max(0, int(round(zasieg_pozostaly / sredni_dzienny)))
-        data_pustego = (datetime.now().date() + timedelta(days=dni_do_pustego)).strftime("%d.%m.%Y")
+    # zamiast dzielenia przez zero. Zasięg liczony jest ze stanu licznika, więc
+    # dni biegną od dnia tego stanu (prognoza_z_tempa), nie od dziś.
+    dni_do_pustego, dzien_pustego = prognoza_z_tempa(zasieg_pozostaly, oblicz_sredni_dzienny_przebieg(auto_id))
+    data_pustego = dzien_pustego.strftime("%d.%m.%Y") if dzien_pustego else None
 
     wynik.update({
         "przejechane": przejechane,

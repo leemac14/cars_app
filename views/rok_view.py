@@ -383,7 +383,7 @@ class RokWPigulceView(SekcjePigulki, ft.View):
                 ft.Icons.COMPARE_ARROWS, utils.KOLOR_STATUS["critical"] if drozej else utils.KOLOR_STATUS["ok"],
                 etykieta_rdr,
                 f"{'Drożej' if drozej else 'Taniej'} o {utils.formatuj_liczba(abs(d['zmiana_rdr']), 0)}% "
-                f"({utils.formatuj_liczba(d['poprzedni_rok'])} {utils.symbol_waluty()})"
+                f"(było {utils.formatuj_liczba(d['poprzedni_rok'])} {utils.symbol_waluty()})"
             ))
 
         # Cena JAZDY, nie rachunek. Kwota rok do roku rośnie także wtedy, gdy
@@ -398,7 +398,7 @@ class RokWPigulceView(SekcjePigulki, ft.View):
                 f"{utils.formatuj_liczba(db.na_jednostke_dystansu(d['koszt_1000km'], self.j), 0)} {utils.symbol_waluty()} — "
                 f"{'drożej' if drozej_km else 'taniej'} o "
                 f"{utils.formatuj_liczba(abs(d['zmiana_1000km']), 0)}% niż w {d['rok'] - 1} "
-                f"({utils.formatuj_liczba(db.na_jednostke_dystansu(d['koszt_1000km_poprzedni'], self.j), 0)} {utils.symbol_waluty()})"
+                f"(było {utils.formatuj_liczba(db.na_jednostke_dystansu(d['koszt_1000km_poprzedni'], self.j), 0)} {utils.symbol_waluty()})"
             ))
 
         return self._karta_werdyktu("Werdykt roku", pozycje)

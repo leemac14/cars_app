@@ -39,7 +39,7 @@ from .pojazd import pobierz_dane_pojazdu
 from .magazyn import pobierz_stan_opon
 from .opony import terminy_opon
 from .analiza import stan_budzetow
-from .rejestry import pobierz_wydatki_cykliczne
+from .rejestry import pobierz_wydatki_cykliczne, termin_po_okresach
 from .odliczania import STATUS_INFORMACJI, odliczania_pojazdu
 
 
@@ -278,17 +278,14 @@ def _blisko_poczatku_sezonu(sezon, dzien):
                for rok in (dzien.year - 1, dzien.year, dzien.year + 1))
 
 
-def _wystapienia(pierwsza, okres, dzis, koniec):
-    """Daty kolejnych wystąpień wpisu cyklicznego do `koniec`: pierwsza (także
-    zaległa) i dalej co okres. Po zaległej następne liczą się od dziś — tak
-    przesuwa termin „Zapłacone” (oznacz_zaplacony_wydatek_cykliczny)."""
-    if pierwsza > koniec:
-        return []
-    daty = [pierwsza]
-    nastepna = max(pierwsza, dzis) + timedelta(days=okres)
+def _wystapienia(pierwsza, okres, koniec):
+    """Daty kolejnych wystąpień wpisu cyklicznego do `koniec`: pierwsza (także zaległa) i dalej
+    okres po okresie OD TERMINU, kalendarzowo — tak przesuwa go „Zapłacone”
+    (termin_po_okresach); spóźniony o kilka okresów ma kilka zaległych wystąpień."""
+    daty, nastepna = [], pierwsza
     while nastepna <= koniec and len(daty) < MAKS_POWTORZEN:
         daty.append(nastepna)
-        nastepna += timedelta(days=okres)
+        nastepna = termin_po_okresach(nastepna, okres)
     return daty
 
 
@@ -296,7 +293,7 @@ def _cykliczne(wpisy, z_harmonogramem, zamontowany, prog_dni, dzis, koniec):
     """Każde wystąpienie wydatku cyklicznego, przypomnienia i zmiany opon.
     Umowy rat z pełnym harmonogramem pomijamy — ich płatności liczy _raty.
     Status pierwszego wystąpienia tym samym progiem, co dzwonek (ograniczonym
-    trzecią częścią własnego okresu), dalsze stoją spokojnie jako „ok”."""
+    trzecią częścią własnego okresu), dalsze stoją spokojnie jako „ok” (zaległe — po terminie)."""
     wynik = []
     for wid, nazwa, kwota, okres_dni, nastepna, czy_koszt, typ in wpisy:
         if wid in z_harmonogramem:
@@ -313,12 +310,12 @@ def _cykliczne(wpisy, z_harmonogramem, zamontowany, prog_dni, dzis, koniec):
         przesuniecie = int(opony and zamontowany in SEZONY_PRZELACZALNE
                            and _blisko_poczatku_sezonu(zamontowany, pierwsza))
         nazwa = str(nazwa or "").strip()
-        for indeks, dzien in enumerate(_wystapienia(pierwsza, okres, dzis, koniec)):
+        for indeks, dzien in enumerate(_wystapienia(pierwsza, okres, koniec)):
             dni = (dzien - dzis).days
-            if indeks == 0:
-                status = "po_terminie" if dni < 0 else ("blisko" if dni <= wlasny_prog else "ok")
+            if dni < 0:
+                status = "po_terminie"
             else:
-                status = "ok"
+                status = "blisko" if indeks == 0 and dni <= wlasny_prog else "ok"
             pola = dict(
                 klucz=f"cykliczny:{wid}:{dzien.isoformat()}", data=dzien, dni=dni, zalegla=dni < 0,
                 kwota=kwota_wpisu if kwota_wpisu > 0 else None, status=status, okres_dni=okres,

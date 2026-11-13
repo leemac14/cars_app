@@ -608,15 +608,18 @@ def _dni_sezonu_w_roku(sezon):
 
 def _data_prognozy(zostalo_km, sredni_dzienny, sezon, zamontowany, sezonowy, koniec_montazu, dzis):
     """Dzień, w którym komplet przejedzie `zostalo_km`: na aucie do końca bieżącego montażu, potem
-    w swoich miesiącach (sezonowy z parą) albo cały czas (bez pary). Komplet bez pary w magazynie — None."""
+    w swoich miesiącach (sezonowy z parą) albo cały czas (bez pary). Komplet bez pary w magazynie — None.
+    Tempo biegnie od dnia stanu licznika (TempoJazdy.od), jak w prognoza_z_tempa; nie wcześniej niż dziś."""
     if not sredni_dzienny or sredni_dzienny <= 0:
         return None
     if not zamontowany and not sezonowy:
         return None
     miesiace = _miesiace_sezonu(sezon) if sezonowy else set(range(1, 13))
+    od = getattr(sredni_dzienny, "od", None)
+    start = od if od and od < dzis else dzis
     suma = 0.0
     for przesuniecie in range(1, MAKS_DNI_PROGNOZY + 1):
-        dzien = dzis + timedelta(days=przesuniecie)
+        dzien = start + timedelta(days=przesuniecie)
         if zamontowany and (koniec_montazu is None or dzien < koniec_montazu):
             jezdzi = True
         else:
@@ -624,7 +627,7 @@ def _data_prognozy(zostalo_km, sredni_dzienny, sezon, zamontowany, sezonowy, kon
         if jezdzi:
             suma += sredni_dzienny
             if suma >= zostalo_km:
-                return dzien
+                return max(dzien, dzis)
     return None
 
 

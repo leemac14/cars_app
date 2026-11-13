@@ -3,7 +3,7 @@ i domyślne podzespoły zależne od napędu."""
 
 from collections import Counter
 from date import na_iso, parsuj_date
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from .stale import (
@@ -17,6 +17,7 @@ from .ustawienia import pobierz_moje_imie
 from .synchronizacja import (
     ROLA_PODGLAD, ROLA_WSPOLAUTOR, czy_moge_zmieniac_wpis, rola_pojazdu, zarejestruj_nagrobek,
 )
+from .gwarancje import dodaj_miesiace
 from .opony import przelacz_komplet_sezonowy
 from .raty import czy_rata, zaplac_rate
 from .nazwy import klucz_nazwy, normalizuj_nazwe
@@ -219,6 +220,31 @@ def opis_okresu_dni(okres_dni) -> str:
     return OKRESY_SLOWAMI.get(okres) or f"co {liczba_z_odmiana(okres, 'dzień', 'dni', 'dni')}"
 
 
+# Miesiąc, kwartał, pół roku i rok liczone kalendarzowo (termin 10. zostaje 10.); inne okresy w dniach.
+MIESIACE_OKRESU = {30: 1, 31: 1, 90: 3, 91: 3, 92: 3, 180: 6, 182: 6, 183: 6, 365: 12, 366: 12}
+
+
+def termin_po_okresach(termin, okres_dni, ile=1) -> date:
+    """Dzień `ile` okresów po `termin` (ujemne — przed). Okres kalendarzowy trzyma dzień miesiąca,
+    a dzień, którego w krótszym miesiącu nie ma, staje na jego końcu; reszta w dniach."""
+    okres = max(parsuj_int_bezpiecznie(okres_dni, 0), 0) or 30
+    miesiace = MIESIACE_OKRESU.get(okres)
+    return dodaj_miesiace(termin, miesiace * ile) if miesiace else termin + timedelta(days=okres * ile)
+
+
+def termin_zmiany_opon(termin, okres_dni, dzien_zmiany) -> date:
+    """Termin następnej zmiany opon po zmianie w `dzien_zmiany`: pierwszy termin cyklu (`termin` ±
+    okresy) późniejszy niż pół okresu po zmianie — 15.10 ↔ 15.04 niezależnie od dnia faktycznej
+    zmiany. Nigdy wcześniejszy niż dotychczasowy (dopisana dawna zmiana nie cofa przypomnienia)."""
+    okres = max(parsuj_int_bezpiecznie(okres_dni, 0), 0) or OKRES_ZMIANY_OPON_DNI
+    prog, nowy = dzien_zmiany + timedelta(days=okres // 2), termin
+    while nowy > prog:
+        nowy = termin_po_okresach(nowy, okres, -1)
+    while nowy <= prog:
+        nowy = termin_po_okresach(nowy, okres)
+    return max(nowy, termin)
+
+
 def pobierz_wydatki_cykliczne(auto_id) -> list[tuple[int, str, float, int, str, int, str]]:
     """Krotki (id, nazwa, kwota, okres_dni, nastepna_data, czy_koszt, typ).
     `typ` doklejony NA KOŃCU celowo — rozpakowania w istniejącym kodzie, które
@@ -275,19 +301,21 @@ def usun_wydatek_cykliczny(wydatek_id):
 
 
 def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
-    """„Zapłacone/Wykonano” wpisu cyklicznego. czy_koszt=1 — wpis w inne_koszty;
-    czy_koszt=0 — tylko odnotowanie. Termin przesuwa się o okres_dni od DZISIAJ
-    (spóźniona pozycja nie robi serii zaległych). Typ 'opony' PRZESTAWIA zamontowany
-    komplet (brak drugiego nie blokuje — powód w wyniku). Rata leasingu lub kredytu
-    płaci KOLEJNĄ pozycję harmonogramu (db.zaplac_rate). Zwraca słownik z opisem skutków
-    do komunikatu."""
+    """„Zapłacone/Wykonano” wpisu cyklicznego. czy_koszt=1 — wpis w inne_koszty (z dzisiejszą
+    datą); czy_koszt=0 — tylko odnotowanie. Termin przesuwa się o JEDEN okres od TERMINU, nie od
+    dnia kliknięcia (termin_po_okresach) — zapłata przed terminem ani po nim nie przestawia
+    cyklu, a spóźniony o kilka okresów zostaje zaległy do kolejnych kliknięć. Typ 'opony'
+    PRZESTAWIA zamontowany komplet (brak drugiego nie blokuje — powód w wyniku) i trzyma swój
+    termin cyklu (termin_zmiany_opon). Rata leasingu lub kredytu płaci KOLEJNĄ pozycję
+    harmonogramu (db.zaplac_rate). Zwraca słownik z opisem skutków do komunikatu."""
     with polacz_baze() as conn:
         c = conn.cursor()
-        c.execute("SELECT nazwa, kwota, okres_dni, czy_koszt, typ FROM wydatki_cykliczne WHERE id=?", (wydatek_id,))
+        c.execute("SELECT nazwa, kwota, okres_dni, czy_koszt, typ, nastepna_data FROM wydatki_cykliczne WHERE id=?",
+                  (wydatek_id,))
         w = c.fetchone()
         if not w:
             return None
-        nazwa, kwota, okres_dni, czy_koszt, typ = w
+        nazwa, kwota, okres_dni, czy_koszt, typ, termin_txt = w
         typ = _poprawny_typ(typ)
         if czy_rata(typ):
             # Rata leasingu i kredytu ma harmonogram: płaci się KOLEJNĄ ratę
@@ -302,7 +330,12 @@ def oznacz_zaplacony_wydatek_cykliczny(wydatek_id, auto_id):
                 "INSERT INTO inne_koszty (auto_id, data, data_iso, kategoria, nazwa, kwota, dodane_przez) VALUES (?,?,?,?,?,?,?)",
                 (auto_id, data_wpisu, na_iso(data_wpisu), kategoria, nazwa, kwota, pobierz_moje_imie())
             )
-        nowa_data = (dzis + timedelta(days=int(okres_dni or 30))).strftime("%d.%m.%Y")
+        termin = parsuj_date(termin_txt)
+        if termin == datetime.min.date():
+            termin = dzis.date()  # wpis bez czytelnego terminu liczy od dziś
+        nowy = (termin_zmiany_opon(termin, okres_dni, dzis.date()) if typ == TYP_CYKLICZNY_OPONY
+                else termin_po_okresach(termin, okres_dni))
+        nowa_data = nowy.strftime("%d.%m.%Y")
         conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, wydatek_id))
 
     # Zmiana opon POZA transakcją powyżej — przelacz_komplet_sezonowy otwiera
@@ -320,18 +353,21 @@ def pobierz_przypomnienia_o_oponach(auto_id) -> list[tuple[int, str, float, int,
 
 
 def przesun_przypomnienie_o_oponach(auto_id, utworz_gdy_brak=False):
-    """Przesuwa przypomnienie o zmianie opon o pół roku OD DZIŚ — przy każdej faktycznej
-    zmianie, także ręcznej z Magazynu."""
+    """Przesuwa przypomnienie o zmianie opon na następny termin jego cyklu (termin_zmiany_opon) —
+    przy każdej faktycznej zmianie, także ręcznej z Magazynu."""
     wpisy = pobierz_przypomnienia_o_oponach(auto_id)
     if not wpisy:
         if utworz_gdy_brak:
             dodaj_przypomnienie_o_oponach(auto_id)
             return True
         return False
-    nowa_data = (datetime.now() + timedelta(days=OKRES_ZMIANY_OPON_DNI)).strftime("%d.%m.%Y")
+    dzis = datetime.now().date()
     with polacz_baze() as conn:
         for w in wpisy:
-            conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa_data, w[0]))
+            termin = parsuj_date(w[4])
+            nowy = termin_zmiany_opon(dzis if termin == datetime.min.date() else termin, w[3], dzis)
+            conn.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?",
+                         (nowy.strftime("%d.%m.%Y"), w[0]))
     return True
 
 
@@ -573,6 +609,7 @@ def pakiety_dla_pojazdu(auto_id) -> list[tuple[str, list[str]]]:
 
 
 __all__ = [
+    "MIESIACE_OKRESU",
     "OKRESY_SLOWAMI",
     "WARSZTAT_BEZ_NAZWY",
     "_czy_o_oponach",
@@ -596,6 +633,8 @@ __all__ = [
     "pobierz_warsztaty",
     "pobierz_wydatki_cykliczne",
     "przesun_przypomnienie_o_oponach",
+    "termin_po_okresach",
+    "termin_zmiany_opon",
     "usun_pakiet_wlasny",
     "usun_trase_szablon",
     "usun_wydatek_cykliczny",

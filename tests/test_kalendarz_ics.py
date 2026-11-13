@@ -144,8 +144,9 @@ def test_do_kalendarza_ida_terminy_i_platnosci_z_data(baza):
 
     wpisy = {w[1]: wg_grupy[f"cykliczny:{w[0]}"] for w in db.pobierz_wydatki_cykliczne(a)}
     (gps,), (garaz,) = wpisy["Abonament GPS"], wpisy["Garaż"]
-    assert len(gps["wystapienia"]) == 13 and gps["okres_dni"] == 30, "seria tylko na rok do przodu"
-    assert (garaz["data"] - date.today()).days == 30, "po zaległym następne od dziś, zaległego brak"
+    assert len(gps["wystapienia"]) == 12 and gps["okres_dni"] == 30, "seria tylko na rok do przodu"
+    assert garaz["data"] == db.termin_po_okresach(date.today() - timedelta(days=3), 30), \
+        "po zaległym następny termin cyklu, zaległego brak"
     assert [t["data"] for t in terminy] == sorted(t["data"] for t in terminy)
 
 
@@ -216,7 +217,10 @@ def test_plik_jest_poprawnym_icalendarem(baza):
     assert opis[0] == "Ostatni dzień ważności." and opis[1] == "Pojazd: Kalendarzowe (WX 12345)."
     gps = next(z for z in zdarzenia if odczytaj_tekst(z["SUMMARY"]).startswith("Abonament GPS"))
     assert odczytaj_tekst(gps["DESCRIPTION"]).startswith(f"Kwota 49,00 {utils.symbol_waluty()}, powtarza się co miesiąc.")
-    assert gps["RRULE"] == "FREQ=DAILY;INTERVAL=30;COUNT=13" and "RRULE" not in oc
+    # Co miesiąc kalendarzowo; dzień 29–31 w krótszym miesiącu staje na jego końcu.
+    dzien_gps = (date.today() + timedelta(days=5)).day
+    koniec = f";BYMONTHDAY={','.join(map(str, range(28, dzien_gps + 1)))};BYSETPOS=-1" if dzien_gps > 28 else ""
+    assert gps["RRULE"] == f"FREQ=MONTHLY;INTERVAL=1;COUNT=12{koniec}" and "RRULE" not in oc
 
 
 def test_zawijanie_i_znaki_ucieczki():

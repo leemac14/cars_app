@@ -19,6 +19,9 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         "przejazd": "przejazdy",
         "dolewka": "dolewki",
     }
+    # Tabela źródłowa każdego wpisu (uprawnienia). Licznik wpisany przy okazji nie ma tu notatki.
+    TABELE_ZRODEL = {**TABELE_NOTATKI, "opony": "montaze_opon", "bieznik": "pomiary_bieznika",
+                     "karoseria": "zdjecia_karoserii", "do_zrobienia": "do_zrobienia"}
 
     def __init__(self, page: ft.Page, state):
         self._page = page
@@ -273,14 +276,16 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 ft.Text(" • ".join(czesci), size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
             ], spacing=4))
 
-        tresc.append(utils.podglad_notatki(
-            self._page, w.get("notatka"), w.get("notatka_autor"), w.get("notatka_data"),
-            f"Notatka • {w['etykieta_zrodla'].lower()}",
-            on_edytuj=lambda tab=self.TABELE_NOTATKI[w["zrodlo"]], rid=w["id"]: utils.szybka_notatka(
-                self._page, tab, rid, lambda: utils.przejdz(self._page, "/przebieg"), "Notatka"
-            ),
-            pokaz_podpis=bool(wspolny_id),
-        ))
+        tabela_notatki = self.TABELE_NOTATKI.get(w["zrodlo"])
+        if tabela_notatki:
+            tresc.append(utils.podglad_notatki(
+                self._page, w.get("notatka"), w.get("notatka_autor"), w.get("notatka_data"),
+                f"Notatka • {w['etykieta_zrodla'].lower()}",
+                on_edytuj=lambda tab=tabela_notatki, rid=w["id"]: utils.szybka_notatka(
+                    self._page, tab, rid, lambda: utils.przejdz(self._page, "/przebieg"), "Notatka"
+                ),
+                pokaz_podpis=bool(wspolny_id),
+            ))
 
         # Pasek po lewej niesie od razu dwie informacje: kolor źródła, a przy
         # nieścisłości — ostrzeżenie. Korzystamy z gotowej karta_listy (ta sama,
@@ -305,7 +310,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
             usun=(lambda oid=w["id"]: self._usun_odczyt_od_razu(oid)) if self._gesty and w["edytowalny"] else None,
             notatka=(lambda wpis=w: utils.szybka_notatka(
                 self._page, self.TABELE_NOTATKI[wpis["zrodlo"]], wpis["id"],
-                lambda: utils.przejdz(self._page, "/przebieg"), "Notatka")) if self._gesty else None,
+                lambda: utils.przejdz(self._page, "/przebieg"), "Notatka")) if self._gesty and tabela_notatki else None,
         )
 
         tekst_szukaj = (f"{w['data']} {w['przebieg']} {w['etykieta_zrodla']} {w['opis']} "
@@ -334,8 +339,9 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
                 "akcja": lambda: utils.przejdz(self._page, w["trasa"]),
             })
 
-        pozycje.append(utils.pozycja_menu_notatki(
-            self._page, self.TABELE_NOTATKI[w["zrodlo"]], w["id"], w.get("notatka"), odswiez, "Notatka"))
+        if w["zrodlo"] in self.TABELE_NOTATKI:
+            pozycje.append(utils.pozycja_menu_notatki(
+                self._page, self.TABELE_NOTATKI[w["zrodlo"]], w["id"], w.get("notatka"), odswiez, "Notatka"))
 
         if w["edytowalny"]:
             def usun():
@@ -349,7 +355,7 @@ class OdczytyPrzebieguView(ft.View, utils.ZaznaczanieGrupowe):
         # wizyta albo serwis) — lista miesza je ze sobą, a współautor może mieć
         # prawo do swojego tankowania i nie mieć do cudzego odczytu.
         pozycje = utils.odsiej_akcje(
-            self.state.auto_id, pozycje, self.TABELE_NOTATKI[w["zrodlo"]], w["id"])
+            self.state.auto_id, pozycje, self.TABELE_ZRODEL[w["zrodlo"]], w["id"])
         podtytul = f"{w['data']} • {utils.formatuj_dystans(w['przebieg'], 0, self.j)}"
         utils.pokaz_menu_kontekstowe(self._page, f"{w['etykieta_zrodla']}: {podtytul}", pozycje)
 

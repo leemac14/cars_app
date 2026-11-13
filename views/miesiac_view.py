@@ -265,7 +265,7 @@ class MiesiacWPigulceView(SekcjePigulki, ft.View):
                 ikona, utils.KOLOR_STATUS["critical"] if drozej else utils.KOLOR_STATUS["ok"],
                 db.opis_porownania_miesiaca(p, d["rok"], d.get("niepelny")),
                 f"{'Drożej' if drozej else 'Taniej'} o {utils.formatuj_liczba(abs(p['zmiana']), 0)}% "
-                f"({utils.formatuj_liczba(p['kwota'])} {waluta})",
+                f"(było {utils.formatuj_liczba(p['kwota'])} {waluta})",
             ))
 
         return self._karta_werdyktu("Werdykt miesiąca", pozycje)

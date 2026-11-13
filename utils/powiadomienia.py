@@ -819,12 +819,14 @@ def pokaz_panel_wydatkow_cyklicznych(page: ft.Page, state, po_zamknieciu=None):
         e_okres = ft.Dropdown(
             label="Powtarzaj co",
             options=[
-                ft.DropdownOption(key="30", text="Miesiąc (30 dni)"),
-                ft.DropdownOption(key="90", text="Kwartał (90 dni)"),
-                ft.DropdownOption(key="180", text="Pół roku (180 dni)"),
-                ft.DropdownOption(key="365", text="Rok (365 dni)"),
+                ft.DropdownOption(key="30", text="Miesiąc"),
+                ft.DropdownOption(key="90", text="Kwartał"),
+                ft.DropdownOption(key="180", text="Pół roku"),
+                ft.DropdownOption(key="365", text="Rok"),
             ],
-            value=str(okres_val) if str(okres_val) in ("30", "90", "180", "365") else "30",
+            # Okresy liczą się kalendarzowo (db.termin_po_okresach); 182 dni przypomnienia o oponach to pół roku.
+            value={1: "30", 3: "90", 6: "180", 12: "365"}.get(
+                db.MIESIACE_OKRESU.get(db.parsuj_int_bezpiecznie(okres_val, 0)), "30"),
             **styl_dropdown()
         )
         e_data = pole_daty(page, "Następny termin", str(data_val))

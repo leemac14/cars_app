@@ -344,9 +344,8 @@ TABELE_Z_DATA_ISO = (
 )
 
 
-# Sześć źródeł stanu licznika; pięć „przy okazji”, ale dla historii tak samo
-# wiarygodne. Przejazd z ewidencji tylko z wpisanym licznikiem (przejazdy.licznik — stan
-# PO przejeździe).
+# Źródła stanu licznika. Pierwsze sześć to wpisy główne (dla historii równie wiarygodne);
+# przejazd z ewidencji tylko z wpisanym licznikiem (przejazdy.licznik — stan PO przejeździe).
 ZRODLA_PRZEBIEGU = {
     "odczyt": "Odczyt licznika",
     "tankowanie": "Tankowanie",
@@ -354,6 +353,11 @@ ZRODLA_PRZEBIEGU = {
     "serwis": "Wpis serwisowy",
     "przejazd": "Przejazd z ewidencji",
     "dolewka": "Dolewka płynu",
+    # Licznik wpisany przy okazji (db.ZRODLA_PRZY_OKAZJI) — liczy się, gdy pasuje do sąsiednich stanów.
+    "opony": "Zmiana opon",
+    "bieznik": "Pomiar bieżnika",
+    "karoseria": "Zdjęcie karoserii",
+    "do_zrobienia": "Do zrobienia",
 }
 
 

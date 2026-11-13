@@ -457,6 +457,11 @@ class FormularzZdjecieKaroseriiView(ft.View):
             utils.ustaw_blad(pole)
         # Pole w jednostce z Ustawień, baza w km; nieruszone pole wraca bez przeliczania.
         prz = db.dystans_na_km(utils.parsuj_int(self.e_p.value, 0), calkowity=True, km_przy_otwarciu=self.p_km)
+        # Licznik ze zdjęcia liczy się do przebiegu (db.ZRODLA_PRZY_OKAZJI) — literówka ma być widać.
+        if prz and prz > 0 and utils.sprawdz_podejrzany_przebieg(
+                self._page, self.e_p, self.state.auto_id, prz, wyklucz_id=self.wpis_id,
+                tabela="zdjecia_karoserii", nowa_data_str=self.e_d.value):
+            return
 
         if self.wpis_id:
             wynik_komponentu = self.get_zalacznik()

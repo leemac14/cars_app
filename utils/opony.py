@@ -321,8 +321,7 @@ def okno_zmiany_opon(page: ft.Page, state, zestaw_id, os_montazu="Wszystkie", pr
                 ustaw_blad(kontrolka, komunikat)
             page.update()
             return
-        if km and chk_serwis.value and z_podzespolem and sprawdz_podejrzany_przebieg(
-                page, e_przebieg, auto_id, km, tabela="historia", nowa_data_str=e_data.value):
+        if km and sprawdz_podejrzany_przebieg(page, e_przebieg, auto_id, km, nowa_data_str=e_data.value):
             return
         wynik = db.zmien_opony(auto_id, zestaw_id, {
             "os": os_montazu, "data": e_data.value, "przebieg": km, "koszt": kwota,
@@ -386,6 +385,9 @@ def okno_poczatku_montazu(page: ft.Page, state, zestaw_id, po_zapisie=None):
             page.update()
             return
         historia_id = propozycja["historia_id"] if e_data.value == propozycja["data"] else None
+        if km and not historia_id and sprawdz_podejrzany_przebieg(page, e_przebieg, auto_id, km,
+                                                                  nowa_data_str=e_data.value):
+            return
         wynik = db.ustaw_poczatek_montazu(auto_id, zestaw_id, e_data.value, km, historia_id)
         zamknij_dialog(page, dlg)
         if wynik:

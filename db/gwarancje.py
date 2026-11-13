@@ -18,7 +18,7 @@ from .polaczenie import polacz_baze
 from .pomocnicze import _dodatnia, liczba_z_odmiana
 from .ustawienia import pobierz_moje_imie, pobierz_prog_dni, pobierz_prog_km
 from .jednostki import tekst_dystansu
-from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
+from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, prognoza_z_tempa
 
 
 # Statusy jak w „Ile zostało do…”: w progu przypomnienia — „blisko”, po końcu —
@@ -122,10 +122,7 @@ def stan_gwarancji(koniec, limit_km, data_wymiany=None, przebieg_wymiany=None,
 
     dni = (koniec_d - dzis).days if koniec_d else None
     zostalo_km = limit - teraz_km if limit and teraz_km else None
-    dni_km = data_km = None
-    if zostalo_km is not None and zostalo_km >= 0 and sredni_dzienny and sredni_dzienny > 0:
-        dni_km = int(round(zostalo_km / sredni_dzienny))
-        data_km = dzis + timedelta(days=dni_km)
+    dni_km, data_km = prognoza_z_tempa(zostalo_km, sredni_dzienny, dzis)
 
     po_dacie = dni is not None and dni < 0
     po_km = zostalo_km is not None and zostalo_km < 0

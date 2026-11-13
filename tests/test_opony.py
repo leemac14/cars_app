@@ -166,8 +166,8 @@ def test_zmiana_opon_przestawia_komplet_dziennik_serwis_i_przypomnienie(baza):
                                 "WHERE id=?", (wynik["historia_id"],)).fetchone()
         termin = conn.execute("SELECT nastepna_data FROM wydatki_cykliczne WHERE auto_id=?", (a,)).fetchone()[0]
     assert historia == (zadanie, "01.10.2026", 106000, 120.0, "Wulkanizacja Kowalski", "Zimowe")
-    # Termin liczy się od dnia zmiany, nie od dnia wpisania.
-    assert termin == (date(2026, 10, 1) + timedelta(days=db.OKRES_ZMIANY_OPON_DNI)).strftime("%d.%m.%Y")
+    # Przypomnienie trzyma swój termin cyklu (05.11 ↔ 05.05), nie dzień faktycznej zmiany.
+    assert termin == "05.05.2027"
 
     okresy = {m["zestaw_id"]: m for m in db.pobierz_montaze(a)}
     assert okresy[letnie]["data_zdjecia"] == "01.10.2026" and okresy[letnie]["przebieg_zdjecia"] == 106000

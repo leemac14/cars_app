@@ -109,6 +109,7 @@ WYWOLANIA = {
     "pobierz_przejazdy": lambda k: (k["id"]["auto_id"],),
     "powody_kondycji_opon": lambda k: (k["id"]["auto_id"],),
     "pozycje_magazynu_dla_plynu": lambda k: (k["id"]["auto_id"], db.PLYN_OLEJ),
+    "prognoza_z_tempa": lambda k: (3000, 40.0),
     "pobierz_przypomnienia_o_oponach": lambda k: (k["id"]["auto_id"],),
     "pobierz_rozliczenia": lambda k: (k["id"]["auto_id"],),
     "pobierz_serie_dziennego_przebiegu": lambda k: (k["id"]["auto_id"],),

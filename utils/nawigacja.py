@@ -12,6 +12,7 @@ from .haptyka import z_wibracja
 from .dialogi import otworz_dialog, otworz_dno, pokaz_komunikat, pokaz_menu_grupowane, przejdz, zamknij_dialog, zamknij_dno
 from .zalaczniki import abs_zalacznik
 from .pojazd import ikona_nadwozia, sprzedaj_auto, usun_auto
+from .start import logo_aplikacji
 from .plik_pojazdu import wczytaj_pojazd_z_pliku, zapisz_pojazd_do_pliku
 from .powiadomienia import pokaz_panel_wydatkow_cyklicznych, przycisk_dzwonka
 
@@ -954,6 +955,9 @@ def akcje_nawigacji(page: ft.Page, state, cb_export=None, cb_import=None, cb_the
     return {k: v for k, v in akcje.items() if v}
 
 
+SZEROKOSC_LOGO_PASKA = 48  # z plakietką 64 dp — obok hamburgera, nazwy i dwóch akcji mieści się na 360 dp
+
+
 def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme, on_menu=None):
     """Pasek górny ekranu głównego: hamburger po lewej wysuwa szufladę z pełnym spisem
     ekranów (utils.EKRANY, zbuduj_szuflade); menu ⋮ zniknęło."""
@@ -961,17 +965,10 @@ def zbuduj_pasek_glowny(page: ft.Page, state, cb_export, cb_import, cb_theme, on
     def awaryjne_menu(e):
         pokaz_nawigacje_awaryjna(page, state, akcje_nawigacji(page, state, cb_export, cb_import, cb_theme))
 
+    # Logo i nazwa te same, co na starcie i w „O aplikacji” (claude/nazwa-i-logo.md).
     nowoczesny_naglowek = ft.Row([
-        ft.Container(
-            content=ft.Icon(ft.Icons.DIRECTIONS_CAR, size=18, color=ft.Colors.PRIMARY),
-            bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.PRIMARY),
-            border_radius=8,
-            padding=5
-        ),
-        ft.Column([
-            ft.Text("Menedżer Samochodowy", size=9, weight="bold", color=ft.Colors.PRIMARY, no_wrap=True),
-            ft.Text("APLIKACJA KAMILA", weight="bold", size=14, no_wrap=True)
-        ], spacing=0)
+        logo_aplikacji(SZEROKOSC_LOGO_PASKA),
+        ft.Text(db.NAZWA_APLIKACJI, weight="bold", size=FS["title"], no_wrap=True),
     ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     # Tło paska z motywu (zbuduj_motyw): kolor ekranu, podbarwiony pod przewijaną treścią.
@@ -1096,6 +1093,7 @@ __all__ = [
     "GRUPY_WG_ID",
     "_akcja_pozycji",
     "DLUGA_FRAZA_OD",
+    "SZEROKOSC_LOGO_PASKA",
     "WAGA_POMOCNICZA",
     "_chip_ekranu",
     "_naglowek_grupy_szuflady",

@@ -4,8 +4,8 @@ kilometrach „najpóźniej” z licznika czasu) na OKNO_TERMINOW_KALENDARZA —
 za ponad rok — oraz raty, wydatki cykliczne i zmiana opon z przypomnienia na OKNO_KALENDARZA.
 Prognozy kilometrów, zakładane wymiany, podpowiedzi i budżety zostają w aplikacji. Wpis
 całodniowy, alarmy o GODZINA_ALARMU: w progu terminu (tym, który barwi go na osi) i dzień
-wcześniej. Wpis cykliczny to JEDNO wydarzenie z RRULE (co okres_dni, tyle razy, ile wypada
-w oknie); UID bez daty — kalendarz, który zna UID, przy ponownym imporcie podmienia wpis albo
+wcześniej. Wpis cykliczny to JEDNO wydarzenie z RRULE (co okres, kalendarzowo jak w aplikacji —
+_regula_serii — tyle razy, ile wypada w oknie); UID bez daty — kalendarz, który zna UID, przy ponownym imporcie podmienia wpis albo
 całą serię zamiast dublować. Słowa: utils/kalendarz.py.
 
 Podpowiedź „terminy zmieniły się” porównuje GRUPY (termin albo cały wpis cykliczny) z tym, co ten
@@ -22,6 +22,8 @@ from .ustawienia import (
     zapisz_eksport_kalendarza, zapisz_ustawienie,
 )
 from .pojazd import pobierz_pojazdy
+from .gwarancje import dodaj_miesiace
+from .rejestry import MIESIACE_OKRESU
 from .os_przyszlosci import KOLEJNOSC_RODZAJOW, _granica, os_przyszlosci
 
 
@@ -80,7 +82,7 @@ def terminy_kalendarza(auto_id, dzis=None) -> list[dict[str, Any]]:
     """Terminy pojazdu do kalendarza od najbliższego, jeden na grupę: grupa, data (pierwsze
     wystąpienie), najpozniej, prog_dni, okres_dni (seria, inaczej None), pozycja osi,
     wystapienia (pozycje serii w oknie; termin jednorazowy — on sam) i po_zaleglym (seria
-    liczona od dziś za niezapłaconym wystąpieniem — jej daty płyną z dniem)."""
+    za niezapłaconym wystąpieniem — w pliku zaczyna się od pierwszego przyszłego terminu)."""
     dzis = dzis or datetime.now().date()
     os_dane = os_przyszlosci(auto_id, dni=OKNO_TERMINOW_KALENDARZA, dzis=dzis)
     prog_domyslny = pobierz_prog_dni()
@@ -173,9 +175,22 @@ def _wyzwalacz(dni):
     return f"-P{dni - 1}DT{godziny}H" if dni > 1 else f"-PT{godziny}H"
 
 
+def _regula_serii(dzien, okres_dni, razy):
+    """RRULE serii wpisu cyklicznego: okres kalendarzowy (miesiąc, kwartał, pół roku, rok) co N
+    miesięcy tego samego dnia — dzień 29–31 w krótszym miesiącu na jego końcu (BYSETPOS) — reszta
+    co N dni; tak samo liczy aplikacja (db.termin_po_okresach)."""
+    miesiace = MIESIACE_OKRESU.get(int(okres_dni))
+    if not miesiace:
+        return f"FREQ=DAILY;INTERVAL={int(okres_dni)};COUNT={int(razy)}"
+    regula = f"FREQ=MONTHLY;INTERVAL={miesiace};COUNT={int(razy)}"
+    if dzien.day > 28:
+        regula += f";BYMONTHDAY={','.join(str(d) for d in range(28, dzien.day + 1))};BYSETPOS=-1"
+    return regula
+
+
 def generuj_ics(wpisy, nazwa_kalendarza, teraz=None, numer=1) -> bytes:
     """Plik .ics (UTF-8, CRLF). Wpis: uid, data, tytul, opis, alarmy [(dni przed, tekst)],
-    opcjonalnie powtorz (co ile dni, ile razy). SEQUENCE = numer wysyłki — kalendarz, który
+    opcjonalnie powtorz (okres w dniach jak okres_dni wpisu, ile razy). SEQUENCE = numer wysyłki — kalendarz, który
     porównuje wersje wpisu, weźmie nowszą."""
     teraz = teraz or datetime.now()
     znacznik_czasu = teraz.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -189,7 +204,7 @@ def generuj_ics(wpisy, nazwa_kalendarza, teraz=None, numer=1) -> bytes:
         ]
         okres, razy = wpis.get("powtorz") or (0, 1)
         if okres and razy > 1:
-            linie.append(f"RRULE:FREQ=DAILY;INTERVAL={int(okres)};COUNT={int(razy)}")
+            linie.append(f"RRULE:{_regula_serii(dzien, okres, razy)}")
         linie.append(f"SUMMARY:{_tekst(wpis['tytul'])}")
         if wpis.get("opis"):
             linie.append(f"DESCRIPTION:{_tekst(wpis['opis'])}")
@@ -264,6 +279,11 @@ def _zmienione_grupy(wyslane, obecne, wyslano):
             zmienione += int((data - wyslano).days <= okno_grupy(grupa))
         elif okres != dawny_okres:
             zmienione += 1
+        elif MIESIACE_OKRESU.get(okres):
+            # Seria kalendarzowa: ten sam dzień miesiąca co N miesięcy (koniec krótszego też pasuje).
+            miesiace = (data.year - dawna.year) * 12 + data.month - dawna.month
+            zmienione += int(miesiace % MIESIACE_OKRESU[okres] != 0
+                             or abs((dodaj_miesiace(dawna, miesiace) - data).days) > TOLERANCJA_SERII_DNI)
         elif okres:
             przesuniecie = (data - dawna).days % okres
             zmienione += int(min(przesuniecie, okres - przesuniecie) > TOLERANCJA_SERII_DNI)

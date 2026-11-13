@@ -362,7 +362,7 @@ def test_cofniecie_kosztu_z_chmury_zostawia_nagrobek(baza):
     assert [(n[1], n[2]) for n in db.pobierz_nagrobki(a)] == [("inne_koszty", "koszt-1")]
 
 
-def test_zwykly_wydatek_dalej_przesuwa_termin_od_dzis(baza):
+def test_zwykly_wydatek_przesuwa_termin_o_miesiac_od_terminu(baza):
     a = auto()
     db.dodaj_wydatek_cykliczny(a, "Abonament GPS", 30.0, 30, napis(DZIS - timedelta(days=3)))
     (w_id, *_), = db.pobierz_wydatki_cykliczne(a)
@@ -370,7 +370,7 @@ def test_zwykly_wydatek_dalej_przesuwa_termin_od_dzis(baza):
     wynik = zaplac(w_id, a)
 
     assert wynik["typ"] == db.TYP_CYKLICZNY_WYDATEK and "cofnij" not in wynik
-    assert wpis(w_id)["nastepna_data"] == napis(DZIS + timedelta(days=30))
+    assert wpis(w_id)["nastepna_data"] == napis(db.dodaj_miesiace(DZIS - timedelta(days=3), 1))
     assert koszty(a) == [(napis(DZIS), DZIS.isoformat(), "Cykliczne", "Abonament GPS", 30.0)]
 
 

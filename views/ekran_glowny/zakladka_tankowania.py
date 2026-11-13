@@ -65,8 +65,13 @@ class MiksinZakladkiTankowania:
                 # punktem na liczniku: nie może być ani „poprzednim przebiegiem”,
                 # ani pełnym bakiem zamykającym odcinek — inaczej następny wpis
                 # dostawał dystans równy całemu licznikowi auta.
+                # Bez poprzedniego stanu licznika dystansu nie znamy (None → kreska); wpis z
+                # samym dystansem pokazuje swój.
                 poprz = poprzedni_przebieg.get(rodzaj)
-                t['dystans'] = max(0, prz_akt - poprz) if (poprz is not None and prz_akt > 0) else 0
+                if poprz is not None and prz_akt > 0:
+                    t['dystans'] = max(0, prz_akt - poprz)
+                else:
+                    t['dystans'] = (utils.parsuj_float(t.get('dystans')) or None) if prz_akt <= 0 else None
                 if prz_akt > 0:
                     poprzedni_przebieg[rodzaj] = prz_akt
 
@@ -198,7 +203,7 @@ class MiksinZakladkiTankowania:
                     litry_val = float(w.get('litry') or 0)
                     cena_str = f"{utils.formatuj_liczba(kwota_val)} {utils.symbol_waluty()}"
                     cena_litr_str = f"{utils.formatuj_liczba(kwota_val / litry_val, 2)} {utils.symbol_waluty()}/{etykiety_w['jednostka']}" if litry_val > 0 else "-"
-                    dystans_val = utils.formatuj_dystans(w.get('dystans') or 0, 0, j)
+                    dystans_val = utils.formatuj_dystans(w['dystans'], 0, j) if w.get('dystans') is not None else "—"
 
                     tid = w.get('id')
                     tresc_karty = [

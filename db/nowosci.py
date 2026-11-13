@@ -28,6 +28,20 @@ from .ustawienia import (
 # `schemat` tylko przy wydaniach sprzed tego ekranu: NAJNIŻSZY schemat bazy, przy którym
 # telefon ma CAŁE wydanie. Nowym niepotrzebny.
 NOWOSCI = [
+    {"wersja": "2026.11.13", "pozycje": [
+        {"tytul": "Licznik z każdej akcji liczy się do przebiegu", "ikona": "SPEED", "ekran": "przebieg",
+         "opis": "Stan licznika wpisany przy zmianie opon, pomiarze bieżnika, zdjęciu karoserii i przy „Wykonano” "
+                 "w Do zrobienia aktualizuje przebieg auta i stoi w Historii przebiegu z nazwą źródła."},
+        {"tytul": "Prognozy liczone od dnia odczytu licznika", "ikona": "UPDATE", "ekran": "ile-zostalo",
+         "opis": "Daty z tempa jazdy — interwały, „Ile zostało do…”, gwarancje, dzwonek, bieżnik i zasięg na "
+                 "baku — biegną od dnia ostatniego odczytu, nie od dziś. Przy starym odczycie wypadają wcześniej."},
+        {"tytul": "Wydatki cykliczne trzymają swój dzień", "ikona": "EVENT_REPEAT", "ekran": "co-przede-mna",
+         "opis": "„Zapłacone” przesuwa termin o jeden okres od terminu, nie od dnia kliknięcia, a miesiąc, kwartał "
+                 "i rok liczą się kalendarzowo. Przypomnienie o zmianie opon też wraca na swój termin."},
+        {"tytul": "Czytelniejsze napisy", "ikona": "SPELLCHECK", "ekran": "kokpit",
+         "opis": "Pasek ekranu głównego ma logo i nazwę aplikacji, Miesiąc i Rok w pigułce piszą „było…” przy "
+                 "kwocie do porównania, a pierwsze tankowanie ma kreskę zamiast zerowego dystansu."},
+    ]},
     {"wersja": "2026.11.3", "pozycje": [
         {"tytul": "Jedno średnie spalanie na każdym ekranie", "ikona": "LOCAL_GAS_STATION", "ekran": "kokpit",
          "opis": "Kokpit, Rok i Miesiąc w pigułce, wykres spalania i zasięg na baku liczą średnią z litrów "

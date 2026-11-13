@@ -11,8 +11,8 @@ i prognoza kosztu każdego miesiąca. Pilnujemy pięciu rzeczy:
    progiem, co dzwonek.
 2. **Okno i zaległe** — pozycja po końcu okna wypada, zaległa stoi na górze
    zawsze; skończona gwarancja nie jest zaległa.
-3. **Powtórzenia** — wpis co miesiąc stoi tyle razy, ile razy wypada; po
-   zaległym następne liczą się od dziś; kolejne wymiany co krótszy z interwałów,
+3. **Powtórzenia** — wpis co miesiąc stoi tyle razy, ile razy wypada, miesiąc po
+   miesiącu od terminu (także po zaległym); kolejne wymiany co krótszy z interwałów,
    a bez średniego przebiegu kilometrów nie zgadujemy.
 4. **Prognoza** — bieżące to średnia z pełnych miesięcy BEZ tego, co stoi na
    osi z kwotą (wpisy cykliczne, wymiany podzespołów z interwałem), a suma
@@ -40,6 +40,15 @@ POLA_DZIECI = ("controls", "content", "items", "actions", "leading", "trailing",
 
 def za_dni(dni, od=None):
     return ((od or date.today()) + timedelta(days=dni)).strftime("%d.%m.%Y")
+
+
+def co_miesiac(pierwszy_za_dni, ile):
+    """Dni od dziś `ile` kolejnych terminów wpisu „co miesiąc” — miesiąc po miesiącu od terminu."""
+    termin, dni = date.today() + timedelta(days=pierwszy_za_dni), []
+    for _ in range(ile):
+        dni.append((termin - date.today()).days)
+        termin = db.termin_po_okresach(termin, 30)
+    return dni
 
 
 def auto(nazwa="Planowane", **pola):
@@ -253,22 +262,22 @@ def test_wydatek_cykliczny_przy_kazdym_wystapieniu(baza):
     db.dodaj_wydatek_cykliczny(auto_id, "Abonament GPS", 49.0, 30, za_dni(5))
 
     abonament = rodzaju(db.os_przyszlosci(auto_id, dni=90), "cykliczny")
-    assert [p["dni"] for p in abonament] == [5, 35, 65]
+    assert [p["dni"] for p in abonament] == co_miesiac(5, 3)
     # Próg dzwonka: wspólne 30 dni przycięte do trzeciej części okresu (10 dni).
     assert [p["status"] for p in abonament] == ["blisko", "ok", "ok"]
     assert all(p["kwota"] == 49.0 and not p["szacunek"] for p in abonament)
     assert utils.opis_pozycji_osi(abonament[0]) == "za 5 dni · co miesiąc"
-    assert len(rodzaju(db.os_przyszlosci(auto_id, dni=365), "cykliczny")) == 13
+    assert len(rodzaju(db.os_przyszlosci(auto_id, dni=365), "cykliczny")) == 12
 
 
-def test_zalegly_wydatek_a_nastepne_od_dzis(baza):
+def test_zalegly_wydatek_a_nastepne_od_terminu(baza):
     auto_id = auto()
     db.dodaj_wydatek_cykliczny(auto_id, "Garaż", 200.0, 30, za_dni(-3))
     db.dodaj_wydatek_cykliczny(auto_id, "Ciśnienie w kołach", 0.0, 30, za_dni(2), czy_koszt=0)
 
     os_dane = db.os_przyszlosci(auto_id, dni=90)
     garaz = [p for p in rodzaju(os_dane, "cykliczny") if p["tytul"] == "Garaż"]
-    assert [p["dni"] for p in garaz] == [-3, 30, 60, 90]
+    assert [p["dni"] for p in garaz] == co_miesiac(-3, 4)
     assert garaz[0]["zalegla"] and os_dane["pozycje"][0] is garaz[0]
     assert os_dane["podsumowanie"]["kwota_zalegla"] == 200.0
     cisnienie = [p for p in rodzaju(os_dane, "cykliczny") if p["tytul"] == "Ciśnienie w kołach"]
@@ -517,7 +526,7 @@ def test_panel_wydatkow_po_zamknieciu_przelicza_os(baza, monkeypatch):
     db.oznacz_zaplacony_wydatek_cykliczny(db.pobierz_wydatki_cykliczne(auto_id)[0][0], auto_id)
     arkusz.on_dismiss(None)
 
-    assert [p["dni"] for p in rodzaju(widok.os, "cykliczny")] == [30, 60, 90]
+    assert [p["dni"] for p in rodzaju(widok.os, "cykliczny")] == co_miesiac(5, 3)[1:]
 
 
 def test_pusty_ekran_zaprasza_do_uzupelnienia(baza):

@@ -503,9 +503,11 @@ def okno_wykonania(page: ft.Page, auto_id, pozycje, po_zapisie=None, state=None)
                 ustaw_blad(kontrolka, komunikat)
             page.update()
             return
-        if serwis and sprawdz_podejrzany_przebieg(page, e_przebieg, auto_id, km,
-                                                  wyklucz_id=jedna["historia_id"] if poprawka else None,
-                                                  tabela="historia", nowa_data_str=data):
+        # Licznik liczy się do przebiegu także bez wpisu serwisowego (db.ZRODLA_PRZY_OKAZJI).
+        if km and sprawdz_podejrzany_przebieg(
+                page, e_przebieg, auto_id, km, nowa_data_str=data,
+                wyklucz_id=(jedna["historia_id"] if serwis else jedna["id"]) if poprawka else None,
+                tabela="historia" if serwis else "do_zrobienia"):
             return
         dane = {"data": data, "przebieg": km, "koszt": koszt, "notatka": e_notatka.value,
                 "powiazany": cel != CEL_BRAK if jedna else bool(chk.value)}

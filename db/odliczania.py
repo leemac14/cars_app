@@ -13,7 +13,7 @@ jest tylko pasek (część minionego okresu):
 - dokument ze skarbca z własną datą — od wystawienia, bez niej rok przed terminem."""
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from date import parsuj_date
@@ -23,7 +23,7 @@ from .polaczenie import polacz_baze
 from .pomocnicze import _dodatnia
 from .ustawienia import pobierz_prog_dni, pobierz_prog_km
 from .jednostki import dystans_z_km, jednostka_dystansu
-from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg
+from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, prognoza_z_tempa
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu
 from .raty import pobierz_raty, slowo_wykupu
 from .powiadomienia import oblicz_stan_interwalu
@@ -76,17 +76,6 @@ def _poczatek_gwarancji(dane, koniec):
         if dzien != datetime.min.date() and dzien < koniec:
             return dzien, skad
     return None, None
-
-
-def _prognoza(zostalo_km, sredni_dzienny, dzis):
-    """(dni, data) do przejechania `zostalo_km` przy dzisiejszym tempie jazdy —
-    tym samym wzorem, co prognoza licznika km w oblicz_stan_interwalu, żeby
-    lista i karta podzespołu nie rozjechały się o dzień. (None, None) po
-    przekroczeniu i bez średniego przebiegu."""
-    if zostalo_km is None or zostalo_km < 0 or not sredni_dzienny or sredni_dzienny <= 0:
-        return None, None
-    dni = int(round(zostalo_km / sredni_dzienny))
-    return dni, dzis + timedelta(days=dni)
 
 
 def _pozycja(**pola):
@@ -155,7 +144,7 @@ def _limit_gwarancji(auto_id, dane, przebieg, sredni_dzienny, prog_km, dzis):
     if not limit or not przebieg:
         return []
     zostalo = limit - przebieg
-    dni, data = _prognoza(zostalo, sredni_dzienny, dzis)
+    dni, data = prognoza_z_tempa(zostalo, sredni_dzienny, dzis)
     status = "po_terminie" if zostalo < 0 else ("blisko" if zostalo <= prog_km else "ok")
     return [_pozycja(
         klucz="dokument:gwarancja_km", rodzaj="gwarancja_km", ikona="gwarancja",
@@ -266,7 +255,7 @@ def _okragly_przebieg(przebieg, sredni_dzienny, dzis):
     na_km = KM_W_MILI if j == "mi" else 1
     cel_km = cel * na_km
     zostalo = cel_km - przebieg
-    dni, data = _prognoza(zostalo, sredni_dzienny, dzis)
+    dni, data = prognoza_z_tempa(zostalo, sredni_dzienny, dzis)
     return [_pozycja(
         klucz="przebieg", rodzaj="przebieg", ikona="przebieg",
         dni=dni, data=data, prognoza=True, zostalo_km=zostalo,

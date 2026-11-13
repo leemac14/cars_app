@@ -18,7 +18,8 @@ from .ustawienia import (
 )
 from .jednostki import slowo_dystansu, tekst_dystansu
 from .synchronizacja import czy_moge_dodawac
-from .przebieg import oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, swiezosc_licznika
+from .przebieg import (oblicz_sredni_dzienny_przebieg, pobierz_aktualny_przebieg, prognoza_z_tempa,
+                       swiezosc_licznika)
 from .gwarancje import STATUS_GWARANCJI_BLISKO, gwarancje_pojazdu, linie_przypomnienia_gwarancji
 from .szkice import DNI_PRZYPOMNIENIA_SZKICU, podsumowanie_szkicow
 from .raty import KOLUMNY_UMOWY, czy_rata, opis_postepu_umowy
@@ -84,18 +85,14 @@ def oblicz_stan_interwalu(zadanie, aktualny_przebieg, sredni_dzienny_przebieg=No
     przebieg_teraz = _dodatnia(aktualny_przebieg)
     if interwal_km and przebieg_wymiany and przebieg_teraz:
         zostalo_km = przebieg_wymiany + interwal_km - przebieg_teraz
-        # Prognoza dni tylko przed terminem i tym samym wzorem, co w tekstach
-        # („ok. 12 dni”) — inaczej karta i powiadomienie rozjechałyby się o dzień.
-        dni_km = None
-        if zostalo_km >= 0 and sredni_dzienny_przebieg and sredni_dzienny_przebieg > 0:
-            dni_km = int(round(zostalo_km / sredni_dzienny_przebieg))
+        # Prognoza tylko przed terminem i jednym wzorem w całej aplikacji (prognoza_z_tempa) —
+        # inaczej karta i powiadomienie rozjechałyby się o dzień.
+        dni_km, data_km = prognoza_z_tempa(zostalo_km, sredni_dzienny_przebieg, dzis)
         km = {
             "rodzaj": "km", "zostalo": zostalo_km, "interwal": interwal_km,
             "zuzycie": (interwal_km - zostalo_km) / interwal_km,
             "prog": prog_km_z, "status": _status_licznika(zostalo_km, prog_km_z),
-            "dni": dni_km,
-            "data": dzis + timedelta(days=dni_km) if dni_km is not None else None,
-            "prognoza": True,
+            "dni": dni_km, "data": data_km, "prognoza": True,
         }
 
     czas = None

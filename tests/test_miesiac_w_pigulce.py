@@ -330,7 +330,7 @@ def test_ekran_miesiaca_pokazuje_dni_werdykt_i_porownania(baza, dzis):
                        "Dzień po dniu", "Werdykt miesiąca", "Najdroższy dzień",
                        "Względem września (do 15.09)", "Względem października 2025 (do 15.10)", "11"):
         assert oczekiwany in teksty, oczekiwany
-    assert f"Drożej o 267% (300,00 {utils.symbol_waluty()})" in teksty
+    assert f"Drożej o 267% (było 300,00 {utils.symbol_waluty()})" in teksty
 
 
 def test_strzalki_chodza_po_miesiacach_z_wpisami(baza, dzis, monkeypatch):

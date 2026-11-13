@@ -1,8 +1,9 @@
 """Licznik kilometrów: odczyty, historia, wykrywanie podejrzanych skoków."""
 
 import sqlite3
+from bisect import bisect_right
 from date import na_iso, parsuj_date
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from .stale import (
@@ -16,93 +17,105 @@ from .jednostki import dystans_z_km, jednostka_dystansu, tekst_dystansu
 from .notatki import przytnij_notatke, zapisz_notatke
 
 
-def pobierz_aktualny_przebieg(auto_id):
-    if not auto_id: return 0
+# Źródła licznika: (klucz z ZRODLA_PRZEBIEGU, tabela, etap, zapytanie → id, data, licznik).
+_ZRODLA_LICZNIKA = (
+    ("tankowanie", "tankowania", "", "SELECT {nr}, id, data, przebieg FROM tankowania WHERE auto_id=:a"),
+    ("wizyta", "wizyty", "", "SELECT {nr}, id, data, przebieg FROM wizyty WHERE auto_id=:a"),
+    ("serwis", "historia", "", "SELECT {nr}, h.id, h.data, h.przebieg FROM historia h JOIN zadania z "
+                               "ON h.zadanie_id=z.id WHERE z.auto_id=:a AND h.wizyta_id IS NULL"),
+    ("odczyt", "odczyty_przebiegu", "", "SELECT {nr}, id, data, przebieg FROM odczyty_przebiegu WHERE auto_id=:a"),
+    # Przejazd z ewidencji niesie licznik tylko wtedy, gdy ktoś go wpisał (stan PO przejeździe).
+    ("przejazd", "przejazdy", "", "SELECT {nr}, id, data, licznik FROM przejazdy "
+                                  "WHERE auto_id=:a AND licznik IS NOT NULL"),
+    ("dolewka", "dolewki", "", "SELECT {nr}, id, data, przebieg FROM dolewki WHERE auto_id=:a"),
+    # Od tego miejsca licznik wpisany PRZY OKAZJI (_PIERWSZE_PRZY_OKAZJI).
+    ("opony", "montaze_opon", "", "SELECT {nr}, id, data, przebieg FROM montaze_opon "
+                                  "WHERE auto_id=:a AND przebieg > 0"),
+    ("opony", "montaze_opon", "zdjecie", "SELECT {nr}, id, data_zdjecia, przebieg_zdjecia FROM montaze_opon "
+                                         "WHERE auto_id=:a AND przebieg_zdjecia > 0 AND data_zdjecia IS NOT NULL"),
+    ("bieznik", "pomiary_bieznika", "", "SELECT {nr}, id, data, przebieg FROM pomiary_bieznika "
+                                        "WHERE auto_id=:a AND przebieg > 0"),
+    ("karoseria", "zdjecia_karoserii", "", "SELECT {nr}, id, data, przebieg FROM zdjecia_karoserii "
+                                           "WHERE auto_id=:a AND przebieg > 0"),
+    # Wykonanie z wpisem serwisowym albo wizytą niesie licznik w nim; z Innym kosztem — dzień kosztu.
+    ("do_zrobienia", "do_zrobienia", "",
+     "SELECT {nr}, d.id, COALESCE(k.data, d.data_wykonania), d.przebieg_wykonania FROM do_zrobienia d "
+     "LEFT JOIN inne_koszty k ON k.id = d.koszt_id WHERE d.auto_id=:a AND d.wykonane=1 "
+     "AND d.przebieg_wykonania > 0 AND d.historia_id IS NULL AND d.wizyta_id IS NULL"),
+)
+_PIERWSZE_PRZY_OKAZJI = 6
+ZRODLA_PRZY_OKAZJI = tuple(dict.fromkeys(z[0] for z in _ZRODLA_LICZNIKA[_PIERWSZE_PRZY_OKAZJI:]))
+_SQL_STANOW_LICZNIKA = " UNION ALL ".join(z[3].format(nr=nr) for nr, z in enumerate(_ZRODLA_LICZNIKA))
+
+
+def _stany_licznika(auto_id, bez=None) -> list[tuple[Any, int, str, int, str, str]]:
+    """Stany licznika pojazdu ze wszystkich źródeł: (dzień, km, źródło, id, data, etap) — etap
+    „zdjecie” to koniec okresu montażu. `bez` — (tabela, id) wpisu właśnie poprawianego.
+    Licznik wpisany przy okazji (zmiana opon, bieżnik, karoseria, Do zrobienia) liczy się tylko
+    wtedy, gdy mieści się między sąsiadami: wyżej niż wszystko do tego dnia i nie wyżej niż
+    najniższy późniejszy wpis główny. Pole bywa tam wypełnione ostatnim znanym stanem albo liczbą
+    z pamięci — kopia nie jest odczytem i nie może robić cofki we wpisach głównych."""
+    if not auto_id:
+        return []
     with polacz_baze() as conn:
-        c = conn.cursor()
-        wpisy = []
-
-        # Zbieramy wszystkie przebiegi, nadając nowym ręcznym odczytom wyższy priorytet (2)
-        c.execute("SELECT przebieg, data, 1 FROM tankowania WHERE auto_id = ?", (auto_id,))
-        wpisy.extend(c.fetchall())
-        
-        c.execute("SELECT przebieg, data, 1 FROM wizyty WHERE auto_id = ?", (auto_id,))
-        wpisy.extend(c.fetchall())
-        
-        c.execute("SELECT h.przebieg, h.data, 1 FROM historia h JOIN zadania z ON h.zadanie_id = z.id WHERE z.auto_id = ? AND h.wizyta_id IS NULL", (auto_id,))
-        wpisy.extend(c.fetchall())
-        
-        c.execute("SELECT przebieg, data, 2 FROM odczyty_przebiegu WHERE auto_id = ?", (auto_id,))
-        wpisy.extend(c.fetchall())
-
-        # Przejazd z ewidencji ze stanem licznika po przejeździe (opcjonalny).
-        c.execute("SELECT licznik, data, 1 FROM przejazdy WHERE auto_id = ? AND licznik IS NOT NULL", (auto_id,))
-        wpisy.extend(c.fetchall())
-
-        c.execute("SELECT przebieg, data, 1 FROM dolewki WHERE auto_id = ?", (auto_id,))
-        wpisy.extend(c.fetchall())
-
-    parsed = []
-    for prz, d_str, priorytet in wpisy:
+        wiersze = conn.execute(_SQL_STANOW_LICZNIKA, {"a": auto_id}).fetchall()
+    glowne, okazje = [], []
+    for nr, rekord_id, data_str, przebieg in wiersze:
+        zrodlo, tabela, etap, _ = _ZRODLA_LICZNIKA[nr]
+        if bez and bez == (tabela, rekord_id):
+            continue
         try:
-            prz_val = int(prz)
-            if prz_val > 0:
-                parsed.append((parsuj_date(d_str), priorytet, prz_val))
+            km = int(przebieg)
         except (TypeError, ValueError):
-            pass
+            continue
+        if km <= 0:
+            continue
+        stan = (parsuj_date(data_str), km, zrodlo, rekord_id, data_str, etap)
+        (okazje if nr >= _PIERWSZE_PRZY_OKAZJI else glowne).append(stan)
+    if not okazje:
+        return glowne
 
-    if not parsed: return 0
-    
-    # Sortujemy chronologicznie po dacie, potem po priorytecie, a na końcu po wartości
-    parsed.sort(key=lambda x: (x[0], x[1], x[2]))
-    return parsed[-1][2]
+    glowne.sort(key=lambda s: (s[0], s[1]))
+    dni = [s[0] for s in glowne]
+    najwyzszy_do, najnizszy_od = [], [None] * (len(glowne) + 1)
+    for s in glowne:
+        najwyzszy_do.append(max(s[1], najwyzszy_do[-1]) if najwyzszy_do else s[1])
+    for i in range(len(glowne) - 1, -1, -1):
+        dalej = najnizszy_od[i + 1]
+        najnizszy_od[i] = glowne[i][1] if dalej is None else min(glowne[i][1], dalej)
+
+    przyjete, najwyzsza_okazja = [], 0
+    for stan in sorted(okazje, key=lambda s: (s[0], s[1])):
+        if stan[0] == datetime.min.date():
+            continue
+        ile = bisect_right(dni, stan[0])  # wpisy główne do tego dnia włącznie
+        dol = max(najwyzszy_do[ile - 1] if ile else 0, najwyzsza_okazja)
+        gora = najnizszy_od[ile]
+        if stan[1] > dol and (gora is None or stan[1] <= gora):
+            przyjete.append(stan)
+            najwyzsza_okazja = stan[1]
+    return glowne + przyjete
+
+
+def pobierz_aktualny_przebieg(auto_id):
+    """Stan licznika z najpóźniejszego dnia; tego samego dnia ręczny odczyt wygrywa z resztą,
+    dalej wyższy stan. 0 bez auta i bez żadnego wpisu z licznikiem."""
+    stany = _stany_licznika(auto_id)
+    if not stany:
+        return 0
+    return max(stany, key=lambda s: (s[0], s[2] == "odczyt", s[1]))[1]
 
 
 def sprawdz_czy_przebieg_podejrzany(auto_id, nowy_przebieg, wyklucz_id=None, tabela=None, nowa_data_str=None):
     """Ostrzeżenie (str), gdy nowy_przebieg nie pasuje do sąsiadów W CZASIE: niższy niż
     najwyższy z tej samej lub wcześniejszej daty, wyższy niż wpis późniejszy albo z
-    nierealnym dziennym przebiegiem od poprzedniego. Źródła: tankowania, wizyty,
-    odczyty, przejazdy z licznikiem, dolewki, wpisy historii spoza wizyty. Wpisy bez przebiegu (0
-    lub puste) pomijane."""
+    nierealnym dziennym przebiegiem od poprzedniego. Źródła jak w historii licznika
+    (_stany_licznika); `tabela` + `wyklucz_id` — wpis właśnie poprawiany."""
     if not auto_id or not nowy_przebieg or nowy_przebieg <= 0:
         return None
 
-    with polacz_baze() as conn:
-        c = conn.cursor()
-        wpisy = []
-
-        wyklucz_sql = " AND id != ?" if (tabela == "tankowania" and wyklucz_id) else ""
-        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
-        c.execute(f"SELECT przebieg, data FROM tankowania WHERE auto_id=?{wyklucz_sql}", params)
-        wpisy += c.fetchall()
-
-        wyklucz_sql = " AND id != ?" if (tabela == "wizyty" and wyklucz_id) else ""
-        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
-        c.execute(f"SELECT przebieg, data FROM wizyty WHERE auto_id=?{wyklucz_sql}", params)
-        wpisy += c.fetchall()
-
-        wyklucz_sql = " AND h.id != ?" if (tabela == "historia" and wyklucz_id) else ""
-        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
-        c.execute(
-            f"SELECT h.przebieg, h.data FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-            f"WHERE z.auto_id=? AND h.wizyta_id IS NULL{wyklucz_sql}", params
-        )
-        wpisy += c.fetchall()
-
-        wyklucz_sql = " AND id != ?" if (tabela == "odczyty_przebiegu" and wyklucz_id) else ""
-        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
-        c.execute(f"SELECT przebieg, data FROM odczyty_przebiegu WHERE auto_id=?{wyklucz_sql}", params)
-        wpisy += c.fetchall()
-
-        wyklucz_sql = " AND id != ?" if (tabela == "przejazdy" and wyklucz_id) else ""
-        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
-        c.execute(f"SELECT licznik, data FROM przejazdy WHERE auto_id=? AND licznik IS NOT NULL{wyklucz_sql}", params)
-        wpisy += c.fetchall()
-
-        wyklucz_sql = " AND id != ?" if (tabela == "dolewki" and wyklucz_id) else ""
-        params = [auto_id] + ([wyklucz_id] if wyklucz_sql else [])
-        c.execute(f"SELECT przebieg, data FROM dolewki WHERE auto_id=?{wyklucz_sql}", params)
-        wpisy += c.fetchall()
+    wpisy = [(s[1], s[4]) for s in _stany_licznika(
+        auto_id, bez=(tabela, wyklucz_id) if tabela and wyklucz_id else None)]
 
     nowa_data = parsuj_date(nowa_data_str) if nowa_data_str else datetime.now().date()
     if nowa_data == datetime.min.date():
@@ -214,10 +227,36 @@ def sprawdz_czy_koszt_duplikat(auto_id, data_str, nazwa, kwota, wyklucz_id=None)
     return None
 
 
+class TempoJazdy(float):
+    """Średni przebieg dzienny (km) razem z dniem ostatniego stanu licznika (`od`) — od niego,
+    nie od dziś, biegnie prognoza z tempa (prognoza_z_tempa). W rachunkach zwykła liczba."""
+
+    od = None
+
+    def __new__(cls, km_dziennie, od=None):
+        tempo = super().__new__(cls, km_dziennie)
+        tempo.od = od
+        return tempo
+
+
+def prognoza_z_tempa(zostalo_km, sredni_dzienny, dzis=None) -> tuple[int | None, Any]:
+    """(dni od dziś, dzień), w którym auto przejedzie `zostalo_km` w tempie `sredni_dzienny`.
+    Liczy od dnia stanu licznika (TempoJazdy.od): przy starym odczycie część drogi jest już za
+    autem. Dzień, który wypadł przed dziś, to dziś; zwykła liczba liczy od dziś. (None, None) po
+    przekroczeniu i bez tempa."""
+    if zostalo_km is None or zostalo_km < 0 or not sredni_dzienny or sredni_dzienny <= 0:
+        return None, None
+    dzis = dzis or datetime.now().date()
+    od = getattr(sredni_dzienny, "od", None)
+    start = od if od and od < dzis else dzis
+    dzien = max(dzis, start + timedelta(days=int(round(zostalo_km / sredni_dzienny))))
+    return (dzien - dzis).days, dzien
+
+
 def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7, punkty=None):
-    """Średni przebieg dzienny ze WSZYSTKICH źródeł licznika — tych samych co
-    pobierz_historie_przebiegu() (tankowania, wizyty, wpisy historii, odczyty). `punkty`
-    — gotowa historia, gdy wołający już ją ma (swiezosc_licznika)."""
+    """Średni przebieg dzienny (TempoJazdy) ze WSZYSTKICH źródeł licznika — tych samych co
+    pobierz_historie_przebiegu(). `punkty` — gotowa historia, gdy wołający już ją ma
+    (swiezosc_licznika)."""
     if not auto_id:
         return None
 
@@ -237,48 +276,21 @@ def oblicz_sredni_dzienny_przebieg(auto_id, min_dni=7, punkty=None):
     if dni_roznica < min_dni or km_roznica <= 0:
         return None
 
-    return km_roznica / dni_roznica
+    return TempoJazdy(km_roznica / dni_roznica, ostatnia_data)
 
 
 def pobierz_historie_przebiegu(auto_id) -> list[tuple[str, int]]:
-    """Chronologiczna historia licznika ze wszystkich źródeł (tankowania, wizyty,
-    historia bez wizyty, odczyty, przejazdy z licznikiem, dolewki) do wykresu w paszporcie; na
-    dzień najwyższy przebieg. Zwraca [(data_str, przebieg_int)]."""
+    """Chronologiczna historia licznika ze wszystkich źródeł (_stany_licznika: tankowania,
+    wizyty, wpisy serwisowe, odczyty, przejazdy, dolewki oraz licznik wpisany przy zmianie opon,
+    pomiarze bieżnika, zdjęciu karoserii i wykonaniu pozycji Do zrobienia); na dzień najwyższy
+    przebieg. Zwraca [(data_str, przebieg_int)]."""
     if not auto_id:
         return []
 
-    with polacz_baze() as conn:
-        c = conn.cursor()
-        wpisy = []
-        c.execute("SELECT data, przebieg FROM tankowania WHERE auto_id=?", (auto_id,))
-        wpisy += c.fetchall()
-        c.execute("SELECT data, przebieg FROM wizyty WHERE auto_id=?", (auto_id,))
-        wpisy += c.fetchall()
-        c.execute(
-            "SELECT h.data, h.przebieg FROM historia h JOIN zadania z ON h.zadanie_id=z.id "
-            "WHERE z.auto_id=? AND h.wizyta_id IS NULL", (auto_id,)
-        )
-        wpisy += c.fetchall()
-        c.execute("SELECT data, przebieg FROM odczyty_przebiegu WHERE auto_id=?", (auto_id,))
-        wpisy += c.fetchall()
-        c.execute("SELECT data, licznik FROM przejazdy WHERE auto_id=? AND licznik IS NOT NULL", (auto_id,))
-        wpisy += c.fetchall()
-        c.execute("SELECT data, przebieg FROM dolewki WHERE auto_id=?", (auto_id,))
-        wpisy += c.fetchall()
-
     wg_daty = {}
-    for data_str, prz in wpisy:
-        d = parsuj_date(data_str)
-        if d == datetime.min.date():
-            continue
-        try:
-            prz_i = int(prz or 0)
-        except (TypeError, ValueError):
-            continue
-        if prz_i <= 0:
-            continue
-        if d not in wg_daty or prz_i > wg_daty[d][1]:
-            wg_daty[d] = (data_str, prz_i)
+    for dzien, km, _zrodlo, _id, data_str, _etap in _stany_licznika(auto_id):
+        if dzien != datetime.min.date() and (dzien not in wg_daty or km > wg_daty[dzien][1]):
+            wg_daty[dzien] = (data_str, km)
 
     return [wg_daty[d] for d in sorted(wg_daty.keys())]
 
@@ -364,8 +376,9 @@ MIN_SKOK_PRZEBIEGU_NA_DZIEN = 400
 
 
 def pobierz_pelna_historie_przebiegu(auto_id) -> list[dict[str, Any]]:
-    """WSZYSTKIE znane stany licznika (tankowania, wizyty, wpisy serwisowe, odczyty) z
-    informacją, SKĄD pochodzą i czy da się je stąd edytować. Lista słowników rosnąco po
+    """WSZYSTKIE znane stany licznika (_stany_licznika) z informacją, SKĄD pochodzą i czy da
+    się je stąd edytować; licznik wpisany przy okazji ma `notatka` None (ekran nie pokazuje
+    wtedy notatki). Lista słowników rosnąco po
     (data, przebieg) z dystansem i dniami od poprzedniego, średnią dzienną odcinka i
     anomalią ('cofka'/'skok')."""
     if not auto_id:
@@ -463,12 +476,44 @@ def pobierz_pelna_historie_przebiegu(auto_id) -> list[dict[str, Any]]:
                 "trasa": f"/dolewki/edytuj/{r['id']}", "edytowalny": False,
             })
 
+        # Licznik wpisany przy okazji: dzień i stan z _stany_licznika (tylko przyjęte), stąd opis i trasa.
+        przy_okazji = [s for s in _stany_licznika(auto_id) if s[2] in ZRODLA_PRZY_OKAZJI]
+        if przy_okazji:
+            komplety = {r["id"]: " ".join(x for x in (r["sezon"], r["marka_model"]) if x) for r in c.execute(
+                "SELECT id, sezon, marka_model FROM zestawy_opon WHERE auto_id=?", (auto_id,)).fetchall()}
+            montaze = {r["id"]: r["zestaw_id"] for r in c.execute(
+                "SELECT id, zestaw_id FROM montaze_opon WHERE auto_id=?", (auto_id,)).fetchall()}
+            pomiary = {r["id"]: r["zestaw_id"] for r in c.execute(
+                "SELECT id, zestaw_id FROM pomiary_bieznika WHERE auto_id=?", (auto_id,)).fetchall()}
+            strefy = {r["id"]: r["strefa"] for r in c.execute(
+                "SELECT id, strefa FROM zdjecia_karoserii WHERE auto_id=?", (auto_id,)).fetchall()}
+            tytuly = {r["id"]: r["tytul"] for r in c.execute(
+                "SELECT id, tytul FROM do_zrobienia WHERE auto_id=?", (auto_id,)).fetchall()}
+        for _dzien, km, zrodlo, rekord_id, data_str, etap in przy_okazji:
+            if zrodlo == "opony":
+                zestaw_id = montaze.get(rekord_id)
+                opis = f"{'Zdjęte' if etap else 'Założone'}: {komplety.get(zestaw_id) or 'komplet opon'}"
+                trasa = f"/magazyn/opony/{zestaw_id}" if zestaw_id else "/magazyn"
+            elif zrodlo == "bieznik":
+                opis = komplety.get(pomiary.get(rekord_id)) or "Komplet opon"
+                trasa = f"/magazyn/opony/pomiar/edytuj/{rekord_id}"
+            elif zrodlo == "karoseria":
+                opis, trasa = strefy.get(rekord_id) or "Zdjęcie", f"/karoseria/edytuj/{rekord_id}"
+            else:
+                opis, trasa = tytuly.get(rekord_id) or "Wykonana pozycja", "/do-zrobienia/wykonane"
+            wpisy.append({
+                "zrodlo": zrodlo, "podzrodlo": None, "id": rekord_id, "data": data_str, "przebieg": km,
+                "opis": opis, "notatka": None, "notatka_autor": None, "notatka_data": None,
+                "trasa": trasa, "edytowalny": False,
+                "klucz": f"{zrodlo}_{rekord_id}" + (f"_{etap}" if etap else ""),
+            })
+
     # Wpisy bez sensownego przebiegu (0 albo brak) nie mówią nic o liczniku —
     # w historii licznika byłyby wyłącznie szumem.
     wpisy = [w for w in wpisy if w["przebieg"] > 0]
     for w in wpisy:
         w["data_obj"] = parsuj_date(w["data"])
-        w["klucz"] = f"{w['zrodlo']}_{w['id']}"
+        w.setdefault("klucz", f"{w['zrodlo']}_{w['id']}")
         w["etykieta_zrodla"] = ZRODLA_PRZEBIEGU[w["zrodlo"]]
     wpisy = [w for w in wpisy if w["data_obj"] != datetime.min.date()]
     wpisy.sort(key=lambda w: (w["data_obj"], w["przebieg"]))
@@ -623,6 +668,8 @@ def przelicz_wszystkie_zadania(auto_id):
 __all__ = [
     "KROTNOSC_SKOKU_PRZEBIEGU",
     "MIN_SKOK_PRZEBIEGU_NA_DZIEN",
+    "TempoJazdy",
+    "ZRODLA_PRZY_OKAZJI",
     "aktualizuj_najnowszy_wpis",
     "aktualizuj_odczyt_przebiegu",
     "dodaj_odczyt_przebiegu",
@@ -631,6 +678,7 @@ __all__ = [
     "pobierz_historie_przebiegu",
     "pobierz_pelna_historie_przebiegu",
     "podsumowanie_historii_przebiegu",
+    "prognoza_z_tempa",
     "przejechane_km",
     "przelicz_wszystkie_zadania",
     "sprawdz_czy_koszt_duplikat",

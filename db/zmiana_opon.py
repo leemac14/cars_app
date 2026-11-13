@@ -3,12 +3,12 @@ montażu, wpis w Serwisie (podzespół opon) albo Inny koszt, przesunięcie przy
 zmianie; „Cofnij” wraca do stanu sprzed zmiany. Liczenie, pomiary i okresy — db/opony.py."""
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from date import na_iso, parsuj_date
 
-from .stale import KATEGORIA_INNE_DOMYSLNA, OKRES_ZMIANY_OPON_DNI, OSIE_MONTAZU, SEZONY_OPON, SEZONY_PRZELACZALNE
+from .stale import KATEGORIA_INNE_DOMYSLNA, OSIE_MONTAZU, SEZONY_OPON, SEZONY_PRZELACZALNE
 from .stale import TYP_CYKLICZNY_OPONY
 from .polaczenie import polacz_baze
 from .pomocnicze import _na_liczbe, normalizuj_nazwe
@@ -19,6 +19,7 @@ from .przebieg import aktualizuj_najnowszy_wpis, pobierz_aktualny_przebieg, szac
 from .kosz_wpisow import usun_do_kosza
 from .awarie import domyslny_rodzaj_serwisu
 from .opony import flagi_montazu, zapisz_okresy_montazu
+from .rejestry import termin_zmiany_opon
 
 
 def podzespol_opon(conn, auto_id) -> int | None:
@@ -43,7 +44,8 @@ def zmien_opony(auto_id, zestaw_id, dane=None) -> dict[str, Any] | None:
     """Zakłada komplet na oś (`dane`: os, data, przebieg km, koszt, wykonawca, notatka, do_serwisu —
     domyślnie tak, historia_id — istniejący wpis zmiany, np. z wizyty, przypomnienie_id). Zamyka
     okresy zdjętych, otwiera okres założonego, zapisuje zmianę w Serwisie (bez podzespołu opon —
-    koszt jako Inny koszt) i przy zmianie pory roku przesuwa przypomnienie od dnia zmiany. Zwraca
+    koszt jako Inny koszt) i przy zmianie pory roku przesuwa przypomnienie na następny termin jego
+    cyklu (termin_zmiany_opon). Zwraca
     ok, z, na, zestaw_id, opis_zestawu, historia_id, koszt_id, termin_przesuniety, nastepna_data,
     cofniecie (dla cofnij_zmiane_opon); {"ok": False, "powod": "juz_na_aucie"}; None — brak prawa,
     kompletu albo dnia."""
@@ -121,7 +123,9 @@ def zmien_opony(auto_id, zestaw_id, dane=None) -> dict[str, Any] | None:
                                (auto_id, TYP_CYKLICZNY_OPONY)).fetchall():
                 if przypomnienie_id and r["id"] != przypomnienie_id and not zmiana_pory:
                     continue
-                nowa = (dzien + timedelta(days=int(r["okres_dni"] or OKRES_ZMIANY_OPON_DNI))).strftime("%d.%m.%Y")
+                termin = parsuj_date(r["nastepna_data"])
+                nowa = termin_zmiany_opon(dzien if termin == datetime.min.date() else termin, r["okres_dni"],
+                                          dzien).strftime("%d.%m.%Y")
                 c.execute("UPDATE wydatki_cykliczne SET nastepna_data=? WHERE id=?", (nowa, r["id"]))
                 przesuniete.append((r["id"], r["nastepna_data"], nowa))
 

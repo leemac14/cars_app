@@ -172,7 +172,8 @@ def _widok(nazwa, identyfikatory, auto_id):
 # Nowa data zostawia licznik w porządku chronologicznym — inaczej formularz
 # zatrzyma się na ostrzeżeniu o podejrzanym przebiegu i nic nie zapisze.
 @pytest.mark.parametrize("klasa, klucz, tabela, nowa, iso", [
-    ("FormularzTankowanieView", "tankowanie", "tankowania", "04.02.2026", "2026-02-04"),
+    # Przed pomiarem bieżnika z 02.02 (100 600 km) — jego licznik liczy się do historii.
+    ("FormularzTankowanieView", "tankowanie", "tankowania", "20.01.2026", "2026-01-20"),
     ("FormularzInneView", "inny_koszt", "inne_koszty", "04.02.2026", "2026-02-04"),
     ("FormularzWpisView", "historia", "historia", "12.01.2026", "2026-01-12"),
     ("FormularzWizytyView", "wizyta", "wizyty", "12.01.2026", "2026-01-12"),

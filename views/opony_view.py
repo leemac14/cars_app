@@ -413,6 +413,10 @@ class FormularzPomiaruView(ft.View):
                             and db.blad_pomiaru({"data": "01.01.2026", k: p.value})), self.e_kola["lp"])
                 bledy.append((cel, blad))
             return utils.pokaz_bledy_formularza(self._page, bledy)
+        if km and utils.sprawdz_podejrzany_przebieg(
+                self._page, self.e_przebieg, self.state.auto_id, km, wyklucz_id=self.pomiar_id,
+                tabela="pomiary_bieznika", nowa_data_str=self.e_data.value):
+            return
         wynik = db.zapisz_pomiar(self.state.auto_id, self.zestaw_id, dane, self.pomiar_id)
         if not wynik:
             return utils.pokaz_komunikat(self._page, "Nie zapisano pomiaru: brak uprawnień albo kompletu już nie ma.",

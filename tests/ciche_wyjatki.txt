@@ -9,7 +9,6 @@
 date.py                             1
 db/kosz.py                          8
 db/nawigacja.py                     4
-db/przebieg.py                      1
 db/raporty.py                       1
 db/zalaczniki.py                    4
 log.py                              5

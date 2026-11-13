@@ -240,6 +240,10 @@ IKONY_ZRODEL_PRZEBIEGU = {
     "serwis": ft.Icons.BUILD,
     "przejazd": ft.Icons.ALT_ROUTE,
     "dolewka": ft.Icons.WATER_DROP,
+    "opony": ft.Icons.TIRE_REPAIR,
+    "bieznik": ft.Icons.STRAIGHTEN,
+    "karoseria": ft.Icons.PHOTO_CAMERA,
+    "do_zrobienia": ft.Icons.TASK_ALT,
 }
 
 
@@ -250,6 +254,10 @@ KOLORY_ZRODEL_PRZEBIEGU = {
     "serwis": ft.Colors.ORANGE_700,
     "przejazd": ft.Colors.TEAL_600,
     "dolewka": ft.Colors.BROWN_400,
+    "opony": ft.Colors.INDIGO_400,
+    "bieznik": ft.Colors.CYAN_700,
+    "karoseria": ft.Colors.PURPLE_400,
+    "do_zrobienia": ft.Colors.GREEN_700,
 }
 
 
